@@ -1,0 +1,49 @@
+name: Pull Request
+on:
+  push:
+    branches: [main, dev, framar]
+  pull_request:
+    branches: [main, dev, framar]
+  workflow_dispatch:
+
+jobs:
+  linting:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Black
+        uses: microsoft/action-python@0.7.0
+        with:
+          black: true
+
+      - name: Bandit
+        uses: microsoft/action-python@0.7.0
+        with:
+          bandit: true
+
+      - name: Pylint
+        uses: microsoft/action-python@0.7.0
+        with:
+          pylint: true
+
+      - name: Pyright
+        uses: microsoft/action-python@0.7.0
+        with:
+          pyright: true
+
+      - name: Flake8
+        uses: microsoft/action-python@0.7.0
+        with:
+          flake8: true
+
+  testing:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pytest
+        uses: microsoft/action-python@0.7.0
+        with:
+          pytest: true
+
+      - name: Coverage
+        uses: microsoft/action-python@0.7.0
+        with:
+          coverage: true

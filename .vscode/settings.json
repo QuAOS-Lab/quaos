@@ -1,0 +1,30 @@
+{
+  "jupyter.notebookFileRoot": "${workspaceFolder}",
+  "task.autoDetect": "off",
+  "flake8.severity": {
+    "C": "Information",
+    "E": "Warning",
+    "F": "Warning",
+    "R": "Hint",
+    "W": "Warning",
+    "I": "Information"
+  },
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.autopep8"
+  },
+  "[cuda-cpp]": {
+    "editor.defaultFormatter": "ms-vscode.cpptools"
+  },
+  "cSpell.import": [
+    "${workspaceFolder}/configs/cspell.json"
+  ],
+  "esbonio.server.pythonPath": "${workspaceFolder}/docs/doc_venv/Scripts/python",
+  "esbonio.sphinx.confDir": "${workspaceFolder}/docs",
+  "esbonio.sphinx.buildDir": "${workspaceFolder}/docs/_build",
+  "autopep8.args": [
+    "--config=${workspaceFolder}/configs/setup.cfg"
+  ],
+  "flake8.args": [
+    "--config=${workspaceFolder}/configs/setup.cfg"
+  ],
+}
