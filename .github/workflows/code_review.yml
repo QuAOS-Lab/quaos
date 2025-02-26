@@ -1,9 +1,7 @@
 name: Pull Request
 on:
-  push:
-    branches: [main, dev, framar]
   pull_request:
-    branches: [main, dev, framar]
+    branches-ignore: [main, dev]
   workflow_dispatch:
 
 jobs:

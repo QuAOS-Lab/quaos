@@ -1,7 +1,7 @@
-qaos.prime\_Functions\_Andrew
-=============================
+quaos.prime\_Functions\_Andrew
+==============================
 
-.. automodule:: qaos.prime_Functions_Andrew
+.. automodule:: quaos.prime_Functions_Andrew
 
    
    .. rubric:: Functions
@@ -53,19 +53,13 @@ qaos.prime\_Functions\_Andrew
       naive_Var
       naive_variance_graph
       nonempty_cliques
-      pauli_product
-      pauli_to_matrix
-      pauli_to_string
       post_process_cliques
       print_Ham_string
       quditwise_commutation_graph
-      quditwise_inner_product
       random_Ham
       read_Luca_Test
       sample_
       scale_variances
-      string_to_pauli
-      symplectic_inner_product
       tensor
       variance_estimate_
       variance_graph

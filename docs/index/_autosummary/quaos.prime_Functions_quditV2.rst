@@ -1,7 +1,7 @@
-qaos.prime\_Functions\_quditV2
-==============================
+quaos.prime\_Functions\_quditV2
+===============================
 
-.. automodule:: qaos.prime_Functions_quditV2
+.. automodule:: quaos.prime_Functions_quditV2
 
    
    .. rubric:: Functions

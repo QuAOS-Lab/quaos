@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 root_path = Path(__file__).parent.parent.parent
 sys.path.append(str(root_path))
 
-from qaos.prime_Functions_Andrew import *
-from qaos.prime_Functions_quditV2 import *
+from quaos.prime_Functions_Andrew import *
+from quaos.prime_Functions_quditV2 import *
 np.set_printoptions(linewidth=200)
 
 

@@ -1,7 +1,7 @@
-﻿qaos
-====
+﻿quaos
+=====
 
-.. automodule:: qaos
+.. automodule:: quaos
 
    
 .. rubric:: Modules
