@@ -15,6 +15,9 @@ jobs:
 
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
       - name: Create temporary requirements file
         run: cat docs/doc_requirements.txt configs/requirements.txt > docs/final_doc_requirements.txt
 
