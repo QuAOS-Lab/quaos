@@ -15,8 +15,13 @@ jobs:
 
     runs-on: ubuntu-latest
     steps:
+      - name: Create temporary requirements file
+        run: cat docs/doc_requirements.txt configs/requirements.txt > docs/final_doc_requirements.txt
+
       - id: build
         uses: sphinx-notes/pages@v3
+        with:
+          requirements_path: docs/final_doc_requirements.txt
 
   deploy:
     needs: build
