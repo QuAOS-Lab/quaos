@@ -38,7 +38,7 @@
             "problemMatcher": []
         },
         {
-            "label": "Setup Python Environment",
+            "label": "Setup Dev Environment",
             "type": "shell",
             "windows": {
                 "command": "${workspaceFolder}/scripts/shell/setup_environment.bat",

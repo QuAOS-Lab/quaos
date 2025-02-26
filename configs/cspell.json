@@ -71,6 +71,7 @@
         "pyzmq",
         "QAOS",
         "qcore",
+        "quaos",
         "qubits",
         "qudits",
         "quditwise",

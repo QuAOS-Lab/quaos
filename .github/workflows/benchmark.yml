@@ -1,9 +1,8 @@
 name: Benchmark and Profiling
 
 on:
-  push:
-    branches:
-      - framar
+  pull_request:
+    branches: [main, dev]
 
 jobs:
   benchmark:

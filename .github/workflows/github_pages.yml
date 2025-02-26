@@ -1,12 +1,37 @@
 name: GitHub Pages
 
 on:
-  push:
-    branches:
-      - main
+  pull_request:
+    branches: [main, dev]
 
 jobs:
-  deploy:
+  build:
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - id: build
+        uses: sphinx-notes/pages@v3
+
+  deploy:
+    needs: build
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    # Specify runner + deployment step
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
