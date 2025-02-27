@@ -21,7 +21,7 @@ if not exist "configs/requirements.txt" (
 
 REM Generating unversioned folders...
 
-set "folders=data data/profiling script/personal"
+set "folders=data data/profiling scripts/personal"
 
 for %%F in (%folders%) do (
     if not exist "%%F" (
