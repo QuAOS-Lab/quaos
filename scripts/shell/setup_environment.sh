@@ -20,7 +20,7 @@ else
 fi
 
 # Generating unversioned folders
-folders=("data" "data/profiling" "script/personal")
+folders=("data" "data/profiling" "scripts/personal")
 
 for folder in "${folders[@]}"; do
     if [ ! -d "$folder" ]; then
