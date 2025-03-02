@@ -1,4 +1,4 @@
-name: Benchmark and Profiling
+name: Benchmark And Profiling
 
 on:
   pull_request:
@@ -14,13 +14,14 @@ jobs:
         id: set-matrix
         run: |
           BRANCH="${{ github.head_ref }}"
-          if [[ "$BRANCH" =~ workflow_test ]]; then
+          if [[ "$BRANCH" =~ workflow-test ]]; then
           echo "runner=self-hosted" >> $GITHUB_ENV
           echo "runner=self-hosted" >> $GITHUB_OUTPUT
           else
           echo "runner=ubuntu-latest" >> $GITHUB_ENV
           echo "runner=ubuntu-latest" >> $GITHUB_OUTPUT
           fi
+          echo "Using runner: $GITHUB_ENV"
 
   benchmark:
     needs: set-runner
