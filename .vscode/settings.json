@@ -26,5 +26,10 @@
   ],
   "flake8.args": [
     "--config=${workspaceFolder}/configs/setup.cfg"
-  ],
+],
+"python.testing.pytestArgs": [
+    "tests"
+],
+"python.testing.unittestEnabled": false,
+"python.testing.pytestEnabled": true,
 }
