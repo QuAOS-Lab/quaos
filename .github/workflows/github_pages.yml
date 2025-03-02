@@ -14,7 +14,7 @@ jobs:
         id: set-matrix
         run: |
           BRANCH="${{ github.head_ref }}"
-          if [[ "$BRANCH" =~ workflow-test ]]; then
+          if [[ "$BRANCH" =~ test-workflow ]]; then
           echo "runner=self-hosted" >> $GITHUB_ENV
           echo "runner=self-hosted" >> $GITHUB_OUTPUT
           else

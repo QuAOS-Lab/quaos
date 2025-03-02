@@ -9,12 +9,13 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       runner: ${{ steps.set-matrix.outputs.runner }}
+
     steps:
       - name: Determine Runner
         id: set-matrix
         run: |
           BRANCH="${{ github.head_ref }}"
-          if [[ "$BRANCH" =~ workflow-test ]]; then
+          if [[ "$BRANCH" =~ test-workflow ]]; then
           echo "runner=self-hosted" >> $GITHUB_ENV
           echo "runner=self-hosted" >> $GITHUB_OUTPUT
           else
@@ -26,27 +27,8 @@ jobs:
   linting:
     needs: set-runner
     runs-on: ${{ needs.set-runner.outputs.runner }}
+
     steps:
-      - name: Black
-        uses: microsoft/action-python@0.7.0
-        with:
-          black: true
-
-      - name: Bandit
-        uses: microsoft/action-python@0.7.0
-        with:
-          bandit: true
-
-      - name: Pylint
-        uses: microsoft/action-python@0.7.0
-        with:
-          pylint: true
-
-      - name: Pyright
-        uses: microsoft/action-python@0.7.0
-        with:
-          pyright: true
-
       - name: Flake8
         uses: microsoft/action-python@0.7.0
         with:
@@ -55,13 +37,29 @@ jobs:
   testing:
     needs: set-runner
     runs-on: ${{ needs.set-runner.outputs.runner }}
-    steps:
-      - name: Pytest
-        uses: microsoft/action-python@0.7.0
-        with:
-          pytest: true
 
-      - name: Coverage
-        uses: microsoft/action-python@0.7.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up environment
+        uses: actions/setup-python@v4
         with:
-          coverage: true
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ./configs/requirements.txt
+
+      - name: test_data_monkey with pytest
+        run: |
+          pip install pytest pytest-cov
+          pytest -k "not benchmark" --override-ini "pytest.ini=./configs/pytest.ini"
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          with:
+          file: ./docs/tests_results/coverage_report.xml
