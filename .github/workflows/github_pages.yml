@@ -5,7 +5,27 @@ on:
     branches: [main, dev]
 
 jobs:
+  set-runner:
+    runs-on: ubuntu-latest
+    outputs:
+      runner: ${{ steps.set-matrix.outputs.runner }}
+    steps:
+      - name: Determine Runner
+        id: set-matrix
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          if [[ "$BRANCH" =~ workflow_test ]]; then
+          echo "runner=self-hosted" >> $GITHUB_ENV
+          echo "runner=self-hosted" >> $GITHUB_OUTPUT
+          else
+          echo "runner=ubuntu-latest" >> $GITHUB_ENV
+          echo "runner=ubuntu-latest" >> $GITHUB_OUTPUT
+          fi
+
   build:
+    needs: set-runner
+    runs-on: ${{ needs.set-runner.outputs.runner }}
+
     permissions:
       pages: write
       id-token: write
@@ -13,7 +33,6 @@ jobs:
     environment:
       name: github-pages
 
-    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -27,7 +46,7 @@ jobs:
           requirements_path: docs/final_doc_requirements.txt
 
   deploy:
-    needs: build
+    needs: [set-runner, build]
 
     permissions:
       pages: write
@@ -37,8 +56,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
-    # Specify runner + deployment step
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.set-runner.outputs.runner }}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
