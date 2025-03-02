@@ -1,12 +1,45 @@
 name: GitHub Pages
 
 on:
-  push:
-    branches:
-      - main
+  pull_request:
+    branches: [main, dev]
 
 jobs:
-  deploy:
+  build:
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Create temporary requirements file
+        run: cat docs/doc_requirements.txt configs/requirements.txt > docs/final_doc_requirements.txt
+
+      - id: build
+        uses: sphinx-notes/pages@v3
+        with:
+          requirements_path: docs/final_doc_requirements.txt
+
+  deploy:
+    needs: build
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    # Specify runner + deployment step
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

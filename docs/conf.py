@@ -3,7 +3,7 @@ import os
 
 # -- Project information -----------------------------------------------------
 
-project = 'QAOS'
+project = 'QuAOS'
 copyright = '2025, R.S.'
 author = 'R.S.'
 

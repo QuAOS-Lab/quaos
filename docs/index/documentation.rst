@@ -9,4 +9,4 @@ Documentation
     :toctree: _autosummary
     :recursive:
 
-    qaos
+    quaos

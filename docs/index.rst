@@ -1,5 +1,5 @@
-Welcome to QAOS's documentation!
-================================
+Welcome to QuAOS's documentation!
+=================================
 
 .. toctree::
     :maxdepth: 2

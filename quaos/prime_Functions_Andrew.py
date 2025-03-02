@@ -38,21 +38,6 @@ from .pauli import *
 
 # DEFINITIONS
 
-# function for creating generalized Pauli matrix
-def XZ_mat(d,aX,aZ):
-    omega = math.e**(2*math.pi*1j/d)
-    aa0 = np.array([1 for i in range(d)])
-    aa1 = np.array([i for i in range(d)])
-    aa2 = np.array([(i-aX)%d for i in range(d)])
-    X = scipy.sparse.csr_matrix((aa0,(aa1,aa2)))
-    aa0 = np.array([omega**(i*aZ) for i in range(d)])
-    aa1 = np.array([i for i in range(d)])
-    aa2 = np.array([i for i in range(d)])
-    Z = scipy.sparse.csr_matrix((aa0,(aa1,aa2)))
-    if (d == 2) and (aX%2 == 1) and (aZ%2 == 1):
-        return 1j*(X@Z)
-    return X@Z
-
 # I,H,S Clifford matrices used for constructing Clifford gates
 def I_mat(d):
     #
