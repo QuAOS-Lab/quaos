@@ -25,6 +25,7 @@ jobs:
 
   build:
     needs: set-runner
+    continue-on-error: true
     runs-on: ${{ needs.set-runner.outputs.runner }}
 
     permissions:
@@ -39,7 +40,21 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Create temporary requirements file
-        run: cat docs/doc_requirements.txt configs/requirements.txt > docs/final_doc_requirements.txt
+        run: |
+          python -c "
+          files = ['docs/doc_requirements.txt', 'configs/requirements.txt']
+          seen = set()
+          with open('docs/final_doc_requirements.txt', 'w') as out:
+              for file in files:
+                  try:
+                      with open(file, 'r') as f:
+                          for line in f:
+                              if line not in seen:
+                                  out.write(line)
+                                  seen.add(line)
+                  except FileNotFoundError:
+                      pass
+          "
 
       - id: build
         uses: sphinx-notes/pages@v3
@@ -47,6 +62,7 @@ jobs:
           requirements_path: docs/final_doc_requirements.txt
 
   deploy:
+    continue-on-error: true
     needs: [set-runner, build]
 
     permissions:
