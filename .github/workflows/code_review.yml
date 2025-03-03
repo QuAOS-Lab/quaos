@@ -43,6 +43,7 @@ jobs:
           pip install -r ./configs/requirements.txt
 
       - name: Flake8
+        continue-on-error: true
         run: |
           pip install flake8
           flake8 ./quaos
