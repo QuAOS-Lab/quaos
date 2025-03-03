@@ -15,8 +15,8 @@ jobs:
         run: |
           BRANCH="${{ github.head_ref }}"
           if [[ "$BRANCH" =~ test-workflow ]]; then
-          echo "runner=self-hosted" >> $GITHUB_ENV
-          echo "runner=self-hosted" >> $GITHUB_OUTPUT
+          echo "runner=ubuntu-latest" >> $GITHUB_ENV
+          echo "runner=ubuntu-latest" >> $GITHUB_OUTPUT
           else
           echo "runner=ubuntu-latest" >> $GITHUB_ENV
           echo "runner=ubuntu-latest" >> $GITHUB_OUTPUT
