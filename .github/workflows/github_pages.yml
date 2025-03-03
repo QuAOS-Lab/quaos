@@ -41,20 +41,9 @@ jobs:
 
       - name: Create temporary requirements file
         run: |
-          python -c "
-          files = ['docs/doc_requirements.txt', 'configs/requirements.txt']
-          seen = set()
-          with open('docs/final_doc_requirements.txt', 'w') as out:
-              for file in files:
-                  try:
-                      with open(file, 'r') as f:
-                          for line in f:
-                              if line not in seen:
-                                  out.write(line)
-                                  seen.add(line)
-                  except FileNotFoundError:
-                      pass
-          "
+          touch docs/final_doc_requirements.txt  # Ensure the file exists
+          [ -f docs/doc_requirements.txt ] && cat docs/doc_requirements.txt >> docs/final_doc_requirements.txt
+          [ -f configs/requirements.txt ] && cat configs/requirements.txt >> docs/final_doc_requirements.txt
 
       - id: build
         uses: sphinx-notes/pages@v3
