@@ -49,7 +49,7 @@ jobs:
           flake8 ./quaos
 
   testing:
-    needs: set-runner
+    needs: [set-runner, linting]
     runs-on: ${{ needs.set-runner.outputs.runner }}
 
     steps:

@@ -53,7 +53,7 @@ jobs:
           path: benchmark.json
 
   profiling:
-    needs: set-runner
+    needs: [set-runner, benchmark]
     runs-on: ${{ needs.set-runner.outputs.runner }}
 
     steps:
