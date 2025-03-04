@@ -2,7 +2,7 @@ name: Linting And Testing
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
   set-runner:
