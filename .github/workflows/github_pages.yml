@@ -42,8 +42,8 @@ jobs:
       - name: Create temporary requirements file
         run: |
           touch docs/final_doc_requirements.txt
-          [ -f docs/doc_requirements.txt ] && cat docs/doc_requirements.txt >> docs/final_doc_requirements.txt
-          [ -f configs/requirements.txt ] && cat configs/requirements.txt >> docs/final_doc_requirements.txt
+          [ -f docs/doc_requirements.txt ] && cat docs/doc_requirements.txt >> docs/final_doc_requirements.txt && echo "" >> docs/final_doc_requirements.txt
+          [ -f configs/requirements.txt ] && cat configs/requirements.txt >> docs/final_doc_requirements.txt && echo "" >> docs/final_doc_requirements.txt
 
       - id: build
         uses: sphinx-notes/pages@v3
