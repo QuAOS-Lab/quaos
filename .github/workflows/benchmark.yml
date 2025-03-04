@@ -2,7 +2,7 @@ name: Benchmark And Profiling
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
   set-runner:
