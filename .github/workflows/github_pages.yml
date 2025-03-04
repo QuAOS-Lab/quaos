@@ -41,7 +41,7 @@ jobs:
 
       - name: Create temporary requirements file
         run: |
-          touch docs/final_doc_requirements.txt  # Ensure the file exists
+          touch docs/final_doc_requirements.txt
           [ -f docs/doc_requirements.txt ] && cat docs/doc_requirements.txt >> docs/final_doc_requirements.txt
           [ -f configs/requirements.txt ] && cat configs/requirements.txt >> docs/final_doc_requirements.txt
 
