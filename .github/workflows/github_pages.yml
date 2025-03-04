@@ -51,6 +51,7 @@ jobs:
           requirements_path: "./docs/final_doc_requirements.txt"
           python_version: "3.11"
           sphinx_version: "7.4.7"
+          checkout: false
 
   deploy:
     continue-on-error: true
