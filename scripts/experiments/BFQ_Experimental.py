@@ -22,7 +22,7 @@ def main():
     # import Hamiltonian
     # P - Collection of Pauli Operators
     # cc - list of coefficients
-    #P,cc = read_luca_test_2("./Hamiltonians/"+"Hams"+"/"+"Open"+"/"+ "full_D3_rev" +".txt",dims=3)
+    # P,cc = read_luca_test_2("./Hamiltonians/"+"Hams"+"/"+"Open"+"/"+ "full_D3_rev" +".txt",dims=3)
     P,cc = read_luca_test_2(root_path / "data/Hamiltonians/Hams/Open/full_D3_rev.txt",dims=[3,2,2,2,2])
 
 

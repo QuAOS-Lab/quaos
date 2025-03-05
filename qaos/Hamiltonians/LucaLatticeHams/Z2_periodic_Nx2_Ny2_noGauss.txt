@@ -1,0 +1,12 @@
+{-1, "X I X I X I X I"}
+{-1, "I X I X X I X I"}
+{-1, "X I X I I X I X"}
+{-1, "I X I X I X I X"}
+{1, "Z I I I I I I I"}
+{1, "I Z I I I I I I"}
+{1, "I I Z I I I I I"}
+{1, "I I I Z I I I I"}
+{1, "I I I I Z I I I"}
+{1, "I I I I I Z I I"}
+{1, "I I I I I I Z I"}
+{1, "I I I I I I I Z"}
