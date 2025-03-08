@@ -13,12 +13,11 @@ from IPython.display import clear_output, display, HTML
 
 # Local Imports
 from .prime_Functions_Andrew import (
-    int_to_bases, bases_to_int, string_to_pauli, 
-    weighted_vertex_covering_maximal_cliques, ground_state, 
-    commutation_graph, graph, pauli_product, pauli_to_string, 
-    diagonalize, act, quditwise_commutation_graph, quditwise_inner_product, 
-    pauli_to_matrix, pauli,Hamiltonian_Mean,scale_variances,circuit
+    int_to_bases, bases_to_int, weighted_vertex_covering_maximal_cliques, ground_state, 
+    commutation_graph, graph, diagonalize, act, quditwise_commutation_graph, 
+    Hamiltonian_Mean,scale_variances,circuit
 )
+from .pauli import (pauli, pauli_to_matrix, pauli_to_string, string_to_pauli, pauli_product, quditwise_inner_product)
 
 np.set_printoptions(linewidth=200)
 

@@ -4,15 +4,11 @@ import scipy.sparse
 import scipy.sparse.linalg
 import itertools
 import random
-import time
 import math
-import functools
-import os
 import networkx as nx
-import re
 from functools import reduce
 from operator import mul
-from .pauli import *
+from .pauli import (pauli, string_to_pauli, pauli_to_matrix)
 
 # NAMING CONVENTIONS
 
@@ -35,51 +31,55 @@ from .pauli import *
 # functions or methods which end with underscores modify the inputs
 
 
-
-# DEFINITIONS
-
-# I,H,S Clifford matrices used for constructing Clifford gates
 def I_mat(d):
-    #
-    return scipy.sparse.csr_matrix(np.diag([1]*d))
+    """Return the d-dimensional Identity matrix."""
+    return scipy.sparse.csr_matrix(np.diag([1] * d))
+
 
 def H_mat(d):
-    omega = math.e**(2*math.pi*1j/d)
-    return scipy.sparse.csr_matrix(1/np.sqrt(d)*np.array([[omega**(i0*i1) for i0 in range(d)] for i1 in range(d)]))
+    """Return the d-dimensional Hadarmard matrix."""
+    omega = math.e**(2 * math.pi * 1j / d)
+    H_mat = np.array([[omega**(i0 * i1) for i0 in range(d)] for i1 in range(d)])
+    H_mat = 1 / np.sqrt(d) * H_mat 
+    return scipy.sparse.csr_matrix(H_mat)
+
 
 def S_mat(d):
+    """Return the d-dimensional S Clifford matrix."""
     if d == 2:
-        return scipy.sparse.csr_matrix(np.diag([1,1j]))
-    omega = math.e**(2*math.pi*1j/d)
-    return scipy.sparse.csr_matrix(np.diag([omega**(i*(i-1)/2) for i in range(d)]))
+        return scipy.sparse.csr_matrix(np.diag([1, 1j]))
 
+    omega = math.e**(2 * math.pi * 1j / d)
+    S_mat = np.diag([omega ** (i * (i - 1) / 2) for i in range(d)])
+    return scipy.sparse.csr_matrix(S_mat)
 
 
 # READING, WRITING, AND MISCELLANEOUS
+def read_Luca_Test(path, dims=2):
+    """Reads a Hamiltonian file and parses the Pauli strings and coefficients.
 
-def read_Luca_Test(path,dims=2):
-    # Inputs:
-    #     path - (str) - path to Hamiltonian file
-    # Outputs:
-    #     (int)         - number of Paulis in Hamiltonian
-    #     (int)         - number of qudits in Hamiltonian
-    #     (pauli)       - set of Paulis in Hamiltonian
-    #     (list{float}) - coefficients in Hamiltonian
-    f = open(path,"r")
+    Args:
+        path (str): Path to the Hamiltonian file.
+
+    Returns:
+        tuple: Number of Paulis in Hamiltonian, number of qudits in Hamiltonian,
+            set of Paulis in Hamiltonian, and coefficients in Hamiltonian.
+    """
+    f = open(path, "r")
     sss0 = f.readlines()
     f.close()
     sss1 = []
     cc = []
     for i0 in range(len(sss0)):
         pauli_list = sss0[i0].split(', {')
-        coefficient = pauli_list[0][1:].replace(" ", "").replace('*I','j')
+        coefficient = pauli_list[0][1:].replace(" ", "").replace('*I', 'j')
         # print(coefficient)
         # print(coefficient[0])
         cc.append(np.complex(coefficient))
         ss = ''
-        for i1 in range(1,len(pauli_list)):
-            ss += 'x'+str(pauli_list[i1].count('X'))
-            ss += 'z'+str(pauli_list[i1].count('Z'))
+        for i1 in range(1, len(pauli_list)):
+            ss += 'x' + str(pauli_list[i1].count('X'))
+            ss += 'z' + str(pauli_list[i1].count('Z'))
             ss += ' '
         sss1.append(ss[:-1])
     # if type(dims) == int:
@@ -99,83 +99,123 @@ def read_Luca_Test(path,dims=2):
 
     # # cc1 = cc.copy()
 
-    return string_to_pauli(sss1,dims),cc
+    return string_to_pauli(sss1, dims), cc
 
-# call within a loop to produce a loading bar which can be scaled for various timings
-def loading_bar(runs,length=50,scalings=[]):
-    # Inputs:
-    #     runs    - (list{tuple{int}}) - list of pairs: current iteration, total iterations
-    #     length  - (int)              - length of bar
-    #     scaling - (list{function})   - scale speed of progress
+
+def loading_bar(runs, length=50, scalings=[]):
+    """
+    Call within a loop to produce a loading bar which can be scaled for various timings.
+
+    Args:
+        runs (list[tuple[int, int]]): List of pairs: current iteration, total iterations.
+        length (int): Length of bar.
+        scaling (list[function]): Scale speed of progress.
+    """
     a0 = len(runs)
-    scalings += [lambda x:x]*(a0-len(scalings))
-    a1 = scalings[0](runs[0][0])+sum(scalings[i](runs[i][0])*scalings[i-1](runs[i-1][1]) for i in range(1,a0))
-    a2 = reduce(mul,[scalings[i](runs[i][1]) for i in range(a0)])
+    scalings += [lambda x:x] * (a0 - len(scalings))
+    a1 = scalings[0](runs[0][0]) + sum(scalings[i](runs[i][0]) * scalings[i - 1](runs[i - 1][1]) for i in range(1, a0))
+    a2 = reduce(mul, [scalings[i](runs[i][1]) for i in range(a0)])
     # for scale in scalings[::-1]:
     #     a1,a2 = scale(a1),scale(a2)
-    ss0 = ("{0:.1f}").format(int(1000*a1/a2)/10)
-    ss1 = ' '.join(str(runs[i][0])+'/'+str(runs[i][1]) for i in range(a0))
-    bar = '█'*int(length*a1/a2) + '-'*(length-int(length*a1/a2))
+    ss0 = ("{0:.1f}").format(int(1000 * a1 / a2) / 10)
+    ss1 = ' '.join(str(runs[i][0]) + '/' + str(runs[i][1]) for i in range(a0))
+    bar = '█' * int(length * a1 / a2) + '-' * (length - int(length * a1 / a2))
     print(f' |{bar}| {ss0}% {ss1}', end="\r")
-    if runs[0][0] >= runs[0][1]-1: 
-        print(" "*(length+6+len(ss0)+len(ss1)),end="\r")
+    if runs[0][0] >= runs[0][1] - 1: 
+        print(" " * (length + 6 + len(ss0) + len(ss1)), end="\r")
 
 
 # GATES & CIRCUITS
-
-# a class for storing quantum gates as a name and a list of qudits
 class gate:
-    def __init__(self,name,aa):
-        # Inputs:
-        #     name - (function)  - function for action of gate
-        #     aa   - (list{int}) - list of qudits acted upon
+    """A class for storing quantum gates as a name and a list of qudits.
+
+    Attributes:
+        name (function): Function representing the action of the gate.
+        aa (list[int]): List of qudits acted upon.
+    """
+    def __init__(self, name, aa):
+        """
+        Args:
+            name (function): Function representing the action of the gate.
+            aa (list[int]): List of qudits acted upon.
+        """
         self.name = name
         self.aa = aa
 
-    # returns the name of the gate as a string
     def name_string(self):
-        # Outputs:
-        #     (str) - name of function as a string
+        """Returns the name of the gate as a string.
+
+        Returns:
+            str: Name of function as a string.
+        """
         return self.name.__name__
 
-    # deep copy of self
     def copy(self):
-        # Outputs:
-        #     (gate) - deep copy of gate
-        return gate(self.name,[a for a in self.aa])
+        """
+        Deep copy of self.
 
-    # print self as a name and a tuple of qudits
+        Returns:
+            gate: A deep copy of gate.
+        """
+        return gate(self.name, [a for a in self.aa])
+
     def print(self):
-        print("%s(%s)"%(self.name_string(),str(self.aa).replace(' ','')[1:-1]))
+        """Print self as a name and a tuple of qudits.
 
-# a class for storing quantum circuits as a collection of gates along with the dimension
+        Prints the name of the gate and a tuple of the qudits it acts on.
+        """
+        print("%s(%s)" % (self.name_string(), str(self.aa).replace(' ', '')[1:-1]))
+
+
 class circuit:
-    def __init__(self,dims):
-        # Inputs:
-        #     qudits - (int) - number of qudits in circuit
+    """
+    A class for storing quantum circuits as a collection of gates along with the dimension.
+
+    Attributes:
+        dims (list[int]): Dimensions of the qudits in the circuit.
+        gg (list[gate]): List of gates in the circuit.
+
+    Methods:
+        length(): Returns the number of gates in the circuit.
+        unitary(): Converts the circuit to its corresponding unitary matrix.
+        add_gates_(C): Appends gates to the end of the circuit.
+    """
+    def __init__(self, dims):
+        """A class for storing quantum circuits as a collection of gates along with the dimension.
+
+        Args:
+            qudits (int): Number of qudits in circuit.
+        """
         self.dims = dims
         self.gg = []
 
-    # the number of gates in the circuit
     def length(self):
-        # Outputs:
-        #     (int) - number of gates in circuit
+        """Returns the number of gates in the circuit.
+
+        Returns:
+            int: The number of gates in the circuit.
+        """
         return len(self.gg)
 
-    # convert self to its corresponding unitary matrix
     def unitary(self):
-        # Outputs:
-        #     (scipy.sparse.csr_matrix) - unitary matrix representation of self
+        """
+        Convert self to its corresponding unitary matrix.
+
+        Returns:
+            scipy.sparse.csr_matrix: Unitary matrix representation of self.
+        """
         q = len(self.dims)
-        m = scipy.sparse.csr_matrix(([1]*(np.prod(self.dims)),(range(np.prod(self.dims)),range(np.prod(self.dims)))))
+        m = scipy.sparse.csr_matrix(([1] * (np.prod(self.dims)), (range(np.prod(self.dims)), range(np.prod(self.dims)))))
         for g in self.gg:
-            m = globals()[g.name_string()+'_unitary'](g.aa,self.dims) @ m
+            m = globals()[g.name_string() + '_unitary'](g.aa, self.dims) @ m
         return m
 
-    # append gates to the end of self
-    def add_gates_(self,C):
-        # Inputs:
-        #     C - (circuit) or (list{gate}) or (gate) - gates to be appended to self
+    def add_gates_(self, C):
+        """Append gates to the end of self.
+
+        Args:
+            C (circuit or list[gate] or gate): Gates to be appended to self.
+        """
         if type(C) is circuit:
             self.gg += C.gg
         elif type(C) is gate:
@@ -183,212 +223,261 @@ class circuit:
         else:
             self.gg += C
 
-    # insert gates at a given timestep in self
-    def insert_gates_(self,C,a):
-        # Inputs:
-        #     C - (circuit) or (list{gate}) or (gate) - gates to be inserted into self
-        #     a  - (int)        - index for insertion
+    def insert_gates_(self, C, a):
+        """
+        Insert gates at a given timestep in self.
+
+        Args:
+            C (circuit or list[gate] or gate): Gates to be inserted into self.
+            a (int): Index for insertion.
+        """
         if type(C) is gate:
-            self.gg.insert(a,C)
+            self.gg.insert(a, C)
         elif type(C) is circuit:
             self.gg[a:a] = C.gg
         else:
             self.gg[a:a] = C
 
-    # delete gates at specific timesteps
-    def delete_gates_(self,aa):
-        # Inputs:
-        #     aa - (int) or (list{int}) - indices where gates should be deleted
+    def delete_gates_(self, aa):
+        """
+        Delete gates at specific timesteps.
+
+        Parameters:
+            aa (int or list[int]): Indices where gates should be deleted.
+        """
         if type(aa) is int:
             del self.gg[aa]
         else:
             self.gg = [self.gg[i] for i in range(length(self.dims)) if not i in aa]
 
-    # deep copy of self
     def copy(self):
-        # Outputs:
-        #     (circuit) - deep copy of self
-        return circuit(self.dims,[g.copy() for g in self.gg])
+        """Deep copy of self.
 
-    # print self as gates on consecutive lines
+        Returns:
+            circuit: A deep copy of self.
+        """
+        return circuit(self.dims, [g.copy() for g in self.gg])
+
     def print(self):
+        """Print self as gates on consecutive lines."""
         for g in self.gg:
             g.print()
 
-# returns the outcome of a given circuit (or gate or list of gates) acting on a given pauli
-def act(P,C):
-    # Inputs:
-    #     P - (pauli)                             - Pauli to be acted upon
-    #     C - (gate) or (circuit) or (list{gate}) - gates to act on Pauli
-    # Outputs:
-    #     (pauli) - result of C acting on P by conjugation
+
+def act(P, C):
+    """Returns the outcome of a given circuit (or gate or list of gates) acting on a given pauli.
+
+    Parameters:
+        P (pauli): Pauli to be acted upon
+        C (gate or circuit or list[gate]): gates to act on Pauli
+
+    Returns:
+        pauli: result of C acting on P by conjugation
+    """
     if P == None:
         return P
     elif type(C) is gate:
-        return C.name(P,C.aa)
+        return C.name(P, C.aa)
     elif type(C) is circuit:
-        return act(P,C.gg)
+        return act(P, C.gg)
     elif len(C) == 0:
         return P
     elif len(C) == 1:
-        return act(P,C[0])
+        return act(P, C[0])
     else:
-        return act(act(P,C[0]),C[1:])
+        return act(act(P, C[0]), C[1:])
 
-# function for the gate representation of Hadamard gate
-def H(P,aa):
-    # Inputs:
-    #     P  - (pauli)     - Pauli to be acted upon
-    #     aa - (list{int}) - qudits to be acted upon
-    # Outputs:
-    #     (pauli) - result of H(aa) acting on P
-    # X -> Z
-    # Z -> -X
+
+def H(P, aa):
+    """
+    Function for the gate representation of Hadamard gate. Transformation: 
+    X -> Z, Z -> -X
+
+    Args:
+        P (pauli): Pauli to be acted upon.
+        aa (list[int]): Qudits to be acted upon.
+
+    Returns:
+        pauli: Result of H(aa) acting on P.
+    """
     Q = P.copy()
-    X,Z = Q.X,Q.Z
+    X, Z = Q.X, Q.Z
     for a in aa:
         for i in range(Q.paulis()):
-            Q.phases[i] += X[i,a]*Z[i,a]*P.lcm//P.dims[a]
-        X[:,a],Z[:,a] = -Z[:,a].copy(),X[:,a].copy()
-    return pauli(X,Z,Q.dims,Q.phases)
+            Q.phases[i] += X[i, a] * Z[i, a] * P.lcm // P.dims[a]
+        X[:, a], Z[:, a] = -Z[:, a].copy(), X[:, a].copy()
+    return pauli(X, Z, Q.dims, Q.phases)
 
-# function for the gate representation of phase gate
-def S(P,aa):
-    # Inputs:
-    #     P  - (pauli)     - Pauli to be acted upon
-    #     aa - (list{int}) - qudits to be acted upon
-    # Outputs:
-    #     (pauli) - result of S(aa) acting on P
-    # X -> XZ
-    # Z -> Z
+
+def S(P, aa):
+    """
+    Function for the gate representation of phase gate. Phase gate transformation: 
+    X -> XZ,Z -> Z
+
+    Parameters:
+        P (pauli): Pauli to be acted upon.
+        aa (list[int]): Qudits to be acted upon.
+
+    Returns:
+        pauli: Result of S(aa) acting on P.
+    """
     Q = P.copy()
-    X,Z = Q.X,Q.Z
+    X, Z = Q.X, Q.Z
     for a in aa:
         for i in range(Q.paulis()):
             if P.dims[a] == 2:
-                Q.phases[i] += X[i,a]*Z[i,a]*P.lcm//P.dims[a]
+                Q.phases[i] += X[i, a] * Z[i, a] * P.lcm // P.dims[a]
             else:
-                Q.phases[i] += math.comb(X[i,a],2)*P.lcm//P.dims[a]
-        Z[:,a] += X[:,a]
-    return pauli(X,Z,Q.dims,Q.phases)
+                Q.phases[i] += math.comb(X[i, a], 2) * P.lcm // P.dims[a]
+        Z[:, a] += X[:, a]
+    return pauli(X, Z, Q.dims, Q.phases)
 
-# function for the gate representation of CNOT gate
-def CX(P,aa):
-    # Inputs:
-    #     P  - (pauli)     - Pauli to be acted upon
-    #     aa - (list{int}) - control aa[0] and target aa[1]
-    # Outputs:
-    #     (pauli) - result of CNOT(aa[0],aa[1]) acting on P
-    # X*I -> X*X
-    # I*X -> I*X
-    # Z*I -> Z*I
-    # I*Z -> -Z*Z
-    a0,a1 = aa[0],aa[1]
+
+def CX(P, aa):
+    """
+    Function for the gate representation of CNOT gate. Transformation:
+        X*I -> X*X
+        I*X -> I*X
+        Z*I -> Z*I
+        I*Z -> -Z*Z
+
+    Parameters:
+        P (pauli): Pauli to be acted upon.
+        aa (list[int]): Control aa[0] and target aa[1].
+
+    Returns:
+        pauli: Result of CNOT(aa[0],aa[1]) acting on P.
+    """
+    a0, a1 = aa[0], aa[1]
     if P.dims[a0] != P.dims[a1]:
         raise Exception("Entangling gates must be between two qudits of equal dimensions")
     Q = P.copy()
-    X,Z = Q.X,Q.Z
+    X, Z = Q.X, Q.Z
     for i in range(Q.paulis()):
         if P.dims[a0] == 2:
-            Q.phases[i] += X[i,a0]*Z[i,a1]*(X[i,a1]+Z[i,a0]+1)*P.lcm//P.dims[a0]
-    X[:,a1] += X[:,a0]
-    Z[:,a0] -= Z[:,a1]
-    return pauli(X,Z,Q.dims,Q.phases)
+            Q.phases[i] += X[i, a0] * Z[i, a1] * (X[i, a1] + Z[i, a0] + 1) * P.lcm // P.dims[a0]
+    X[:, a1] += X[:, a0]
+    Z[:, a0] -= Z[:, a1]
+    return pauli(X, Z, Q.dims, Q.phases)
 
-# function for the gate representation of SWAP gate
-def SWAP(P,aa):
-    # Inputs:
-    #     P  - (pauli)     - Pauli to be acted upon
-    #     aa - (list{int}) - targets aa[0] and aa[1]
-    # Outputs:
-    #     (pauli) - result of SWAP(aa[0],aa[1]) acting on P
-    # X*I -> I*X
-    # I*X -> X*I
-    # Z*I -> I*Z
-    # I*Z -> Z*I
-    X,Z = P.X,P.Z
-    a0,a1 = aa[0],aa[1]
-    X[:,a0],X[:,a1] = X[:,a1].copy(),X[:,a0].copy()
-    Z[:,a0],Z[:,a1] = Z[:,a1].copy(),Z[:,a0].copy()
-    return pauli(X,Z)
 
-# function for mapping Hadamard gate to corresponding unitary matrix
+def SWAP(P, aa):
+    """Function for the gate representation of SWAP gate. Gate transformation: 
+    X*I -> I*X, I*X -> X*I, Z*I -> I*Z, I*Z -> Z*I
+
+    Parameters:
+        P (pauli): Pauli to be acted upon.
+        aa (list[int]): Targets aa[0] and aa[1].
+
+    Returns:
+        pauli: result of SWAP(aa[0],aa[1]) acting on P.
+
+    """
+    X, Z = P.X, P.Z
+    a0, a1 = aa[0], aa[1]
+    X[:, a0], X[:, a1] = X[:, a1].copy(), X[:, a0].copy()
+    Z[:, a0], Z[:, a1] = Z[:, a1].copy(), Z[:, a0].copy()
+    return pauli(X, Z)
+
+
 def H_unitary(aa,dims):
-    # Inputs:
-    #     aa - (list{int}) - indices for Hadamard tensors
-    #     q  - (int)       - number of qudits
-    # Outputs:
-    #     (scipy.sparse.csr_matrix) - matrix representation of q-dimensional H(aa)
+    """Function for mapping Hadamard gate to corresponding unitary matrix
+
+    Parameters:
+        aa (list{int}): indices for Hadamard tensors
+        dims (list{int}): dimensions of the qudits
+
+    Returns:
+        scipy.sparse.csr_matrix: matrix representation of q-dimensional H(aa)
+    """
     return tensor([H_mat(dims[i]) if i in aa else I_mat(dims[i]) for i in range(len(dims))])
 
-# function for mapping phase gate to corresponding unitary matrix
+
 def S_unitary(aa,dims):
-    # Inputs:
-    #     aa - (list{int}) - indices for phase gate tensors
-    #     q  - (int)       - number of qudits
-    # Outputs:
-    #     (scipy.sparse.csr_matrix) - matrix representation of q-dimensional S(aa)
+    """
+    Function for mapping phase gate to corresponding unitary matrix.
+
+    Parameters:
+        aa (list[int]): indices for phase gate tensors
+        dims (list[int]): dimensions of the qudits
+
+    Returns:
+        scipy.sparse.csr_matrix: matrix representation of q-dimensional S(aa)
+    """
     return tensor([S_mat(dims[i]) if i in aa else I_mat(dims[i]) for i in range(len(dims))])
 
-def bases_to_int(aa,dims):
+
+def bases_to_int(aa, dims):
     dims = np.flip(dims)
     aa = np.flip(aa)
-    a = aa[0]+sum([aa[i1]*np.prod(dims[:i1]) for i1 in range(1,len(dims))])
+    a = aa[0] + sum([aa[i1] * np.prod(dims[:i1]) for i1 in range(1, len(dims))])
     dims = np.flip(dims)
     aa = np.flip(aa)
     return a
 
-def int_to_bases(a,dims):
+
+def int_to_bases(a, dims):
     dims = np.flip(dims)
-    aa = [a%dims[0]]
-    for i in range(1,len(dims)):
-        s0 = aa[0]+sum([aa[i1]*dims[i1-1] for i1 in range(1,i)])
+    aa = [a % dims[0]]
+    for i in range(1, len(dims)):
+        s0 = aa[0] + sum([aa[i1] * dims[i1 - 1] for i1 in range(1, i)])
         s1 = np.prod(dims[:i])
-        aa.append(((a-s0)//s1)%dims[i])
+        aa.append(((a - s0) // s1) % dims[i])
     dims = np.flip(dims)
     return np.flip(np.array(aa))
 
-def CX_func(i,a0,a1,dims):
-    aa = int_to_bases(i,dims)
-    aa[a1] = (aa[a1]+aa[a0])%dims[a1]
-    return bases_to_int(aa,dims)
 
-# function for mapping CNOT gate to corresponding unitary matrix
-def CX_unitary(aa,dims):
-    # Inputs:
-    #     aa - (list{int}) - control aa[0] and target aa[1]
-    #     q  - (int)       - number of qudits
-    # Outputs:
-    #     (scipy.sparse.csr_matrix) - matrix representation of q-dimensional CNOT(aa[0],aa[1])
+def CX_func(i, a0, a1, dims):
+    aa = int_to_bases(i, dims)
+    aa[a1] = (aa[a1] + aa[a0]) % dims[a1]
+    return bases_to_int(aa, dims)
+
+
+def CX_unitary(aa, dims):
+    """
+    Function for mapping CNOT gate to corresponding unitary matrix.
+
+    Parameters:
+        aa (list[int]): Control aa[0] and target aa[1].
+        dims (list[int]): Dimensions of the qudits.
+
+    Returns:
+        scipy.sparse.csr_matrix: Matrix representation of q-dimensional CNOT(aa[0], aa[1]).
+    """
     q = len(dims)
     D = np.prod(dims)
     a0 = aa[0]
     a1 = aa[1]
     aa2 = np.array([1 for i in range(D)])
-    aa3 = np.array([CX_func(i,a0,a1,dims) for i in range(D)])
+    aa3 = np.array([CX_func(i, a0, a1, dims) for i in range(D)])
     aa4 = np.array([i for i in range(D)])
-    return scipy.sparse.csr_matrix((aa2,(aa3,aa4)))
+    return scipy.sparse.csr_matrix((aa2, (aa3, aa4)))
 
-def SWAP_func(i,a0,a1,dims):
-    aa = int_to_bases(i,dims)
-    aa[a0],aa[a1] = aa[a1],aa[a0]
-    return sum([aa[i]*int(np.prod(dims[:i])) for i in range(len(aa))])
 
-# function for mapping SWAP gate to corresponding unitary matrix
-def SWAP_unitary(aa,dims):
-    # Inputs:
-    #     aa - (list{int}) - targets aa[0] and aa[1]
-    #     q  - (int)       - number of qudits
-    # Outputs:
-    #     (scipy.sparse.csr_matrix) - matrix representation of q-dimensional SWAP(aa[0],aa[1])
-    q = len(dims)
+def SWAP_func(i, a0, a1, dims):
+    aa = int_to_bases(i, dims)
+    aa[a0], aa[a1] = aa[a1], aa[a0]
+    return sum([aa[i] * int(np.prod(dims[:i])) for i in range(len(aa))])
+
+
+def SWAP_unitary(aa, dims):
+    """
+    Function for mapping SWAP gate to corresponding unitary matrix.
+
+    Parameters:
+        aa (list[int]): Targets aa[0] and aa[1].
+        dims (list[int]): Dimensions of the qudits.
+
+    Returns:
+        scipy.sparse.csr_matrix: Matrix representation of q-dimensional SWAP(aa[0],aa[1]).
+    """
     D = np.prod(dims)
-    a0 = q-1-aa[0]
-    a1 = q-1-aa[1]
+    a0 = q - 1 - aa[0]
+    a1 = q - 1 - aa[1]
     aa2 = np.array([1 for i in range(D)])
     aa3 = np.array([i for i in range(D)])
-    aa4 = np.array([SWAP_func(i,a0,a1,dims) for i in range(D)])
-    return scipy.sparse.csr_matrix((aa2,(aa3,aa4)))
+    aa4 = np.array([SWAP_func(i, a0, a1, dims) for i in range(D)])
+    return scipy.sparse.csr_matrix((aa2, (aa3, aa4)))
 
 # returns the circuit which diagonalizes a pairwise commuting pauli object
 def diagonalize(P):
@@ -1068,23 +1157,23 @@ def naive_Var(xDict):
         return 2/3
     return 4*(x0*x1)/((x0+x1)*(x0+x1))
 
-# naive estimation of covariance from samples
 def naive_Cov(xyDict,xDict,yDict):
+    # naive estimation of covariance from samples
     # Inputs:
     #     xyDict - (Dict) - number of ++/+-/-+/-- outcomes for pair of Paulis
     #     xDict  - (Dict) - number of ++/+-/-+/-- outcomes for first Pauli
     #     xDict  - (Dict) - number of ++/+-/-+/-- outcomes for second Pauli
     # Outputs:
     #     (float) - naive estimate of mean
-    xy00,xy01,xy10,xy11 = xyDict[(1,1)],xyDict[(1,-1)],xyDict[(-1,1)],xyDict[(-1,-1)]
-    x0,x1 = xDict[(1,1)],xDict[(-1,-1)]
-    y0,y1 = yDict[(1,1)],yDict[(-1,-1)]
-    if (xy00+xy01+xy10+xy11) == 0:
+    xy00, xy01, xy10, xy11 = xyDict[(1, 1)], xyDict[(1, -1)], xyDict[(-1, 1)], xyDict[(-1, -1)]
+    x0, x1 = xDict[(1, 1)], xDict[(-1, -1)]
+    y0, y1 = yDict[(1, 1)], yDict[(-1, -1)]
+    if (xy00 + xy01 + xy10 + xy11) == 0:
         return 0
-    return 4*((xy00)*(xy11) - (xy01)*(xy10))/((xy00+xy01+xy10+xy11)*(xy00+xy01+xy10+xy11))
+    return 4 * ((xy00) * (xy11) - (xy01) * (xy10)) / ((xy00 + xy01 + xy10 + xy11) * (xy00 + xy01 + xy10 + xy11))
 
-# approximates the variance graph using naive estimates
 def naive_variance_graph(X,cc):
+    # approximates the variance graph using naive estimates
     # Inputs:
     #     X  - (numpy.array{dict}) - array for tracking measurement outcomes
     #     cc - (list{float})       - coefficients of Hamiltonian
@@ -1326,11 +1415,6 @@ def equal_allocation_measurements(P,cc,error,general_commutation=True):
     return math.ceil((one_shot_error/(error*true_Mean))**2)
 
 
-
-
-
-
-
 #EXTRA STUFF:
 #Function to reconstruct expectation values (and errors)
 def expt_rec(beta_exp , Ptot , Pe , Pm , cce , ccm , elmag , Michael_state = True ,
@@ -1435,24 +1519,30 @@ def expt_rec(beta_exp , Ptot , Pe , Pm , cce , ccm , elmag , Michael_state = Tru
             plaq_est = -sum(ccm[i0]*sum(Xm[i0,i0][i1,i1]*math.e**(2*1j*math.pi*i1/Pm.lcm) for i1 in range(Pm.lcm))/sum(Xm[i0,i0][i1,i1] for i1 in range(Pm.lcm)) if sum(Xm[i0,i0][i1,i1] for i1 in range(Pm.lcm))>0 else 0 for i0 in range(pm)).real/4
             if printing:
                 print('Est. mean:',plaq_est)
-        plaq_error_true = np.sqrt(np.sum(scale_variances(variance_graph(Pm,ccm,psi),Sm).adj).real)/4
+        plaq_error_true = np.sqrt(np.sum(scale_variances(variance_graph(Pm, ccm, psi), Sm).adj).real) / 4
         if printing:
-            print('True error:',plaq_error_true)
+            print('True error:', plaq_error_true)
         if not Xm is None:
-            plaq_error_est = np.sqrt(np.sum(scale_variances(bayes_variance_graph(Xm,ccm),Sm).adj)).real/4
+            plaq_error_est = np.sqrt(np.sum(scale_variances(bayes_variance_graph(Xm, ccm), Sm).adj)).real / 4
             if printing:
-                print('Est. error:',plaq_error_est)
+                print('Est. error:', plaq_error_est)
         if printing:
             print()
             print()
 
         #return
         if not Xt is None:
-            return [tot_en_true , tot_en_est , tot_en_error_true , tot_en_error_est] , [elec_true , elec_est , elec_error_true , elec_error_est] , [plaq_true , plaq_est , plaq_error_true , plaq_error_est]
+            return ([tot_en_true , tot_en_est , tot_en_error_true , tot_en_error_est], 
+                    [elec_true , elec_est , elec_error_true , elec_error_est], 
+                    [plaq_true , plaq_est , plaq_error_true , plaq_error_est])
         else:
-            return [tot_en_true , tot_en_error_true] , [elec_true , elec_error_true] , [plaq_true , plaq_error_true]
+            return ([tot_en_true , tot_en_error_true], 
+                    [elec_true , elec_error_true], 
+                    [plaq_true , plaq_error_true])
     else:
-        return [Hamiltonian_Mean(Ptot,cct,psi).real , "None" , "None" , "None"] , [Hamiltonian_Mean(Pe,cce,psi).real , "None" , "None" , "None"] , [-Hamiltonian_Mean(Pm,ccm,psi).real/4 , "None" , "None" , "None"]
+        return ([Hamiltonian_Mean(Ptot,cct,psi).real , "None" , "None" , "None"], 
+                [Hamiltonian_Mean(Pe,cce,psi).real , "None" , "None" , "None"], 
+                [-Hamiltonian_Mean(Pm,ccm,psi).real/4 , "None" , "None" , "None"])
 
 
 
