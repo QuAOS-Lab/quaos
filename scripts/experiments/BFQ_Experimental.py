@@ -8,8 +8,8 @@ from pathlib import Path
 root_path = Path(__file__).parent.parent.parent
 sys.path.append(str(root_path))
 
-from quaos.prime_Functions_Andrew import *
-from quaos.prime_Functions_quditV2 import *
+from quaos.core.prime_Functions_Andrew import *
+from quaos.core.prime_Functions_quditV2 import *
 np.set_printoptions(linewidth=200)
 
 

@@ -6,7 +6,7 @@ from pathlib import Path
 root = Path(__file__).parent.parent
 sys.path.append(str(root))
 
-from quaos.prime_Functions_quditV2 import *
+from quaos.core.prime_Functions_quditV2 import *
 
 
 @pytest.mark.benchmark
