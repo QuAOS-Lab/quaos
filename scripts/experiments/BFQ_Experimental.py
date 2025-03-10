@@ -1,7 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import math
-import timeit
 
 import sys
 from pathlib import Path
@@ -16,21 +14,20 @@ np.set_printoptions(linewidth=200)
 def main():
 
     #############
-    ### setup ###
+    #   setup   #
     #############
 
     # import Hamiltonian
     # P - Collection of Pauli Operators
     # cc - list of coefficients
-    #P,cc = read_luca_test_2("./Hamiltonians/"+"Hams"+"/"+"Open"+"/"+ "full_D3_rev" +".txt",dims=3)
-    P,cc = read_luca_test_2(root_path / "data/Hamiltonians/Hams/Open/full_D3_rev.txt",dims=[3,2,2,2,2])
-
+    # P,cc = read_luca_test_2("./Hamiltonians/"+"Hams"+"/"+"Open"+"/"+ "full_D3_rev" +".txt",dims=3)
+    P, cc = read_luca_test_2(root_path / "data/Hamiltonians/Hams/Open/full_D3_rev.txt", dims=[3, 2, 2, 2, 2])
 
     # sort the Pauli operators to make computations easier and faster
     # pauli_block_sizes - list of which pauli operators are hermitian (1) or have a hermitian conjugate (2)
-    P,cc,pauli_block_sizes = sort_hamiltonian(P,cc)
+    P, cc, pauli_block_sizes = sort_hamiltonian(P, cc)
 
-    ## experiment parameters
+    # experiment parameters
     # general_commutation - allow for non-bitwise commutation in the cliques
     # allocation_mode - how to allocate measurements
     #    - 'set': according to the estimated covariance matrix
@@ -38,7 +35,7 @@ def main():
     general_commutation = True
     allocation_mode = 'set'
 
-    ## Monte-Carlo Parameters
+    # Monte-Carlo Parameters
     # N_chain - how many chains are used to calculate the covariances
     # N_mcmc - initial length of the monte-carlo chain
     # N_mcmc_max - cut-off length for monte-carlo chain
@@ -46,23 +43,21 @@ def main():
     N_chain = 2
     N_mcmc = 500
     N_mcmc_max = 2001
-    mcmc_shot_scale = 1/10000
+    mcmc_shot_scale = 1 / 10000
 
     # For this test only: true state
-    #psi = ground_state(P,cc)
-    psi = ground_state(P,cc)
-    psi = np.around(psi,1)
-    psi = psi/np.linalg.norm(psi)
+    # psi = ground_state(P,cc)
+    psi = ground_state(P, cc)
+    psi = np.around(psi, 1)
+    psi = psi / np.linalg.norm(psi)
 
     p_noise = 0.01
 
-
     ########################
-    ### Start Simulation ###
+    #   Start Simulation   #
     ########################
 
-
-    '''1. Calculate an initial list of cliques to measure before the first update of the covariance matrix '''
+    '''1. Calculate an initial list of cliques to measure before the first update of the covariance matrix''' 
     # initial number of shots, when nothing is known
     shots_init = 10
     print(shots_init)
@@ -81,14 +76,15 @@ def main():
     # circuit_list - list of circuits to diagonalize the cliques in xxx - circuit C formated like in AEQuO, access with C.print()
     # algorithm_variables - everything that needs to be carried over for the algorithm to run (usually no need to interact with)
 
-    xxx,circuit_list,algorithm_variables =  bfq_experiment_initial(P,cc,pauli_block_sizes,shots_init,general_commutation = general_commutation, 
-                                                                allocation_mode = allocation_mode, N_chain = N_chain, N_mcmc = N_mcmc,
-                                                                N_mcmc_max = N_mcmc_max, mcmc_shot_scale = mcmc_shot_scale)
+    xxx, circuit_list, algorithm_variables = bfq_experiment_initial(
+        P, cc, pauli_block_sizes, shots_init, 
+        general_commutation=general_commutation, allocation_mode=allocation_mode, 
+        N_chain=N_chain, N_mcmc=N_mcmc, N_mcmc_max=N_mcmc_max, mcmc_shot_scale=mcmc_shot_scale)
 
     '''2. Measure the specifided cliques in xxx with the circuits in circuit_list '''
     # For testing: Generate some results for the cliques from the true state 
-    rr = example_results(psi,xxx,algorithm_variables)
-    rr = noise_adder(rr,p_noise,P.dims)
+    rr = example_results(psi, xxx, algorithm_variables)
+    rr = noise_adder(rr, p_noise, P.dims)
 
     '''3. Input the measurement results and calculate new cliques to measure '''
     # shots that will now be added
@@ -106,25 +102,25 @@ def main():
     # circuit_list - list of circuits to diagonalize the cliques in xxx - circuit C formated like in AEQuO, access with C.print()
     # algorithm_variables - everything that needs to be carried over for the algorithm to run (usually no need to interact with)
 
-    xxx,circuit_list,algorithm_variables = bfq_experiment(xxx,rr,shots,algorithm_variables)
+    xxx, circuit_list, algorithm_variables = bfq_experiment(xxx, rr, shots, algorithm_variables)
 
     '''4. Repeat steps 2. and 3. as much as you like (shot numbers can be varried as desired) '''
     # Example of repeating it twice with exponentially increasing shot numbers
-    rr = example_results(psi,xxx,algorithm_variables)
-    rr = noise_adder(rr,p_noise,P.dims)
+    rr = example_results(psi, xxx, algorithm_variables)
+    rr = noise_adder(rr, p_noise, P.dims)
     shots = 1000
     print(shots)
 
-    xxx,circuit_list,algorithm_variables = bfq_experiment(xxx,rr,shots,algorithm_variables)
-    rr = example_results(psi,xxx,algorithm_variables)
-    rr = noise_adder(rr,p_noise,P.dims)
+    xxx, circuit_list, algorithm_variables = bfq_experiment(xxx, rr, shots, algorithm_variables)
+    rr = example_results(psi, xxx, algorithm_variables)
+    rr = noise_adder(rr, p_noise, P.dims)
 
     shots = 10000
     print(shots)
 
-    xxx,circuit_list,algorithm_variables = bfq_experiment(xxx,rr,shots,algorithm_variables)
-    rr = example_results(psi,xxx,algorithm_variables)
-    rr = noise_adder(rr,p_noise,P.dims)
+    xxx, circuit_list, algorithm_variables = bfq_experiment(xxx, rr, shots, algorithm_variables)
+    rr = example_results(psi, xxx, algorithm_variables)
+    rr = noise_adder(rr, p_noise, P.dims)
 
     '''5. Calibration measurements of stabalizer states'''
     # Perform calibration measurements (one for each circuit)
@@ -134,11 +130,11 @@ def main():
     # For an easy demonstration we just use the |0..0> state
 
     # states to be measured for the relevant circuits
-    ss,circuit_list_total,state_preparation_circuits = diagnosis_states(algorithm_variables,mode='Null')
+    ss, circuit_list_total, state_preparation_circuits = diagnosis_states(algorithm_variables, mode='Null')
     # measurement results of these states (here done by using the noise probability p_noise)
-    rr_cal = example_results_calibration(ss,circuit_list_total,algorithm_variables,mode='Null',p_noise=p_noise)
+    rr_cal = example_results_calibration(ss, circuit_list_total, algorithm_variables, mode='Null', p_noise=p_noise)
     # let the computer check and compare the results, compiling them in a way most useful for the code
-    X_calibration = error_callibration(ss,rr_cal,algorithm_variables,mode='Null')
+    X_calibration = error_calibration(ss, rr_cal, algorithm_variables, mode='Null')
 
 
 
@@ -155,28 +151,28 @@ def main():
     # - error - standard deviation for the estimated mean
     # - algorithm_variables - everything that needs to be carried over for the algorithm to run (usually no need to interact with)
 
-    mean, error, algorithm_variables = bfq_estimation(xxx,rr,algorithm_variables)
+    mean, error, algorithm_variables = bfq_estimation(xxx, rr, algorithm_variables)
 
     # Estimate the physical error in the system based on the number of wrong stabalizer measurements encoded in X_calibration
-    error_correction = bfq_error_correction(X_calibration,algorithm_variables)
+    error_correction = bfq_error_correction(X_calibration, algorithm_variables) 
 
     # True values for comparison:
     # S - how many times each Pauli-string has been measured and how often two have been measured together
     S = algorithm_variables[4]
-    print('True mean:',Hamiltonian_Mean(P,cc,psi).real)
-    print('True error:',np.sqrt(np.sum(scale_variances(variance_graph(P,cc,psi),S).adj)).real)
+    print('True mean:', Hamiltonian_Mean(P, cc, psi).real)
+    print('True error:', np.sqrt(np.sum(scale_variances(variance_graph(P, cc, psi), S).adj)).real)
     print()
     # Estimated results:
-    print('Est. mean:',mean)
-    print('Est. var:',error**2)
-    print('Est. error (uncorrected):',error)
-    #print('var correction:',error_correction)
-    print('Error total:',np.sqrt(error**2 + error_correction))
+    print('Est. mean:', mean)
+    print('Est. var:', error**2)
+    print('Est. error (uncorrected):', error)
+    # print('var correction:',error_correction)
+    print('Error total:', np.sqrt(error**2 + error_correction))
 
     # Examples for specific quantities:
-    print('First 3 elements of the last xxx',xxx[:3])
+    print('First 3 elements of the last xxx', xxx[:3])
     print()
-    print('First 3 elements of the last rr',rr[:3])
+    print('First 3 elements of the last rr', rr[:3])
     print()
     print('First 3 elements of the last circuit_list:')
     for i in range(3):
@@ -189,83 +185,97 @@ def main():
 
     results = np.load("InnsbruckD3ResultsV5N102401p_noise0.005.npy")
 
-    cm = 1/2.54
+    cm = 1 / 2.54
     shots = 12801
     part_func = weighted_vertex_covering_maximal_cliques
     full_simulation = True
-    intermediate_results_list = [6,12,25,50,100,200,400,800,1600,3200,6400,12800,25600,51200,102400]
+    intermediate_results_list = [6, 12, 25, 50, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400]
     allocation_mode = 'set'
 
-    ## Monte-Carlo
+    # Monte-Carlo
     N = 500
     N_max = 2001
     mcmc_shot_scale = 0
 
-    ## analysis
+    # analysis
     repeats = 2
     p_noise = 0.005
 
-    ## Hamiltonian and state
-    P,cc = read_luca_test_2("./Hamiltonians/"+"Hams"+"/"+"Open"+"/"+ "full_D3_rev" +".txt",dims=[3,2,2,2,2])
-    P,cc,pauli_block_sizes = sort_hamiltonian(P,cc)
-    p,q = P.paulis(),P.qudits()
-    psi = ground_state(P,cc)
-    psi = np.around(psi,1)
-    psi = psi/np.linalg.norm(psi)
-    vg = variance_graph(P,cc,psi)
+    # Hamiltonian and state
+    P, cc = read_luca_test_2("./Hamiltonians/" + "Hams" + "/" + "Open" + "/" + "full_D3_rev" + ".txt", dims=[3, 2, 2, 2, 2])
+    P, cc, pauli_block_sizes = sort_hamiltonian(P, cc)
+    p, q = P.paulis(), P.qudits()
+    psi = ground_state(P, cc)
+    psi = np.around(psi, 1)
+    psi = psi / np.linalg.norm(psi)
+    vg = variance_graph(P, cc, psi)
 
-    H_mean = Hamiltonian_Mean(P,cc,psi).real
+    H_mean = Hamiltonian_Mean(P, cc, psi).real
 
-
-    ## Result Plots
-    n_plot = [0,2]
+    # Result Plots
+    n_plot = [0, 2]
     settings = ['GC + adaptive', 'GC + non-adaptive', 'BC + adaptive', 'BC + non-adaptive','Andrew','True Covariance']
-    fig, ax = plt.subplots(ncols=2,nrows=1,figsize=(23*cm,11*cm))
+    fig, ax = plt.subplots(ncols=2, nrows=1, figsize=(23 * cm, 11 * cm))
 
     x_dat = intermediate_results_list
-    y_dat = np.zeros((6,len(intermediate_results_list)))
-    y_err_dat = np.zeros((6,len(intermediate_results_list)))
-
-
-
+    y_dat = np.zeros((6, len(intermediate_results_list)))
+    y_err_dat = np.zeros((6, len(intermediate_results_list)))
 
     for i in n_plot: 
         for j in range(len(intermediate_results_list)): 
-            y_dat[i,j] = np.mean(np.abs(results[:,j,i,0] - H_mean))
-            y_err_dat[i,j] = np.sqrt(np.mean(results[:,j,i,1]**2 + results[:,j,i,3]))
+            y_dat[i, j] = np.mean(np.abs(results[:, j, i, 0] - H_mean))
+            y_err_dat[i, j] = np.sqrt(np.mean(results[:, j, i, 1]**2 + results[:, j, i, 3]))
 
-            
     for i in n_plot:
-        ax[0].errorbar(np.array(x_dat[:])+(i/20 * np.array(x_dat[:])), y_dat[i,0:], yerr=y_err_dat[i,0:], fmt='o',ecolor='k',
-                    capsize=1,capthick=0.75,markersize=5,elinewidth=0.75,label=settings[i])
-        
+        ax[0].errorbar(
+            np.array(x_dat[:]) + (i / 20 * np.array(x_dat[:])), 
+            y_dat[i, 0:], 
+            yerr=y_err_dat[i, 0:], 
+            fmt='o',
+            ecolor='k',
+            capsize=1,
+            capthick=0.75,
+            markersize=5,
+            elinewidth=0.75,
+            label=settings[i]
+        )
+
     ax[0].set_xscale('log')
-    ax[0].set_ylabel(r'$|\widetilde{O} - \langle \hat{O} \rangle|$',fontsize=14)
-    ax[0].set_xlabel(r'shots $M$',fontsize=14)
-    ax[0].set_title('Estimated Mean',fontsize=16)
-    ax[0].plot([x_dat[0],x_dat[-1]],[0,0],'k--')
-    #ax[0].legend()
-    ax[0].set_ylim(-1,10)
+    ax[0].set_ylabel(r'$|\widetilde{O} - \langle \hat{O} \rangle|$', fontsize=14)
+    ax[0].set_xlabel(r'shots $M$', fontsize=14)
+    ax[0].set_title('Estimated Mean', fontsize=16)
+    ax[0].plot([x_dat[0], x_dat[-1]], [0, 0], 'k--')
+    # ax[0].legend()
+    ax[0].set_ylim(-1, 10)
 
 
     for i in n_plot: 
         for j in range(len(intermediate_results_list)): 
-            #y_dat[i,j] = np.mean((results[:,j,i,1]**2 + results[:,j,i,3]) * intermediate_results_list[j]/ (H_mean)**2) 
-            y_dat[i,j] = np.mean((results[:,j,i,1]**2 + results[:,j,i,3]) / (H_mean)**2)
-            #y_err_dat[i,j] = np.std((results[:,j,i,1]**2 + results[:,j,i,3]) * intermediate_results_list[j] / (H_mean)**2)
-            y_err_dat[i,j] = np.std((results[:,j,i,1]**2 + results[:,j,i,3]) / (H_mean)**2) 
+            # y_dat[i,j] = np.mean((results[:,j,i,1]**2 + results[:,j,i,3]) * intermediate_results_list[j]/ (H_mean)**2) 
+            y_dat[i, j] = np.mean((results[:, j, i, 1]**2 + results[:, j, i, 3]) / (H_mean)**2)
+            # y_err_dat[i,j] = np.std((results[:,j,i,1]**2 + results[:,j,i,3]) * intermediate_results_list[j] / (H_mean)**2)
+            y_err_dat[i, j] = np.std((results[:, j, i, 1]**2 + results[:, j, i, 3]) / (H_mean)**2) 
 
-            
     for i in n_plot:
-        ax[1].errorbar(np.array(x_dat[:])+(i/20 * np.array(x_dat[:])), y_dat[i,:], yerr=y_err_dat[i,:], fmt='o',ecolor='k',
-                    capsize=1,capthick=0.75,markersize=5,elinewidth=0.75,label=settings[i])
-        
+        ax[1].errorbar(
+            np.array(x_dat[:]) + (i / 20 * np.array(x_dat[:])), 
+            y_dat[i, :], 
+            yerr=y_err_dat[i, :], 
+            fmt='o',
+            ecolor='k',
+            capsize=1,
+            capthick=0.75,
+            markersize=5,
+            elinewidth=0.75,
+            label=settings[i]
+        )
+
     ax[1].set_xscale('log')
     ax[1].set_yscale('log')
-    ax[1].set_ylabel(r'$\widetilde{\Delta O}$',fontsize=14)
-    ax[1].set_xlabel(r'shots $M$',fontsize=14)
-    ax[1].set_title('Estimated relative error',fontsize=16)
-    #ax[1].legend()
+    ax[1].set_ylabel(r'$\widetilde{\Delta O}$', fontsize=14)
+    ax[1].set_xlabel(r'shots $M$', fontsize=14)
+    ax[1].set_title('Estimated relative error', fontsize=16)
+    # ax[1].legend()
 
     plt.tight_layout(pad=1, w_pad=1, h_pad=1)
     plt.savefig('NoisyNumericalResults.svg', dpi=1200)

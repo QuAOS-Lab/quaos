@@ -510,7 +510,7 @@ def get_alpha(p_list, psi_list, d, A, c, N_chain, Q_alpha_test=True, target_acce
                     alpha_list[ic] = truncated_exponential_sample(b, alpha_list[ic], scale)
                     continue
                 elif target_accept >= accept_avg and runs > 10:
-                    raise Exception('alpha not found in sufficient itterations')
+                    raise Exception('alpha not found in sufficient iterations')
                 else:
                     break
 
@@ -894,7 +894,7 @@ def bucket_filling_qudit(P,
     """
     if best_possible:
         vg = variance_graph(P, cc, psi)
-    p, q = P.paulis(), P.qudits()
+    p, _ = P.paulis(), P.qudits()
     d = int(P.lcm)
     X = np.zeros((p, p, d))
     X_list, S_list, xxx, xxx1 = [], [], [], []
@@ -1083,7 +1083,7 @@ def bfq_experiment_initial(P,
                            N_mcmc=500,
                            N_mcmc_max=2001, 
                            mcmc_shot_scale=1):
-    p, q = P.paulis(), P.qudits()
+    p, _ = P.paulis(), P.qudits()
     d = int(P.lcm)
     X = np.zeros((p, p, d))
     xxx = []
@@ -1136,7 +1136,7 @@ def bfq_experiment(xxx, rr, shots, algorithm_variables):
     xxx = []
 
     # general parameters
-    p, q = P.paulis(), P.qudits()
+    p, _ = P.paulis(), P.qudits()
     d = int(P.lcm)
     Ones = [np.ones((i, i), dtype=int) for i in range(p + 1)]
     index_set = set(range(p))
@@ -1177,8 +1177,8 @@ def bfq_experiment(xxx, rr, shots, algorithm_variables):
 
 def bfq_estimation(xxx, rr, algorithm_variables):
     P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, general_commutation, allocation_mode, N_chain, N_mcmc, N_mcmc_max, mcmc_shot_scale, shots_total, circuit_list_total, xxx_total = algorithm_variables
-    p, q = P.paulis(), P.qudits()
-    d = int(P.lcm)
+    p, _ = P.paulis(), P.qudits()
+    _ = int(P.lcm)
     # update measurement dict to include new results 
     X = update_X(xxx, rr, X, k_phases, D)
 
@@ -1214,7 +1214,7 @@ def example_results(psi, xxx, algorithm_variables):
         P1, C, k_dict = D[str(aa)]
         psi_diag = C.unitary() @ psi
         pdf = np.abs(psi_diag * psi_diag.conj())
-        p1, q1, phases1, dims1 = P1.paulis(), P1.qudits(), P1.phases, P1.dims
+        _, _, _, dims1 = P1.paulis(), P1.qudits(), P1.phases, P1.dims
         a1 = np.random.choice(np.prod(dims1), p=pdf)
         bases_a1 = int_to_bases(a1, dims1)
         rr.append(bases_a1)
@@ -1231,7 +1231,7 @@ def noise_adder(rr, p_noise, dims):
 
 def diagnosis_states(algorithm_variables, mode='Null'):
     P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, general_commutation, allocation_mode, N_chain, N_mcmc, N_mcmc_max, mcmc_shot_scale, shots_total, circuit_list_total, xxx_total = algorithm_variables
-    q = P.qudits()
+    _ = P.qudits()
     # mod circuits
     N = len(circuit_list_total)
     circuit_list_mod = []
@@ -1254,7 +1254,7 @@ def diagnosis_states(algorithm_variables, mode='Null'):
 
 def example_results_calibration(ss, circuit_list_total, algorithm_variables, mode='Null', p_noise=0.01):
     P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, general_commutation, allocation_mode, N_chain, N_mcmc, N_mcmc_max, mcmc_shot_scale, shots_total, circuit_list_total, xxx_total = algorithm_variables
-    p = P.paulis()
+    _ = P.paulis()
     dims = P.dims
     q = P.qudits()
     rr = []
@@ -1268,7 +1268,7 @@ def example_results_calibration(ss, circuit_list_total, algorithm_variables, mod
     return rr
 
 
-def error_callibration(ss, rr, algorithm_variables, mode='Null'):
+def error_calibration(ss, rr, algorithm_variables, mode='Null'):
     P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, general_commutation, allocation_mode, N_chain, N_mcmc, N_mcmc_max, mcmc_shot_scale, shots_total, circuit_list_total, xxx_total = algorithm_variables
     p = P.paulis()
     X_calibration = np.zeros((p, 2))
