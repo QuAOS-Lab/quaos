@@ -6,8 +6,22 @@ from pathlib import Path
 root_path = Path(__file__).parent.parent.parent
 sys.path.append(str(root_path))
 
+# TODO: duplicate variance_graph definition in the two modules. A rename is required.
+# currently using the one from prime_Functions_quditV2
 from quaos.core.prime_Functions_Andrew import *
 from quaos.core.prime_Functions_quditV2 import *
+
+from quaos.core.prime_Functions_Andrew import (
+    ground_state, weighted_vertex_covering_maximal_cliques, scale_variances,
+    Hamiltonian_Mean
+)
+from quaos.core.prime_Functions_quditV2 import (
+    sort_hamiltonian, bfq_experiment_initial,
+    read_luca_test_2, example_results, noise_adder, bfq_experiment,
+    diagnosis_states, example_results_calibration, error_calibration,
+    bfq_estimation, bfq_error_correction
+)
+
 np.set_printoptions(linewidth=200)
 
 
@@ -66,14 +80,14 @@ def main():
     # inputs:
     # - P - set of Paulis 
     # - cc - list of coefficients
-    # - pauli_block_list - take from sort_hamiltonian fuction
+    # - pauli_block_list - take from sort_hamiltonian function
     # - shots_init - how many shots you want to allocate without updating the covariance estimation
     # - general_commutation - choice of general or only bitwise commutation
     # - allocation_mode - whether to allocate according to the covariance matrix ('set') or randomly ('rand')
     # - N_chain, N_mcmc, N_mcmc_max, mcmc_shot_scale - parameter to tune speed vs accuracy of the monte-carlo integration used for the covariance estimation
     # outputs:
     # xxx - list of cliques to measure - example: [[1,2,3],[2,3,4],[1,3,4,5]] (includes cliques [1,2,3] with Paulis 1,2,3 etc)
-    # circuit_list - list of circuits to diagonalize the cliques in xxx - circuit C formated like in AEQuO, access with C.print()
+    # circuit_list - list of circuits to diagonalize the cliques in xxx - circuit C formatted like in AEQuO, access with C.print()
     # algorithm_variables - everything that needs to be carried over for the algorithm to run (usually no need to interact with)
 
     xxx, circuit_list, algorithm_variables = bfq_experiment_initial(
@@ -81,7 +95,7 @@ def main():
         general_commutation=general_commutation, allocation_mode=allocation_mode, 
         N_chain=N_chain, N_mcmc=N_mcmc, N_mcmc_max=N_mcmc_max, mcmc_shot_scale=mcmc_shot_scale)
 
-    '''2. Measure the specifided cliques in xxx with the circuits in circuit_list '''
+    '''2. Measure the specified cliques in xxx with the circuits in circuit_list '''
     # For testing: Generate some results for the cliques from the true state 
     rr = example_results(psi, xxx, algorithm_variables)
     rr = noise_adder(rr, p_noise, P.dims)
@@ -99,12 +113,12 @@ def main():
     # - algorithm_variables - carry over from before 
     # Outputs:
     # xxx - list of cliques to measure - example: [[1,2,3],[2,3,4],[1,3,4,5]] (includes cliques [1,2,3] with Paulis 1,2,3 etc)
-    # circuit_list - list of circuits to diagonalize the cliques in xxx - circuit C formated like in AEQuO, access with C.print()
+    # circuit_list - list of circuits to diagonalize the cliques in xxx - circuit C formatted like in AEQuO, access with C.print()
     # algorithm_variables - everything that needs to be carried over for the algorithm to run (usually no need to interact with)
 
     xxx, circuit_list, algorithm_variables = bfq_experiment(xxx, rr, shots, algorithm_variables)
 
-    '''4. Repeat steps 2. and 3. as much as you like (shot numbers can be varried as desired) '''
+    '''4. Repeat steps 2. and 3. as much as you like (shot numbers can be varied as desired) '''
     # Example of repeating it twice with exponentially increasing shot numbers
     rr = example_results(psi, xxx, algorithm_variables)
     rr = noise_adder(rr, p_noise, P.dims)
@@ -122,9 +136,9 @@ def main():
     rr = example_results(psi, xxx, algorithm_variables)
     rr = noise_adder(rr, p_noise, P.dims)
 
-    '''5. Calibration measurements of stabalizer states'''
+    '''5. Calibration measurements of stabilizer states'''
     # Perform calibration measurements (one for each circuit)
-    # By seeing if a stablelizer for a certain cirucuit is left unchanged (and how often) we can get a rough estimate for 
+    # By seeing if a stabilizer for a certain circuit is left unchanged (and how often) we can get a rough estimate for 
     # the error rate of the circuit
     # We than use these measurements to make an estimate of the physical noise affecting the simulation.
     # For an easy demonstration we just use the |0..0> state
@@ -135,8 +149,6 @@ def main():
     rr_cal = example_results_calibration(ss, circuit_list_total, algorithm_variables, mode='Null', p_noise=p_noise)
     # let the computer check and compare the results, compiling them in a way most useful for the code
     X_calibration = error_calibration(ss, rr_cal, algorithm_variables, mode='Null')
-
-
 
     '''6. Once measurement budget has been used up, calculate mean and error '''
     # last step should have been a measurement step so that the algorithm doesn't expect more cliques to be measured
@@ -153,7 +165,7 @@ def main():
 
     mean, error, algorithm_variables = bfq_estimation(xxx, rr, algorithm_variables)
 
-    # Estimate the physical error in the system based on the number of wrong stabalizer measurements encoded in X_calibration
+    # Estimate the physical error in the system based on the number of wrong stabilizer measurements encoded in X_calibration
     error_correction = bfq_error_correction(X_calibration, algorithm_variables) 
 
     # True values for comparison:
@@ -247,7 +259,6 @@ def main():
     ax[0].plot([x_dat[0], x_dat[-1]], [0, 0], 'k--')
     # ax[0].legend()
     ax[0].set_ylim(-1, 10)
-
 
     for i in n_plot: 
         for j in range(len(intermediate_results_list)): 

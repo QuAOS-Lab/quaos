@@ -7,9 +7,21 @@ import matplotlib.pyplot as plt
 root_path = Path(__file__).parent.parent.parent
 sys.path.append(str(root_path))
 
+# TODO: duplicate variance_graph definition in the two modules. A rename is required.
+# currently using the one from prime_Functions_quditV2
 from quaos.core.prime_Functions_Andrew import *
 from quaos.core.prime_Functions_quditV2 import *
+
+from quaos.core.prime_Functions_Andrew import (
+    ground_state, weighted_vertex_covering_maximal_cliques, scale_variances,
+    Hamiltonian_Mean, graph
+)
+from quaos.core.prime_Functions_quditV2 import (
+    random_pauli_hamiltonian, sort_hamiltonian, bucket_filling_qudit, 
+    bayes_covariance_graph, error_correction_estimation
+)
 from quaos.core.pauli import pauli
+
 np.set_printoptions(linewidth=200)
 
 
@@ -85,7 +97,7 @@ def main():
         print('Est. mean:', sum(cc[i0] * sum(X[i0, i0, i1] * math.e**(2 * 1j * math.pi * i1 / P.lcm) for i1 in range(P.lcm)) / sum(X[i0, i0, i1] for i1 in range(P.lcm)) if sum(X[i0, i0, i1] for i1 in range(P.lcm)) > 0 else 0 for i0 in range(p)).real)
     print('True error:', np.sqrt(np.sum(scale_variances(variance_graph(P, cc, psi), S).adj)).real)
     if X is not None:
-        print('Est. error:', np.sqrt(np.sum(scale_variances(graph(bayes_covariance_graph(X, np.array(cc), CG.adj, p, pauli_block_sizes, int(P.lcm), N=N , N_max=N_max)), S).adj)).real)
+        print('Est. error:', np.sqrt(np.sum(scale_variances(graph(bayes_covariance_graph(X, np.array(cc), CG.adj, p, pauli_block_sizes, int(P.lcm), N=N, N_max=N_max)), S).adj)).real)
     print()
     print()
     print()
@@ -96,8 +108,8 @@ def main():
     for k, X in enumerate(X_list):
         print('k', k)
         S = S_list[k]
-        results[k, 0] = sum(cc[i0]*sum(X[i0, i0, i1]*math.e**(2*1j*math.pi*i1/P.lcm) for i1 in range(P.lcm))/sum(X[i0, i0, i1] for i1 in range(P.lcm)) if sum(X[i0, i0, i1] for i1 in range(P.lcm))>0 else 0 for i0 in range(p)).real
-        results[k, 1] = np.sqrt(np.sum(scale_variances(graph(bayes_covariance_graph(X, np.array(cc), CG.adj, p, pauli_block_sizes, int(P.lcm), N=N , N_max=N_max)), S).adj)).real
+        results[k, 0] = sum(cc[i0] * sum(X[i0, i0, i1] * math.e**(2 * 1j * math.pi * i1 / P.lcm) for i1 in range(P.lcm)) / sum(X[i0, i0, i1] for i1 in range(P.lcm)) if sum(X[i0, i0, i1] for i1 in range(P.lcm)) > 0 else 0 for i0 in range(p)).real
+        results[k, 1] = np.sqrt(np.sum(scale_variances(graph(bayes_covariance_graph(X, np.array(cc), CG.adj, p, pauli_block_sizes, int(P.lcm), N=N, N_max=N_max)), S).adj)).real
         results[k, 2] = np.sqrt(np.sum(scale_variances(vg, S).adj)).real
 
     x_dat = intermediate_results_list
@@ -106,14 +118,14 @@ def main():
 
     H_mean = Hamiltonian_Mean(P, cc, psi).real
 
-    fig,  ax = plt.subplots(figsize=(9, 6))
+    fig, ax = plt.subplots(figsize=(9, 6))
 
     for j in range(len(intermediate_results_list)): 
-        y_dat[j] = results[j, 1]**2 * intermediate_results_list[j]/ (H_mean)**2  
-        y_true_dat[j] = results[j, 2]**2 * intermediate_results_list[j]/ (H_mean)**2
+        y_dat[j] = results[j, 1]**2 * intermediate_results_list[j] / (H_mean)**2  
+        y_true_dat[j] = results[j, 2]**2 * intermediate_results_list[j] / (H_mean)**2
 
     ax.plot(x_dat, y_true_dat, marker='s', label='True Error')
-    ax.plot(x_dat, y_dat, marker='o',label='Estimated Error')
+    ax.plot(x_dat, y_dat, marker='o', label='Estimated Error')
     ax.set_xscale('log')
     ax.set_ylabel(r'$M \, \frac{(\Delta \tilde{O})^2}{\tilde{O}^2}$')
     ax.set_xlabel(r'shots $M$')
@@ -128,7 +140,7 @@ def main():
     # First run will alway be slow due to needing to pre-compile some of the functions
 
     # choose Hamiltonian
-    P, cc = random_pauli_hamiltonian(40,[3,3,3])
+    P, cc = random_pauli_hamiltonian(40, [3, 3, 3])
     # P,cc = read_luca_test_2("./Hamiltonians/"+"Hams"+"/"+"Open"+"/"+ "D5" +".txt",dims=[2,2,2,2,5])
     # P,cc = read_luca_test_2("./Hamiltonians/"+"Hams"+"/"+"Periodic"+"/"+ "E_total_D5_Rick" +".txt",dims=5)
     p, q = P.paulis(), P.qudits()
@@ -175,7 +187,7 @@ def main():
     # results
     print('True mean:', Hamiltonian_Mean(P, cc, psi).real)
     if X is not None:
-        print('Est. mean:', sum(cc[i0]*sum(X[i0, i0, i1]*math.e**(2 * 1j * math.pi * i1 / P.lcm) for i1 in range(P.lcm)) / sum(X[i0, i0, i1] for i1 in range(P.lcm)) if sum(X[i0, i0, i1] for i1 in range(P.lcm))>0 else 0 for i0 in range(p)).real)
+        print('Est. mean:', sum(cc[i0] * sum(X[i0, i0, i1] * math.e**(2 * 1j * math.pi * i1 / P.lcm) for i1 in range(P.lcm)) / sum(X[i0, i0, i1] for i1 in range(P.lcm)) if sum(X[i0, i0, i1] for i1 in range(P.lcm)) > 0 else 0 for i0 in range(p)).real)
     print('True error (without correction):', np.sqrt(np.sum(scale_variances(variance_graph(P, cc, psi), S).adj).real))
     if X is not None:
         print('Est. error:', np.sqrt(np.sum(scale_variances(graph(bayes_covariance_graph(X, np.array(cc), CG.adj, p, pauli_block_sizes, int(P.lcm), N=N, N_max=N_max)), S).adj).real + error_correction))

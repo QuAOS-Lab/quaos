@@ -8,8 +8,20 @@ from pathlib import Path
 root_path = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(root_path))
 
+# TODO: duplicate variance_graph definition in the two modules. A rename is required.
+# currently using the one from prime_Functions_quditV2
 from quaos.core.prime_Functions_Andrew import *
 from quaos.core.prime_Functions_quditV2 import *
+
+from quaos.core.prime_Functions_Andrew import (
+    ground_state, weighted_vertex_covering_maximal_cliques, scale_variances,
+    Hamiltonian_Mean, bucket_filling_mod, bayes_variance_graph, graph
+)
+from quaos.core.prime_Functions_quditV2 import (
+    random_pauli_hamiltonian, sort_hamiltonian, bucket_filling_qudit, 
+    bayes_covariance_graph, error_correction_estimation
+)
+
 np.set_printoptions(linewidth=200)
 
 
@@ -52,7 +64,7 @@ def main():
 
     # Simulation
     results = np.zeros((repeats, len(intermediate_results_list), 6, 4))
-    settings = ['GC + adaptive', 'GC + non-adaptive', 'BC + adaptive', 'BC + non-adaptive','Andrew','True Covariance']
+    settings = ['GC + adaptive', 'GC + non-adaptive', 'BC + adaptive', 'BC + non-adaptive', 'Andrew', 'True Covariance']
 
     for i_r in range(repeats):
         print('repeat:', i_r)
@@ -106,7 +118,7 @@ def main():
                 general_commutation=True,
                 best_possible=False
             )
-            results[i_r, k, i_setting, 0] = sum(cc[i0]*sum(X[i0, i0][i1, i1]*math.e**(2 * 1j * math.pi * i1 / P.lcm) for i1 in range(P.lcm)) / sum(X[i0, i0][i1, i1] for i1 in range(P.lcm)) if sum(X[i0, i0][i1, i1] for i1 in range(P.lcm)) > 0 else 0 for i0 in range(p)).real
+            results[i_r, k, i_setting, 0] = sum(cc[i0]*sum(X[i0, i0][i1, i1] * math.e**(2 * 1j * math.pi * i1 / P.lcm) for i1 in range(P.lcm)) / sum(X[i0, i0][i1, i1] for i1 in range(P.lcm)) if sum(X[i0, i0][i1, i1] for i1 in range(P.lcm)) > 0 else 0 for i0 in range(p)).real
             results[i_r, k, i_setting, 1] = np.sqrt(np.sum(scale_variances(bayes_variance_graph(X, cc), S).adj)).real
             results[i_r, k, i_setting, 2] = np.sqrt(np.sum(scale_variances(vg, S).adj)).real
         i_setting += 1
@@ -205,7 +217,7 @@ def main():
     y_true_err_dat = np.zeros((6, len(intermediate_results_list)))
     for i in n_plot: 
         for j in range(len(intermediate_results_list)): 
-            y_true_dat[i, j] = np.mean(results[:, j, i, 2]**2 * intermediate_results_list[j]/ (H_mean)**2)  
+            y_true_dat[i, j] = np.mean(results[:, j, i, 2]**2 * intermediate_results_list[j] / (H_mean)**2)  
             y_true_err_dat[i, j] = np.std(results[:, j, i, 2]**2 * intermediate_results_list[j] / (H_mean)**2)
 
     for i in n_plot:
