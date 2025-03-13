@@ -245,7 +245,7 @@ class circuit:
         """
         Delete gates at specific timesteps.
 
-        Parameters:
+        Args:
             aa (int or list[int]): Indices where gates should be deleted.
         """
         if type(aa) is int:
@@ -270,7 +270,7 @@ class circuit:
 def act(P, C):
     """Returns the outcome of a given circuit (or gate or list of gates) acting on a given pauli.
 
-    Parameters:
+    Args:
         P (pauli): Pauli to be acted upon
         C (gate or circuit or list[gate]): gates to act on Pauli
 
@@ -315,7 +315,8 @@ def H(P, aa):
 def S(P, aa):
     """
     Function for the gate representation of phase gate. Phase gate transformation: X: XZ, Z: Z
-    Parameters:
+    
+    Args:
         P (pauli): Pauli to be acted upon.
         aa (list[int]): Qudits to be acted upon.
 
@@ -338,7 +339,7 @@ def CX(P, aa):
     """
     Function for the gate representation of CNOT gate. Transformation: X*I: X*X I*X: I*X Z*I: Z*I I*Z: -Z*Z
 
-    Parameters:
+    Args:
         P (pauli): Pauli to be acted upon.
         aa (list[int]): Control aa[0] and target aa[1].
 
@@ -362,7 +363,7 @@ def SWAP(P, aa):
     """Function for the gate representation of SWAP gate. Gate transformation: 
     X*I -> I*X, I*X -> X*I, Z*I -> I*Z, I*Z -> Z*I
 
-    Parameters:
+    Args:
         P (pauli): Pauli to be acted upon.
         aa (list[int]): Targets aa[0] and aa[1].
 
@@ -380,7 +381,7 @@ def SWAP(P, aa):
 def H_unitary(aa, dims):
     """Function for mapping Hadamard gate to corresponding unitary matrix
 
-    Parameters:
+    Args:
         aa (list{int}): indices for Hadamard tensors
         dims (list{int}): dimensions of the qudits
 
@@ -394,7 +395,7 @@ def S_unitary(aa, dims):
     """
     Function for mapping phase gate to corresponding unitary matrix.
 
-    Parameters:
+    Args:
         aa (list[int]): indices for phase gate tensors
         dims (list[int]): dimensions of the qudits
 
@@ -434,7 +435,7 @@ def CX_unitary(aa, dims):
     """
     Function for mapping CNOT gate to corresponding unitary matrix.
 
-    Parameters:
+    Args:
         aa (list[int]): Control aa[0] and target aa[1].
         dims (list[int]): Dimensions of the qudits.
 
@@ -461,7 +462,7 @@ def SWAP_unitary(aa, dims):
     """
     Function for mapping SWAP gate to corresponding unitary matrix.
 
-    Parameters:
+    Args:
         aa (list[int]): Targets aa[0] and aa[1].
         dims (list[int]): Dimensions of the qudits.
 
@@ -481,7 +482,7 @@ def diagonalize(P):
     """
     Returns the circuit which diagonalizes a pairwise commuting pauli object.
 
-    Parameters:
+    Args:
         P: pauli
             Pauli to be diagonalized
 
@@ -523,7 +524,7 @@ def diagonalize(P):
 def diagonalize_iter_(P, C, aa):
     """An iterative function called within diagonalize()
 
-    Parameters:
+    Args:
         P (pauli): Pauli to be diagonalized
         C (circuit): circuit which diagonalizes first a-1 qudits
         aa (list[int]): remaining qudits of same dimension
@@ -573,7 +574,7 @@ def diagonalize_iter_(P, C, aa):
 def diagonalize_iter_quditwise_(P, C, aa):
     """An iterative function called within diagonalize()
 
-    Parameters:
+    Args:
         P (pauli): Pauli to be diagonalized
         C (circuit): circuit which diagonalizes first a-1 qudits
         aa (list[int]): remaining qudits of same dimension
@@ -604,7 +605,7 @@ def is_diagonalizing_circuit(P, C, aa):
     """
     Checks whether the circuit properly diagonalizes a subset of Paulis.
 
-    Parameters:
+    Args:
         P (pauli): The Pauli object to be diagonalized.
         C (circuit): The circuit that should diagonalize the Pauli object.
         aa (list[int]): Indices of the subset of Paulis to be considered.
@@ -628,7 +629,7 @@ class graph:
         Since we are dealing with covariance matrices with both vertex and edge weights,
         this is a suitable format to capture that complexity
 
-        Parameters:
+        Args:
             adj_mat (numpy.array): (weighted) adjacency matrix of graph
             dtype   (numpy.dtype): data type of graph weights
         """
@@ -637,7 +638,7 @@ class graph:
     def add_vertex_(self, c=1):
         """Adds a vertex to self.
 
-        Parameters:
+        Args:
             c (float): vertex weight
         """
         if len(self.adj) == 0:
@@ -650,7 +651,7 @@ class graph:
 
     def lade_vertex_(self, a, c):
         """Weight a vertex
-        Parameters:
+        Args:
             a - (int)   - vertex to be weighted
             c - (float) - vertex weight
         """
@@ -659,7 +660,7 @@ class graph:
     def lade_edge_(self, a0, a1, c):
         """Weight an edge.
 
-        Parameters:
+        Args:
             a0 (int): First vertex.
             a1 (int): Second vertex.
             c (float): Vertex weight.
@@ -670,7 +671,7 @@ class graph:
     def neighbors(self, a):
         """Returns a set of the neighbors of a given vertex
 
-        Parameters:
+        Args:
             a (int): vertex for which neighbors should be returned
 
         Returns:
@@ -697,7 +698,7 @@ class graph:
     def clique(self, aa):
         """Check whether a collection of vertices is a clique in self
 
-        Parameters:
+        Args:
             aa (list[int]): list of vertices to be checked for clique
 
         Returns:
@@ -712,7 +713,7 @@ class graph:
         """
         Returns the degree of a given vertex.
 
-        Parameters:
+        Args:
             a (int): Vertex for which degree should be returned.
 
         Returns:
@@ -749,18 +750,24 @@ class graph:
             print()
 
     def copy(self):
-        # return a deep copy of self
-        # Outputs:
-        #     (graph) - deep copy of self
+        """Return a deep copy of self.
+
+        Returns:
+            graph: A deep copy of self.
+        """
         return graph(np.array([[self.adj[i0, i1] for i1 in range(self.ord())] for i0 in range(self.ord)]))
 
 
 def nonempty_cliques(A):
-    # returns all non-empty cliques in a graph
-    # Inputs:
-    #     A - (graph) - graph for which all cliques should be found
-    # Outputs:
-    #     (list{list{int}}) - a list containing all non-empty cliques in A
+    """
+    Returns all non-empty cliques in a graph.
+
+    Args:
+        A (graph): Graph for which all cliques should be found.
+
+    Returns:
+        list[list[int]]: A list containing all non-empty cliques in A.
+    """
     p = A.ord()
     aaa = set([frozenset([])])
     for i in range(p):
@@ -772,11 +779,15 @@ def nonempty_cliques(A):
 
 
 def all_maximal_cliques(A):
-    # returns an generator over all maximal cliques in a graph
-    # Inputs:
-    #     A - (graph) - graph for which all cliques should be found
-    # Outputs:
-    #     (generator) - a generator over all maximal cliques in A
+    """
+    Returns a generator over all maximal cliques in a graph.
+
+    Args:
+        A (graph): graph for which all cliques should be found
+
+    Returns:
+        list[int]: a maximal clique in A
+    """
     p = A.ord()
     N = {}
     for i in range(p):
@@ -788,14 +799,17 @@ def all_maximal_cliques(A):
 
 
 def weighted_vertex_covering_maximal_cliques(A, A1=None, cc=None, k=1):
-    # returns a clique covering of a graph which hits every vertex at least a certain number of times
-    # Inputs:
-    #     A  - (graph)     - commutation graph for which covering should be found
-    #     A1 - (graph)     - variance graph for which covering should be found
-    #     cc - (list{int}) - coefficients of the Hamiltonian
-    #     k  - (int)       - number of times each vertex should be covered
-    # Outputs:
-    #     (list{list{int}}) - a list containing cliques which cover A
+    """Returns a clique covering of a graph which hits every vertex at least a certain number of times.
+
+    Args:
+        A (graph): commutation graph for which covering should be found
+        A1 (graph, optional): variance graph for which covering should be found
+        cc (list[int], optional): coefficients of the Hamiltonian
+        k (int, optional): number of times each vertex should be covered
+
+    Returns:
+        list[list[int]]: a list containing cliques which cover A
+    """
     p = A.ord()
     if A1 is None and cc is None:
         return vertex_covering_maximal_cliques(A, k=k)
@@ -846,12 +860,15 @@ def weighted_vertex_covering_maximal_cliques(A, A1=None, cc=None, k=1):
 
 
 def vertex_covering_maximal_cliques(A, k=1):
-    # returns a clique covering of a graph which hits every vertex at least a certain number of times
-    # Inputs:
-    #     A - (graph) - commutation graph for which covering should be found
-    #     k - (int)   - number of times each vertex must be covered
-    # Outputs:
-    #     (list{list{int}}) - a list containing cliques which cover A
+    """Returns a clique covering of a graph which hits every vertex at least a certain number of times.
+    
+    Args:
+        A - (graph) - commutation graph for which covering should be found
+        k - (int)   - number of times each vertex must be covered
+
+    Returns:
+        (list{list{int}}) - a list containing cliques which cover A
+    """
     p = A.ord()
     N = {}
     for i in range(p):
@@ -873,13 +890,16 @@ def vertex_covering_maximal_cliques(A, k=1):
 
 
 def post_process_cliques(A, aaa, k=1):
-    # reduces a clique covering of a graph by removing cliques with lowest weight
-    # Inputs:
-    #     A   - (graph)           - varaince graph from which weights of cliques can be obtained
-    #     aaa - (list{list{int}}) - a clique covering of the Hamiltonian
-    #     k   - (int)             - number of times each vertex must be covered
-    # Outputs:
-    #     (list{list{int}}) - a list containing cliques which cover A
+    """Reduces a clique covering of a graph by removing cliques with the lowest weight.
+
+    Args:
+        A (graph): Variance graph from which weights of cliques can be obtained.
+        aaa (list[list[int]]): A clique covering of the Hamiltonian.
+        k (int): Number of times each vertex must be covered.
+
+    Returns:
+        list[list[int]]: A list containing cliques which cover A.
+    """
     p = A.ord()
     V = A.adj
     s = np.array([sum([i in aa for aa in aaa]) for i in range(p)])
@@ -898,11 +918,14 @@ def post_process_cliques(A, aaa, k=1):
 
 
 def LDF(A):
-    # returns a largest-degree-first clique partition of a graph
-    # Inputs:
-    #     A - (graph) - graph for which partition should be found
-    # Outputs:
-    #     (list{list{int}}) - a list containing cliques which partition A
+    """Returns a largest-degree-first clique partition of a graph.
+
+    Args:
+        A (graph): graph for which partition should be found
+
+    Returns:
+        list[list[int]]: a list containing cliques which partition A
+    """
     p = A.ord()
     remaining = set(range(p))
     N = {}
@@ -924,11 +947,14 @@ def LDF(A):
 
 # PHYSICS FUNCTIONS
 def tensor(mm):
-    # returns the tensor product of a list of matrices
-    # Inputs:
-    #     mm - (list{scipy.sparse.csr_matrix}) - matrices to tensor
-    # Outputs:
-    #     (scipy.sparse.csr_matrix) - tensor product of matrices
+    """Returns the tensor product of a list of matrices.
+
+    Args:
+        mm: list of scipy.sparse.csr_matrix, matrices to tensor
+
+    Returns:
+        scipy.sparse.csr_matrix, tensor product of matrices
+    """
     if len(mm) == 0:
         return matrix([])
     elif len(mm) == 1:
@@ -938,12 +964,15 @@ def tensor(mm):
 
 
 def Mean(P, psi):
-    # returns the mean of a single Pauli with a given state
-    # Inputs:
-    #     P   - (pauli)       - Pauli for mean
-    #     psi - (numpy.array) - state for mean
-    # Outputs:
-    #     (numpy.float64) - mean <psi|P|psi>
+    """Returns the mean of a single Pauli with a given state.
+
+    Args:
+        P: pauli, Pauli for mean
+        psi: numpy.array, state for mean
+
+    Returns:
+        numpy.float64, mean <psi|P|psi>
+    """
     m = pauli_to_matrix(P)
     psi_dag = psi.conj().T
     mean = psi_dag @ m @ psi
@@ -951,25 +980,30 @@ def Mean(P, psi):
 
 
 def Hamiltonian_Mean(P, cc, psi):
-    # returns the mean of a Hamiltonian with a given state
-    # Inputs:
-    #     P   - (pauli)       - Paulis of Hamiltonian
-    #     cc  - (list{float}) - coefficients of Hamiltonian
-    #     psi - (numpy.array) - state for mean
-    # Outputs:
-    #     (numpy.float64) - mean sum(c*<psi|P|psi>)
+    """Returns the mean of a Hamiltonian with a given state
+
+    Args:
+        P: pauli, Paulis of Hamiltonian
+        cc: list[float], coefficients of Hamiltonian
+        psi: numpy.array, state for mean
+
+    Returns:
+        numpy.float64, mean sum(c*<psi|P|psi>)
+    """
     p = P.paulis()
     return sum(cc[i] * Mean(P.a_pauli(i), psi) for i in range(p))
 
 
 def Var(P, psi):
-    # returns the variance of a single Pauli with a given state
-    # Inputs:
-    #     P   - (pauli)       - Pauli for variance
-    #     psi - (numpy.array) - state for variance
-    # Outputs:
-    #     (numpy.float64) - variance <psi|P^2|psi> - <psi|P|psi>^2
-    # Output: 
+    """Returns the variance of a single Pauli with a given state
+
+    Args:
+        P: pauli, Pauli for variance
+        psi: numpy.array, state for variance
+
+    Returns:
+        numpy.float64, variance <psi|P^2|psi> - <psi|P|psi>^2
+    """
     m = pauli_to_matrix(P)
     psi_dag = psi.conj().T
     var = (psi_dag @ m @ m @ psi) - (psi_dag @ m @ psi)**2
@@ -977,13 +1011,16 @@ def Var(P, psi):
 
 
 def Cov(P0, P1, psi):
-    # returns the variance of two single Paulis with a given state
-    # Inputs:
-    #     P0  - (pauli)       - first Pauli for covariance
-    #     P1  - (pauli)       - second Pauli for covariance
-    #     psi - (numpy.array) - state for covariance
-    # Outputs:
-    #     (numpy.float64) - covariance <psi|P0P1|psi> - <psi|P0|psi><psi|P1|psi>
+    """Returns the covariance of two single Paulis with a given state.
+
+    Args:
+        P0: pauli, first Pauli for covariance
+        P1: pauli, second Pauli for covariance
+        psi: numpy.array, state for covariance
+
+    Returns:
+        numpy.float64, covariance <psi|P0P1|psi> - <psi|P0|psi><psi|P1|psi>
+    """
     m0 = pauli_to_matrix(P0)
     m1 = pauli_to_matrix(P1)
     psi_dag = psi.conj().T
@@ -992,13 +1029,16 @@ def Cov(P0, P1, psi):
 
 
 def variance_graph(P, cc, psi):
-    # returns the graph of variances and covariances for a given Hamiltonian and ground state
-    # Inputs:
-    #     P   - (pauli)         - set of Paulis in Hamiltonian
-    #     cc  - (list{float64}) - coefficients in Hamiltonian
-    #     psi - (numpy.array)   - ground state
-    # Outputs:
-    #     (graph) - variances and covariances of all Paulis with respect to ground state
+    """Returns the graph of variances and covariances for a given Hamiltonian and ground state
+
+    Args:
+        P: pauli, set of Paulis in Hamiltonian
+        cc: list[float], coefficients in Hamiltonian
+        psi: numpy.array, ground state
+
+    Returns:
+        graph: variances and covariances of all Paulis with respect to ground state
+    """
     p = P.paulis()
     mm = [pauli_to_matrix(P.a_pauli(i)) for i in range(p)]
     psi_dag = psi.conj().T
@@ -1008,10 +1048,15 @@ def variance_graph(P, cc, psi):
 
 
 def scale_variances(A, S):
-    # scales the entries in a variance graph with respect to number of measurements
-    # Inputs:
-    #     A - (graph)       - variance matrix
-    #     S - (numpy.array) - array for tracking number of measurements
+    """Scales the entries in a variance graph with respect to number of measurements.
+
+    Args:
+        A: graph, variance matrix
+        S: numpy.array, array for tracking number of measurements
+
+    Returns:
+        graph, scaled variance matrix
+    """
     p = A.ord()
     S1 = S.copy()
     S1[range(p), range(p)] = [a if a != 0 else 1 for a in S1.diagonal()]
@@ -1020,33 +1065,42 @@ def scale_variances(A, S):
 
 
 def commutation_graph(P):
-    # returns the commutation graph of a given Pauli
-    # Inputs:
-    #     P - (pauli) - Pauli to check for commutation relations
-    # Outputs:
-    #     (graph) - an edge is weighted 1 if the pair of Paulis commute
+    """Returns the commutation graph of a given Pauli.
+
+    Args:
+        P: pauli, Pauli to check for commutation relations
+
+    Returns:
+        graph: an edge is weighted 1 if the pair of Paulis commute
+    """
     p = P.paulis()
     return graph(np.array([[1 - symplectic_inner_product(P.a_pauli(i0), P.a_pauli(i1)) for i1 in range(p)] for i0 in range(p)]))
 
 
 def quditwise_commutation_graph(P):
-    # returns the quditwise commutation graph of a given Pauli
-    # Inputs:
-    #     P - (pauli) - Pauli to check for quditwise commutation relations
-    # Outputs:
-    #     (graph) - an edge is weighted 1 if the pair of Paulis quditwise commute
+    """Returns the quditwise commutation graph of a given Pauli.
+
+    Args:
+        P: pauli, Pauli to check for quditwise commutation relations
+
+    Returns:
+        graph: an edge is weighted 1 if the pair of Paulis quditwise commute
+    """
     p = P.paulis()
     return graph(np.array([[1 - quditwise_inner_product(P.a_pauli(i0), P.a_pauli(i1)) for i1 in range(p)] for i0 in range(p)]))
 
 
 def random_Ham(p, q, d):
-    # returns a random Hamiltonian with given number of Paulis, number of qudits, and Pauli weight
-    # Inputs:
-    #     p - (int) - number of Paulis
-    #     q - (int) - number of qudits
-    #     d - (int) - max Pauli weight
-    # Outputs:
-    #     (pauli) - random set of Paulis satisfying input conditions
+    """Returns a random Hamiltonian with given number of Paulis, number of qudits, and Pauli weight
+
+    Args:
+        p (int): number of Paulis
+        q (int): number of qudits
+        d (int): max Pauli weight
+
+    Returns:
+        pauli: random set of Paulis satisfying input conditions
+    """
     sss = []
     ssdict = {0: "I", 1: "Z", 2: "X", 3: "Y"}
     for i in range(p):
@@ -1056,10 +1110,15 @@ def random_Ham(p, q, d):
 
 
 def print_Ham_string(P, cc):
-    # print list of Paulis in string form, together with coefficients
-    # Inputs:
-    #     P  - (pauli)     - Pauli to be printed
-    #     cc - (list{int}) - coefficients for Hamiltonian
+    """Print list of Paulis in string form, together with coefficients
+
+    Args:
+        P: pauli, Pauli to be printed
+        cc: list[int], coefficients for Hamiltonian
+
+    Returns:
+        None
+    """
     X, Z = P.X, P.Z
     for i in range(P.paulis()):
         print(pauli_to_string(P.a_pauli(i)), end="")
@@ -1067,12 +1126,15 @@ def print_Ham_string(P, cc):
 
 
 def ground_state(P, cc):
-    # returns the ground state of a given Hamiltonian
-    # Inputs:
-    #     P  - (pauli)     - Paulis for Hamiltonian
-    #     cc - (list{int}) - coefficients for Hamiltonian
-    # Outputs:
-    #     (numpy.array) - eigenvector corresponding to lowest eigenvalue of Hamiltonian
+    """Returns the ground state of a given Hamiltonian
+
+    Args:
+        P: pauli, Paulis for Hamiltonian
+        cc: list[int], coefficients for Hamiltonian
+    
+    Returns:
+        numpy.array: eigenvector corresponding to lowest eigenvalue of Hamiltonian
+    """
     m = sum(pauli_to_matrix(P.a_pauli(i)) * cc[i] for i in range(P.paulis()))
 
     m = m.toarray()
@@ -1107,13 +1169,17 @@ def ground_state(P, cc):
 # sample from distribution given by ground state and eigenstates of clique
 #     optionally input a dictionary, which will be updated to track speed up future samples
 def sample_(P, psi, aa, D={}):
-    # Inputs:
-    #     P   - (pauli)       - Paulis for Hamiltonian
-    #     psi - (numpy.array) - ground state of Hamiltonian
-    #     aa  - (list{int})   - clique to be measured
-    #     D   - (dict)        - dictionary for storing pdf and negations for future samples
-    # Outputs:
-    #     (list{int}) - ith entry is +1/-1 for measurement outcome on ith element of aa
+    """Sample from distribution given by ground state and eigenstates of clique.
+
+    Args:
+        P: pauli, Paulis for Hamiltonian
+        psi: numpy.array, ground state of Hamiltonian
+        aa: list[int], clique to be measured
+        D: dict, dictionary for storing pdf and negations for future samples
+
+    Returns:
+        list[int]: ith entry is +1/-1 for measurement outcome on ith element of aa
+    """
     if str(aa) in D.keys():
         P1, pdf = D[str(aa)]
     else:
@@ -1134,20 +1200,27 @@ def sample_(P, psi, aa, D={}):
 # ESTIMATED PHYSICS FUNCTIONS
 # Bayesian estimation of mean from samples
 def bayes_Mean(xDict):
-    # Inputs:
-    #     xDict - (Dict) - number of ++/+-/-+/-- outcomes for single Pauli
-    # Outputs:
-    #     (float) - Bayesian estimate of mean
+    """Bayesian estimation of mean from samples.
+
+    Args:
+        xDict (Dict): number of ++/+-/-+/-- outcomes for single Pauli
+
+    Returns:
+        float: Bayesian estimate of mean
+    """
     x0, x1 = xDict[(1, 1)], xDict[(-1, -1)]
     return (x0 - x1) / (x0 + x1 + 2)
 
 
 def bayes_Var(xDict):
-    # Bayesian estimation of variance from samples
-    # Inputs:
-    #     xDict - (Dict) - number of ++/+-/-+/-- outcomes for single Pauli
-    # Outputs:
-    #     (float) - Bayesian variance of mean
+    """Bayesian estimation of variance from samples.
+
+    Args:
+        xDict (Dict): number of ++/+-/-+/-- outcomes for single Pauli
+
+    Returns:
+        float: Bayesian variance of mean
+    """
     lcm = int(np.sqrt(len(xDict)))
     alpha = [math.e**(2 * math.pi * 1j * i / lcm) for i in range(lcm)]
     alpha_conj = [math.e**(-2 * math.pi * 1j * i / lcm) for i in range(lcm)]
@@ -1156,13 +1229,16 @@ def bayes_Var(xDict):
 
 
 def bayes_Cov(xyDict, xDict, yDict):
-    # Bayesian estimation of covariance from samples
-    # Inputs:
-    #     xyDict - (Dict) - number of ++/+-/-+/-- outcomes for pair of Paulis
-    #     xDict  - (Dict) - number of ++/+-/-+/-- outcomes for first Pauli
-    #     xDict  - (Dict) - number of ++/+-/-+/-- outcomes for second Pauli
-    # Outputs:
-    #     (float) - Bayesian estimate of mean
+    """Bayesian estimation of covariance from samples.
+
+    Args:
+        xyDict (Dict): number of ++/+-/-+/-- outcomes for pair of Paulis
+        xDict (Dict): number of ++/+-/-+/-- outcomes for first Pauli
+        yDict (Dict): number of ++/+-/-+/-- outcomes for second Pauli
+
+    Returns:
+        float: Bayesian estimate of covariance
+    """
     lcm = int(np.sqrt(len(xyDict)))
     alpha = [math.e**(2 * math.pi * 1j * i / lcm) for i in range(lcm)]
     alpha_conj = [math.e**(-2 * math.pi * 1j * i / lcm) for i in range(lcm)]
@@ -1179,23 +1255,30 @@ def bayes_Cov(xyDict, xDict, yDict):
 
 
 def bayes_variance_graph(X, cc):
-    # approximates the variance graph using Bayesian estimates
-    # Inputs:
-    #     X  - (numpy.array{dict}) - array for tracking measurement outcomes
-    #     cc - (list{float})       - coefficients of Hamiltonian
-    # Outputs:
-    #     (numpy.array{float}) - variance graph calculated with Bayesian estimates
+    """
+    Approximates the variance graph using Bayesian estimates.
+
+    Args:
+        X (np.ndarray of dict): Array for tracking measurement outcomes.
+        cc (list of float): Coefficients of the Hamiltonian.
+
+    Returns:
+        np.ndarray: Variance graph calculated with Bayesian estimates.
+    """
     p = len(cc)
     cc_conj = [np.conj(c) for c in cc]
     return graph(np.array([[cc_conj[i0] * cc[i0] * bayes_Var(X[i0, i0]) if i0 == i1 else cc_conj[i0] * cc[i1] * bayes_Cov(X[i0, i1], X[i0, i0], X[i1, i1]) for i1 in range(p)] for i0 in range(p)]))
 
 
 def naive_Mean(xDict):
-    # naive estimation of mean from samples
-    # Inputs:
-    #     xDict - (Dict) - number of ++/+-/-+/-- outcomes for single Pauli
-    # Outputs:
-    #     (float) - Bayesian estimate of mean
+    """Naive estimation of mean from samples.
+
+    Args:
+        xDict (Dict): number of ++/+-/-+/-- outcomes for single Pauli
+
+    Returns:
+        float: Bayesian estimate of mean
+    """
     x0, x1 = xDict[(1, 1)], xDict[(-1, -1)]
     if (x0 + x1) == 0:
         return 0
@@ -1203,11 +1286,14 @@ def naive_Mean(xDict):
 
 
 def naive_Var(xDict):
-    # naive estimation of variance from samples
-    # Inputs:
-    #     xDict - (Dict) - number of ++/+-/-+/-- outcomes for single Pauli
-    # Outputs:
-    #     (float) - Bayesian variance of mean
+    """Naive estimation of variance from samples.
+
+    Args:
+        xDict (Dict): number of ++/+-/-+/-- outcomes for single Pauli
+
+    Returns:
+        float: Bayesian variance of mean
+    """
     x0, x1 = xDict[(1, 1)], xDict[(-1, -1)]
     if (x0 + x1) == 0:
         return 2 / 3
@@ -1215,13 +1301,16 @@ def naive_Var(xDict):
 
 
 def naive_Cov(xyDict, xDict, yDict):
-    # naive estimation of covariance from samples
-    # Inputs:
-    #     xyDict - (Dict) - number of ++/+-/-+/-- outcomes for pair of Paulis
-    #     xDict  - (Dict) - number of ++/+-/-+/-- outcomes for first Pauli
-    #     xDict  - (Dict) - number of ++/+-/-+/-- outcomes for second Pauli
-    # Outputs:
-    #     (float) - naive estimate of mean
+    """Naive estimation of covariance from samples.
+
+    Args:
+        xyDict (Dict): number of ++/+-/-+/-- outcomes for pair of Paulis
+        xDict (Dict): number of ++/+-/-+/-- outcomes for first Pauli
+        yDict (Dict): number of ++/+-/-+/-- outcomes for second Pauli
+
+    Returns:
+        float: naive estimate of covariance
+    """
     xy00, xy01, xy10, xy11 = xyDict[(1, 1)], xyDict[(1, -1)], xyDict[(-1, 1)], xyDict[(-1, -1)]
     x0, x1 = xDict[(1, 1)], xDict[(-1, -1)]
     y0, y1 = yDict[(1, 1)], yDict[(-1, -1)]
@@ -1231,12 +1320,15 @@ def naive_Cov(xyDict, xDict, yDict):
 
 
 def naive_variance_graph(X, cc):
-    # approximates the variance graph using naive estimates
-    # Inputs:
-    #     X  - (numpy.array{dict}) - array for tracking measurement outcomes
-    #     cc - (list{float})       - coefficients of Hamiltonian
-    # Outputs:
-    #     (numpy.array{float}) - variance graph calculated with naive estimates
+    """Approximates the variance graph using naive estimates.
+
+    Args:
+        X (np.ndarray of dict): Array for tracking measurement outcomes.
+        cc (list of float): Coefficients of the Hamiltonian.
+
+    Returns:
+        np.ndarray: Variance graph calculated with naive estimates.
+    """
     p = len(cc)
     return graph(np.array([[(cc[i0]**2) * naive_Var(X[i0, i0]) if i0 == i1 else cc[i0] * cc[i1] * naive_Cov(X[i0, i1], X[i0, i0], X[i1, i1]) for i1 in range(p)] for i0 in range(p)]))
 
@@ -1244,12 +1336,16 @@ def naive_variance_graph(X, cc):
 # SIMULATION ALGORITHMS
 # convert from L,l notation to set of update steps
 def Ll_updates(L, l, shots):
-    # Inputs:
-    #     L     - (int) - number of sections into which shots should be split
-    #     l     - (int) - exponential scaling factor for size of sections
-    #     shots - (int) - total number of shots required
-    # Outputs:
-    #     (set{int}) - set containing steps at which algorithm should update
+    """Convert from L,l notation to set of update steps.
+
+    Args:
+        L (int): number of sections into which shots should be split
+        l (int): exponential scaling factor for size of sections
+        shots (int): total number of shots required
+
+    Returns:
+        set[int]: set containing steps at which algorithm should update
+    """
     r0_shots = shots / sum([(1 + l)**i for i in range(L)])
     shot_nums = [round(r0_shots * (1 + l)**i) for i in range(L - 1)]
     shot_nums.append(shots - sum(shot_nums))
@@ -1257,18 +1353,30 @@ def Ll_updates(L, l, shots):
 
 
 def variance_estimate_(P, cc, psi, D, X, xxx):
-    # updates the variance matrix by sampling from pre-determined cliques
-    # Inputs:
-    #     P   - (pauli)             - Paulis in Hamiltonian
-    #     cc  - (list{int})         - coefficients in Hamiltonian
-    #     psi - (numpy.array)       - ground state of Hamiltonian
-    #     D   - (dict)              - dictionary for storing pdf and negations for future samples
-    #     X   - (numpy.array{dict}) - array of measurement outcome counts
-    #     xxx - (list{list{int}})   - list of cliques to-be-sampled
-    # Outputs:
-    #     (numpy.array{float}) - variance graph calculated with Bayesian estimates
-    #     (dict)               - (updated) dictionary for storing pdf and negations for future samples
-    #     (numpy.array{dict})  - (updated) array of measurement outcome counts
+    """Updates the variance matrix by sampling from pre-determined cliques.
+
+    Args:
+        P: pauli
+            Paulis in Hamiltonian
+        cc: list[int]
+            coefficients in Hamiltonian
+        psi: numpy.array
+            ground state of Hamiltonian
+        D: dict
+            dictionary for storing pdf and negations for future samples
+        X: numpy.array[dict]
+            array of measurement outcome counts
+        xxx: list[list[int]]
+            list of cliques to-be-sampled
+
+    Returns:
+        numpy.array[float]:
+            variance graph calculated with Bayesian estimates
+        dict:
+            (updated) dictionary for storing pdf and negations for future samples
+        numpy.array[dict]:
+            (updated) array of measurement outcome counts
+    """
     p = P.paulis()
     index_set = set(range(p))
     for aa in xxx:
@@ -1280,22 +1388,24 @@ def variance_estimate_(P, cc, psi, D, X, xxx):
 
 
 def bucket_filling(P, cc, psi, shots, part_func, update_steps=set([]), repeats=(0, 1), full_simulation=False, general_commutation=True):
-    # partitions Hamiltonian and repeatedly samples cliques while minimizing total variance
-    #     returns an array of dictionaries which tracks ++/+-/-+/-- outcomes for each pair of Paulis
-    # Inputs:
-    #     P                   - (pauli)       - Paulis in Hamiltonian
-    #     cc                  - (list{int})   - coefficients in Hamiltonian
-    #     psi                 - (numpy.array) - ground state of Hamiltonian
-    #     shots               - (int)         - number of samples to take
-    #     part_func           - (function)    - function for determining partition
-    #     update_steps        - (set{int})    - steps at which variance graph should be updated
-    #     repeats             - (tuple{int})  - current iteration and total number of iterations
-    #     full_simulation     - (bool)        - set True if full simulation is required
-    #     general_commutation - (bool)        - set True if general commutation is allowed
-    # Outputs:
-    #     (numpy.array{int})  - array containing number of times each pair of Paulis was measured together
-    #     (numpy.array{dict}) - array of measurement outcome counts
-    #     (list{list{int}})   - list of cliques which were sampled
+    """Partitions Hamiltonian and repeatedly samples cliques while minimizing total variance.
+
+    Args:
+        P: (pauli) - Paulis in Hamiltonian
+        cc: (list{int}) - coefficients in Hamiltonian
+        psi: (numpy.array) - ground state of Hamiltonian
+        shots: (int) - number of samples to take
+        part_func: (function) - function for determining partition
+        update_steps: (set{int}) - steps at which variance graph should be updated
+        repeats: (tuple{int}) - current iteration and total number of iterations
+        full_simulation: (bool) - set True if full simulation is required
+        general_commutation: (bool) - set True if general commutation is allowed
+
+    Returns:
+        (numpy.array{int}) - array containing number of times each pair of Paulis was measured together
+        (numpy.array{dict}) - array of measurement outcome counts
+        (list{list{int}}) - list of cliques which were sampled
+    """
     p = P.paulis()
     X = np.array([[dict(zip([(i0, i1) for i0, i1 in itertools.product(range(P.lcm), repeat=2)], [0] * (P.lcm**2))) for a1 in range(p)] for a0 in range(p)])
     if general_commutation:
@@ -1354,20 +1464,24 @@ def bucket_filling_mod(P,
                        full_simulation=False, 
                        general_commutation=True, 
                        best_possible=False):
-    # Inputs:
-    #     P                   - (pauli)       - Paulis in Hamiltonian
-    #     cc                  - (list{int})   - coefficients in Hamiltonian
-    #     psi                 - (numpy.array) - ground state of Hamiltonian
-    #     shots               - (int)         - number of samples to take
-    #     part_func           - (function)    - function for determining partition
-    #     update_steps        - (set{int})    - steps at which variance graph should be updated
-    #     repeats             - (tuple{int})  - current iteration and total number of iterations
-    #     full_simulation     - (bool)        - set True if full simulation is required
-    #     general_commutation - (bool)        - set True if general commutation is allowed
-    # Outputs:
-    #     (numpy.array{int})  - array containing number of times each pair of Paulis was measured together
-    #     (numpy.array{dict}) - array of measurement outcome counts
-    #     (list{list{int}})   - list of cliques which were sampled
+    """Partitions Hamiltonian and repeatedly samples cliques while minimizing total variance.
+
+    Args:
+        P: pauli, Paulis in Hamiltonian
+        cc: list of int, coefficients in Hamiltonian
+        psi: numpy.array, ground state of Hamiltonian
+        shots: int, number of samples to take
+        part_func: function, function for determining partition
+        update_steps: set of int, steps at which variance graph should be updated
+        repeats: tuple of int, current iteration and total number of iterations
+        full_simulation: bool, set True if full simulation is required
+        general_commutation: bool, set True if general commutation is allowed
+
+    Returns:
+        numpy.array of int, array containing number of times each pair of Paulis was measured together
+        numpy.array of dict, array of measurement outcome counts
+        list of list of int, list of cliques which were sampled
+    """
     if best_possible:
         vg = variance_graph(P, cc, psi)
 
@@ -1422,20 +1536,23 @@ def bucket_filling_mod(P,
 
 
 def equal_allocation_algorithm(P, cc, general_commutation=True):
-    # provides a dictionary which contains the circuits, Paulis, eigenvalues, et al. for every group in the partition
-    # Inputs:
-    #     P                   - (pauli)     - Paulis in Hamiltonian
-    #     cc                  - (list{int}) - coefficients in Hamiltonian
-    #     general_commutation - (bool)      - set True if general commutation is allowed
-    # Outputs:
-    #     (dict) - a dictionary indexed by the indices of the sets of Paulis (converetd to strings) containing:
-    #              (circuit)                - circuit which diagonalizes these Paulis
-    #              (list{pauli})            - list of Paulis within the partition
-    #              (list{pauli})            - list of Paulis within the partition after applying diagonalization circuit
-    #              (list{np.complex})       - list of coefficients corresponding to these Paulis
-    #              (list{tuple{list,list}}) - list of tuples of measurement outcomes and eigenvalues
-    #                                         each measurement outcome is paired with a list of the corresponding eigenvalues of each Pauli
-    #                                         the eigenvalues are stored as integers modulo the least common multiple of the dimensions
+    """Provides a dictionary which contains the circuits, Paulis, eigenvalues, et al. for every group in the partition
+
+    Args:
+        P (pauli): Paulis in Hamiltonian
+        cc (list[int]): coefficients in Hamiltonian
+        general_commutation (bool): set True if general commutation is allowed
+
+    Returns:
+        dict: a dictionary indexed by the indices of the sets of Paulis (converetd to strings) containing:
+            circuit: circuit which diagonalizes these Paulis
+            list[pauli]: list of Paulis within the partition
+            list[pauli]: list of Paulis within the partition after applying diagonalization circuit
+            list[np.complex]: list of coefficients corresponding to these Paulis
+            list[tuple[list, list]]: list of tuples of measurement outcomes and eigenvalues
+                                      each measurement outcome is paired with a list of the corresponding eigenvalues of each Pauli
+                                      the eigenvalues are stored as integers modulo the least common multiple of the dimensions
+    """
     if general_commutation:
         aaa = LDF(commutation_graph(P))
     else:
@@ -1461,13 +1578,19 @@ def equal_allocation_algorithm(P, cc, general_commutation=True):
 #     note that this algorithm calculates the true ground state, mean, and variance
 #     so it should be used to observe trends on small examples, but isn't realistic for large examples
 def equal_allocation_measurements(P, cc, error, general_commutation=True):
-    # Inputs:
-    #     P                   - (pauli)     - Paulis in Hamiltonian
-    #     cc                  - (list{int}) - coefficients in Hamiltonian
-    #     error               - (float)     - desired error as a proportion of the true mean
-    #     general_commutation - (bool)      - set True if general commutation is allowed
-    # Outputs:
-    #     (int) - number of measurements each clique must be measured to reach this error
+    """
+    Calculates the number of measurements required to reach a desired error
+    (as a proportion of the true mean) for each clique in the commutation graph.
+
+    Args:
+        P: (pauli)     - Paulis in Hamiltonian
+        cc: (list{int}) - coefficients in Hamiltonian
+        error: (float)     - desired error as a proportion of the true mean
+        general_commutation: (bool)      - set True if general commutation is allowed
+
+    Returns:
+        int: number of measurements each clique must be measured to reach this error
+    """
     p = P.paulis()
     psi = ground_state(P, cc)
     true_Mean = Hamiltonian_Mean(P, cc, psi).real

@@ -53,7 +53,7 @@ def random_pauli_hamiltonian(num_paulis, qudit_dims):
     """
     Generates a random Pauli Hamiltonian with the given number of Pauli operators.
 
-    Parameters:
+    Args:
         num_paulis (int): Number of Pauli operators to generate.
         qudit_dims (list): List of dimensions for each qudit.
 
@@ -105,7 +105,7 @@ def pauli_hermitian(P0):
     """
     Calculate the Hermitian conjugate of a Pauli operator.
 
-    Parameters:
+    Args:
         P0 (Pauli): Pauli operator to be conjugated.
 
     Returns:
@@ -122,7 +122,7 @@ def sort_hamiltonian(P, cc):
     Sorts the Hamiltonian's Pauli operators based on hermiticity, with hermitian ones first and then pairs of
     Paulis and their hermitian conjugate. !!! Also removes identity !!!
 
-    Parameters:
+    Args:
         P (pauli): A set of Pauli operators.
         coefficients (list): Corresponding coefficients of the Pauli operators.
 
@@ -189,7 +189,7 @@ def xi(a, d):
     """
     Computes the a-th eigenvalue of a pauli with dimension d.
 
-    Parameters:
+    Args:
         a (int): The integer to compute the eigenvalue for.
         d (int): The dimension of the pauli to use.
 
@@ -204,7 +204,7 @@ def rand_state(d):
     """
     Generate a random quantum state vector for a system of dimension d^2.
 
-    Parameters:
+    Args:
         d (int): Dimension of the quantum system.
 
     Returns:
@@ -221,7 +221,7 @@ def truncated_exponential_sample(b, loc, scale):
     """
     Sample a random number from a truncated exponential distribution.
 
-    Parameters:
+    Args:
         b (float): Upper bound for the truncation.
         loc (float): Location parameter of the distribution.
         scale (float): Scale parameter of the distribution.
@@ -238,7 +238,7 @@ def get_p_matrix(d):
     """
     Generate a matrix A to simplify the calculation of probabilities p from the state vector psi.
 
-    Parameters:
+    Args:
         d (int): Dimension of the quantum system.
 
     Returns:
@@ -281,7 +281,7 @@ def get_p(psi, A):
     """
     Calculate the probabilities p from the state vector psi using matrix A.
 
-    Parameters:
+    Args:
         psi (np.ndarray): The quantum state vector.
         A (np.ndarray): Matrix used to simplify the calculation of probabilities.
 
@@ -297,7 +297,7 @@ def mcmc_starting_point(d, c, A):
     """
     Find a suitable starting point for the Monte Carlo chain.
 
-    Parameters:
+    Args:
         d (int): Dimension of the quantum system.
         c (np.ndarray): Data sample.
         A (np.ndarray): Matrix for probability calculations.
@@ -322,7 +322,7 @@ def psi_sample(psi, alpha, d):
     """
     Sample a new quantum state for Monte Carlo integration.
 
-    Parameters:
+    Args:
         psi (np.ndarray): Current quantum state.
         alpha (float): Mixing parameter between the old and new state.
         d (int): Dimension of the quantum system.
@@ -341,7 +341,7 @@ def log_posterior_ratio(p1, p2, c):
     """
     Calculate the logarithm of the ratio of the posterior for two samples given data c.
 
-    Parameters:
+    Args:
         p1 (np.ndarray): Probabilities from the first sample.
         p2 (np.ndarray): Probabilities from the second sample.
         c (np.ndarray): Data set used in the probability comparison.
@@ -358,7 +358,7 @@ def mcmc_covariance_estimate(grid, d):
     """
     Estimate the covariance of the Paulis from the Monte Carlo grid.
 
-    Parameters:
+    Args:
         grid (np.ndarray): Monte Carlo sample grid.
         d (int): Dimension of the quantum system.
 
@@ -377,7 +377,7 @@ def geweke_test(grid):
     """
     Apply the Geweke criterion to check the convergence of the Monte Carlo chains.
 
-    Parameters:
+    Args:
         grid (np.ndarray): Monte Carlo sample grid.
 
     Returns:
@@ -404,7 +404,7 @@ def gelman_rubin_test(grid):
     """
     Apply the Gelman-Rubin criterion to check the convergence of the Monte Carlo chains.
 
-    Parameters:
+    Args:
         grid (np.ndarray): Monte Carlo sample grid.
 
     Returns:
@@ -445,7 +445,7 @@ def mcmc_integration(N, psi_list, p_list, alpha, d, c, A, N_max=10000):
     """
     Perform Monte Carlo integration.
 
-    Parameters:
+    Args:
         N (int): Starting Number of samples per chain.
         psi_list (list): List of psi quantum states.
         p_list (list): List of probability distributions.
@@ -525,7 +525,7 @@ def bayes_covariance_estimation(xy, x, y, d, N_chain=8, N=100, N_max=100000, Q_a
     """
     Estimate the covariance of two Paulis using Bayesian estimation and Monte Carlo integration.
 
-    Parameters:
+    Args:
         xy, x, y (np.ndarray): Data samples for the estimation.
         d (int): Dimension of the quantum system.
         N (int): Number of Monte Carlo samples.
@@ -567,7 +567,7 @@ def bayes_Var_estimate(xDict):
     """
     Estimate the Bayesian variance of the mean for a single Pauli.
 
-    Parameters:
+    Args:
         xDict (np.ndarray): Data samples for the estimation.
 
     Returns:
@@ -596,7 +596,7 @@ def variance_graph(P, cc, psi):
     """
     Generate a graph of variances and covariances for a set of Pauli observables in a Hamiltonian.
 
-    Parameters:
+    Args:
         P (PauliSet): Set of Pauli operators in the Hamiltonian.
         cc (list of float64): Coefficients of the Pauli operators in the Hamiltonian.
         psi (np.ndarray): Ground state vector.
@@ -630,7 +630,7 @@ def bayes_covariance_graph(X, cc, CG, p, size_list, d, N_chain=8, N=100, N_max=8
     """
     Estimate the Bayesian covariance matrix for a set of observables in a Hamiltonian.
 
-    Parameters:
+    Args:
         X (np.ndarray): Measurement outcomes matrix.
         cc (list of float64): Coefficients of the Pauli operators in the Hamiltonian.
         CG (np.ndarray): Graph adjacency matrix for commuting groups.
@@ -716,7 +716,7 @@ def clique_sampling(P, psi, aa, D={}, p_noise=0):
     """
     Sample measurement outcomes for Pauli operators in a selected clique.
 
-    Parameters:
+    Args:
         P (Pauli): Pauli operators for the Hamiltonian.
         psi (np.ndarray): Ground state of the Hamiltonian.
         aa (list of int): Indices of the clique to be measured.
@@ -872,7 +872,7 @@ def bucket_filling_qudit(P,
     """
     Simulate measurements on qudit observables using a bucket-filling algorithm.
 
-    Parameters:
+    Args:
         P (Pauli): Pauli operators.
         cc (list): Coefficients of Pauli operators.
         psi (np.ndarray): Ground state of the system.
