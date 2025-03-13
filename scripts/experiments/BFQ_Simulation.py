@@ -186,6 +186,7 @@ def main():
 
     # results
     print('True mean:', Hamiltonian_Mean(P, cc, psi).real)
+    # TODO: check why the mean estimation, sometimes, fails in the profiling pipeline
     if X is not None:
         print('Est. mean:', sum(cc[i0] * sum(X[i0, i0, i1] * math.e**(2 * 1j * math.pi * i1 / P.lcm) for i1 in range(P.lcm)) / sum(X[i0, i0, i1] for i1 in range(P.lcm)) if sum(X[i0, i0, i1] for i1 in range(P.lcm)) > 0 else 0 for i0 in range(p)).real)
     print('True error (without correction):', np.sqrt(np.sum(scale_variances(variance_graph(P, cc, psi), S).adj).real))

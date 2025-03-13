@@ -618,8 +618,6 @@ def is_diagonalizing_circuit(P, C, aa):
     return P1.is_IZ()
 
 
-# GRAPHS
-
 class graph:
     """A class for storing graphs as adjacency matrices
     Since we are dealing with covariance matrices with both vertex and edge weights,

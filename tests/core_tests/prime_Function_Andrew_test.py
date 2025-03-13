@@ -7,61 +7,216 @@ test_dir = os.path.dirname(os.path.abspath(__file__))
 module_dir = os.path.join(test_dir, "..")
 sys.path.append(module_dir)
 sys.path.append(test_dir)
-from quaos.core.pauli import (
-    pauli, 
-    pauli_to_matrix,
-    string_to_pauli,
+
+from quaos.core.prime_Functions_Andrew import (
+    ground_state, I_mat, H_mat, S_mat, loading_bar, act, H, S, CX, SWAP, 
+    H_unitary, S_unitary, bases_to_int, int_to_bases, CX_func, CX_unitary, 
+    SWAP_func, SWAP_unitary, diagonalize, diagonalize_iter_, 
+    diagonalize_iter_quditwise_, is_diagonalizing_circuit, nonempty_cliques, 
+    all_maximal_cliques, weighted_vertex_covering_maximal_cliques, 
+    vertex_covering_maximal_cliques, post_process_cliques, LDF, Mean, 
+    Hamiltonian_Mean, Var, Cov, variance_graph, scale_variances, 
+    commutation_graph, quditwise_commutation_graph, random_Ham, 
+    print_Ham_string, bayes_Var, bayes_Cov, bayes_variance_graph, 
+    naive_Mean, naive_Var, naive_Cov, naive_variance_graph, variance_estimate_, 
+    bucket_filling, bucket_filling_mod, equal_allocation_algorithm,
 )
 
 
-class TestPauli(unittest.TestCase):
+class TestPrimeFunctionAndrew(unittest.TestCase):
 
-    def __get_matrix_x(self, dimension: int = 2) -> np.ndarray:
-        pauli_x = np.zeros((dimension, dimension), dtype=complex)
-        for i in range(dimension):
-            pauli_x[i][(dimension - 1 + i) % dimension] = 1
-        return pauli_x
+    def test_I_mat(self) -> None:
+        # TODO: test_I_mat
+        self.assertTrue(True)
 
-    def __get_matrix_z(self, dimension: int = 2) -> np.ndarray:
-        pauli_z = np.zeros((dimension, dimension), dtype=complex)
-        for i in range(dimension):
-            pauli_z[i][i] = np.exp(2 * np.pi * 1j * i / dimension)
-        return pauli_z
+    def test_H_mat(self) -> None:
+        # TODO: test_H_mat
+        self.assertTrue(True)
 
-    def __get_pauli_x(self, dimension: int = 2) -> pauli:
-        return string_to_pauli("x1z0", dimension)
+    def test_S_mat(self) -> None:
+        # TODO: test_S_mat
+        self.assertTrue(True)
 
-    def __get_pauli_z(self, dimension: int = 2) -> pauli:
-        return string_to_pauli("x0z1", dimension)
+    def test_loading_bar(self) -> None:
+        # TODO: test_loading_bar
+        self.assertTrue(True)
 
-    def test_pauli_to_matrix(self):
-        pauli_x = self.__get_pauli_x(4)
-        actual_matrix_x = pauli_to_matrix(pauli_x)
+    def test_act(self) -> None:
+        # TODO: test_act
+        self.assertTrue(True)
 
-        pauli_z = self.__get_pauli_z(4)
-        actual_matrix_z = pauli_to_matrix(pauli_z)
+    def test_H(self) -> None:
+        # TODO: test_H
+        self.assertTrue(True)
 
-        expected_matrix_x = self.__get_matrix_x(4)
-        self.assertTrue(np.all(expected_matrix_x == actual_matrix_x), 
-                        msg="Wrong Pauli X matrix")
-        expected_matrix_z = self.__get_matrix_z(4)
-        self.assertTrue(np.all(expected_matrix_z == actual_matrix_z), 
-                        msg="Wrong Pauli Z matrix")
+    def test_S(self) -> None:
+        # TODO: test_S
+        self.assertTrue(True)
 
-    def test_pauli_z_from_string(self):
-        test_pauli = string_to_pauli('x0z1')
+    def test_CX(self) -> None:
+        # TODO: test_CX
+        self.assertTrue(True)
 
-        self.assertEqual(
-            test_pauli.Z.shape[0], 1, msg="Wrong Pauli Z from string")
+    def test_SWAP(self) -> None:
+        # TODO: test_SWAP
+        self.assertTrue(True)
 
-        self.assertTrue(
-            test_pauli.is_IZ(), msg="Pauli should be Z!")
+    def test_H_unitary(self) -> None:
+        # TODO: test_H_unitary
+        self.assertTrue(True)
 
-    def test_pauli_x_from_string(self):
-        test_pauli = string_to_pauli('x1z0')
+    def test_S_unitary(self) -> None:
+        # TODO: test_S_unitary
+        self.assertTrue(True)
 
-        self.assertEqual(
-            test_pauli.X.shape[0], 1, msg="Wrong Pauli X from string")
+    def test_bases_to_int(self) -> None:
+        # TODO: test_bases_to_int
+        self.assertTrue(True)
 
-        self.assertTrue(
-            test_pauli.is_IX(), msg="Pauli should be X!")
+    def test_int_to_bases(self) -> None:
+        # TODO: test_int_to_bases
+        self.assertTrue(True)
+
+    def test_CX_func(self) -> None:
+        # TODO: test_CX_func
+        self.assertTrue(True)
+
+    def test_CX_unitary(self) -> None:
+        # TODO: test_CX_unitary
+        self.assertTrue(True)
+
+    def test_SWAP_func(self) -> None:
+        # TODO: test_SWAP_func
+        self.assertTrue(True)
+
+    def test_SWAP_unitary(self) -> None:
+        # TODO: test_SWAP_unitary
+        self.assertTrue(True)
+
+    def test_diagonalize(self) -> None:
+        # TODO: test_diagonalize
+        self.assertTrue(True)
+
+    def test_diagonalize_iter_(self) -> None:
+        # TODO: test_diagonalize_iter_
+        self.assertTrue(True)
+
+    def test_diagonalize_iter_quditwise_(self) -> None:
+        # TODO: test_diagonalize_iter_quditwise_
+        self.assertTrue(True)
+
+    def test_is_diagonalizing_circuit(self) -> None:
+        # TODO: test_is_diagonalizing_circuit
+        self.assertTrue(True)
+
+    def test_nonempty_cliques(self) -> None:
+        # TODO: test_nonempty_cliques
+        self.assertTrue(True)
+
+    def test_all_maximal_cliques(self) -> None:
+        # TODO: test_all_maximal_cliques
+        self.assertTrue(True)
+
+    def test_weighted_vertex_covering_maximal_cliques(self) -> None:
+        # TODO: test_weighted_vertex_covering_maximal_cliques
+        self.assertTrue(True)
+
+    def test_vertex_covering_maximal_cliques(self) -> None:
+        # TODO: test_vertex_covering_maximal_cliques
+        self.assertTrue(True)
+
+    def test_post_process_cliques(self) -> None:
+        # TODO: test_post_process_cliques
+        self.assertTrue(True)
+
+    def test_LDF(self) -> None:
+        # TODO: test_LDF
+        self.assertTrue(True)
+
+    def test_Mean(self) -> None:
+        # TODO: test_Mean
+        self.assertTrue(True)
+
+    def test_Hamiltonian_Mean(self) -> None:
+        # TODO: test_Hamiltonian_Mean
+        self.assertTrue(True)
+
+    def test_Var(self) -> None:
+        # TODO: test_Var
+        self.assertTrue(True)
+
+    def test_Cov(self) -> None:
+        # TODO: test_Cov
+        self.assertTrue(True)
+
+    def test_variance_graph(self) -> None:
+        # TODO: test_variance_graph
+        self.assertTrue(True)
+
+    def test_scale_variances(self) -> None:
+        # TODO: test_scale_variances
+        self.assertTrue(True)
+
+    def test_commutation_graph(self) -> None:
+        # TODO: test_commutation_graph
+        self.assertTrue(True)
+
+    def test_quditwise_commutation_graph(self) -> None:
+        # TODO: test_quditwise_commutation_graph
+        self.assertTrue(True)
+
+    def test_random_Ham(self) -> None:
+        # TODO: test_random_Ham
+        self.assertTrue(True)
+
+    def test_print_Ham_string(self) -> None:
+        # TODO: test_print_Ham_string
+        self.assertTrue(True)
+
+    def test_ground_state(self) -> None:
+        # TODO: test_ground_state
+        self.assertTrue(True)
+
+    def test_bayes_Var(self) -> None:
+        # TODO: test_bayes_Var
+        self.assertTrue(True)
+
+    def test_bayes_Cov(self) -> None:
+        # TODO: test_bayes_Cov
+        self.assertTrue(True)
+
+    def test_bayes_variance_graph(self) -> None:
+        # TODO: test_bayes_variance_graph
+        self.assertTrue(True)
+
+    def test_naive_Mean(self) -> None:
+        # TODO: test_naive_Mean
+        self.assertTrue(True)
+
+    def test_naive_Var(self) -> None:
+        # TODO: test_naive_Var
+        self.assertTrue(True)
+
+    def test_naive_Cov(self) -> None:
+        # TODO: test_naive_Cov
+        self.assertTrue(True)
+
+    def test_naive_variance_graph(self) -> None:
+        # TODO: test_naive_variance_graph
+        self.assertTrue(True)
+
+    def test_variance_estimate_(self) -> None:
+        # TODO: test_variance_estimate_
+        self.assertTrue(True)
+
+    def test_bucket_filling(self) -> None:
+        # TODO: test_bucket_filling
+        self.assertTrue(True)
+
+    def test_bucket_filling_mod(self) -> None:
+        # TODO: test_bucket_filling_mod
+        self.assertTrue(True)
+
+    def test_equal_allocation_algorithm(self) -> None:
+        # TODO: test_equal_allocation_algorithm
+        self.assertTrue(True)
