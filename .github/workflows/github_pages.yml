@@ -5,7 +5,29 @@ on:
     branches: [main, dev]
 
 jobs:
+  set-runner:
+    runs-on: ubuntu-latest
+    outputs:
+      runner: ${{ steps.set-matrix.outputs.runner }}
+    steps:
+      - name: Determine Runner
+        id: set-matrix
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          if [[ "$BRANCH" =~ test-workflow ]]; then
+          echo "runner=self-hosted" >> $GITHUB_ENV
+          echo "runner=self-hosted" >> $GITHUB_OUTPUT
+          else
+          echo "runner=ubuntu-latest" >> $GITHUB_ENV
+          echo "runner=ubuntu-latest" >> $GITHUB_OUTPUT
+          fi
+          echo "Using runner: $GITHUB_ENV"
+
   build:
+    needs: set-runner
+    continue-on-error: true
+    runs-on: ${{ needs.set-runner.outputs.runner }}
+
     permissions:
       pages: write
       id-token: write
@@ -13,21 +35,27 @@ jobs:
     environment:
       name: github-pages
 
-    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
 
       - name: Create temporary requirements file
-        run: cat docs/doc_requirements.txt configs/requirements.txt > docs/final_doc_requirements.txt
+        run: |
+          touch docs/final_doc_requirements.txt
+          [ -f docs/doc_requirements.txt ] && cat docs/doc_requirements.txt >> docs/final_doc_requirements.txt && echo "" >> docs/final_doc_requirements.txt
+          [ -f configs/requirements.txt ] && cat configs/requirements.txt >> docs/final_doc_requirements.txt && echo "" >> docs/final_doc_requirements.txt
 
       - id: build
         uses: sphinx-notes/pages@v3
         with:
-          requirements_path: docs/final_doc_requirements.txt
+          requirements_path: "./docs/final_doc_requirements.txt"
+          python_version: "3.11"
+          sphinx_version: "7.4.7"
+          checkout: false
 
   deploy:
-    needs: build
+    continue-on-error: true
+    needs: [set-runner, build]
 
     permissions:
       pages: write
@@ -37,8 +65,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
-    # Specify runner + deployment step
-    runs-on: ubuntu-latest
+    runs-on: ${{ needs.set-runner.outputs.runner }}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
