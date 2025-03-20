@@ -1370,12 +1370,8 @@ def variance_estimate_(P, cc, psi, D, X, xxx):
             list of cliques to-be-sampled
 
     Returns:
-        numpy.array[float]:
-            variance graph calculated with Bayesian estimates
-        dict:
-            (updated) dictionary for storing pdf and negations for future samples
-        numpy.array[dict]:
-            (updated) array of measurement outcome counts
+        tuple: (numpy.array[float], dict, numpy.array[dict]): (variance graph 
+        calculated with Bayesian estimates, (updated) dictionary for storing pdf and negations for future samples, (updated) array of measurement outcome counts)
     """
     p = P.paulis()
     index_set = set(range(p))
@@ -1536,7 +1532,13 @@ def bucket_filling_mod(P,
 
 
 def equal_allocation_algorithm(P, cc, general_commutation=True):
-    """Provides a dictionary which contains the circuits, Paulis, eigenvalues, et al. for every group in the partition
+    """
+    Provides a dictionary which contains the circuits, Paulis, eigenvalues, et al. for every group in the partition
+    Returns a dictionary indexed by the indices of the sets of Paulis (converetd to strings) containing:
+    a circuit which diagonalizes these Paulis, alist of Paulis within the partition, 
+    a list of Paulis within the partition after applying diagonalization circuit, a list of coefficients corresponding to these Paulis,
+    a list of tuples of measurement outcomes and eigenvalues (each measurement outcome is paired with a list of the corresponding eigenvalues of each Pauli
+    the eigenvalues are stored as integers modulo the least common multiple of the dimensions)
 
     Args:
         P (pauli): Paulis in Hamiltonian
@@ -1544,14 +1546,7 @@ def equal_allocation_algorithm(P, cc, general_commutation=True):
         general_commutation (bool): set True if general commutation is allowed
 
     Returns:
-        dict: a dictionary indexed by the indices of the sets of Paulis (converetd to strings) containing:
-            circuit: circuit which diagonalizes these Paulis
-            list[pauli]: list of Paulis within the partition
-            list[pauli]: list of Paulis within the partition after applying diagonalization circuit
-            list[np.complex]: list of coefficients corresponding to these Paulis
-            list[tuple[list, list]]: list of tuples of measurement outcomes and eigenvalues
-                                      each measurement outcome is paired with a list of the corresponding eigenvalues of each Pauli
-                                      the eigenvalues are stored as integers modulo the least common multiple of the dimensions
+        dict: return dictionary.
     """
     if general_commutation:
         aaa = LDF(commutation_graph(P))
