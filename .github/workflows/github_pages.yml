@@ -16,11 +16,13 @@ jobs:
         run: |
           FROM_BRANCH="${{ github.head_ref }}"
           if [[ "$FROM_BRANCH" != "dev" && "$FROM_BRANCH" != "release" && ! "$FROM_BRANCH" =~ "test-workflow" ]]; then
-            echo "This workflow only runs for PRs from 'dev', 'release', or containing 'test-workflow'. Exiting gracefully."
+            echo "This workflow only runs for PRs from branches named 'dev', 'release', or containing 'test-workflow'. Exiting gracefully."
+            echo "proceed=false" >> $GITHUB_OUTPUT
             echo "proceed=false" >> $GITHUB_ENV
             exit 0 
           fi
           echo "proceed=true" >> $GITHUB_OUTPUT
+          echo "proceed=true" >> $GITHUB_ENV
 
   set-runner:
     needs: validate-branch
