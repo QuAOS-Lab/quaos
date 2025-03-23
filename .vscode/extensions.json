@@ -14,6 +14,7 @@
         "ms-toolsai.vscode-jupyter-cell-tags",
         "ms-toolsai.vscode-jupyter-slideshow",
         "donjayamanne.vscode-default-python-kernel",
+        "ms-toolsai.datawrangler",
         // C/C++
         "ms-vscode.cmake-tools",
         "ms-vscode.cpptools",
