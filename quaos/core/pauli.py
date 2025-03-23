@@ -1,3 +1,9 @@
+"""
+Module: pauli.py
+
+This module provides functionalities for managing and manipulating sets of Pauli operators using symplectic matrices.
+"""
+
 import numpy as np
 import itertools
 import re
