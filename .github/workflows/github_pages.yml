@@ -15,7 +15,7 @@ jobs:
         id: branch-check
         run: |
           FROM_BRANCH="${{ github.head_ref }}"
-          if [[ "$FROM_BRANCH" != dev || "$FROM_BRANCH" != release || ! "$FROM_BRANCH" =~ test-workflow]]; then
+          if [[ "$FROM_BRANCH" != "dev" && "$FROM_BRANCH" != "release" && ! "$FROM_BRANCH" =~ "test-workflow" ]]; then
           echo "This workflow only runs for PRs from 'dev'. Exiting gracefully."
           exit 1
           fi
