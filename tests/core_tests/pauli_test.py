@@ -1,4 +1,4 @@
-import unittest
+import pytest
 import sys
 import os
 import numpy as np
@@ -13,7 +13,7 @@ from quaos.core.pauli import (
 )
 
 
-class TestPauli(unittest.TestCase):
+class TestPauli:
 
     def __get_matrix_x(self, dimension: int = 2, exponent: int = 1) -> np.ndarray:
         pauli_x = np.zeros((dimension, dimension), dtype=complex)
@@ -58,13 +58,11 @@ class TestPauli(unittest.TestCase):
                            expected_pauli: pauli, 
                            actual_pauli: pauli, 
                            msg: str = "Paulis are not equal"):
-        self.assertTrue(np.allclose(expected_pauli.X, actual_pauli.X), msg=msg)
-        self.assertTrue(np.allclose(expected_pauli.Z, actual_pauli.Z), msg=msg)
-        self.assertTrue(np.allclose(expected_pauli.phases, actual_pauli.phases),
-                        msg=msg)
-        self.assertTrue(np.allclose(expected_pauli.dims, actual_pauli.dims),
-                        msg=msg)
-        self.assertEqual(expected_pauli.lcm, actual_pauli.lcm, msg=msg)  
+        assert np.allclose(expected_pauli.X, actual_pauli.X), msg
+        assert np.allclose(expected_pauli.Z, actual_pauli.Z), msg
+        assert np.allclose(expected_pauli.phases, actual_pauli.phases), msg
+        assert np.allclose(expected_pauli.dims, actual_pauli.dims), msg
+        assert expected_pauli.lcm == actual_pauli.lcm, msg  
 
     def test_XZ_mat(self):
         expected_x_matrix = self.__get_matrix_x(4, 1)
@@ -75,12 +73,9 @@ class TestPauli(unittest.TestCase):
         z_pauli_matrix = XZ_mat(4, 0, 2).toarray()
         xz_pauli_matrix = XZ_mat(4, 3, 4).toarray()
         
-        self.assertTrue(np.allclose(x_pauli_matrix, expected_x_matrix),
-                        msg="Wrong X matrix")
-        self.assertTrue(np.allclose(z_pauli_matrix, expected_z_matrix), 
-                        msg="Wrong Z matrix")
-        self.assertTrue(np.allclose(xz_pauli_matrix, expected_xz_matrix),    
-                        msg="Wrong XZ matrix")
+        assert np.allclose(x_pauli_matrix, expected_x_matrix), "Wrong X matrix"
+        assert np.allclose(z_pauli_matrix, expected_z_matrix),  "Wrong Z matrix"
+        assert np.allclose(xz_pauli_matrix, expected_xz_matrix), "Wrong XZ matrix"
 
     def test_tensor(self):
         x_pauli_csr_matrix = XZ_mat(3, 1, 0)
@@ -97,8 +92,7 @@ class TestPauli(unittest.TestCase):
             [x_pauli_csr_matrix, z_pauli_csr_matrix, xz_pauli_csr_matrix]
         ).toarray()
 
-        self.assertTrue(np.allclose(actual_pauli_product, expected_result),
-                        msg="Wrong tensor product")
+        assert np.allclose(actual_pauli_product, expected_result), "Wrong tensor product"
 
     def test_pauli_to_matrix(self):
         pauli_x = self.__get_pauli_x(4)
@@ -110,20 +104,18 @@ class TestPauli(unittest.TestCase):
         actual_matrix_x = pauli_to_matrix(pauli_x).toarray()
         actual_matrix_z = pauli_to_matrix(pauli_z).toarray()
 
-        self.assertTrue(np.allclose(expected_matrix_x, actual_matrix_x), 
-                        msg="Wrong Pauli X matrix")
-        self.assertTrue(np.allclose(expected_matrix_z, actual_matrix_z), 
-                        msg="Wrong Pauli Z matrix")
-        self.assertRaises(Exception, pauli_to_matrix, heterogeneous_pauli,
-                          msg="Passing multiple pauli shall raise an exception")
+        assert np.allclose(expected_matrix_x, actual_matrix_x), "Wrong Pauli X matrix"
+        assert np.allclose(expected_matrix_z, actual_matrix_z), "Wrong Pauli Z matrix"
+        with pytest.raises(Exception):
+            pauli_to_matrix(heterogeneous_pauli), "Passing multiple pauli shall raise an exception"
 
     def test_is_IX(self):
         pauli_x = self.__get_pauli_x(4)
-        self.assertTrue(pauli_x.is_IX(), msg="Pauli should be X")
+        assert pauli_x.is_IX(), "Pauli should be X"
         
     def test_is_IZ(self):
         pauli_z = self.__get_pauli_z(4)
-        self.assertTrue(pauli_z.is_IZ(), msg="Pauli should be Z")
+        assert pauli_z.is_IZ(), "Pauli should be Z"
         
     def test_pauli_from_string(self):
         expected_heterogenous_pauli = self.__get_heterogeneous_pauli()
@@ -135,79 +127,85 @@ class TestPauli(unittest.TestCase):
             [2, 3, 4]
         )
 
-        self.assertEqual(pauli_z.Z.shape[0], 1, msg="Wrong Pauli Z from string")
-        self.assertTrue(pauli_z.is_IZ(), msg="Pauli should be Z")
+        assert pauli_z.Z.shape[0] == 1, "Wrong Pauli Z from string"
+        assert pauli_z.is_IZ(), "Pauli should be Z"
 
-        self.assertEqual(pauli_x.X.shape[0], 1, msg="Wrong Pauli X from string")
-        self.assertTrue(pauli_x.is_IX(), msg="Pauli should be X")
+        assert pauli_x.X.shape[0] == 1, "Wrong Pauli X from string"
+        assert pauli_x.is_IX(), "Pauli should be X"
 
-        self.assertEqual(actual_heterogeneous_pauli.X.shape[0], 2, 
-                         msg="Wrong Pauli from string")
-        self.__assertPauliEqual(actual_heterogeneous_pauli, 
+        assert actual_heterogeneous_pauli.X.shape[0] == 2, "Wrong Pauli from string"
+        self.__assertPauliEqual(actual_heterogeneous_pauli,
                                 expected_heterogenous_pauli,
                                 msg="Wrong Pauli from string")
 
     def test_symplectic_inner_product(self):
-        # TODO: Implement test_symplectic_inner_product
-        self.assertTrue(True)
+        not_single_pauli = self.__get_heterogeneous_pauli()
+        heterogeneous_pauli = self.__get_heterogeneous_pauli()
+
+        with pytest.raises(Exception):
+            symplectic_inner_product(not_single_pauli, not_single_pauli), 
+            "Passing multiple pauli shall raise an exception"
+        with pytest.raises(Exception):
+            symplectic_inner_product(heterogeneous_pauli, heterogeneous_pauli),
+            "Passing paulis with different dimensions shall raise an exception"
+        # assert np.allclose(expected_matrix_x, actual_matrix_x), 
+        #                 msg="Wrong Pauli X matrix")
 
     def test_is_commuting(self):
         commuting_pauli = self.__get_commuting_pauli()
         not_commuting_pauli = self.__get_heterogeneous_pauli()
 
-        self.assertTrue(commuting_pauli.is_commuting(),
-                        msg="Pauli should be commuting")
-        self.assertFalse(not_commuting_pauli.is_commuting(),
-                         msg="Pauli should not be commuting")
+        assert commuting_pauli.is_commuting(), "Pauli should be commuting"
+        assert not not_commuting_pauli.is_commuting(), "Pauli should not be commuting"
         
     def test_is_quditwise_commuting(self):
         # TODO: Implement test_is_quditwise_commuting
-        self.assertTrue(True)
+        assert True
         
     def test_a_pauli(self):
         # TODO: Implement test_a_pauli
-        self.assertTrue(True)
+        assert True
         
     def test_paulis(self):
         # TODO: Implement test_paulis
-        self.assertTrue(True)
+        assert True
         
     def test_qudits(self):
         # TODO: Implement test_qudits
-        self.assertTrue(True)
+        assert True
         
     def test_delete_paulis_(self):
         # TODO: Implement test_delete_paulis_
-        self.assertTrue(True)
+        assert True
         
     def test_delete_qudits_(self):
         # TODO: Implement test_delete_qudits_
-        self.assertTrue(True)
+        assert True
         
     def test_copy(self):
         # TODO: Implement test_copy
-        self.assertTrue(True)
+        assert True
         
     def test_print(self):
         # TODO: Implement test_print
-        self.assertTrue(True)
+        assert True
         
     def test_print_symplectic(self):
         # TODO: Implement test_print_symplectic
-        self.assertTrue(True)
+        assert True
         
     def test_string_to_pauli(self):
         # TODO: Implement test_string_to_pauli
-        self.assertTrue(True)
+        assert True
         
     def test_pauli_to_string(self):
         # TODO: Implement test_pauli_to_string
-        self.assertTrue(True)
+        assert True
         
     def test_quditwise_inner_product(self):
         # TODO: Implement test_quditwise_inner_product
-        self.assertTrue(True)
+        assert True
         
     def test_pauli_product(self):
         # TODO: Implement test_pauli_product
-        self.assertTrue(True)
+        assert True

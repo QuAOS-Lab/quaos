@@ -1,4 +1,4 @@
-import unittest
+import pytest
 import sys
 import os
 import numpy as np
@@ -12,52 +12,52 @@ from quaos.core.prime_Functions_Andrew import (
 )
 
 
-class TestGraph(unittest.TestCase):
+class TestGraph:
 
     def test_graph(self):
         # TODO: Implement test_gate  
-        self.assertTrue(True)
+        assert True
 
     def test_add_vertex_(self):
         # TODO: Implement test_add_vertex_
-        self.assertTrue(True)
+        assert True
 
     def test_lade_vertex_(self):
         # TODO: Implement test_lade_vertex_
-        self.assertTrue(True)
+        assert True
 
     def test_lade_edge_(self):
         # TODO: Implement test_lade_edge_
-        self.assertTrue(True)
+        assert True
 
     def test_neighbors(self):
         # TODO: Implement test_neighbors
-        self.assertTrue(True)
+        assert True
 
     def test_edges(self):
         # TODO: Implement test_edges
-        self.assertTrue(True)
+        assert True
 
     def test_clique(self):
         # TODO: Implement test_clique
-        self.assertTrue(True)
+        assert True
 
     def test_degree(self):
         # TODO: Implement test_degree
-        self.assertTrue(True)
+        assert True
 
     def test_ord(self):
         # TODO: Implement test_ord
-        self.assertTrue(True)
+        assert True
 
     def test_print(self):
         # TODO: Implement test_print
-        self.assertTrue(True)
+        assert True
 
     def test_print_neighbors(self):
         # TODO: Implement test_print_neighbors
-        self.assertTrue(True)
+        assert True
 
     def test_copy(self):
         # TODO: Implement test_copy
-        self.assertTrue(True)
+        assert True

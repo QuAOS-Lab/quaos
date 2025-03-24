@@ -1,4 +1,4 @@
-import unittest
+import pytest
 import sys
 import os
 import numpy as np
@@ -12,20 +12,20 @@ from quaos.core.prime_Functions_Andrew import (
 )
 
 
-class TestGate(unittest.TestCase):
+class TestGate:
 
     def test_gate(self):
         # TODO: Implement test_gate  
-        self.assertTrue(True)
+        assert True
 
     def test_name_string(self):
         # TODO: Implement test_name_string  
-        self.assertTrue(True)
+        assert True
 
     def test_copy(self):
         # TODO: Implement test_copy  
-        self.assertTrue(True)
+        assert True
 
     def test_print(self):
         # TODO: Implement test_print  
-        self.assertTrue(True)
+        assert True
