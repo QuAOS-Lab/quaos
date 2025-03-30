@@ -251,25 +251,42 @@ def pauli_to_string(P: 'pauli') -> str | list[str]:
 
 
 def symplectic_inner_product(P0: 'pauli', P1: 'pauli') -> bool:
-    """The symplectic inner product of two pauli objects (each with a single Pauli).
+    """Compute the symplectic inner product of two pauli objects (each with a single Pauli).
+    For two Pauli operators :math:`P_0` and :math:`P_1`, each of which is represented in terms of its X and Z components:
+    
+    .. math::
 
-    Parameters
-    ----------
-    P0 : pauli
-        Pauli object with shape (1,q)
-    P1 : pauli
-        Pauli object with shape (1,q)
+        P = (X, Z)
 
-    Returns
-    -------
-    bool
-        Symplectic inner product of Paulis
+    the symplectic inner product is defined as:
+
+    .. math::
+
+        \\langle P_0, P_1 \\rangle = X_0 \\cdot Z_1 - Z_0 \\cdot X_1
+
+    where :math:`X` and :math:`Z` are binary vectors representing the presence of Pauli :math:`X` and :math:`Z` components.
+    This function checks whether the result is **odd (True) or even (False)**, which determines whether two Pauli operators **commute or anti-commute**:
+
+    - **0 (False)** → Operators commute.
+    - **1 (True)** → Operators anti-commute.
+
+    Args:
+        P0 (pauli): A Pauli object with shape (1, q).
+        P1 (pauli): A Pauli object with shape (1, q).
+
+    Returns:
+        bool: True if the symplectic inner product is odd (anti-commuting), False otherwise (commuting).
+
+    References:
+        Bandyopadhyay, et al. *"A new proof for the existence of mutually unbiased bases."* 
+        Available at: `arXiv:quant-ph/0103162 <https://arxiv.org/abs/quant-ph/0103162>`_
     """
     if (P0.paulis() != 1) or (P1.paulis() != 1):
         raise Exception("Symplectic inner product only works with pair of single Paulis")
     if any(P0.dims - P1.dims):
         raise Exception("Symplectic inner product only works if Paulis have same dimensions")
-    return bool(np.sum((P0.X * P1.Z - P0.Z * P1.X) * np.array([P0.lcm] * len(P0.dims)) // P0.dims) % P0.lcm)
+    tmp = np.sum((P0.X * P1.Z - P0.Z * P1.X) * np.array([P0.lcm] * len(P0.dims)) // P0.dims)
+    return bool(tmp % P0.lcm)
 
 
 def quditwise_inner_product(P0: 'pauli', P1: 'pauli') -> bool:
@@ -288,7 +305,7 @@ def quditwise_inner_product(P0: 'pauli', P1: 'pauli') -> bool:
         Quditwise inner product of Paulis
     """
     if (P0.paulis() != 1) or (P1.paulis() != 1):
-        raise Exception("Qubitwise inner product only works with pair of single Paulis")
+        raise Exception("Quditwise inner product only works with pair of single Paulis")
     if any(P0.dims - P1.dims):
         raise Exception("Symplectic inner product only works if Paulis have same dimensions")
     return any(np.sum(P0.X[0, i] * P1.Z[0, i] - P0.Z[0, i] * P1.X[0, i]) % P0.dims[i] for i in range(P0.qudits()))
