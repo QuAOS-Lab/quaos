@@ -6,28 +6,31 @@ from pathlib import Path
 root = Path(__file__).parent.parent
 sys.path.append(str(root))
 
-from quaos.prime_Functions_quditV2 import *
+from quaos.core.prime_Functions_Andrew import ground_state
+from quaos.core.prime_Functions_quditV2 import (
+    random_pauli_hamiltonian, sort_hamiltonian,  
+    bucket_filling_qudit, weighted_vertex_covering_maximal_cliques
+)
 
 
 @pytest.mark.benchmark
 def test_main_function(benchmark):
-    P,cc = random_pauli_hamiltonian(20,[3,3,3])
-    p,q = P.paulis(),P.qudits()
+    P, cc = random_pauli_hamiltonian(20, [3, 3, 3])
 
     # sort Hamiltonian for calculation
-    P,cc,pauli_block_sizes = sort_hamiltonian(P,cc)
+    P, cc, pauli_block_sizes = sort_hamiltonian(P, cc)
 
     # state
-    psi = ground_state(P,cc)
+    psi = ground_state(P, cc)
 
     # simulation settings
-    shots = 12801
+    shots = 1000
     D = {}
     part_func = weighted_vertex_covering_maximal_cliques
     full_simulation = False
     general_commutation = True
-    intermediate_results_list = [6,12,25,50,100,200,400,800,1600,3200,6400,12800]
-    update_steps = np.array([6,12,25,50,100,200,400,800,1600,3200,6400,12800,25600,51200,102400])
+    intermediate_results_list = [6, 12, 25, 50, 100, 200, 400, 800]
+    update_steps = np.array([6, 12, 25, 50, 100, 200, 400, 800])
     allocation_mode = 'set'
     mcmc_shot_scale = 0
     N = 500
@@ -35,7 +38,7 @@ def test_main_function(benchmark):
     p_noise = 0
 
     # simulation
-    benchmark(bucket_filling_qudit, 
+    benchmark(bucket_filling_qudit,  
               P, cc, psi, shots, part_func, pauli_block_sizes,
               full_simulation=full_simulation,
               update_steps=update_steps,

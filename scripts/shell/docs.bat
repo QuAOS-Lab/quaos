@@ -13,6 +13,8 @@ pip install -r doc_requirements.txt
 
 pip install -r ../configs/requirements.txt
 
+rmdir /s /q "index/_autosummary/"
+
 sphinx-build -E -b html . _build/html
 
 if %errorlevel% neq 0 (

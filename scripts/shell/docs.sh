@@ -12,6 +12,8 @@ pip install -r doc_requirements.txt
 
 pip install -r ../configs/requirements.txt
 
+rm -rf "index/_autosummary/"
+
 sphinx-build -E -b html . _build/html
 
 if [ $? -ne 0 ]; then
