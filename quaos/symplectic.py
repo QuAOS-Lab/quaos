@@ -1,34 +1,271 @@
 import sys
 import numpy as np
 import itertools
+import re
 
 sys.path.append("./")
-import quaos.gaussian_elimination as ge
 
 
-class SymplecticPauli:
-    def __init__(self, pauli_list, weights=None, phases=None):
-        if not isinstance(pauli_list, list):
-            pauli_list = [pauli_list]
+class Pauli:
+    def __init__(self, x_exp, z_exp=None, dimension=2):
+
+        """
+        Constructor for Pauli class.
+
+        Parameters
+        ----------
+        x_exp : int or str
+            Exponent of X part of Pauli in symplectic form. If str, this describes x and z parts in form
+            'xnzm', where n and m are integers representing the exponents of x and z respectively.
+        z_exp : int
+            Exponent of Z part of Pauli in symplectic form. If None, this is set to 0.
+        dimension : int
+            The dimension of the qudit. Default is 2.
+        """
+        if isinstance(x_exp, str):
+            if z_exp is not None:
+                raise Warning('If input string is provided, z_exp is unnecessary')
+            x_exp = int(x_exp[1])
+            z_exp = int(x_exp[3])
+        self.x_exp = x_exp
+        self.z_exp = z_exp
+        self.dimension = dimension
+
+        if self.dimension - 1 < x_exp or self.dimension - 1 < z_exp:
+            raise ValueError(f"Dimension {self.dimension} is too small for exponents {self.x_exp} and {self.z_exp}")
+
+    def __mul__(self, A):
+        if isinstance(A, str):
+            return self * Pauli(A)
+        elif isinstance(A, Pauli):
+            if A.dimension != self.dimension:
+                raise Exception("To multiply two Paulis, their dimensions"
+                                f" {A.dimension} and {self.dimension} must be equal")
+            
+            return Pauli(x_exp=(self.x_exp + A.x_exp) % self.dimension,
+                         z_exp=(self.z_exp + A.z_exp) % self.dimension,
+                         dimension=self.dimension)
+        elif isinstance(A, float):
+            return PauliSum(self, weights=A)
+        else:
+            raise Exception(f"Cannot multiply Pauli with type {type(A)}")
+    
+    def __str__(self):
+        return f'x{self.x_exp}z{self.z_exp}'
+    
+    def __matmul__(self, A):
+        return PauliString(x_exp=[self.x_exp] + [A.x_exp], z_exp=[self.z_exp] + [A.z_exp],
+                           dimensions=[self.dimension] + [A.dimension])
+
+    def __add__(self, A):
+        ps1 = PauliString(x_exp=[self.x_exp], z_exp=[self.z_exp], dimensions=[self.dimension])
+        if isinstance(A, Pauli):
+            ps2 = PauliString(x_exp=[A.x_exp], z_exp=[A.z_exp], dimensions=[A.dimension])
+        elif isinstance(A, PauliString) or isinstance(A, PauliSum):
+            ps2 = A
+        else:
+            raise Exception(f"Cannot add Pauli with type {type(A)}")
+        return ps1 + ps2
+    
+    def to_pauli_string(self):
+        return PauliString(x_exp=[self.x_exp], z_exp=[self.z_exp], dimensions=[self.dimension])
+    
+    def to_pauli_sum(self):
+        return PauliSum([self.to_pauli_string()])
+
+
+class Xnd(Pauli):
+    def __init__(self, x_exp, dimension):
+        super().__init__(x_exp, 0, dimension)
+
+
+class Ynd(Pauli):
+    def __init__(self, y_exp, dimension):
+        super().__init__(y_exp, y_exp, dimension)
+
+
+class Znd(Pauli):
+    def __init__(self, z_exp, dimension):
+        super().__init__(0, z_exp, dimension)
+
+
+class Id(Pauli):
+    def __init__(self, dimension):
+        super().__init__(0, 0, dimension)
+
+
+class PauliString:
+ 
+    def __init__(self, x_exp, z_exp=None, dimensions=None):
+
+        # NOTE: There is an important generalisation to do for when dimensions are not equal
+        #       this I assume is where the lcm is used
+
+        # NOTE: Either we also define phases here or we need an extra rule in the PauliSum class to do multiplication.
+        #       It would be neater here as then we can do multiplication of two PauliStrings and get the phase right
+
+        if isinstance(x_exp, str):
+            if z_exp is not None:
+                raise Warning('If input string is provided, z_exp is unnecessary')
+            xz_exponents = re.split('x|z', x_exp)[1:]
+            x_exp = np.array(xz_exponents[0::2], dtype=int)
+            z_exp = np.array(xz_exponents[1::2], dtype=int)
+        elif isinstance(x_exp, list):
+            x_exp = np.array(x_exp)
+            z_exp = np.array(z_exp)
+        self.x_exp = x_exp
+        self.z_exp = z_exp
+        if dimensions is None:
+            dimensions = (max(max(self.x_exp), max(self.z_exp)) + 1) * np.ones(len(self.x_exp))
+        self.dimensions = np.asarray(dimensions)
+        self._sanity_check()
+
+    def _sanity_check(self):
+        if len(self.x_exp) != len(self.dimensions):
+            raise ValueError(f"Number of x exponents ({len(self.x_exp)})"
+                             f" and dimensions ({len(self.dimensions)}) must be equal.")
+
+        if len(self.x_exp) != len(self.z_exp):
+            raise ValueError(f"Number of x and z exponents ({len(self.x_exp)}"
+                             f" and {len(self.z_exp)}) must be equal.")
+        
+        if len(self.dimensions) != len(self.z_exp):
+            raise ValueError(f"Number of dimensions ({len(self.dimensions)})"
+                             f" and z exponents ({len(self.z_exp)}) must be equal.")
+
+        for i in range(len(self.x_exp)):
+            if self.dimensions[i] - 1 < self.x_exp[i] or self.dimensions[i] - 1 < self.z_exp[i]:
+                raise ValueError(f"Dimension {self.dimensions[i]} is too small for"
+                                 f" exponents {self.x_exp[i]} and {self.z_exp[i]}")
+    
+    def __repr__(self):
+        return f"Pauli(x_exp={self.x_exp}, z_exp={self.z_exp}, dimension={self.dimension})"
+    
+    def n_qudits(self):
+        return len(self.x_exp)
+    
+    def __str__(self):
+        p_string = ''
+        for i in range(self.n_qudits()):
+            p_string += 'x' + f'{self.x_exp[i]}' + 'z' + f'{self.z_exp[i]} '
+        return p_string
+    
+    def __matmul__(self, A):
+        new_x_exp = np.concatenate((self.x_exp, A.x_exp))
+        new_z_exp = np.concatenate((self.z_exp, A.z_exp))
+        new_dims = np.concatenate((self.dimensions, A.dimensions))
+        return PauliString(new_x_exp, new_z_exp, new_dims)
+
+    def __mul__(self, A):
+        # returns SymplecticPauli * SymplecticPauli
+        if isinstance(A, PauliString):
+            if np.any(self.dimensions != A.dimensions):
+                raise Exception("To multiply two PauliStrings, their dimensions"
+                                f" {self.dimensions} and {A.dimensions} must be equal")
+            x_new = np.mod(self.x_exp + A.x_exp, (self.dimensions))
+            z_new = np.mod(self.z_exp + A.z_exp, (self.dimensions))
+            return PauliString(x_new, z_new, self.dimensions)
+        elif isinstance(A, PauliSum):
+            return self.to_symplectic() * A
+        elif isinstance(A, str):
+            return self.to_symplectic() * PauliSum(A)
+        elif isinstance(A, float) or isinstance(A, int):
+            return PauliSum(self, weights=A)
+        else:
+            raise ValueError(f"Cannot multiply PauliString with type {type(A)}")
+        
+    def to_pauli_sum(self, weight=None, phase=None):
+        return PauliSum(self, weight, phase)
+    
+    def _to_pauli_sum(self):
+        return PauliSum([self], weights=[1], phases=[0])
+
+    def __add__(self, A):
+        if np.all(self.dimensions != A.dimensions):
+            raise Exception("To add two PauliStrings, their dimensions"
+                            f" {self.dimensions} and {A.dimensions} must be equal")
+        return self._to_pauli_sum() + A._to_pauli_sum()
+    
+    def get_paulis(self):
+        """
+        Get a list of Pauli objects from the PauliString
+        :return: A list of Pauli objects
+        """
+        return [Pauli(x_exp=self.x_exp[i], z_exp=self.z_exp[i], dimension=self.dimensions[i]) for i in range(len(self.x_exp))]
+
+    def symplectic(self):
+        symp = np.zeros(2 * self.n_qudits())
+        symp[0:self.n_qudits()] = self.x_exp
+        symp[self.n_qudits():2 * self.n_qudits()] = self.z_exp
+        return symp
+
+    def symplectic_product(self, A):
+        n = self.n_qudits()
+        symp = self.symplectic()
+        symp_A = A.symplectic()
+        prod = sum([symp[i] * symp_A[i + n] - symp[i + n] * symp_A[i] for i in range(n)]) % self.dimensions
+        return self * A - A * self
+
+
+class PauliSum:
+    """
+    Lower level class for performing calculations in the symplectic representation
+    """
+    def __init__(self, pauli_list, weights=None, phases=None, dimensions=None):
+        """
+        Constructor for SymplecticPauli class.
+
+        Parameters
+        ----------
+        pauli_list : list of Pauli
+            The Pauli operators to be represented.
+        weights : list of float, optional
+            The weights of the Pauli operators.
+        phases : list of float, optional
+            The phases of the Pauli operators.
+        dimensions : int or list of int, optional
+            The dimensions for each qudit.
+
+        Raises
+        ------
+        ValueError
+            If the length of pauli_list and weights do not match.
+        """
+        # sanity checks
         if weights is None:
             weights = np.ones(len(pauli_list))
         if phases is None:
             phases = np.zeros(len(pauli_list))
         if len(pauli_list) != len(weights):
             raise ValueError(f"Length of Pauli list ({len(pauli_list)}) and weights ({len(weights)}) must be equal.")
-
+        if not isinstance(pauli_list, list):
+            pauli_list = [pauli_list]
+        # check all elements of pauli_list are PauliString objects
+        if not all(isinstance(p, PauliString) for p in pauli_list):
+            pauli_list = [PauliString(pauli_list[i].x_exp, dimensions=dimensions) for i in range(len(pauli_list))]
+        
+        # define attributes
+        self.pauli_strings = pauli_list
+        self.weights = weights
+        self.phases = phases
         self.n_paulis = len(pauli_list)
-        self.n_qubits = len(pauli_list[0])
-        self.pauli_string = pauli_list
+        self.n_qudits = pauli_list[0].n_qudits()
+        # My guess is that speed will be better if we store the symplectic matrix here - could be a method instead
+        self.symplectic = self.symplectic_matrix()
 
-        self.symplectic = self.symplectic_matrix(weights)
+        if dimensions is None:
+            if isinstance(pauli_list[0], PauliString):
+                dimensions = np.array([pauli_list[i].dimensions for i in range(len(pauli_list))])
+            else:
+                dimensions = 2 * np.ones(self.n_qudits)
+            dimensions = 2 * np.ones(self.n_qudits)
 
     def x(self):
-        return self.symplectic[:, 1:self.n_qubits + 1]
+        return self.symplectic[:, 1:self.n_qudits + 1]
     
     def z(self):
-        return self.symplectic[:, self.n_qubits + 1:-1]
-    
+        return self.symplectic[:, self.n_qudits + 1:-1]
+        
     def phases(self):
         return self.symplectic[:, -1]
     
@@ -40,25 +277,27 @@ class SymplecticPauli:
 
     def change_phase(self, index, phase):
         self.symplectic[index, -1] = phase
-    
+
     def change_pauli(self, index, pauli):
-        self.pauli_string[index] = pauli
+        self.pauli_strings[index] = pauli
         self.symplectic[index, :] = pauli_to_symplectic(pauli, self.weights[index])
     
     def symplectic_structure_matrix(self):
         return self.symplectic[:, 1:-1]
 
     def __add__(self, symplectic_pauli):
-        new_pauli_list = self.pauli_string + symplectic_pauli.pauli_string
-        new_weights = np.concatenate([self.weights(), symplectic_pauli.weights()])
-        new_phases = np.concatenate([self.phases(), symplectic_pauli.phases()])
-        return SymplecticPauli(new_pauli_list, new_weights, new_phases)
+        if isinstance(symplectic_pauli, PauliString) or isinstance(symplectic_pauli, Pauli):
+            symplectic_pauli = symplectic_pauli.to_pauli_sum()
+        new_pauli_list = self.pauli_strings + symplectic_pauli.pauli_strings
+        new_weights = np.concatenate([self.weights, symplectic_pauli.weights])
+        new_phases = np.concatenate([self.phases, symplectic_pauli.phases])
+        return PauliSum(new_pauli_list, new_weights, new_phases)
 
     def __sub__(self, symplectic_pauli):
-        new_pauli_list = self.pauli_string + symplectic_pauli.pauli_string
-        new_weights = np.concatenate([self.weights(), -symplectic_pauli.weights()])
-        new_phases = np.concatenate([self.phases(), symplectic_pauli.phases()])
-        return SymplecticPauli(new_pauli_list, new_weights, new_phases)
+        new_pauli_list = self.pauli_strings + symplectic_pauli.pauli_string
+        new_weights = np.concatenate([self.weights, -symplectic_pauli.weights])
+        new_phases = np.concatenate([self.phases, symplectic_pauli.phases])
+        return PauliSum(new_pauli_list, new_weights, new_phases)
     
     def __matmul__(self, symplectic_pauli):
         """
@@ -72,14 +311,14 @@ class SymplecticPauli:
                 next_pauli = ''
                 next_weight = 1
                 next_phase = 0
-                for n in range(self.n_qubits):
-                    next_pauli += self.pauli_string[i][n] + symplectic_pauli.pauli_string[j][n]
+                for n in range(self.n_qudits):
+                    next_pauli += self.pauli_strings[i][n] + symplectic_pauli.pauli_string[j][n]
                     next_phase += (self.phases()[i] + symplectic_pauli.phases()[j]) % 2
                     next_weight *= self.weights()[i] * symplectic_pauli.weights()[j]
                 new_pauli_list.append(next_pauli)
                 new_weights.append(next_weight)
                 new_phases.append(((self.phases()[i] + symplectic_pauli.phases()[j] + next_phase) % 2))
-        output_pauli = SymplecticPauli(new_pauli_list, new_weights, new_phases)
+        output_pauli = PauliSum(new_pauli_list, new_weights, new_phases)
         return output_pauli
 
     def __mul__(self, A):
@@ -92,12 +331,15 @@ class SymplecticPauli:
         # YZ = -ZY = X with phase +1
         # XY = -YX = Z with phase +1
 
+        # for qudits making the phase increase by 1/d and
+
         # there is probably a better way of doing this with the symplectic representation
 
         if isinstance(A, (int, float)):
-            return SymplecticPauli(self.pauli_string, self.weights() * A, self.phases())
-        elif not isinstance(A, SymplecticPauli):
+            return PauliSum(self.pauli_strings, self.weights() * A, self.phases())
+        elif not isinstance(A, PauliSum):
             raise ValueError("Multiplication only supported with SymplecticPauli objects or scalar")
+        
         pauli_multiplication_rules = {
             ('I', 'I'): ('I', 0, 1),
             ('X', 'I'): ('X', 0, 1),
@@ -125,8 +367,8 @@ class SymplecticPauli:
             
         # Runs through all the Pauli strings and weights, multiplies with the above rules
         # and returns the result as a new SymplecticPauli object
-        weights = self.weights()
-        phases = self.phases()
+        weights = self.weights
+        phases = self.phases
         new_pauli_list = []
         new_weights = []
         new_phases = []
@@ -135,16 +377,18 @@ class SymplecticPauli:
                 next_pauli = ''
                 next_phase = 0
                 next_weight = 1
-                for n in range(self.n_qubits):
-                    pp, phase, weight = multiply_pauli_string(self.pauli_string[i][n], A.pauli_string[j][n]) 
-                    next_pauli += pp
-                    next_phase += phase
-                    next_weight *= weight
+
+                for n in range(self.n_qudits):
+                    
+                    # pp, phase, weight = multiply_pauli_string(self.pauli_strings[i][n], A.pauli_strings[j][n]) 
+                    next_pauli += [self.pauli_strings[i] * A.pauli_strings[j]]
+                    # next_phase += phase
+                    next_weight *= weights[i] * A.weights[j]
                 new_pauli_list.append(next_pauli)
-                new_weights.append(next_weight * weights[i] * A.weights()[j])
-                new_phases.append(((phases[i] + A.phases()[j] + next_phase) % 2))
+                new_weights.append(next_weight * weights[i] * A.weights[j])
+                new_phases.append(((phases[i] + A.phases[j] + next_phase) % 2))
         # clean up
-        output_pauli = SymplecticPauli(new_pauli_list, new_weights, new_phases)
+        output_pauli = PauliSum(new_pauli_list, new_weights, new_phases)
         # output_pauli._remove_trivial_paulis()
         # output_pauli._combine_equivalent_paulis()
         return output_pauli
@@ -168,7 +412,7 @@ class SymplecticPauli:
         # combine equivalent Paulis
         for i in range(self.n_paulis):
             for j in range(i + 1, self.n_paulis):
-                if self.pauli_string[i] == self.pauli_string[j]:
+                if self.pauli_strings[i] == self.pauli_strings[j]:
                     self. change_weight(i, self.weights()[i] + self.weights()[j])
                     self.delete_paulis_(j)
                     break
@@ -183,14 +427,14 @@ class SymplecticPauli:
         # If entire Pauli string is I, remove it
         to_delete = []
         for i in range(self.n_paulis):
-            if self.pauli_string[i] == 'I' * self.n_qubits:
+            if self.pauli_strings[i] == 'I' * self.n_qudits:
                 to_delete.append(i)
         self.delete_paulis_(to_delete)
 
-    def symplectic_matrix(self, weights=None):
-        symplectic = np.zeros([self.n_paulis, 2 * self.n_qubits + 2])
-        for i, p in enumerate(self.pauli_string):
-            symplectic[i, :] = pauli_to_symplectic(p, weights[i])
+    def symplectic_matrix(self):
+        symplectic = np.zeros([self.n_paulis, 2 * self.n_qudits])
+        for i, p in enumerate(self.pauli_strings):
+            symplectic[i, :] = p.symplectic()
         return symplectic
 
         # check whether self has only X component
@@ -218,8 +462,7 @@ class SymplecticPauli:
         #     a - (int) - index of Pauli to be returned
         # Outputs:
         #     (pauli) - the ath Pauli in self
-        symplectic = self.symplectic[a, :]
-        return symplectic_to_pauli(symplectic)
+        return self.pauli_strings[a]
 
     # count the number of Paulis in self
     def paulis(self):
@@ -238,7 +481,7 @@ class SymplecticPauli:
         if type(aa) is int:
             aa = [aa]
         self.symplectic = np.delete(self.symplectic, aa, axis=0)
-        self.pauli_string = np.delete(self.pauli_string, aa)
+        self.pauli_strings = np.delete(self.pauli_strings, aa)
         self.n_paulis -= 1
 
     # return self after deletion of qudits indexed by aa
@@ -259,7 +502,7 @@ class SymplecticPauli:
     # return deep copy of self
     def copy(self):
         # Outputs: (SymplecticPauli)
-        return SymplecticPauli(self.X.copy(), self.Z.copy(), self.dims.copy(), self.phases.copy())
+        return PauliSum(self.X.copy(), self.Z.copy(), self.dims.copy(), self.phases.copy())
 
     def symplectic_product_matrix(self):
         """
@@ -280,88 +523,16 @@ class SymplecticPauli:
         spm = spm + spm.T
         return spm
     
-    def diagonalize(self):
-        pass
-
-    def reduced_form(self, return_copy=False):
-        # should be altered to track weights as well
-        """
-        Reduce a list of Paulis to a minimal set of generators.
-
-        Takes the full symplectic product matrix of the Paulis and performs
-        Gaussian elimination to determine the rank of the matrix. The rank
-        determines the number of generators required to generate the original
-        set of Paulis. The generators are then determined by applying the
-        inverse of the lower triangular matrix to the original symplectic
-        vectors. The weights of the generators are determined by the weights of
-        the original Paulis.
-
-        Args:
-            return_copy (bool): If True, return new instance of SymplecticPauli
-                with the reduced form, otherwise modifies the current instance.
-
-        Returns:
-            If return_copy is True, a new instance of SymplecticPauli with the
-            reduced form. Otherwise, None.
-
-        ################# Future  #################
-            
-        SHOULD ALSO OUTPUT THE CIRCUIT WHICH REDUCES THE PAULIS
-
-        ###########################################
-        """
-
-        spm = self.symplectic_product_matrix()
-        L, rank = ge.symmetric_gaussian_elimination(spm)
-        dim = len(spm)
-        registers = dim - rank // 2
-        fund_p = np.zeros((dim, 2 * registers), dtype=int)
-        for i in range(dim - rank):
-            fund_p[i + 2 * rank // 2][i + registers + rank // 2] = 1
-        for i in range(rank // 2):
-            fund_p[2 * i][i] = 1
-            fund_p[2 * i + 1][i + registers] = 1
-        L_inv = np.linalg.inv(L) % 2
-        minimal_rep = np.zeros((dim, 2 * registers))
-        for i in range(dim):
-            for j in range(dim):
-                minimal_rep[i] += (L_inv[i, j] * fund_p[j]) % 2
-
-        pauli_forms = [self.symplectic_to_pauli(minimal_rep[i])
-                       for i in range(dim)]
-        if return_copy:
-            return SymplecticPauli(pauli_forms, self.weights)
-        else:
-            # update current instance to reduced form
-            self.pauli_string = pauli_forms
-            self.n_paulis = len(pauli_forms)
-            self.symplectic = self.symplectic_matrix()
-            self.symplectic_structure = self.symplectic_structure_matrix()
-            self.phases = self.symplectic[-1, :]
+    def __str__(self):
+        p_string = ''
+        for i in range(self.n_paulis):
+            pauli_string = self.pauli_strings[i]
+            qudit_string = ''.join(['x' + f'{pauli_string.x_exp[j]}' + 'z' + f'{pauli_string.z_exp[j]} ' for j in range(self.n_qudits)])
+            p_string += f'{self.weights[i]} |' + qudit_string + f'| {self.phases[i]} \n'
+        return p_string
 
 
-class SymplecticQuditPauli(SymplecticPauli):
-    def __init__(self, generalised_pauli_list, weights=None, phases=None, dims=None):
-
-        if dims is None:
-            dims = 2 * np.ones(len(generalised_pauli_list), dtype=int)
-        if len(generalised_pauli_list) != len(weights):
-            raise ValueError("Length of Pauli list and weights must be equal.")
-
-        self.dims = dims
-        self.lcm = np.lcm.reduce(dims)
-        super().__init__(generalised_pauli_list, weights, phases)
-
-    # check whether the set of Paulis are pairwise commuting on every qudit
-    def is_quditwise_commuting(self):
-        # Outputs:
-        #     (bool) - True if self is pairwise quditwise commuting set of Paulis
-        p = self.paulis()
-        PP = [self.a_pauli(i) for i in range(p)]
-        return not any(quditwise_inner_product(PP[i0], PP[i1]) for i0, i1 in itertools.combinations(range(p), 2))
-    
-
-class Gate(SymplecticQuditPauli):
+class Gate(PauliSum):
     def __init__(self, name, index, generalised_pauli_list, weights=None, phases=None, dims=None):
         self.name = name
         self.index = index
@@ -492,17 +663,6 @@ def pauli_to_symplectic(pauli_string, weight):
     return symplectic
 
 
-def symplectic_product(p1, p2):
-    """Takes the symplectic product of the binary vectors p1 and p2
-
-    If 1 the corresponding Paulis anti-commute
-    if 0 the corresponding Paulis commute"""
-    s_prod = 0
-    n = int(len(p1) / 2)
-    for i in range(n):
-        s_prod += (p1[i] * p2[i + n] - p1[i + n] * p2[i])
-    return s_prod % 2
-
 
 def symplectic_to_pauli(symplectic):
     """
@@ -528,38 +688,109 @@ def symplectic_to_pauli(symplectic):
     return pauli_string, weight, phase
 
 
+def symplectic_product(p1, p2):
+    """Takes the symplectic product of the binary vectors p1 and p2
+
+    If 1 the corresponding Paulis anti-commute
+    if 0 the corresponding Paulis commute"""
+    s_prod = 0
+    n = int(len(p1) / 2)
+    for i in range(n):
+        s_prod += (p1[i] * p2[i + n] - p1[i + n] * p2[i])
+    return s_prod % 2
+
+
 # the symplectic inner product of two pauli objects (each with a single Pauli)
-def quditwise_inner_product(P0, P1):
+def quditwise_inner_product(symplectic_pauli1, symplectic_pauli2):
     # Inputs:
-    #     P0 - (pauli) - must have shape (1,q)
-    #     P1 - (pauli) - must have shape (1,q)
+    #     symplectic_pauli1 - (SymplecticPauli) - must have n_paulis = 1
+    #     symplectic_pauli2 - (SymplecticPauli) - must have n_paulis = 1
     # Outputs:
     #     (bool) - quditwise inner product of Paulis
-    if (P0.paulis() != 1) or (P1.paulis() != 1):
+    if (symplectic_pauli1.n_paulis != 1) or (symplectic_pauli2.n_paulis != 1):
         raise Exception("Qubitwise inner product only works with pair of single Paulis")
-    if any(P0.dims - P1.dims):
+    if any(symplectic_pauli1.dims - symplectic_pauli1.dims):
         raise Exception("Symplectic inner product only works if Paulis have same dimensions")
-    return any(np.sum(P0.X[0, i] * P1.Z[0, i] - P0.Z[0, i] * P1.X[0, i]) % P0.dims[i] for i in range(P0.qudits()))
+    return any(np.sum(symplectic_pauli1.X[0, i] * symplectic_pauli2.Z[0, i]
+                      - symplectic_pauli2.Z[0, i] * symplectic_pauli1.X[0, i])
+                      % symplectic_pauli1.dims[i] for i in range(symplectic_pauli1.qudits()))
 
 
 if __name__ == "__main__":
+    dims = 3
+    x1 = Xnd(1, dims)
+    y1 = Ynd(1, dims)
+    z1 = Znd(1, dims)
 
-    I_s = ['I']
-    X_s = ['X']
-    Y_s = ['Y']
-    Z_s = ['Z']
+    xx = x1 + y1 + z1
 
-    X = SymplecticPauli(X_s)
-    Y = SymplecticPauli(Y_s)
-    Z = SymplecticPauli(Z_s)
-    I = SymplecticPauli(I_s)
+    print(xx)
 
-    CNOT1 = (I - Z) / 2. @ I + (I + Z) / 2 @ X
-    CNOT2 = CNOT(0, 1, 2)
+    # xz = x1 @ z1
+    # print(xz.x_exp)
+    # print(xz.z_exp)
+    # print(xz.dimensions)
 
-    print(CNOT1.pauli_string)
-    print(CNOT2.pauli_string)
-    print(CNOT1.weights())
-    print(CNOT2.weights())
-    print(CNOT1.phases())
-    print(CNOT2.phases())
+    # print(xz)
+
+    ps1_in = 'x1z0 x2z0 x1z0'
+    ps2_in = 'x1z1 x2z2 x0z2'
+    ps1 = PauliString(ps1_in, dimensions=[dims]*3)
+    ps2 = PauliString(ps2_in, dimensions=[dims]*3)
+    ps3 = PauliString([1, 2, 0], [1, 2, 2], dimensions=[dims]*3)
+
+    # print(ps1.x_exp)
+    # print(ps1.z_exp)
+    # print(ps1)
+    # print(ps2)
+    # print(ps3)
+
+    # Multiply Pauli strings
+
+    print('          ' + str(ps1 * ps2))
+    print('Should be x2z1 x1z2 x1z2')
+    print('          ' + str(ps1 * ps3))
+    print('Should be x2z1 x1z2 x1z2')
+    print('          ' + str(ps2 * ps3))
+    print('Should be x2z2 x1z1 x0z1')
+
+    # Tensor product Pauli strings
+
+    # print('          ' + str(ps1 @ ps2))
+    # print('Should be x1z0 x2z0 x1z0 x1z1 x2z2 x0z2' + '\n')
+    # print('          ' + str(ps1 @ ps3))
+    # print('Should be x1z0 x2z0 x1z0 x1z1 x2z2 x0z2' + '\n')
+    # print('          ' + str(ps2 @ ps3))
+    # print('Should be x1z1 x2z2 x0z2 x1z1 x2z2 x0z2' + '\n')
+
+    # Add Pauli strings
+
+    ps12 = ps1 + ps2
+    ps13 = ps1 + ps3
+    
+    # # Multiply Pauli sums
+
+    ps1213 = ps12 * ps13
+
+    # # Tensor product Pauli sums
+
+    # ps12_13 = ps12 @ ps13
+
+    # # Add Pauli sums
+
+    # ps12_13_1213 = ps12_13 + ps1213
+
+    # I_s = ['I']
+    # X_s = ['X']
+    # Y_s = ['Y']
+    # Z_s = ['Z']
+
+    # X = PauliSum(X_s)
+    # Y = PauliSum(Y_s)
+    # Z = PauliSum(Z_s)
+    # I = PauliSum(I_s)
+
+    # CNOT1 = (I - Z) / 2. @ I + (I + Z) / 2 @ X
+    # CNOT2 = CNOT(0, 1, 2)
+
+    # print(CNOT1)
