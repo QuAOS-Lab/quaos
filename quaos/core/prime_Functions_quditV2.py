@@ -5,20 +5,18 @@ import itertools
 
 # Third-party Libraries
 import numpy as np
-import timeit
 from numba import jit, prange
 from ipywidgets import IntProgress
 from tqdm import tqdm
-from IPython.display import clear_output, display, HTML
+from IPython.display import display
 
 # Local Imports
 from .prime_Functions_Andrew import (
-    int_to_bases, bases_to_int, string_to_pauli,
-    weighted_vertex_covering_maximal_cliques, ground_state,
-    commutation_graph, graph, pauli_product, pauli_to_string,
-    diagonalize, act, quditwise_commutation_graph, quditwise_inner_product,
-    pauli_to_matrix, pauli, Hamiltonian_Mean, scale_variances, circuit
+    int_to_bases, bases_to_int, weighted_vertex_covering_maximal_cliques, 
+    commutation_graph, graph, diagonalize, act, quditwise_commutation_graph, 
+    scale_variances, circuit
 )
+from .pauli import (pauli, pauli_to_matrix, pauli_to_string, string_to_pauli, pauli_product, quditwise_inner_product)
 
 np.set_printoptions(linewidth=200)
 
@@ -54,11 +52,11 @@ def read_luca_test_2(path: str, dims: list[int] | int = 2, spaces: bool = True):
 def random_pauli_hamiltonian(num_paulis, qudit_dims):
     """
     Generates a random Pauli Hamiltonian with the given number of Pauli operators.
-    
-    Parameters:
+
+    Args:
         num_paulis (int): Number of Pauli operators to generate.
         qudit_dims (list): List of dimensions for each qudit.
-    
+
     Returns:
         tuple: A set of random Pauli operators and corresponding coefficients.
     """
@@ -107,7 +105,7 @@ def pauli_hermitian(P0):
     """
     Calculate the Hermitian conjugate of a Pauli operator.
 
-    Parameters:
+    Args:
         P0 (Pauli): Pauli operator to be conjugated.
 
     Returns:
@@ -124,11 +122,11 @@ def sort_hamiltonian(P, cc):
     """
     Sorts the Hamiltonian's Pauli operators based on hermiticity, with hermitian ones first and then pairs of
     Paulis and their hermitian conjugate. !!! Also removes identity !!!
-    
-    Parameters:
+
+    Args:
         P (pauli): A set of Pauli operators.
         coefficients (list): Corresponding coefficients of the Pauli operators.
-    
+
     Returns:
         tuple: Sorted Pauli operators, coefficients, and the size of Pauli blocks.
     """
@@ -191,11 +189,11 @@ def sort_hamiltonian(P, cc):
 def xi(a, d):
     """
     Computes the a-th eigenvalue of a pauli with dimension d.
-    
-    Parameters:
+
+    Args:
         a (int): The integer to compute the eigenvalue for.
         d (int): The dimension of the pauli to use.
-    
+
     Returns:
         complex: The computed eigenvalue.
     """
@@ -207,7 +205,7 @@ def rand_state(d):
     """
     Generate a random quantum state vector for a system of dimension d^2.
 
-    Parameters:
+    Args:
         d (int): Dimension of the quantum system.
 
     Returns:
@@ -224,7 +222,7 @@ def truncated_exponential_sample(b, loc, scale):
     """
     Sample a random number from a truncated exponential distribution.
 
-    Parameters:
+    Args:
         b (float): Upper bound for the truncation.
         loc (float): Location parameter of the distribution.
         scale (float): Scale parameter of the distribution.
@@ -241,7 +239,7 @@ def get_p_matrix(d):
     """
     Generate a matrix A to simplify the calculation of probabilities p from the state vector psi.
 
-    Parameters:
+    Args:
         d (int): Dimension of the quantum system.
 
     Returns:
@@ -276,7 +274,7 @@ def get_psi(p):
             two_qudit_probabilities[i * d + j] = p[i] * p[d + j]
 
     psi = np.sqrt(two_qudit_probabilities) + 0 * 1j
-    return (psi)
+    return psi
 
 
 @jit(nopython=True)
@@ -284,7 +282,7 @@ def get_p(psi, A):
     """
     Calculate the probabilities p from the state vector psi using matrix A.
 
-    Parameters:
+    Args:
         psi (np.ndarray): The quantum state vector.
         A (np.ndarray): Matrix used to simplify the calculation of probabilities.
 
@@ -300,18 +298,18 @@ def mcmc_starting_point(d, c, A):
     """
     Find a suitable starting point for the Monte Carlo chain.
 
-    Parameters:
+    Args:
         d (int): Dimension of the quantum system.
         c (np.ndarray): Data sample.
         A (np.ndarray): Matrix for probability calculations.
-    
+
     Returns:
         tuple: Probability distribution and the corresponding quantum state vector psi.
     """
     p_try = np.zeros(len(c))
-    p_try[0:d] = (c[0:d] + 1) / np.sum(c[0:d] + 1)
-    p_try[d:2 * d] = (c[d:2 * d] + 1) / np.sum(c[d:2 * d] + 1)
-    p_try[2 * d:3 * d] = (c[2 * d:3 * d] + 1) / np.sum(c[2 * d:3 * d] + 1)
+    p_try[0: d] = (c[0: d] + 1) / np.sum(c[0: d] + 1)
+    p_try[d: 2 * d] = (c[d: 2 * d] + 1) / np.sum(c[d: 2 * d] + 1)
+    p_try[2 * d: 3 * d] = (c[2 * d: 3 * d] + 1) / np.sum(c[2 * d: 3 * d] + 1)
 
     psi = get_psi(p_try)
     p = get_p(psi, A)
@@ -320,13 +318,12 @@ def mcmc_starting_point(d, c, A):
 
 
 # MONTE-CARLO INTEGRATION
-
 @jit(nopython=True)
 def psi_sample(psi, alpha, d):
     """
     Sample a new quantum state for Monte Carlo integration.
 
-    Parameters:
+    Args:
         psi (np.ndarray): Current quantum state.
         alpha (float): Mixing parameter between the old and new state.
         d (int): Dimension of the quantum system.
@@ -345,7 +342,7 @@ def log_posterior_ratio(p1, p2, c):
     """
     Calculate the logarithm of the ratio of the posterior for two samples given data c.
 
-    Parameters:
+    Args:
         p1 (np.ndarray): Probabilities from the first sample.
         p2 (np.ndarray): Probabilities from the second sample.
         c (np.ndarray): Data set used in the probability comparison.
@@ -362,7 +359,7 @@ def mcmc_covariance_estimate(grid, d):
     """
     Estimate the covariance of the Paulis from the Monte Carlo grid.
 
-    Parameters:
+    Args:
         grid (np.ndarray): Monte Carlo sample grid.
         d (int): Dimension of the quantum system.
 
@@ -382,7 +379,7 @@ def geweke_test(grid):
     """
     Apply the Geweke criterion to check the convergence of the Monte Carlo chains.
 
-    Parameters:
+    Args:
         grid (np.ndarray): Monte Carlo sample grid.
 
     Returns:
@@ -409,7 +406,7 @@ def gelman_rubin_test(grid):
     """
     Apply the Gelman-Rubin criterion to check the convergence of the Monte Carlo chains.
 
-    Parameters:
+    Args:
         grid (np.ndarray): Monte Carlo sample grid.
 
     Returns:
@@ -452,7 +449,7 @@ def mcmc_integration(N, psi_list, p_list, alpha, d, c, A, N_max=10000):
     """
     Perform Monte Carlo integration.
 
-    Parameters:
+    Args:
         N (int): Starting Number of samples per chain.
         psi_list (list): List of psi quantum states.
         p_list (list): List of probability distributions.
@@ -491,10 +488,10 @@ def mcmc_integration(N, psi_list, p_list, alpha, d, c, A, N_max=10000):
 
 
 @jit(nopython=True)
-def get_alpha(p_list, psi_list, d, A, c, N_chain, Q_alpha_test=True, target_accept=0.25,
+def get_alpha(p_list, psi_list, d, A, c, N_chain, Q_alpha_test=True, target_accept=0.25, 
               N_accepts=30, b=10, run_max=1000):
     # initial guess for alpha
-    ns = np.concatenate((c[0:d], c[d:2 * d], c[2 * d:3 * d]))
+    ns = np.concatenate((c[0:d], c[d: 2 * d], c[2 * d: 3 * d]))
     alpha = 1 - 1 / np.min(ns[:3]) if np.min(ns) != 0 else 0
     alpha_list = np.array([alpha] * N_chain)
 
@@ -518,7 +515,7 @@ def get_alpha(p_list, psi_list, d, A, c, N_chain, Q_alpha_test=True, target_acce
                     alpha_list[ic] = truncated_exponential_sample(b, alpha_list[ic], scale)
                     continue
                 elif target_accept >= accept_avg and runs > 10:
-                    raise Exception('alpha not found in sufficient itterations')
+                    raise Exception('alpha not found in sufficient iterations')
                 else:
                     break
 
@@ -528,13 +525,12 @@ def get_alpha(p_list, psi_list, d, A, c, N_chain, Q_alpha_test=True, target_acce
 
 
 # COMPLETE BAYESIAN ESTIMATION WITH MONTE-CARLO INTEGRATION
-
 @jit(nopython=True)
 def bayes_covariance_estimation(xy, x, y, d, N_chain=8, N=100, N_max=100000, Q_alpha_test=True):
     """
     Estimate the covariance of two Paulis using Bayesian estimation and Monte Carlo integration.
 
-    Parameters:
+    Args:
         xy, x, y (np.ndarray): Data samples for the estimation.
         d (int): Dimension of the quantum system.
         N (int): Number of Monte Carlo samples.
@@ -576,7 +572,7 @@ def bayes_Var_estimate(xDict):
     """
     Estimate the Bayesian variance of the mean for a single Pauli.
 
-    Parameters:
+    Args:
         xDict (np.ndarray): Data samples for the estimation.
 
     Returns:
@@ -605,7 +601,7 @@ def variance_graph(P, cc, psi):
     """
     Generate a graph of variances and covariances for a set of Pauli observables in a Hamiltonian.
 
-    Parameters:
+    Args:
         P (PauliSet): Set of Pauli operators in the Hamiltonian.
         cc (list of float64): Coefficients of the Pauli operators in the Hamiltonian.
         psi (np.ndarray): Ground state vector.
@@ -640,7 +636,7 @@ def bayes_covariance_graph(X, cc, CG, p, size_list, d, N_chain=8, N=100, N_max=8
     """
     Estimate the Bayesian covariance matrix for a set of observables in a Hamiltonian.
 
-    Parameters:
+    Args:
         X (np.ndarray): Measurement outcomes matrix.
         cc (list of float64): Coefficients of the Pauli operators in the Hamiltonian.
         CG (np.ndarray): Graph adjacency matrix for commuting groups.
@@ -886,7 +882,7 @@ def bucket_filling_qudit(P, cc, psi, shots, part_func, pauli_block_sizes, mcmc_s
     """
     Simulate measurements on qudit observables using a bucket-filling algorithm.
 
-    Parameters:
+    Args:
         P (Pauli): Pauli operators.
         cc (list): Coefficients of Pauli operators.
         psi (np.ndarray): Ground state of the system.
@@ -908,7 +904,7 @@ def bucket_filling_qudit(P, cc, psi, shots, part_func, pauli_block_sizes, mcmc_s
     """
     if best_possible:
         vg = variance_graph(P, cc, psi)
-    p, q = P.paulis(), P.qudits()
+    p, _ = P.paulis(), P.qudits()
     d = int(P.lcm)
     X = np.zeros((p, p, d))
     X_list, S_list, xxx, xxx1 = [], [], [], []
@@ -1137,7 +1133,7 @@ def bfq_experiment(xxx, rr, shots, algorithm_variables):
     xxx = []
 
     # general parameters
-    p, q = P.paulis(), P.qudits()
+    p, _ = P.paulis(), P.qudits()
     d = int(P.lcm)
     Ones = [np.ones((i, i), dtype=int) for i in range(p + 1)]
     index_set = set(range(p))
@@ -1193,7 +1189,7 @@ def example_results(psi, xxx, algorithm_variables):
         P1, C, k_dict = D[str(aa)]
         psi_diag = C.unitary() @ psi
         pdf = np.abs(psi_diag * psi_diag.conj())
-        p1, q1, phases1, dims1 = P1.paulis(), P1.qudits(), P1.phases, P1.dims
+        _, _, _, dims1 = P1.paulis(), P1.qudits(), P1.phases, P1.dims
         a1 = np.random.choice(np.prod(dims1), p=pdf)
         bases_a1 = int_to_bases(a1, dims1)
         rr.append(bases_a1)
