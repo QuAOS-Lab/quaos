@@ -307,7 +307,7 @@ def H(P, aa):
     X, Z = Q.X, Q.Z
     for a in aa:
         for i in range(Q.paulis()):
-            Q.phases[i] += -1* X[i, a] * Z[i, a] * P.lcm // P.dims[a]
+            Q.phases[i] += -1 * X[i, a] * Z[i, a] * P.lcm // P.dims[a]
         X[:, a], Z[:, a] = -Z[:, a].copy(), X[:, a].copy()
     return pauli(X, Z, Q.dims, Q.phases)
 
@@ -1125,7 +1125,7 @@ def print_Ham_string(P, cc):
         print('', cc[i])
 
 
-def ground_state(P, cc):
+def ground_state(P):
     """Returns the ground state of a given Hamiltonian
 
     Args:
@@ -1135,9 +1135,10 @@ def ground_state(P, cc):
     Returns:
         numpy.array: eigenvector corresponding to lowest eigenvalue of Hamiltonian
     """
-    m = sum(pauli_to_matrix(P.a_pauli(i)) * cc[i] for i in range(P.paulis()))
+    m = P.matrix_form()  # sum(pauli_to_matrix(P.a_pauli(i)) * cc[i] for i in range(P.paulis()))
 
     m = m.toarray()
+    print(scipy.linalg.ishermitian(np.around(m, 3)))
     val, vec = np.linalg.eig(m)
     val = np.real(val)
     vec = np.transpose(vec)
