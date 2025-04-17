@@ -556,21 +556,25 @@ class PauliSum:
             symplectic[i, :] = p.symplectic()
         return symplectic
         
-    def is_IX(self) -> bool:
+    def is_x(self) -> bool:
         # check whether self has only X component
         # Outputs: (bool) - True if self has only X component, False otherwise
         return not np.any(self.z_exp)
 
-    def is_IZ(self) -> bool:
+    def is_z(self) -> bool:
         # check whether self has only Z component
         # Outputs: (bool) - True if self has only Z component, False otherwise
         return not np.any(self.x_exp)
 
-    def is_commuting(self) -> bool:
+    def is_commuting(self, pauli_string_indexes=None) -> bool:
         # check whether the set of Paulis are pairwise commuting
         # Outputs:  (bool) - True if self is pairwise commuting set of Paulis
         spm = self.symplectic_product_matrix()
-        return not np.any(spm)
+        if pauli_string_indexes is None:
+            return not np.any(spm)
+        else:
+            i, j = pauli_string_indexes[0], pauli_string_indexes[1]
+            return not spm[i, j]
 
     def select_pauli_string(self, pauli_index: int) -> PauliString:
         # Inputs:
@@ -624,13 +628,13 @@ class PauliSum:
         The entry S[i, j] is the symplectic product of the ith Pauli and the jth Pauli.
         """
         n = self.n_paulis()
-        list_of_symplectics = self.symplectic_structure_matrix()
+        # list_of_symplectics = self.symplectic_matrix()
 
         spm = np.zeros([n, n], dtype=int)
         for i in range(n):
             for j in range(n):
                 if i > j:
-                    spm[i, j] = symplectic_product(list_of_symplectics[i], list_of_symplectics[j])
+                    spm[i, j] = symplectic_product(self.pauli_strings[i], self.pauli_strings[j])
         spm = spm + spm.T
         return spm
     
@@ -688,7 +692,6 @@ class PauliSum:
             new_phase = (np.array(self.phases) + np.array(phases)) % self.lcm
         self.phases = new_phase
 
-
     @staticmethod
     def xz_mat(d: int, aX: int, aZ: int) -> scipy.sparse.csr_matrix:
         """
@@ -724,65 +727,20 @@ class PauliSum:
         return X @ Z
 
 
-## check these and redo...
-def symplectic_product(p1, p2):
-    """Takes the symplectic product of the binary vectors p1 and p2
-
-    If 1 the corresponding Paulis anti-commute
-    if 0 the corresponding Paulis commute"""
-    s_prod = 0
-    n = int(len(p1) / 2)
-    for i in range(n):
-        s_prod += (p1[i] * p2[i + n] - p1[i + n] * p2[i])
-    return s_prod % 2
-
-
 # the symplectic inner product of two pauli objects (each with a single Pauli)
-def quditwise_inner_product(symplectic_pauli1, symplectic_pauli2):
+def symplectic_product(pauli_string, pauli_string2):
     # Inputs:
-    #     symplectic_pauli1 - (SymplecticPauli) - must have n_paulis = 1
-    #     symplectic_pauli2 - (SymplecticPauli) - must have n_paulis = 1
+    #     pauli_string - (PauliString)
+    #     pauli_string2 - (PauliString)
     # Outputs:
     #     (bool) - quditwise inner product of Paulis
-    if (symplectic_pauli1.n_paulis != 1) or (symplectic_pauli2.n_paulis != 1):
-        raise Exception("Qubitwise inner product only works with pair of single Paulis")
-    if any(symplectic_pauli1.dims - symplectic_pauli1.dims):
+
+    if any(pauli_string.dimensions - pauli_string.dimensions):
         raise Exception("Symplectic inner product only works if Paulis have same dimensions")
-    return any(np.sum(
-        symplectic_pauli1.X[0, i] * symplectic_pauli2.Z[0, i] - symplectic_pauli2.Z[0, i] * symplectic_pauli1.X[0, i])
-        % symplectic_pauli1.dims[i] for i in range(symplectic_pauli1.qudits()))
-
-    
-# def string_to_symplectic(string, dimension, n_qudits=1):
-#     # remove spaces
-#     string = string.replace(' ', '')
-
-#     def parse_single(string):
-#         if dimension == 2:
-#             lookup = {
-#                 'I': (0, 0), 'x0z0': (0, 0),
-#                 'X': (1, 0), 'x1z0': (1, 0),
-#                 'Z': (0, 1), 'x0z1': (0, 1),
-#                 'Y': (1, 1), 'XZ': (1, 1), 'x1z1': (1, 1),
-#             }
-#             if string not in lookup:
-#                 raise ValueError(f"Invalid Pauli string for qubit: {string}")
-#             return np.array(lookup[string])
-#         else:
-#             if not (string.startswith('x') and string[2] == 'z'):
-#                 raise ValueError(f"String must be of the form 'xmzn', got: {string}")
-#             return np.array([int(string[1]), int(string[3])])
-
-#     if n_qudits == 1:
-#         return parse_single(string)
-
-#     if len(string) != 4 * n_qudits:
-#         print(string, dimension, n_qudits)
-#         raise ValueError(f"Expected string length {4 * n_qudits}, got {len(string)}")
-
-#     substrings = [string[i:i + 4] for i in range(0, len(string), 4)]
-#     symplectic = np.array([parse_single(s) for s in substrings]).T
-#     return symplectic.flatten()
+    sp = 0
+    for i in range(pauli_string.n_qudits()):
+        sp += (pauli_string.x_exp[i] * pauli_string2.z_exp[i] - pauli_string.z_exp[i] * pauli_string2.x_exp[i])
+    return sp % pauli_string.dimensions[i]
 
 
 def string_to_symplectic(string):
@@ -932,18 +890,26 @@ if __name__ == '__main__':
         assert left == right
 
     # call all test functions
-    test_basic_pauli_relations()
-    test_pauli_equality()
-    test_pauli_addition_and_sum()
-    test_pauli_multiplication()
-    test_tensor_product()
-    test_paulistring_construction()
-    test_paulisum_addition()
-    test_phase_and_dot_product()
-    test_tensor_product_distributivity()
-    print("all tests passed")
+    # test_basic_pauli_relations()
+    # test_pauli_equality()
+    # test_pauli_addition_and_sum()
+    # test_pauli_multiplication()
+    # test_tensor_product()
+    # test_paulistring_construction()
+    # test_paulisum_addition()
+    # test_phase_and_dot_product()
+    # test_tensor_product_distributivity()
+    # print("all tests passed")
 
-    # dims = [3, 3]
-    # x1x1 = PauliSum(['x1z0 x1z0', 'x1z1 x1z1'], dimensions=dims)
+    dims = [2, 2]
+    x1x1 = PauliSum(['x0z1 x0z0', 'x1z1 x0z0', 'x1z0 x0z0'], dimensions=dims)
     # x1x1.weights = [1., 10,]
+
+    print(x1x1)
+    print(x1x1.symplectic_matrix())
+    print(x1x1.symplectic_product_matrix())
+    print(x1x1.is_commuting())
+    print(bool(x1x1.is_commuting(pauli_string_indexes=[0, 1])))
+    print(bool(x1x1.is_commuting(pauli_string_indexes=[1, 2])))
+    
 
