@@ -29,7 +29,10 @@ class Pauli:
                 raise Warning('If input string is provided, z_exp is unnecessary')
             z_exp = int(x_exp[3])
             x_exp = int(x_exp[1])
-            
+        else:
+            if (type(x_exp) is not int and type(x_exp) is not np.int64) or (type(z_exp) is not int and type(z_exp) is not np.int64):
+                raise TypeError("x_exp and z_exp must be integers or x_exp must be a string of format 'xrzs'")
+
         self.x_exp = x_exp
         self.z_exp = z_exp
         self.dimension = dimension
@@ -99,7 +102,7 @@ class Pauli:
         return PauliString(x_exp=[self.x_exp], z_exp=[self.z_exp], dimensions=[self.dimension])
     
     def to_pauli_sum(self):
-        return PauliSum([self.to_pauli_string()])
+        return PauliSum([self.to_pauli_string()], standardise=False)
     
     def __gt__(self, other_pauli):
 
@@ -143,12 +146,6 @@ class Id(Pauli):
 class PauliString:
  
     def __init__(self, x_exp, z_exp=None, dimensions=None):
-
-        # NOTE: There is an important generalisation to do for when dimensions are not equal
-        #       this I assume is where the lcm is used
-
-        # NOTE: Either we also define phases here or we need an extra rule in the PauliSum class to do multiplication.
-        #       It would be neater here as then we can do multiplication of two PauliStrings and get the phase right
 
         if isinstance(x_exp, str):
             if z_exp is not None:
@@ -202,7 +199,6 @@ class PauliString:
         return PauliString(new_x_exp, new_z_exp, new_dims)
 
     def __mul__(self, A):
-        # returns SymplecticPauli * SymplecticPauli
         if isinstance(A, PauliString):
             if np.any(self.dimensions != A.dimensions):
                 raise Exception("To multiply two PauliStrings, their dimensions"
@@ -225,7 +221,7 @@ class PauliString:
         return PauliSum([self], weights=[A])
 
     def _to_pauli_sum(self):
-        return PauliSum([self], weights=[1], phases=[0])
+        return PauliSum([self], weights=[1], phases=[0], dimensions=self.dimensions, standardise=False)
 
     def __add__(self, A):
         if np.all(self.dimensions != A.dimensions):
@@ -356,15 +352,7 @@ class PauliSum:
             If the length of pauli_list and weights do not match.
         """
         pauli_list, dimensions, phases, weights = self._sanity_checks(pauli_list, weights, phases, dimensions)
-        # sort
 
-        if standardise:
-            print('SORTING')  # Keeping this here for now for debug purposes as it can cause issues.
-            weights = [x for _, x in sorted(zip(pauli_list, np.abs(weights)))]
-            phases = [x for _, x in sorted(zip(pauli_list, phases))]
-            pauli_list = sorted(pauli_list)
-        
-        # define attributes
         self.pauli_strings = pauli_list
         self.weights = np.asarray(weights, dtype=np.complex128)
         self.phases = np.asarray(phases, dtype=int)
@@ -377,7 +365,11 @@ class PauliSum:
         self.x_exp = x_exp
         self.z_exp = z_exp
         self.lcm = np.lcm.reduce(dimensions)
-        # self.combine_equivalent_paulis()
+
+        if standardise:
+            print('SORTING')  # Keeping this here for now for debug purposes as it can cause issues.
+            self.standardise()
+            
 
     @staticmethod
     def _sanity_checks(pauli_list, weights, phases, dimensions):
@@ -406,30 +398,29 @@ class PauliSum:
                 raise SyntaxError("Input of strings into PauliSum requires explicit dimensions input")
 
         return pauli_list, dimensions, phases, weights
-
+    
     def n_paulis(self):
         return len(self.pauli_strings)
     
     def n_qudits(self):
         return len(self.dimensions)
 
-    def _standardise_paulis(self):
+    def standardise(self):
         """
         Standardises the PauliSum object by combining equivalent Paulis and
         adding phase factors to the weights then resetting the phases.
         """
-        # sort
-        self.weights = [x for _, x in sorted(zip(self.pauli_list, self.weights))]
-        self.phases = [x for _, x in sorted(zip(self.pauli_list, self.phases))]
-        self.pauli_list = sorted(self.pauli_list)
         # combine equivalent
-        self.combine_equivalent_paulis()
+        # self.combine_equivalent_paulis()
+        # sort
+        self.weights = [x for _, x in sorted(zip(self.pauli_strings, self.weights))]
+        self.phases = [x for _, x in sorted(zip(self.pauli_strings, self.phases))]
+        self.pauli_strings = sorted(self.pauli_strings)
         # add phase factors to weights then reset phases
-        new_weights = np.zeros(self.n_paulis())
+        new_weights = np.zeros(self.n_paulis(), dtype=np.complex128)
         for i in range(self.n_paulis()):
             phase = self.phases[i]
-            qudit_dim = self.dimensions[i]
-            omega = np.exp(2 * np.pi * 1j * phase / qudit_dim)
+            omega = np.exp(2 * np.pi * 1j * phase / self.lcm)
             new_weights[i] = self.weights[i] * omega
         self.phases = np.zeros(self.n_paulis())
         self.weights = new_weights
@@ -440,13 +431,13 @@ class PauliSum:
         new_pauli_list = self.pauli_strings + A.pauli_strings
         new_weights = np.concatenate([self.weights, A.weights])
         new_phases = np.concatenate([self.phases, A.phases])
-        return PauliSum(new_pauli_list, new_weights, new_phases)
+        return PauliSum(new_pauli_list, new_weights, new_phases, self.dimensions, False)
 
     def __sub__(self, A):
         new_pauli_list = self.pauli_strings + A.pauli_strings
         new_weights = np.concatenate([self.weights, -A.weights])
         new_phases = np.concatenate([self.phases, A.phases])
-        return PauliSum(new_pauli_list, new_weights, new_phases)
+        return PauliSum(new_pauli_list, new_weights, new_phases, self.dimensions, False)
     
     def __matmul__(self, A):
         """
@@ -464,7 +455,7 @@ class PauliSum:
                 new_pauli_list.append(self.pauli_strings[i] @ A.pauli_strings[j])
                 new_weights.append(self.weights[i] * A.weights[j])
                 new_phases.append(((self.phases[i] + A.phases[j]) % new_lcm))
-        output_pauli = PauliSum(new_pauli_list, new_weights, new_phases)
+        output_pauli = PauliSum(new_pauli_list, new_weights, new_phases, self.dimensions, False)
         return output_pauli
 
     def __mul__(self, A):
@@ -488,7 +479,7 @@ class PauliSum:
                 new_weights.append(self.weights[i] * A.weights[j])
                 acquired_phase = self.pauli_strings[i].acquired_phase(A.pauli_strings[j])
                 new_phases.append((self.phases[i] + A.phases[j] + acquired_phase) % self.lcm)
-        output_pauli = PauliSum(new_p_sum, new_weights, new_phases, self.dimensions)
+        output_pauli = PauliSum(new_p_sum, new_weights, new_phases, self.dimensions, False)
 
         return output_pauli
     
@@ -576,7 +567,7 @@ class PauliSum:
             i, j = pauli_string_indexes[0], pauli_string_indexes[1]
             return not spm[i, j]
 
-    def select_pauli_string(self, pauli_index: int) -> PauliString:
+    def select_pauli_string(self, pauli_index) -> PauliString:
         # Inputs:
         #     pauli_index - (int) - index of Pauli to be returned
         # Outputs:
@@ -591,15 +582,16 @@ class PauliSum:
 
         new_weights = np.delete(self.weights, pauli_indices)
         new_phases = np.delete(self.phases, pauli_indices)
-        new_x_exp = np.delete(self.x_exp, pauli_indices)
-        new_z_exp = np.delete(self.z_exp, pauli_indices)
+        new_x_exp = np.delete(self.x_exp, pauli_indices, axis=0)
+        new_z_exp = np.delete(self.z_exp, pauli_indices, axis=0)
 
+        new_pauli_strings = np.delete(self.pauli_strings, pauli_indices).tolist()
+        self.pauli_strings = new_pauli_strings
         self.weights = new_weights
         self.phases = new_phases
         self.x_exp = new_x_exp
         self.z_exp = new_z_exp
 
-        self.pauli_strings = np.delete(self.pauli_strings, pauli_indices)
 
     def delete_qudits_(self, qudit_indices):
         # Inputs:
@@ -902,7 +894,7 @@ if __name__ == '__main__':
     # print("all tests passed")
 
     dims = [2, 2]
-    x1x1 = PauliSum(['x0z1 x0z0', 'x1z1 x0z0', 'x1z0 x0z0'], dimensions=dims)
+    x1x1 = PauliSum(['x0z1 x0z0', 'x1z0 x0z0', 'x1z0 x0z0'], dimensions=dims)
     # x1x1.weights = [1., 10,]
 
     print(x1x1)

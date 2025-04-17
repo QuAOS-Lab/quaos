@@ -246,7 +246,7 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
 
 def symplectic_pauli_reduction(hamiltonian: PauliSum) -> PauliSum:
     C, pivots = symplectic_reduction_qudit(hamiltonian)
-    return C, pivots
+    return C
 
 
 if __name__ == "__main__":
@@ -260,7 +260,7 @@ if __name__ == "__main__":
         ham = random_pauli_hamiltonian(n_paulis, [dimension] * n_qudits, mode='random')
         # print(ham, '/n')
 
-        circuit, pivots = symplectic_pauli_reduction(ham)
+        circuit = symplectic_pauli_reduction(ham)
         reduced_hamiltonian = circuit.act(ham)
         # print(circuit)
         print(reduced_hamiltonian)
