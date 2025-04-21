@@ -1,88 +1,12 @@
-import sys
 import numpy as np
 from qiskit import QuantumCircuit
-sys.path.append("./")
-
-import time
-from quaos.symplectic import PauliSum, PauliString, Pauli, Xnd, Ynd, Znd, Id, string_to_symplectic, symplectic_to_string
-
-
-# class Gate(PauliSum):
-#     def __init__(self, name, index, generalised_pauli_list, weights=None, phases=None, dims=None):
-#         self.name = name
-#         self.index = index
-#         super().__init__(generalised_pauli_list, weights, phases, dims)
-
-#     def act(self, P):
-#         return self * P * self
+from symplectic import (
+    PauliSum, PauliString, Pauli,
+    #  Xnd, Ynd, Znd, Id, symplectic_to_string,
+    string_to_symplectic,
+)
 
 
-# class Hadamard(Gate):
-#     def __init__(self, n_qudits, index, dims):
-#         str1 = ''
-#         str2 = ''
-#         for i in range(n_qudits):
-#             if i == index:
-#                 str1 += 'X'
-#                 str2 += 'Z'
-#             else:
-#                 str1 += 'I'
-#                 str2 += 'I'
-#         pauli_string = [str1, str2]
-#         weights = 1. / np.sqrt(2) * np.ones(2)
-#         super().__init__(name='H', generalised_pauli_list=pauli_string, weights=weights, phases=None, dims=dims)
-
-
-# class CNOT(Gate):
-#     """
-#     |0><0|_control I_all + |1><1|_control X_target I_rest
-
-#     Uses:
-#         |0><0| = (I - Z) / 2
-#         |1><1| = (I + Z) / 2
-#     """
-
-#     def __init__(self, control, target, n_qubits):
-#         dims = [2] * n_qubits
-#         # strings depend on state of the control - each state has two contributions I +- Z
-#         control_0_str1 = ''
-#         control_0_str2 = ''
-#         control_1_str1 = ''
-#         control_1_str2 = ''
-#         for i in range(n_qubits):
-#             if i == control:
-#                 control_0_str1 += 'x0z0'
-#                 control_0_str2 += 'x0z1'
-#                 control_1_str1 += 'x0z0'
-#                 control_1_str2 += 'x0z1'
-
-#             elif i == target:
-#                 control_0_str1 += 'x0z0'
-#                 control_0_str2 += 'x0z0'
-#                 control_1_str1 += 'x1z0'
-#                 control_1_str2 += 'x1z0'
-
-#             else:
-#                 control_0_str1 += 'x0z0'
-#                 control_0_str2 += 'x0z0'
-#                 control_1_str1 += 'x0z0'
-#                 control_1_str2 += 'x0z0'
-
-#         w01 = 1 / 2
-#         w02 = -1 / 2
-#         w11 = 1 / 2
-#         w12 = 1 / 2
-#         weights = [w01, w02, w11, w12]
-#         pauli_string = [control_0_str1, control_0_str2, control_1_str1, control_1_str2]
-#         super().__init__(name='CNOT', index=(control, target), generalised_pauli_list=pauli_string,
-#                          weights=weights, phases=None, dims=dims)
-
-
-# class SUM(Gate):
-#     def __init__(self, index, generalised_pauli_list, weights=None, phases=None, dims=None):
-#         super().__init__('SUM', index, generalised_pauli_list, weights, phases, dims)
-
-        
 class GateOperation:
     """
     Mapping can be written as set of rules,
@@ -93,7 +17,7 @@ class GateOperation:
                 x0z1*x0z0 -> x0z1*x0z0  # doesn't need specifying
                 x0z0*x0z1 -> -x0z1*x0z1 # note phase important here
 
-    inputs are: 
+    inputs are:
 
     qudit_indices = (3, 1)
     mapping = ['x1z0*x0z0 -> x1z0*x1z0', 'x0z0*x0z1 -> -x0z1*x0z1']  # (control*target -> control*target)
@@ -108,15 +32,13 @@ class GateOperation:
     Should act on a PauliSum to return another PauliSum
 
     """
-    def __init__(self, name, qudit_indices, mapping, dimension):
-        
+    def __init__(self, name: str, qudit_indices: list[int], mapping: list[str], dimension: list[int]):
         self.dimension = dimension
         self.name = name
         self.qudit_indices = qudit_indices  # number of total qudits including those not acted upon - could remove the need for this entirely...
         self.map_from, self.map_to, self.acquired_phase = self._interpret_mapping(mapping)
     
-    def _interpret_mapping(self, map_string):
-
+    def _interpret_mapping(self, map_string: list[str]) -> tuple[np.ndarray, np.ndarray, list[int]]:
         map_from, map_to = zip(*[map_string[i].split('->') for i in range(len(map_string))])
 
         n_maps = len(map_from)
@@ -152,11 +74,11 @@ class GateOperation:
         #             symplectic_looked_for.append(mapping)
         #             symplectic_mapped_to.append(mapping)
 
-        ### remove once debugged
+        # ## remove once debugged
         # assert len(symplectic_looked_for) == self.dimension ** (self.n_qudits), (len(symplectic_looked_for),
         #                                                                              self.dimension ** (self.n_qudits))
         # assert len(symplectic_mapped_to) == self.dimension ** (self.n_qudits)
-        ###
+        # ##
 
         symplectic_looked_for = np.array(symplectic_looked_for)
         symplectic_mapped_to = np.array(symplectic_mapped_to)
@@ -226,7 +148,7 @@ class GateOperation:
     #     S = (mapped_to @ inv_looked_for) % self.dimension
     #     return S
 
-    def _act_on_pauli_string(self, P, return_phase=False):
+    def _act_on_pauli_string(self, P: PauliString) -> tuple[PauliString, float]:
         # Extract symplectic of PauliString
         # Extract the symplectic of the relevant qudit numbers in self.qudit_indices
         # Check if these correspond to any of the self.symplectics_looked_for
@@ -250,22 +172,18 @@ class GateOperation:
                 break
 
         P = P._replace_symplectic(local_symplectic, self.qudit_indices)
-        if return_phase:
-            return P, acquired_phase
-        else:
-            return P
+        return P, acquired_phase
 
-    def _act_on_pauli_sum(self, P):
+    def _act_on_pauli_sum(self, P: PauliSum) -> PauliSum:
         if np.all(self.acquired_phase == 0):
-
             # In this case each output of _act_on_pauli_string is a PauliString
-            P = PauliSum([self._act_on_pauli_string(p) for p in P.pauli_strings], P.weights, P.phases, P.dims, False)
+            P = PauliSum([self._act_on_pauli_string(p)[0] for p in P.pauli_strings], P.weights, P.phases, P.dimensions, False)
         else:
             # in this case at least one is a PauliSum
             pauli_list = []
             acquired_phase = []
             for p in P.pauli_strings:
-                new_pauli_string, additional_phase = self._act_on_pauli_string(p, return_phase=True)
+                new_pauli_string, additional_phase = self._act_on_pauli_string(p)
                 acquired_phase.append(additional_phase)
                 pauli_list.append(new_pauli_string)
             weights = P.weights
@@ -274,48 +192,53 @@ class GateOperation:
         # P.combine_equivalent_paulis()
         return P
 
-    def act(self, P):
+    def act(self, P: Pauli | PauliString | PauliSum) -> PauliString | PauliSum:
         if isinstance(P, Pauli):
             P = P.to_pauli_string()
+
         if isinstance(P, PauliString):
-            return self._act_on_pauli_string(P)
+            return self._act_on_pauli_string(P)[0]
         elif isinstance(P, PauliSum):
             return self._act_on_pauli_sum(P)
         else:
             raise ValueError(f"TwoQuditOperation cannot act on type {type(P)}")
-        
-    def __mul__(self, gate):
-        circuit = Circuit([self + gate])
+    
+    def __mul__(self, gate: 'GateOperation') -> 'Circuit':
+        # TODO: check if the two gates are compatible, set dimensions accordingly
+        # circuit = Circuit([self + gate])  # TODO: add support for gate summation
+        circuit = Circuit(self.dimension + gate.dimension, [self, gate])  # TODO: check, probably not what it was supposed to be
         return circuit
     
 
 class CNOT(GateOperation):
-    def __init__(self, control, target, n_qudits):
+    def __init__(self, control: int, target: int, n_qudits: int):
         CNOT_operations = ['x1z0 x0z0 -> x1z0 x1z0', 'x0z0 x0z1 -> x0z1 x0z1']
-        super().__init__("CNOT", [control, target], CNOT_operations, n_qudits=n_qudits, dimension=[2, 2])
+        super().__init__("CNOT", [control, target], CNOT_operations, dimension=[2, 2])
+        # TODO: add support for n_qudits parameter or remove it entirely
+        # super().__init__("CNOT", [control, target], CNOT_operations, n_qudits=n_qudits, dimension=[2, 2])
     
 
 class Hadamard(GateOperation):
-    def __init__(self, index, dimension):
+    def __init__(self, index: int, dimension: int):
         Hadamard_operations = self.hadamard_gate_operations(dimension)
         super().__init__("H", [index], Hadamard_operations, dimension=[dimension])
 
     @staticmethod
-    def hadamard_gate_operations(dimension):
+    def hadamard_gate_operations(dimension: int) -> list[str]:
         operations = []
         for r in range(dimension):
             for s in range(dimension):
                 operations.append(f"x{r}z{s} -> x{-s % dimension}z{r}p{r * s}")
         return operations
-    
+
 
 class PHASE(GateOperation):
-    def __init__(self, index, dimension):
+    def __init__(self, index: int, dimension: int):
         SGate_operations = self.s_gate_operations(dimension)  # ['x1z0 -> x1z1', 'x0z1 -> x1z0']
-        super().__init__("S", [index], SGate_operations, dimension=dimension)
+        super().__init__("S", [index], SGate_operations, dimension=[dimension])
 
     @staticmethod
-    def s_gate_operations(dimension):
+    def s_gate_operations(dimension: int) -> list[str]:
         operations = []
         for r in range(dimension):
             for s in range(dimension):
@@ -329,7 +252,7 @@ class SUM(GateOperation):
         super().__init__("SUM", [control, target], SGate_operations, dimension=dimension)
    
     @staticmethod
-    def sum_gate_operations(dimension):
+    def sum_gate_operations(dimension: int) -> list[str]:
         operations = []
         for r1 in range(dimension):
             for s1 in range(dimension):
@@ -345,7 +268,7 @@ class SUM(GateOperation):
 
 
 class Circuit:
-    def __init__(self, dimensions, gates=None):
+    def __init__(self, dimensions: list[int], gates: list[GateOperation] | None = None):
         """
         Initialize the Circuit with gates, indexes, and targets.
 
@@ -367,7 +290,7 @@ class Circuit:
         self.gates = gates
         self.indexes = [gate.qudit_indices for gate in gates]  # indexes accessible at the Circuit level
 
-    def add_gate(self, gate):
+    def add_gate(self, gate: GateOperation | list[GateOperation]):
         """
         Appends a gate to qudit index with specified target (if relevant)
 
@@ -381,25 +304,25 @@ class Circuit:
             self.gates.append(gate)
             self.indexes.append(gate.qudit_indices)
 
-    def remove_gate(self, index):
+    def remove_gate(self, index: int):
         """
         Removes a gate from the circuit at the specified index
         """
         self.gates.pop(index)
         self.indexes.pop(index)
 
-    def __str__(self):
+    def __str__(self) -> str:
         str_out = ''
         for gate in self.gates:
             str_out += gate.name + ' ' + str(gate.qudit_indices) + '\n'
         return str_out
 
-    def act(self, pauli):
+    def act(self, pauli: Pauli | PauliString | PauliSum) -> PauliString | PauliSum | Pauli:
         for gate in self.gates:
             pauli = gate.act(pauli)
         return pauli
     
-    def show(self):
+    def show(self) -> QuantumCircuit:
         circuit = QuantumCircuit(len(self.dimensions))
         dict = {'X': circuit.x, 'H': circuit.h, 'S': circuit.s, 'SUM': circuit.cx, 'CNOT': circuit.cx}
 
@@ -415,7 +338,12 @@ class Circuit:
 
 
 if __name__ == "__main__":
-    from quaos.hamiltonian import cancel_X, random_pauli_hamiltonian
+    import sys
+    from pathlib import Path
+    root_path = Path(__file__).parent.parent
+    print(root_path)
+    sys.path.append(str(root_path))
+    from hamiltonian import random_pauli_hamiltonian
     import random
     random.seed(27)
 
@@ -453,7 +381,7 @@ if __name__ == "__main__":
     # psum1 = ps1 + 0.5 * ps2 + 1j * ps3 - 0.5j * ps4
     # print(psum1, '\n -> \n', CNOT3.act(psum1))
 
-    # Hg = Hadamard(0, 2)
+    Hg = Hadamard(0, 2)
     # print(ps1, '->', H.act(ps1))
     # print(ps2, '->', H.act(ps2))
     # print(ps3, '->', H.act(ps3))
@@ -469,3 +397,79 @@ if __name__ == "__main__":
     # ps2, c = cancel_X(ps, 0, 5, c, 5)
 
     # print(ps2)
+
+
+# TODO: decide what to do with these
+# class Gate(PauliSum):
+#     def __init__(self, name, index, generalised_pauli_list, weights=None, phases=None, dims=None):
+#         self.name = name
+#         self.index = index
+#         super().__init__(generalised_pauli_list, weights, phases, dims)
+
+#     def act(self, P):
+#         return self * P * self
+
+# class Hadamard(Gate):
+#     def __init__(self, n_qudits, index, dims):
+#         str1 = ''
+#         str2 = ''
+#         for i in range(n_qudits):
+#             if i == index:
+#                 str1 += 'X'
+#                 str2 += 'Z'
+#             else:
+#                 str1 += 'I'
+#                 str2 += 'I'
+#         pauli_string = [str1, str2]
+#         weights = 1. / np.sqrt(2) * np.ones(2)
+#         super().__init__(name='H', generalised_pauli_list=pauli_string, weights=weights, phases=None, dims=dims)
+
+
+# class CNOT(Gate):
+#     """
+#     |0><0|_control I_all + |1><1|_control X_target I_rest
+
+#     Uses:
+#         |0><0| = (I - Z) / 2
+#         |1><1| = (I + Z) / 2
+#     """
+
+#     def __init__(self, control, target, n_qubits):
+#         dims = [2] * n_qubits
+#         # strings depend on state of the control - each state has two contributions I +- Z
+#         control_0_str1 = ''
+#         control_0_str2 = ''
+#         control_1_str1 = ''
+#         control_1_str2 = ''
+#         for i in range(n_qubits):
+#             if i == control:
+#                 control_0_str1 += 'x0z0'
+#                 control_0_str2 += 'x0z1'
+#                 control_1_str1 += 'x0z0'
+#                 control_1_str2 += 'x0z1'
+
+#             elif i == target:
+#                 control_0_str1 += 'x0z0'
+#                 control_0_str2 += 'x0z0'
+#                 control_1_str1 += 'x1z0'
+#                 control_1_str2 += 'x1z0'
+
+#             else:
+#                 control_0_str1 += 'x0z0'
+#                 control_0_str2 += 'x0z0'
+#                 control_1_str1 += 'x0z0'
+#                 control_1_str2 += 'x0z0'
+
+#         w01 = 1 / 2
+#         w02 = -1 / 2
+#         w11 = 1 / 2
+#         w12 = 1 / 2
+#         weights = [w01, w02, w11, w12]
+#         pauli_string = [control_0_str1, control_0_str2, control_1_str1, control_1_str2]
+#         super().__init__(name='CNOT', index=(control, target), generalised_pauli_list=pauli_string,
+#                          weights=weights, phases=None, dims=dims)
+
+
+# class SUM(Gate):
+#     def __init__(self, index, generalised_pauli_list, weights=None, phases=None, dims=None):
+#         super().__init__('SUM', index, generalised_pauli_list, weights, phases, dims)

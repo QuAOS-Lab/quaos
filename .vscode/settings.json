@@ -28,6 +28,7 @@
     "--config=${workspaceFolder}/configs/setup.cfg",
     "--ignore=W293, E501"
 ],
+"python.analysis.typeCheckingMode": "basic",
 "python.testing.pytestArgs": [
     "tests"
 ],
