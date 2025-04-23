@@ -122,6 +122,7 @@ class Pauli:
         else:
             return False
 
+
 class Xnd(Pauli):
     def __init__(self, x_exp, dimension):
         super().__init__(x_exp, 0, dimension)
@@ -319,10 +320,20 @@ class PauliString:
             x_exp[index] = x_exp_replace[i]
             z_exp[index] = z_exp_replace[i]
 
-        return PauliString(x_exp, z_exp, self.dimensions)
+        return PauliString(x_exp=x_exp, z_exp=z_exp, dimensions=self.dimensions)
     
-    def delete_qudits(self, qudit_indices):
-        return self._replace_symplectic(np.delete(self.symplectic(), qudit_indices), qudit_indices)
+    def delete_qudits(self, qudit_indices, return_new=True):  # not sure if here it is best to return a new object or not
+        x_exp = np.delete(self.x_exp, qudit_indices)
+        z_exp = np.delete(self.z_exp, qudit_indices)
+        dimensions = np.delete(self.dimensions, qudit_indices)
+        if return_new:
+            return PauliString(x_exp=x_exp, z_exp=z_exp, dimensions=dimensions)
+        else:
+            self.x_exp = x_exp
+            self.z_exp = z_exp
+            self.dimensions = dimensions
+            self._sanity_check()
+            return self
 
 
 class PauliSum:
@@ -357,8 +368,8 @@ class PauliSum:
         self.weights = np.asarray(weights, dtype=np.complex128)
         self.phases = np.asarray(phases, dtype=int)
         self.dimensions = dimensions
-        x_exp = np.zeros((len(self.pauli_strings), len(dimensions)))  # ensures we can always index [pauli #, qudit #]
-        z_exp = np.zeros((len(self.pauli_strings), len(dimensions)))  # ensures we can always index [pauli #, qudit #]
+        x_exp = np.zeros((len(self.pauli_strings), len(dimensions)), dtype=int)  # ensures we can always index [pauli #, qudit #]
+        z_exp = np.zeros((len(self.pauli_strings), len(dimensions)), dtype=int)  # ensures we can always index [pauli #, qudit #]
         for i, p in enumerate(self.pauli_strings):
             x_exp[i, :] = p.x_exp
             z_exp[i, :] = p.z_exp
@@ -370,16 +381,15 @@ class PauliSum:
             print('SORTING')  # Keeping this here for now for debug purposes as it can cause issues.
             self.standardise()
             
-
     @staticmethod
     def _sanity_checks(pauli_list, weights, phases, dimensions):
         if weights is None:
             weights = np.ones(len(pauli_list))
         if phases is None:
-            phases = np.zeros(len(pauli_list))
+            phases = np.zeros(len(pauli_list), dtype=int)
         if len(pauli_list) != len(weights):
             raise ValueError(f"Length of Pauli list ({len(pauli_list)}) and weights ({len(weights)}) must be equal.")
-        if not isinstance(pauli_list, list):
+        if not isinstance(pauli_list, list) and not isinstance(pauli_list, np.ndarray):
             pauli_list = [pauli_list]
             
         if not all(isinstance(p, PauliString) for p in pauli_list):
@@ -422,7 +432,7 @@ class PauliSum:
             phase = self.phases[i]
             omega = np.exp(2 * np.pi * 1j * phase / self.lcm)
             new_weights[i] = self.weights[i] * omega
-        self.phases = np.zeros(self.n_paulis())
+        self.phases = np.zeros(self.n_paulis(), dtype=int)
         self.weights = new_weights
 
     def __add__(self, A):
@@ -520,12 +530,16 @@ class PauliSum:
         self.phases = new_phases
 
     def combine_equivalent_paulis(self):
+        self.standardise()  # makes sure all phases are 0
         # combine equivalent Paulis
+        to_delete = []
         for i in reversed(range(self.n_paulis())):
             for j in range(i + 1, self.n_paulis()):
                 if self.pauli_strings[i] == self.pauli_strings[j]:
                     self.weights[i] = self.weights[i] + self.weights[j]
-                    self.delete_paulis_(j)
+                    to_delete.append(j)
+        self.delete_paulis_(to_delete)
+
         # remove zero weight Paulis
         to_delete = []
         for i in range(self.n_paulis()):
@@ -537,9 +551,17 @@ class PauliSum:
         # If entire Pauli string is I, remove it
         to_delete = []
         for i in range(self.n_paulis()):
-            if self.pauli_strings[i] == 'I' * self.n_qudits():
+            if np.all(self.x_exp[i, :] == 0) and np.all(self.z_exp[i, :] == 0):
                 to_delete.append(i)
         self.delete_paulis_(to_delete)
+
+    def remove_trivial_qudits(self):
+        # If entire Pauli string is I, remove it
+        to_delete = []
+        for i in range(self.n_qudits()):
+            if np.all(self.x_exp[:, i] == 0) and np.all(self.z_exp[:, i] == 0):
+                to_delete.append(i)
+        self.delete_qudits_(to_delete)
 
     def symplectic_matrix(self) -> np.ndarray:
         symplectic = np.zeros([self.n_paulis(), 2 * self.n_qudits()])
@@ -592,7 +614,6 @@ class PauliSum:
         self.x_exp = new_x_exp
         self.z_exp = new_z_exp
 
-
     def delete_qudits_(self, qudit_indices):
         # Inputs:
         #     qudit_indices - (list of int)
@@ -604,8 +625,8 @@ class PauliSum:
             new_pauli_strings.append(p.delete_qudits(qudit_indices))
 
         self.pauli_strings = np.array(new_pauli_strings)
-        self.x_exp = np.delete(self.x_exp, qudit_indices)
-        self.z_exp = np.delete(self.z_exp, qudit_indices)
+        self.x_exp = np.delete(self.x_exp, qudit_indices, axis=1)
+        self.z_exp = np.delete(self.z_exp, qudit_indices, axis=1)
         self.dimensions = np.delete(self.dimensions, qudit_indices)
 
         self.lcm = np.lcm.reduce(self.dimensions)

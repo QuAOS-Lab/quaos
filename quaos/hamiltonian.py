@@ -1,9 +1,11 @@
 import numpy as np
 import sys
+import itertools
+import random
+
 sys.path.append("./")
 from quaos.symplectic import PauliSum, Pauli, PauliString
 from quaos.gates import GateOperation, Circuit, Hadamard as H, SUM as CX, PHASE as S
-import random
 
 
 def ground_state(P):
@@ -120,6 +122,12 @@ def symplectic_reduction_qudit(P):
 
 
 def number_of_SUM_X(r_control, r_target, d):
+    """
+    Find the smallest positive integer N such that:
+        (r_target + N * r_control) % d == 0
+
+    This counts the number N of SUM gates needed to cancel out the X part of a Pauli operator.
+    """
     N = 1
     while (r_target + N * r_control) % d != 0:
         if N > d:
@@ -152,11 +160,7 @@ def number_of_S(x_exp, z_exp, d):
 def cancel_X(pauli_sum, qudit, pauli_index, C, q_max):
     list_of_gates = []
     for i in range(qudit + 1, q_max):
-        # print(pauli_sum.x_exp[pauli_index, :])
         if pauli_sum.x_exp[pauli_index, i]:
-            # print('num', i, number_of_SUM_X(pauli_sum.x_exp[pauli_index, qudit],
-            #                                                                                pauli_sum.x_exp[pauli_index, i],
-            #                                                                                pauli_sum.dimensions[i]))
             list_of_gates += [CX(qudit, i, pauli_sum.dimensions[qudit])] * number_of_SUM_X(pauli_sum.x_exp[pauli_index, qudit],
                                                                                            pauli_sum.x_exp[pauli_index, i],
                                                                                            pauli_sum.dimensions[i])
@@ -211,13 +215,15 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
     n_p, n_q = P.n_paulis(), P.n_qudits()
     P = C.act(P)
     n_q_max = n_q
+    # find n_q_max, the last qudit of the same dimension as current_qudit
     for i in range(n_q - current_qudit):
         if P.dimensions[current_qudit + i] != P.dimensions[current_qudit]:
             n_q_max = current_qudit + i - 1
             break
 
+    # does the current qudit have any X or Z components?
     if any(P.x_exp[:, current_qudit]) or any(P.z_exp[:, current_qudit]):
-        if not any(P.x_exp[:, current_qudit]):
+        if not any(P.x_exp[:, current_qudit]):  # If it is z we need to add a Hadamard gate to make it an X
             g = H(current_qudit, P.dimensions[current_qudit])
             C.add_gate(g)
             P = g.act(P)
@@ -235,7 +241,7 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
         C.add_gate(g)
         P = g.act(P)
 
-        P, C = cancel_pauli(P, current_qudit, current_pauli, C, n_q_max)  ## ### ## 
+        P, C = cancel_pauli(P, current_qudit, current_pauli, C, n_q_max)
 
         g = H(current_qudit, P.dimensions[current_qudit])
         C.add_gate(g)
@@ -249,19 +255,64 @@ def symplectic_pauli_reduction(hamiltonian: PauliSum) -> PauliSum:
     return C
 
 
+def pauli_reduce(hamiltonian: PauliSum) -> tuple[PauliSum, list[PauliSum], Circuit, list]:
+    """
+    Reduces the Hamiltonian to a smaller number of qudits by removing leading X and Z operators.
+    
+    This returns a list of reduced Hamiltonians, each corresponding to a different symmetry sector of the Z symmetries.
+    """
+
+    C = symplectic_pauli_reduction(hamiltonian)
+
+    h_red = C.act(hamiltonian)
+
+    # first we remove any qudits with only identities
+    h_red.remove_trivial_qudits()
+
+    list_of_z_symmetries = []
+    for i in range(h_red.n_qudits()):
+        if not any(h_red.x_exp[:, i]):  # z only
+            list_of_z_symmetries.append((i, np.where(h_red.z_exp[:, i] != 0)[0]))
+
+    n_sectors = 2 ** len(list_of_z_symmetries)
+    all_eigenvalues = [list(bits) for bits in itertools.product([-1, 1], repeat=len(list_of_z_symmetries))]
+
+    conditioned_hamiltonians = []
+    for sector in range(n_sectors):
+        conditioned_hamiltonian = h_red.copy()
+        weights_factor = np.ones(h_red.n_paulis(), dtype=complex)
+        for i, z_symmetry in enumerate(list_of_z_symmetries):
+            weights_factor[list_of_z_symmetries[i][1]] *= all_eigenvalues[sector][i]
+        conditioned_hamiltonian.weights *= weights_factor
+        conditioned_hamiltonian.delete_qudits_(z_symmetry[0])
+        conditioned_hamiltonian.combine_equivalent_paulis()
+        conditioned_hamiltonians.append(conditioned_hamiltonian)
+    return h_red, conditioned_hamiltonians, C, all_eigenvalues
+
+
 if __name__ == "__main__":
-    n_paulis = 5
-    n_qudits = 5
+
+    # Example from the paper
+
+    ham = ['x1z0 x1z0 x0z0', 'x0z0 x1z0 x1z0', 'x0z1 x0z0 x0z1']
+    ham = PauliSum(ham, weights=[1, 1, 1], dimensions=[2, 2, 2])
+    print(ham, '/n')
+    circuit = symplectic_pauli_reduction(ham)
+    h_reduced, conditioned_hams, reducing_circuit, eigenvalues = pauli_reduce(ham)
+    print(h_reduced)
+    for h in conditioned_hams:
+        print(h)
+
+
+    # random hamiltonian example  
+    n_qudits = 4
+    n_paulis = 4
     dimension = 2
-
-    for i in range(10):
-        print(i)
-
-        ham = random_pauli_hamiltonian(n_paulis, [dimension] * n_qudits, mode='random')
-        # print(ham, '/n')
-
-        circuit = symplectic_pauli_reduction(ham)
-        reduced_hamiltonian = circuit.act(ham)
-        # print(circuit)
-        print(reduced_hamiltonian)
-        # circuit.show()
+    ham = random_pauli_hamiltonian(n_paulis, [dimension] * n_qudits, mode='uniform')
+    circuit = symplectic_pauli_reduction(ham)
+    print(ham)
+    h_reduced, conditioned_hams, reducing_circuit, eigenvalues = pauli_reduce(ham)
+    print(h_reduced)
+    for h in conditioned_hams:
+        print(h)
+    
