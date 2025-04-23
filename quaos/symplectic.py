@@ -266,11 +266,17 @@ class PauliString:
         return False
     
     def __dict__(self):
-        
         return {'x_exp': self.x_exp, 'z_exp': self.z_exp, 'dimensions': self.dimensions}
 
     def n_qudits(self):
         return len(self.x_exp)
+        
+    def n_identities(self):
+        """
+        Get the number of identities in the PauliString
+        :return: The number of identities
+        """
+        return np.sum(np.logical_and(self.x_exp == 0, self.z_exp == 0))
     
     def get_paulis(self):
         """
@@ -334,6 +340,17 @@ class PauliString:
             self.dimensions = dimensions
             self._sanity_check()
             return self
+        
+    def get_subspace(self, qudit_indices):
+        """
+        Get the subspace of the PauliString corresponding to the qudit indices
+        :param qudit_indices: The indices of the qudits to get the subspace for
+        :return: The subspace of the PauliString
+        """
+        x_exp = self.x_exp[qudit_indices]
+        z_exp = self.z_exp[qudit_indices]
+        dimensions = self.dimensions[qudit_indices]
+        return PauliString(x_exp=x_exp, z_exp=z_exp, dimensions=dimensions)
 
 
 class PauliSum:
@@ -414,6 +431,15 @@ class PauliSum:
     
     def n_qudits(self):
         return len(self.dimensions)
+    
+    def n_identities(self):
+        """
+        Get the number of identities in the PauliSum
+        :return: The number of identities
+        """
+        n_is = []
+        for i in range(self.n_paulis()):
+            n_is.append(self.pauli_strings[i].n_identities())
 
     def standardise(self):
         """
@@ -662,6 +688,26 @@ class PauliSum:
             p_string += f'{self.weights[i]}' + ' ' * n_spaces + '|' + qudit_string + f'| {self.phases[i]} \n'
         return p_string
     
+    def get_subspace(self, qudit_indices, pauli_indices=None):
+        """
+        Get the subspace of the PauliSum corresponding to the qudit indices for the given Paulis
+        Not strictly a subspace if we restrict the Pauli indices, so we could rename but this is still quite clear
+
+        :param qudit_indices: The indices of the qudits to get the subspace for
+        :param pauli_indices: The indices of the Paulis to get the subspace for
+        :return: The subspace of the PauliSum
+        """
+        if pauli_indices is None:
+            pauli_indices = np.arange(self.n_paulis())
+
+        dimensions = self.dimensions[qudit_indices]
+        pauli_list = []
+        for i in pauli_indices:
+            p = self.pauli_strings[i]
+            p = p.get_subspace(qudit_indices)
+            pauli_list.append(p)
+        return PauliSum(pauli_list, self.weights[pauli_indices], self.phases[pauli_indices], dimensions, False)
+
     def matrix_form(self, pauli_string_index=None) -> scipy.sparse.csr_matrix:
         """
         Returns
