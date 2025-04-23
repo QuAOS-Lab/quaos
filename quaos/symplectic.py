@@ -341,16 +341,11 @@ class PauliString:
             self._sanity_check()
             return self
         
+    def __getitem__(self, key):
+        return PauliString(x_exp=self.x_exp[key], z_exp=self.z_exp[key], dimensions=self.dimensions[key])
+    
     def get_subspace(self, qudit_indices):
-        """
-        Get the subspace of the PauliString corresponding to the qudit indices
-        :param qudit_indices: The indices of the qudits to get the subspace for
-        :return: The subspace of the PauliString
-        """
-        x_exp = self.x_exp[qudit_indices]
-        z_exp = self.z_exp[qudit_indices]
-        dimensions = self.dimensions[qudit_indices]
-        return PauliString(x_exp=x_exp, z_exp=z_exp, dimensions=dimensions)
+        return PauliString(x_exp=self.x_exp[qudit_indices], z_exp=self.z_exp[qudit_indices], dimensions=self.dimensions[qudit_indices])
 
 
 class PauliSum:
@@ -460,6 +455,21 @@ class PauliSum:
             new_weights[i] = self.weights[i] * omega
         self.phases = np.zeros(self.n_paulis(), dtype=int)
         self.weights = new_weights
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self.pauli_strings[key]
+        elif isinstance(key, slice):
+            return PauliSum(self.pauli_strings[key], self.weights[key], self.phases[key], self.dimensions, False)
+        elif isinstance(key, tuple):
+            if len(key) != 2:
+                raise ValueError("Tuple key must be of length 2")
+            pauli_strings_all_qubits = self.pauli_strings[key[0]]
+            pauli_strings = [p[key[1]] for p in pauli_strings_all_qubits]
+            return PauliSum(pauli_strings, self.weights[key[0]], self.phases[key[0]], self.dimensions[key[1]], False)
+
+        else:
+            raise TypeError(f"Key must be int or slice, not {type(key)}")
 
     def __add__(self, A):
         if isinstance(A, PauliString) or isinstance(A, Pauli):
