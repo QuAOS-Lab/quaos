@@ -342,7 +342,10 @@ class PauliString:
             return self
         
     def __getitem__(self, key):
-        return PauliString(x_exp=self.x_exp[key], z_exp=self.z_exp[key], dimensions=self.dimensions[key])
+        if isinstance(key, int):
+            return self.get_paulis()[key]
+        else:
+            return PauliString(x_exp=self.x_exp[key], z_exp=self.z_exp[key], dimensions=self.dimensions[key])
     
     def get_subspace(self, qudit_indices):
         return PauliString(x_exp=self.x_exp[qudit_indices], z_exp=self.z_exp[qudit_indices], dimensions=self.dimensions[qudit_indices])
@@ -464,9 +467,12 @@ class PauliSum:
         elif isinstance(key, tuple):
             if len(key) != 2:
                 raise ValueError("Tuple key must be of length 2")
-            pauli_strings_all_qubits = self.pauli_strings[key[0]]
-            pauli_strings = [p[key[1]] for p in pauli_strings_all_qubits]
-            return PauliSum(pauli_strings, self.weights[key[0]], self.phases[key[0]], self.dimensions[key[1]], False)
+            if isinstance(key[0], int):
+                return self.pauli_strings[key[0]][key[1]]
+            if isinstance(key[0], slice):
+                pauli_strings_all_qubits = self.pauli_strings[key[0]]
+                pauli_strings = [p[key[1]] for p in pauli_strings_all_qubits]
+                return PauliSum(pauli_strings, self.weights[key[0]], self.phases[key[0]], self.dimensions[key[1]], False)
 
         else:
             raise TypeError(f"Key must be int or slice, not {type(key)}")
