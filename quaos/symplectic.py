@@ -122,6 +122,7 @@ class Pauli:
         return False
 
 
+
 class Xnd(Pauli):
     def __init__(self, x_exp: int, dimension: int):
         super().__init__(x_exp, 0, dimension)
@@ -279,6 +280,13 @@ class PauliString:
 
     def n_qudits(self) -> int:
         return len(self.x_exp)
+        
+    def n_identities(self) -> PauliString:
+        """
+        Get the number of identities in the PauliString
+        :return: The number of identities
+        """
+        return np.sum(np.logical_and(self.x_exp == 0, self.z_exp == 0))
     
     def get_paulis(self) -> list[Pauli]:
         """
@@ -327,10 +335,29 @@ class PauliString:
             x_exp[index] = x_exp_replace[i]
             z_exp[index] = z_exp_replace[i]
 
-        return PauliString(x_exp, z_exp, self.dimensions)
+        return PauliString(x_exp=x_exp, z_exp=z_exp, dimensions=self.dimensions)
     
-    def delete_qudits(self, qudit_indices: list[int]) -> 'PauliString':
-        return self._replace_symplectic(np.delete(self.symplectic(), qudit_indices), qudit_indices)
+    def delete_qudits(self, qudit_indices: list[int], return_new=True) -> 'PauliString':  # not sure if here it is best to return a new object or not
+        x_exp = np.delete(self.x_exp, qudit_indices)
+        z_exp = np.delete(self.z_exp, qudit_indices)
+        dimensions = np.delete(self.dimensions, qudit_indices)
+        if return_new:
+            return PauliString(x_exp=x_exp, z_exp=z_exp, dimensions=dimensions)
+        else:
+            self.x_exp = x_exp
+            self.z_exp = z_exp
+            self.dimensions = dimensions
+            self._sanity_check()
+            return self
+        
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self.get_paulis()[key]
+        else:
+            return PauliString(x_exp=self.x_exp[key], z_exp=self.z_exp[key], dimensions=self.dimensions[key])
+
+    def get_subspace(self, qudit_indices):
+        return PauliString(x_exp=self.x_exp[qudit_indices], z_exp=self.z_exp[qudit_indices], dimensions=self.dimensions[qudit_indices])
 
 
 class PauliSum:
@@ -375,6 +402,7 @@ class PauliSum:
         
         x_exp = np.zeros((len(self.pauli_strings), len(self.dimensions)))  # ensures we can always index [pauli #, qudit #]
         z_exp = np.zeros((len(self.pauli_strings), len(self.dimensions)))  # ensures we can always index [pauli #, qudit #]
+
         for i, p in enumerate(self.pauli_strings):
             x_exp[i, :] = p.x_exp
             z_exp[i, :] = p.z_exp
@@ -471,6 +499,15 @@ class PauliSum:
     
     def n_qudits(self) -> int:
         return len(self.dimensions)
+    
+    def n_identities(self):
+        """
+        Get the number of identities in the PauliSum
+        :return: The number of identities
+        """
+        n_is = []
+        for i in range(self.n_paulis()):
+            n_is.append(self.pauli_strings[i].n_identities())
 
     def standardise(self):
         """
@@ -489,11 +526,29 @@ class PauliSum:
             phase = self.phases[i]
             omega = np.exp(2 * np.pi * 1j * phase / self.lcm)
             new_weights[i] = self.weights[i] * omega
-        self.phases = np.zeros(self.n_paulis())
+        self.phases = np.zeros(self.n_paulis(), dtype=int)
         self.weights = new_weights
 
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self.pauli_strings[key]
+        elif isinstance(key, slice):
+            return PauliSum(self.pauli_strings[key], self.weights[key], self.phases[key], self.dimensions, False)
+        elif isinstance(key, tuple):
+            if len(key) != 2:
+                raise ValueError("Tuple key must be of length 2")
+            if isinstance(key[0], int):
+                return self.pauli_strings[key[0]][key[1]]
+            if isinstance(key[0], slice):
+                pauli_strings_all_qubits = self.pauli_strings[key[0]]
+                pauli_strings = [p[key[1]] for p in pauli_strings_all_qubits]
+                return PauliSum(pauli_strings, self.weights[key[0]], self.phases[key[0]], self.dimensions[key[1]], False)
+
+        else:
+            raise TypeError(f"Key must be int or slice, not {type(key)}")
+
     def __add__(self, A: 'Pauli | PauliString | PauliSum') -> 'PauliSum':
-        if isinstance(A, PauliString):
+        if isinstance(A, PauliString) or isinstance(A, Pauli):
             A = A._to_pauli_sum()
         elif isinstance(A, Pauli):
             A = A.to_pauli_sum()
@@ -593,12 +648,16 @@ class PauliSum:
         self.phases = new_phases
 
     def combine_equivalent_paulis(self):
+        self.standardise()  # makes sure all phases are 0
         # combine equivalent Paulis
+        to_delete = []
         for i in reversed(range(self.n_paulis())):
             for j in range(i + 1, self.n_paulis()):
                 if self.pauli_strings[i] == self.pauli_strings[j]:
                     self.weights[i] = self.weights[i] + self.weights[j]
-                    self._delete_paulis(j)
+                    to_delete.append(j)
+        self.delete_paulis_(to_delete)
+
         # remove zero weight Paulis
         to_delete = []
         for i in range(self.n_paulis()):
@@ -610,9 +669,17 @@ class PauliSum:
         # If entire Pauli string is I, remove it
         to_delete = []
         for i in range(self.n_paulis()):
-            if self.pauli_strings[i] == 'I' * self.n_qudits():
+            if np.all(self.x_exp[i, :] == 0) and np.all(self.z_exp[i, :] == 0):
                 to_delete.append(i)
         self._delete_paulis(to_delete)
+
+    def remove_trivial_qudits(self):
+        # If entire Pauli string is I, remove it
+        to_delete = []
+        for i in range(self.n_qudits()):
+            if np.all(self.x_exp[:, i] == 0) and np.all(self.z_exp[:, i] == 0):
+                to_delete.append(i)
+        self.delete_qudits_(to_delete)
 
     def symplectic_matrix(self) -> np.ndarray:
         symplectic = np.zeros([self.n_paulis(), 2 * self.n_qudits()])
@@ -676,9 +743,9 @@ class PauliSum:
         for p in self.pauli_strings:
             new_pauli_strings.append(p.delete_qudits(qudit_indices))
 
-        self.pauli_strings = new_pauli_strings
-        self.x_exp = np.delete(self.x_exp, qudit_indices)
-        self.z_exp = np.delete(self.z_exp, qudit_indices)
+        self.pauli_strings = np.array(new_pauli_strings)
+        self.x_exp = np.delete(self.x_exp, qudit_indices, axis=1)
+        self.z_exp = np.delete(self.z_exp, qudit_indices, axis=1)
         self.dimensions = np.delete(self.dimensions, qudit_indices)
 
         self.lcm = np.lcm.reduce(self.dimensions)
@@ -713,6 +780,27 @@ class PauliSum:
             p_string += f'{self.weights[i]}' + ' ' * n_spaces + '|' + qudit_string + f'| {self.phases[i]} \n'
         return p_string
     
+
+    def get_subspace(self, qudit_indices: list[int], pauli_indices: list | None = None):
+        """
+        Get the subspace of the PauliSum corresponding to the qudit indices for the given Paulis
+        Not strictly a subspace if we restrict the Pauli indices, so we could rename but this is still quite clear
+
+        :param qudit_indices: The indices of the qudits to get the subspace for
+        :param pauli_indices: The indices of the Paulis to get the subspace for
+        :return: The subspace of the PauliSum
+        """
+        if pauli_indices is None:
+            pauli_indices = np.arange(self.n_paulis())
+
+        dimensions = self.dimensions[qudit_indices]
+        pauli_list = []
+        for i in pauli_indices:
+            p = self.pauli_strings[i]
+            p = p.get_subspace(qudit_indices)
+            pauli_list.append(p)
+        return PauliSum(pauli_list, self.weights[pauli_indices], self.phases[pauli_indices], dimensions, False)
+
     def matrix_form(self, pauli_string_index: int | None = None) -> scipy.sparse.csr_matrix:
         """
         Returns

@@ -267,6 +267,26 @@ class SUM(GateOperation):
         return operations
 
 
+class SWAP(GateOperation):
+    def __init__(self, index1, index2, dimension):
+        SGate_operations = self.swap_gate_operations(dimension)
+        super().__init__("SWAP", [index1, index2], SGate_operations, dimension=dimension)
+   
+    @staticmethod
+    def swap_gate_operations(dimension):
+        operations = []
+        for r1 in range(dimension):
+            for s1 in range(dimension):
+                for r2 in range(dimension):
+                    for s2 in range(dimension):
+                        new_r1 = r2
+                        new_s1 = s2
+                        new_r2 = r1
+                        new_s2 = s1
+                        operations.append(f"x{r1}z{s1} x{r2}z{s2} -> x{new_r1}z{new_s1} x{new_r2}z{new_s2}")
+        return operations
+
+
 class Circuit:
     def __init__(self, dimensions: list[int], gates: list[GateOperation] | None = None):
         """
