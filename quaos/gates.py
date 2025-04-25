@@ -194,14 +194,14 @@ class GateOperation:
 
     def act(self, P: Pauli | PauliString | PauliSum) -> PauliString | PauliSum:
         if isinstance(P, Pauli):
-            P = P.to_pauli_string()
+            P = P._to_pauli_string()
 
         if isinstance(P, PauliString):
             return self._act_on_pauli_string(P)[0]
         elif isinstance(P, PauliSum):
             return self._act_on_pauli_sum(P)
         else:
-            raise ValueError(f"TwoQuditOperation cannot act on type {type(P)}")
+            raise ValueError(f"GateOperation cannot act on type {type(P)}")
     
     def __mul__(self, gate: 'GateOperation') -> 'Circuit':
         # TODO: check if the two gates are compatible, set dimensions accordingly
@@ -337,11 +337,11 @@ class Circuit:
             str_out += gate.name + ' ' + str(gate.qudit_indices) + '\n'
         return str_out
 
-    def act(self, pauli: Pauli | PauliString | PauliSum) -> PauliString | PauliSum | Pauli:
+    def act(self, pauli: Pauli | PauliString | PauliSum) -> PauliString | PauliSum:
         for gate in self.gates:
             pauli = gate.act(pauli)
-        return pauli
-    
+        return pauli   # Why this warning? - it is a PauliSum or PauliString, never a Pauli
+
     def show(self) -> QuantumCircuit:
         circuit = QuantumCircuit(len(self.dimensions))
         dict = {'X': circuit.x, 'H': circuit.h, 'S': circuit.s, 'SUM': circuit.cx, 'CNOT': circuit.cx}
@@ -418,78 +418,3 @@ if __name__ == "__main__":
 
     # print(ps2)
 
-
-# TODO: decide what to do with these
-# class Gate(PauliSum):
-#     def __init__(self, name, index, generalised_pauli_list, weights=None, phases=None, dims=None):
-#         self.name = name
-#         self.index = index
-#         super().__init__(generalised_pauli_list, weights, phases, dims)
-
-#     def act(self, P):
-#         return self * P * self
-
-# class Hadamard(Gate):
-#     def __init__(self, n_qudits, index, dims):
-#         str1 = ''
-#         str2 = ''
-#         for i in range(n_qudits):
-#             if i == index:
-#                 str1 += 'X'
-#                 str2 += 'Z'
-#             else:
-#                 str1 += 'I'
-#                 str2 += 'I'
-#         pauli_string = [str1, str2]
-#         weights = 1. / np.sqrt(2) * np.ones(2)
-#         super().__init__(name='H', generalised_pauli_list=pauli_string, weights=weights, phases=None, dims=dims)
-
-
-# class CNOT(Gate):
-#     """
-#     |0><0|_control I_all + |1><1|_control X_target I_rest
-
-#     Uses:
-#         |0><0| = (I - Z) / 2
-#         |1><1| = (I + Z) / 2
-#     """
-
-#     def __init__(self, control, target, n_qubits):
-#         dims = [2] * n_qubits
-#         # strings depend on state of the control - each state has two contributions I +- Z
-#         control_0_str1 = ''
-#         control_0_str2 = ''
-#         control_1_str1 = ''
-#         control_1_str2 = ''
-#         for i in range(n_qubits):
-#             if i == control:
-#                 control_0_str1 += 'x0z0'
-#                 control_0_str2 += 'x0z1'
-#                 control_1_str1 += 'x0z0'
-#                 control_1_str2 += 'x0z1'
-
-#             elif i == target:
-#                 control_0_str1 += 'x0z0'
-#                 control_0_str2 += 'x0z0'
-#                 control_1_str1 += 'x1z0'
-#                 control_1_str2 += 'x1z0'
-
-#             else:
-#                 control_0_str1 += 'x0z0'
-#                 control_0_str2 += 'x0z0'
-#                 control_1_str1 += 'x0z0'
-#                 control_1_str2 += 'x0z0'
-
-#         w01 = 1 / 2
-#         w02 = -1 / 2
-#         w11 = 1 / 2
-#         w12 = 1 / 2
-#         weights = [w01, w02, w11, w12]
-#         pauli_string = [control_0_str1, control_0_str2, control_1_str1, control_1_str2]
-#         super().__init__(name='CNOT', index=(control, target), generalised_pauli_list=pauli_string,
-#                          weights=weights, phases=None, dims=dims)
-
-
-# class SUM(Gate):
-#     def __init__(self, index, generalised_pauli_list, weights=None, phases=None, dims=None):
-#         super().__init__('SUM', index, generalised_pauli_list, weights, phases, dims)

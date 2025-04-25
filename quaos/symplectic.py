@@ -98,11 +98,11 @@ class Pauli:
     def __dict__(self) -> dict:
         return {'x_exp': self.x_exp, 'z_exp': self.z_exp, 'dimension': self.dimension}
     
-    def to_pauli_string(self) -> 'PauliString':
+    def _to_pauli_string(self) -> 'PauliString':
         return PauliString(x_exp=[self.x_exp], z_exp=[self.z_exp], dimensions=[self.dimension])
     
-    def to_pauli_sum(self) -> 'PauliSum':
-        return PauliSum([self.to_pauli_string()], standardise=False)
+    def _to_pauli_sum(self) -> 'PauliSum':
+        return PauliSum([self._to_pauli_string()], standardise=False)
     
     def __gt__(self, other_pauli: 'Pauli') -> bool:
         d = self.dimension
@@ -120,8 +120,10 @@ class Pauli:
                 return False
         
         return False
-
-
+    
+    def copy(self) -> 'Pauli':
+        return Pauli(x_exp=self.x_exp, z_exp=self.z_exp, dimension=self.dimension)
+    
 
 class Xnd(Pauli):
     def __init__(self, x_exp: int, dimension: int):
@@ -204,7 +206,7 @@ class PauliString:
         new_dims = np.concatenate((self.dimensions, A.dimensions))
         return PauliString(new_x_exp, new_z_exp, new_dims)
 
-    def __mul__(self, A: 'PauliString | PauliSum | str | float | int | complex') -> 'PauliString | PauliSum':
+    def __mul__(self, A: 'PauliString | PauliSum | float | int | complex') -> 'PauliString | PauliSum':
         if isinstance(A, PauliString):
             if np.any(self.dimensions != A.dimensions):
                 raise Exception("To multiply two PauliStrings, their dimensions"
@@ -213,13 +215,7 @@ class PauliString:
             z_new = np.mod(self.z_exp + A.z_exp, (self.dimensions))
             return PauliString(x_new, z_new, self.dimensions)
         elif isinstance(A, PauliSum):
-            # TODO: Implement to_symplectic() for PauliSum and then use that to multiply
-            # return self.to_symplectic() * A
-            raise NotImplementedError("PauliString * PauliSum not implemented")
-        elif isinstance(A, str):
-            # TODO: Implement to_symplectic() for PauliString and then use that to multiply
-            # return self.to_symplectic() * PauliSum(A)
-            raise NotImplementedError("PauliString * str not implemented")
+            return self._to_pauli_sum() * A
         elif isinstance(A, float) or isinstance(A, int) or isinstance(A, complex):
             return PauliSum([self], weights=[A])
         else:
@@ -281,7 +277,7 @@ class PauliString:
     def n_qudits(self) -> int:
         return len(self.x_exp)
         
-    def n_identities(self) -> PauliString:
+    def n_identities(self) -> 'PauliString':
         """
         Get the number of identities in the PauliString
         :return: The number of identities
@@ -302,11 +298,10 @@ class PauliString:
         return symp
 
     def symplectic_product(self, A: 'PauliString') -> np.ndarray:
-        # needs testing
         n = self.n_qudits()
         symp = self.symplectic()
         symp_A = A.symplectic()
-        prod = sum([symp[i] * symp_A[i + n] - symp[i + n] * symp_A[i] for i in range(n)]) % self.dimensions
+        prod = sum([symp[i] * symp_A[i + n] - symp[i + n] * symp_A[i] for i in range(n)]) % self.lcm
         return prod
     
     def amend(self, qudit_index: int, new_x: int, new_z: int) -> 'PauliString':
@@ -337,7 +332,7 @@ class PauliString:
 
         return PauliString(x_exp=x_exp, z_exp=z_exp, dimensions=self.dimensions)
     
-    def delete_qudits(self, qudit_indices: list[int], return_new=True) -> 'PauliString':  # not sure if here it is best to return a new object or not
+    def _delete_qudits(self, qudit_indices: list[int], return_new=True) -> 'PauliString':  # not sure if here it is best to return a new object or not
         x_exp = np.delete(self.x_exp, qudit_indices)
         z_exp = np.delete(self.z_exp, qudit_indices)
         dimensions = np.delete(self.dimensions, qudit_indices)
@@ -350,14 +345,18 @@ class PauliString:
             self._sanity_check()
             return self
         
-    def __getitem__(self, key):
+    def __getitem__(self, key: int | slice) -> 'PauliString | Pauli':
         if isinstance(key, int):
             return self.get_paulis()[key]
         else:
             return PauliString(x_exp=self.x_exp[key], z_exp=self.z_exp[key], dimensions=self.dimensions[key])
 
-    def get_subspace(self, qudit_indices):
-        return PauliString(x_exp=self.x_exp[qudit_indices], z_exp=self.z_exp[qudit_indices], dimensions=self.dimensions[qudit_indices])
+    def get_subspace(self, qudit_indices: list[int] | int) -> 'PauliString':
+        return PauliString(x_exp=self.x_exp[qudit_indices], z_exp=self.z_exp[qudit_indices],
+                           dimensions=self.dimensions[qudit_indices])
+    
+    def copy(self) -> 'PauliString':
+        return PauliString(x_exp=self.x_exp.copy(), z_exp=self.z_exp.copy(), dimensions=self.dimensions.copy())
 
 
 class PauliSum:
@@ -418,26 +417,28 @@ class PauliSum:
     @staticmethod
     def _sanitize_pauli_list(pauli_list: list[PauliString] | list[Pauli] | list[str] | PauliString | Pauli,
                              dimensions: list[int] | np.ndarray | None) -> list[PauliString]:
-        if isinstance(pauli_list, str) and isinstance(pauli_list, list):
-            raise NotImplementedError("str support not implemented yet")
         
         if isinstance(pauli_list, Pauli):
             pauli_list = [pauli_list]
         if isinstance(pauli_list, PauliString):
             pauli_list = [pauli_list]
+        if isinstance(pauli_list, str):
+            pauli_list = [pauli_list]
 
-        sanitized_pauli_list = []
+        sanitised_pauli_list = []
         for p in pauli_list:
-            if dimensions is None:
-                raise SyntaxError("Input of strings into PauliSum requires explicit dimensions input")
-            
-            if isinstance(p, Pauli):
-                p = PauliString([p.x_exp], [p.z_exp], dimensions=dimensions)
-            elif not isinstance(p, PauliString):
-                raise TypeError("Pauli list must be a list of PauliString or Pauli objects")
-            sanitized_pauli_list.append(p)
-        
-        return sanitized_pauli_list
+            if isinstance(p, PauliString):
+                sanitised_pauli_list.append(p)
+            elif isinstance(p, Pauli):
+                sanitised_pauli_list.append(p._to_pauli_string())
+            elif isinstance(p, str):
+                if dimensions is None:
+                    raise SyntaxError("Input of strings into PauliSum requires explicit dimensions input")
+                sanitised_pauli_list.append(PauliString(p, dimensions=dimensions))
+            else:
+                raise TypeError("Pauli list must be a list of PauliString or Pauli objects or strings")
+
+        return sanitised_pauli_list
 
     @staticmethod
     def _sanitize_dimensions(pauli_list: list[PauliString],
@@ -450,13 +451,6 @@ class PauliSum:
                 if not np.array_equal(pauli_list[i].dimensions, pauli_list[0].dimensions):
                     raise ValueError("The dimensions of all Pauli strings must be equal.")
             dimensions = pauli_list[0].dimensions
-        
-        # TODO: evaluate whether this is necessary (not clear how dimensions can be None here)
-        if dimensions is None:
-            if isinstance(pauli_list[0], PauliString):
-                dimensions = np.array([pauli_list[i].dimensions for i in range(len(pauli_list))])
-            else:
-                raise SyntaxError("Input of strings into PauliSum requires explicit dimensions input")
             
         return np.array(dimensions)
 
@@ -543,7 +537,6 @@ class PauliSum:
                 pauli_strings_all_qubits = self.pauli_strings[key[0]]
                 pauli_strings = [p[key[1]] for p in pauli_strings_all_qubits]
                 return PauliSum(pauli_strings, self.weights[key[0]], self.phases[key[0]], self.dimensions[key[1]], False)
-
         else:
             raise TypeError(f"Key must be int or slice, not {type(key)}")
 
@@ -551,7 +544,7 @@ class PauliSum:
         if isinstance(A, PauliString) or isinstance(A, Pauli):
             A = A._to_pauli_sum()
         elif isinstance(A, Pauli):
-            A = A.to_pauli_sum()
+            A = A._to_pauli_sum()
             
         new_pauli_list = self.pauli_strings + A.pauli_strings
         new_weights = np.concatenate([self.weights, A.weights])
@@ -571,7 +564,7 @@ class PauliSum:
         if isinstance(A, PauliString):
             A = A._to_pauli_sum()
         elif isinstance(A, Pauli):
-            A = A.to_pauli_sum()
+            A = A._to_pauli_sum()
         
         new_dimensions = np.hstack((self.dimensions, A.dimensions))
         new_lcm = np.lcm.reduce(new_dimensions)
@@ -656,7 +649,7 @@ class PauliSum:
                 if self.pauli_strings[i] == self.pauli_strings[j]:
                     self.weights[i] = self.weights[i] + self.weights[j]
                     to_delete.append(j)
-        self.delete_paulis_(to_delete)
+        self._delete_paulis(to_delete)
 
         # remove zero weight Paulis
         to_delete = []
@@ -679,7 +672,7 @@ class PauliSum:
         for i in range(self.n_qudits()):
             if np.all(self.x_exp[:, i] == 0) and np.all(self.z_exp[:, i] == 0):
                 to_delete.append(i)
-        self.delete_qudits_(to_delete)
+        self._delete_qudits(to_delete)
 
     def symplectic_matrix(self) -> np.ndarray:
         symplectic = np.zeros([self.n_paulis(), 2 * self.n_qudits()])
@@ -726,7 +719,9 @@ class PauliSum:
         new_z_exp = np.delete(self.z_exp, pauli_indices, axis=0)
 
         for i in sorted(pauli_indices, reverse=True):  # sort in reverse order to avoid index shifting
+            self.pauli_strings = list(self.pauli_strings)  # Convert to list
             del self.pauli_strings[i]
+            self.pauli_strings = np.array(self.pauli_strings, dtype=object)  # Convert back to NumPy array
 
         self.weights = new_weights
         self.phases = new_phases
@@ -741,9 +736,9 @@ class PauliSum:
         
         new_pauli_strings = []
         for p in self.pauli_strings:
-            new_pauli_strings.append(p.delete_qudits(qudit_indices))
+            new_pauli_strings.append(p._delete_qudits(qudit_indices))
 
-        self.pauli_strings = np.array(new_pauli_strings)
+        self.pauli_strings = np.array(new_pauli_strings, dtype=object)
         self.x_exp = np.delete(self.x_exp, qudit_indices, axis=1)
         self.z_exp = np.delete(self.z_exp, qudit_indices, axis=1)
         self.dimensions = np.delete(self.dimensions, qudit_indices)
@@ -780,7 +775,6 @@ class PauliSum:
             p_string += f'{self.weights[i]}' + ' ' * n_spaces + '|' + qudit_string + f'| {self.phases[i]} \n'
         return p_string
     
-
     def get_subspace(self, qudit_indices: list[int], pauli_indices: list | None = None):
         """
         Get the subspace of the PauliSum corresponding to the qudit indices for the given Paulis
@@ -791,7 +785,7 @@ class PauliSum:
         :return: The subspace of the PauliSum
         """
         if pauli_indices is None:
-            pauli_indices = np.arange(self.n_paulis())
+            pauli_indices = np.arange(self.n_paulis()).tolist()
 
         dimensions = self.dimensions[qudit_indices]
         pauli_list = []
@@ -892,7 +886,7 @@ def symplectic_product(pauli_string: PauliString, pauli_string2: PauliString) ->
     sp = 0
     for i in range(pauli_string.n_qudits()):
         sp += (pauli_string.x_exp[i] * pauli_string2.z_exp[i] - pauli_string.z_exp[i] * pauli_string2.x_exp[i])
-    return sp % pauli_string.dimensions[i]
+    return sp % pauli_string.lcm
 
 
 def string_to_symplectic(string: str) -> tuple[np.ndarray, int]:
