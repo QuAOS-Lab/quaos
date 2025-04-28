@@ -3,9 +3,9 @@ import sys
 import itertools
 import random
 
-sys.path.append("./")
-from quaos.symplectic import PauliSum, Pauli, PauliString
-from quaos.gates import GateOperation, Circuit, Hadamard as H, SUM as CX, PHASE as S
+# sys.path.append("./")
+from symplectic import PauliSum, Pauli, PauliString
+from gates import GateOperation, Circuit, Hadamard as H, SUM as CX, PHASE as S
 
 
 def ground_state(P):
@@ -250,7 +250,7 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
     return C, pivots
 
 
-def symplectic_pauli_reduction(hamiltonian: PauliSum) -> PauliSum:
+def symplectic_pauli_reduction(hamiltonian: PauliSum) -> Circuit:
     C, pivots = symplectic_reduction_qudit(hamiltonian)
     return C
 
@@ -284,7 +284,7 @@ def pauli_reduce(hamiltonian: PauliSum) -> tuple[PauliSum, list[PauliSum], Circu
         for i, z_symmetry in enumerate(list_of_z_symmetries):
             weights_factor[list_of_z_symmetries[i][1]] *= all_eigenvalues[sector][i]
         conditioned_hamiltonian.weights *= weights_factor
-        conditioned_hamiltonian.delete_qudits_(z_symmetry[0])
+        conditioned_hamiltonian._delete_qudits(z_symmetry[0])
         conditioned_hamiltonian.combine_equivalent_paulis()
         conditioned_hamiltonians.append(conditioned_hamiltonian)
     return h_red, conditioned_hamiltonians, C, all_eigenvalues
@@ -315,4 +315,3 @@ if __name__ == "__main__":
     print(h_reduced)
     for h in conditioned_hams:
         print(h)
-    

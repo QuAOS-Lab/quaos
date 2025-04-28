@@ -1,4 +1,5 @@
 import numpy as np
+from typing import overload
 from qiskit import QuantumCircuit
 from symplectic import (
     PauliSum, PauliString, Pauli,
@@ -191,6 +192,18 @@ class GateOperation:
             P.acquire_phase(acquired_phase)
         # P.combine_equivalent_paulis()
         return P
+    
+    @overload
+    def act(self, P: Pauli) -> PauliString:
+        ...
+
+    @overload
+    def act(self, P: PauliString) -> PauliString:
+        ...
+
+    @overload
+    def act(self, P: PauliSum) -> PauliSum:
+        ...
 
     def act(self, P: Pauli | PauliString | PauliSum) -> PauliString | PauliSum:
         if isinstance(P, Pauli):
@@ -330,6 +343,36 @@ class Circuit:
         """
         self.gates.pop(index)
         self.indexes.pop(index)
+
+    def __add__(self, other: 'Circuit') -> 'Circuit':
+        """
+        Adds two circuits together by concatenating their gates and indexes.
+        """
+        if not isinstance(other, Circuit):
+            raise TypeError("Can only add another Circuit object.")
+        new_gates = self.gates + other.gates
+        return Circuit(self.dimensions, new_gates)
+    
+    def __mul__(self, other: 'Circuit') -> 'Circuit':
+        """
+        THIS IS THE SAME FUNCTION AS ADDITION  -  PROBABLY WANT TO CHOOSE WHICH ONE DOES THIS
+
+        Adds two circuits together by concatenating their gates and indexes.
+        """
+        if not isinstance(other, Circuit):
+            raise TypeError("Can only add another Circuit object.")
+        new_gates = self.gates + other.gates
+        return Circuit(self.dimensions, new_gates)
+    
+    def __getitem__(self, index: int) -> GateOperation:
+        return self.gates[index]
+    
+    def __setitem__(self, index: int, value: GateOperation):
+        self.gates[index] = value
+        self.indexes[index] = value.qudit_indices
+
+    def __len__(self) -> int:
+        return len(self.gates)
 
     def __str__(self) -> str:
         str_out = ''

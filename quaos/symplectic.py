@@ -3,6 +3,7 @@ import numpy as np
 import re
 import functools
 import scipy
+from typing import overload
 
 
 class Pauli:
@@ -350,6 +351,16 @@ class PauliString:
             return self.get_paulis()[key]
         else:
             return PauliString(x_exp=self.x_exp[key], z_exp=self.z_exp[key], dimensions=self.dimensions[key])
+        
+    def __setitem__(self, key: int | slice, value: 'Pauli | PauliString'):
+        if isinstance(key, int):
+            self.x_exp[key] = value.x_exp
+            self.z_exp[key] = value.z_exp
+            self.dimensions[key] = value.dimension
+        else:
+            self.x_exp[key] = value.x_exp
+            self.z_exp[key] = value.z_exp
+            self.dimensions[key] = value.dimensions
 
     def get_subspace(self, qudit_indices: list[int] | int) -> 'PauliString':
         return PauliString(x_exp=self.x_exp[qudit_indices], z_exp=self.z_exp[qudit_indices],
@@ -503,6 +514,15 @@ class PauliSum:
         for i in range(self.n_paulis()):
             n_is.append(self.pauli_strings[i].n_identities())
 
+    def phase_to_weight(self):
+        new_weights = np.zeros(self.n_paulis(), dtype=np.complex128)
+        for i in range(self.n_paulis()):
+            phase = self.phases[i]
+            omega = np.exp(2 * np.pi * 1j * phase / self.lcm)
+            new_weights[i] = self.weights[i] * omega
+        self.phases = np.zeros(self.n_paulis(), dtype=int)
+        self.weights = new_weights
+
     def standardise(self):
         """
         Standardises the PauliSum object by combining equivalent Paulis and
@@ -514,14 +534,31 @@ class PauliSum:
         self.weights = [x for _, x in sorted(zip(self.pauli_strings, self.weights))]
         self.phases = [x for _, x in sorted(zip(self.pauli_strings, self.phases))]
         self.pauli_strings = sorted(self.pauli_strings)
-        # add phase factors to weights then reset phases
-        new_weights = np.zeros(self.n_paulis(), dtype=np.complex128)
-        for i in range(self.n_paulis()):
-            phase = self.phases[i]
-            omega = np.exp(2 * np.pi * 1j * phase / self.lcm)
-            new_weights[i] = self.weights[i] * omega
-        self.phases = np.zeros(self.n_paulis(), dtype=int)
-        self.weights = new_weights
+        self.phase_to_weight()
+
+    @overload
+    def __getitem__(self, key: int) -> PauliString:
+        ...
+
+    @overload
+    def __getitem__(self, key: slice) -> 'PauliSum':
+        ...
+
+    @overload
+    def __getitem__(self, key: tuple[int, int]) -> Pauli:
+        ...
+
+    @overload
+    def __getitem__(self, key: tuple[slice, int]) -> 'PauliSum':
+        ...
+
+    @overload
+    def __getitem__(self, key: tuple[int, slice]) -> PauliString:
+        ...
+
+    @overload
+    def __getitem__(self, key: tuple[slice, slice]) -> 'PauliSum':
+        ...
 
     def __getitem__(self, key):
         if isinstance(key, int):
@@ -539,6 +576,65 @@ class PauliSum:
                 return PauliSum(pauli_strings, self.weights[key[0]], self.phases[key[0]], self.dimensions[key[1]], False)
         else:
             raise TypeError(f"Key must be int or slice, not {type(key)}")
+
+    @overload
+    def __setitem__(self, key: int, value: 'PauliString'):
+        ...
+
+    @overload
+    def __setitem__(self, key: slice, value: 'PauliString'):
+        ...
+
+    @overload
+    def __setitem__(self, key: tuple[int, int], value: 'Pauli'):
+        ...
+
+    @overload
+    def __setitem__(self, key: tuple[slice, int], value: 'PauliSum'):
+        ...
+
+    @overload
+    def __setitem__(self, key: tuple[int, slice], value: 'PauliString'):
+        ...
+
+    @overload
+    def __setitem__(self, key: tuple[slice, slice], value: 'PauliSum'):
+        ...
+
+    @overload
+    def __setitem__(self, key: tuple[int, int], value: 'Pauli'):
+        ...
+        
+    def __setitem__(self, key: int | slice | tuple[int, int] | tuple[slice, int] | tuple[int, slice] | tuple[slice, slice],
+                    value: 'PauliString | Pauli | PauliSum'):
+        # TODO: Error messages here could be improved
+        if isinstance(key, int):
+            # key indexes the pauli_string to be replaced by value
+            self.pauli_strings[key] = value   # works fine
+        elif isinstance(key, slice):
+            # key indexes the pauli_strings to be replaced by value
+            self.pauli_strings[key] = value   # works fine
+        elif isinstance(key, tuple):
+            if len(key) != 2:
+                raise ValueError("Tuple key must be of length 2")
+            if isinstance(key[0], int):
+                if isinstance(key[1], int):
+                    # key[0] indexes the pauli string, key[1] indexes the qudit
+                    self.pauli_strings[key[0]][key[1]] = value  # works fine
+                elif isinstance(key[1], slice):
+                    # key[0] indexes the pauli string, key[1] indexes the qudits
+                    self.pauli_strings[key[0]][key[1]] = value  # works fine
+            if isinstance(key[0], slice):
+                if isinstance(key[1], int):
+                    # key[0] indexes the pauli strings, key[1] indexes the qudit
+                    # we could input a list of paulis here too if we wanted
+                    for i in np.arange(self.n_paulis())[key[0]]:
+                        self.pauli_strings[i][key[1]] = value  # works fine
+                elif isinstance(key[1], slice):
+                    # key[0] indexes the pauli strings, key[1] indexes the qudits
+                    for i_val, i in enumerate(np.arange(self.n_paulis())[key[0]]):
+                        print(i, value[int(i_val)])
+                        self.pauli_strings[i][key[1]] = value[int(i_val)]
 
     def __add__(self, A: 'Pauli | PauliString | PauliSum') -> 'PauliSum':
         if isinstance(A, PauliString) or isinstance(A, Pauli):
@@ -718,10 +814,8 @@ class PauliSum:
         new_x_exp = np.delete(self.x_exp, pauli_indices, axis=0)
         new_z_exp = np.delete(self.z_exp, pauli_indices, axis=0)
 
-        for i in sorted(pauli_indices, reverse=True):  # sort in reverse order to avoid index shifting
-            self.pauli_strings = list(self.pauli_strings)  # Convert to list
+        for i in sorted(pauli_indices, reverse=True):  # sort in reverse order to avoid index shifting # Convert to list
             del self.pauli_strings[i]
-            self.pauli_strings = np.array(self.pauli_strings, dtype=object)  # Convert back to NumPy array
 
         self.weights = new_weights
         self.phases = new_phases
@@ -738,7 +832,7 @@ class PauliSum:
         for p in self.pauli_strings:
             new_pauli_strings.append(p._delete_qudits(qudit_indices))
 
-        self.pauli_strings = np.array(new_pauli_strings, dtype=object)
+        self.pauli_strings = new_pauli_strings
         self.x_exp = np.delete(self.x_exp, qudit_indices, axis=1)
         self.z_exp = np.delete(self.z_exp, qudit_indices, axis=1)
         self.dimensions = np.delete(self.dimensions, qudit_indices)
@@ -929,13 +1023,33 @@ if __name__ == '__main__':
     
     import sys
     sys.path.append("./")
-    dims = [2, 2]
-    x1x1 = PauliSum(['x0z1 x0z0', 'x1z0 x0z0', 'x1z0 x0z0'], dimensions=dims)
-    # x1x1.weights = [1., 10,]
+    dims = [2, 2, 2]
+    ids = PauliSum(['x0z0 x0z0 x0z0', 'x0z0 x0z0 x0z0', 'x0z0 x0z0 x0z0'], dimensions=dims)
 
-    print(x1x1)
-    print(x1x1.symplectic_matrix())
-    print(x1x1.symplectic_product_matrix())
-    print(x1x1.is_commuting())
-    print(bool(x1x1.is_commuting(pauli_string_indexes=[0, 1])))
-    print(bool(x1x1.is_commuting(pauli_string_indexes=[1, 2])))
+    print('replace a single pauli')
+    test_ps = Pauli(1, 1, 2)
+    ids[1, 1] = test_ps
+    print(ids)
+
+    print('replace a string in full')
+    test_ps_replace = PauliString('x1z1 x1z1 x1z1', dimensions=dims)
+    ids[1] = test_ps_replace
+    print(ids)
+
+    print('replace multiple strings in full')
+    test_slice_replace = PauliSum(['x1z0 x1z0 x1z0', 'x1z0 x1z0 x1z0'], dimensions=dims)
+    ids[1:3] = test_slice_replace
+    print(ids)
+
+    print('replace part of a string for a single qubit')
+    test_insertion = Pauli(1, 1, 2)
+    ids[1:3, 0] = test_insertion
+    print(ids)
+
+    ids = PauliSum(['x0z0 x0z0 x0z0', 'x0z0 x0z0 x0z0', 'x0z0 x0z0 x0z0'], dimensions=dims)
+    print('replace part of a string for multiple qubits')
+    test_insertion = PauliSum(['x1z1 x1z1', 'x1z1 x1z1'], dimensions=[2, 2])
+    # x1x1.weights = [1., 10,]
+    p_add = Pauli(1, 1, 2)
+    ids[1:3, 1:3] = test_insertion
+    print(ids)
