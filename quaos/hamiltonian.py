@@ -98,29 +98,6 @@ def pauli_eigenvalue(index, dimension):
     return np.exp(2 * np.pi * 1j * index / dimension)
 
 
-def symplectic_reduction_qudit(P):
-    d = P.dimensions
-    q = P.n_qudits()
-    P1 = P.copy()
-    C = Circuit(d)
-    pivots = []
-
-    for i in range(P.n_qudits()):
-        C, pivots = symplectic_reduction_iter_qudit_(P1.copy(), C, pivots, i)
-    P1 = C.act(P1)
-
-    removable_qubits = set(range(q)) - set([pivot[1] for pivot in pivots])
-    conditional_qubits = sorted(set(range(q)) - removable_qubits - set([pivot[1] for pivot in pivots if pivot[2] == 'Z']))
-    if any(conditional_qubits):
-
-        for cq in conditional_qubits:
-            g = H(cq, d[cq])
-            C.add_gate(g)
-        P1 = g.act(P1)
-
-    return C, sorted(pivots, key=lambda x: x[1])
-
-
 def number_of_SUM_X(r_control, r_target, d):
     """
     Find the smallest positive integer N such that:
@@ -197,6 +174,12 @@ def cancel_Y(pauli_sum, qudit, pauli_index, C):
 
 
 def cancel_pauli(P, current_qudit, pauli_index, circuit, n_q_max):
+    """
+    Needs an x component on current_qudit
+
+    P -> p_1 ... p_current_qudit  I I ... I p_n_q_max p.... p_n_paulis
+    
+    """
     # add CX gates to cancel out all non-zero X-parts on Pauli pauli_index, i > qudit
     if any(P.x_exp[pauli_index, i] for i in range(current_qudit + 1, n_q_max)):
         P, circuit = cancel_X(P, current_qudit, pauli_index, circuit, n_q_max)
@@ -209,6 +192,29 @@ def cancel_pauli(P, current_qudit, pauli_index, circuit, n_q_max):
     if P.z_exp[pauli_index, current_qudit] and P.x_exp[pauli_index, current_qudit]:
         P, circuit = cancel_Y(P, current_qudit, pauli_index, circuit)
     return P, circuit
+
+
+def symplectic_reduction_qudit(P):
+    d = P.dimensions
+    q = P.n_qudits()
+    P1 = P.copy()
+    C = Circuit(d)
+    pivots = []
+
+    for i in range(P.n_qudits()):
+        C, pivots = symplectic_reduction_iter_qudit_(P1.copy(), C, pivots, i)
+    P1 = C.act(P1)
+
+    removable_qubits = set(range(q)) - set([pivot[1] for pivot in pivots])
+    conditional_qubits = sorted(set(range(q)) - removable_qubits - set([pivot[1] for pivot in pivots if pivot[2] == 'Z']))
+    if any(conditional_qubits):
+
+        for cq in conditional_qubits:
+            g = H(cq, d[cq])
+            C.add_gate(g)
+        P1 = g.act(P1)
+
+    return C, sorted(pivots, key=lambda x: x[1])
 
 
 def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
@@ -233,6 +239,7 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
 
         P, C = cancel_pauli(P, current_qudit, current_pauli, C, n_q_max)
 
+    # If there was previously a y we need to cancel the left over z parts
     if any(P.z_exp[:, current_qudit]):
         current_pauli = min(i for i in range(n_p) if P.z_exp[i, current_qudit])  # first Pauli that has a z-component
         pivots.append((current_pauli, current_qudit, 'Z'))

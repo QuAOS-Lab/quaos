@@ -407,8 +407,9 @@ class PauliSum:
 
         self.pauli_strings = sanitized_pauli_list
         self.weights = np.asarray(sanitized_weights, dtype=np.complex128)
-        self.phases = np.asarray(sanitized_phases, dtype=int)
         self.dimensions = sanitized_dimensions
+        self.lcm = np.lcm.reduce(self.dimensions)
+        self.phases = np.asarray(sanitized_phases, dtype=int) % self.lcm
         
         x_exp = np.zeros((len(self.pauli_strings), len(self.dimensions)))  # ensures we can always index [pauli #, qudit #]
         z_exp = np.zeros((len(self.pauli_strings), len(self.dimensions)))  # ensures we can always index [pauli #, qudit #]
@@ -419,7 +420,6 @@ class PauliSum:
         
         self.x_exp = x_exp
         self.z_exp = z_exp
-        self.lcm = np.lcm.reduce(self.dimensions)
 
         if standardise:
             print('SORTING')  # Keeping this here for now for debug purposes as it can cause issues.
@@ -505,6 +505,9 @@ class PauliSum:
     def n_qudits(self) -> int:
         return len(self.dimensions)
     
+    def shape(self) -> tuple[int, int]:
+        return self.n_paulis(), self.n_qudits()
+    
     def n_identities(self):
         """
         Get the number of identities in the PauliSum
@@ -573,7 +576,10 @@ class PauliSum:
             if isinstance(key[0], slice):
                 pauli_strings_all_qubits = self.pauli_strings[key[0]]
                 pauli_strings = [p[key[1]] for p in pauli_strings_all_qubits]
-                return PauliSum(pauli_strings, self.weights[key[0]], self.phases[key[0]], self.dimensions[key[1]], False)
+                if isinstance(key[1], int):
+                    return PauliSum(pauli_strings, self.weights[key[0]], self.phases[key[0]],  np.asarray([self.dimensions[key[1]]]), False)
+                elif isinstance(key[1], slice):
+                    return PauliSum(pauli_strings, self.weights[key[0]], self.phases[key[0]], self.dimensions[key[1]], False)
         else:
             raise TypeError(f"Key must be int or slice, not {type(key)}")
 
@@ -605,8 +611,7 @@ class PauliSum:
     def __setitem__(self, key: tuple[int, int], value: 'Pauli'):
         ...
         
-    def __setitem__(self, key: int | slice | tuple[int, int] | tuple[slice, int] | tuple[int, slice] | tuple[slice, slice],
-                    value: 'PauliString | Pauli | PauliSum'):
+    def __setitem__(self, key, value):
         # TODO: Error messages here could be improved
         if isinstance(key, int):
             # key indexes the pauli_string to be replaced by value
@@ -672,7 +677,7 @@ class PauliSum:
                 new_pauli_list.append(self.pauli_strings[i] @ A.pauli_strings[j])
                 new_weights.append(self.weights[i] * A.weights[j])
                 new_phases.append(((self.phases[i] + A.phases[j]) % new_lcm))
-        output_pauli = PauliSum(new_pauli_list, new_weights, new_phases, self.dimensions, False)
+        output_pauli = PauliSum(new_pauli_list, new_weights, new_phases, new_dimensions, False)
         return output_pauli
 
     def __mul__(self, A: 'PauliSum | PauliString | Pauli | float | int | complex') -> 'PauliSum':
@@ -840,7 +845,7 @@ class PauliSum:
         self.lcm = np.lcm.reduce(self.dimensions)
 
     def copy(self) -> 'PauliSum':
-        return PauliSum([ps for ps in self.pauli_strings], self.weights.copy(), self.phases.copy(), self.dimensions.copy(), False)
+        return PauliSum([ps.copy() for ps in self.pauli_strings], self.weights.copy(), self.phases.copy(), self.dimensions.copy(), False)
 
     def symplectic_product_matrix(self) -> np.ndarray:
         """
@@ -1025,6 +1030,26 @@ if __name__ == '__main__':
     sys.path.append("./")
     dims = [2, 2, 2]
     ids = PauliSum(['x0z0 x0z0 x0z0', 'x0z0 x0z0 x0z0', 'x0z0 x0z0 x0z0'], dimensions=dims)
+
+    # testing __getitem__
+
+    print('get a single pauli')
+    print(ids[1, 1])
+    print(ids[1, 1:3])
+
+    print('get a string')
+    print(ids[1])
+
+    print('get a slice')
+    print(ids[1:3, 1:3])  # get a slice of a few qubits
+    print(ids[1:3])
+    print(ids[1:3, :])  # get a slice of all qubits
+    print(ids[:, 1:3])  # get a slice of all qubits
+    print(ids[1:3, 0])  # get a slice of the first qubit
+
+
+
+    # testing __setitem__
 
     print('replace a single pauli')
     test_ps = Pauli(1, 1, 2)

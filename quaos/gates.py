@@ -36,7 +36,8 @@ class GateOperation:
     def __init__(self, name: str, qudit_indices: list[int], mapping: list[str], dimension: list[int]):
         self.dimension = dimension
         self.name = name
-        self.qudit_indices = qudit_indices  # number of total qudits including those not acted upon - could remove the need for this entirely...
+        self.qudit_indices = qudit_indices
+        self.mapping = mapping  # number of total qudits including those not acted upon - could remove the need for this entirely...
         self.map_from, self.map_to, self.acquired_phase = self._interpret_mapping(mapping)
     
     def _interpret_mapping(self, map_string: list[str]) -> tuple[np.ndarray, np.ndarray, list[int]]:
@@ -193,6 +194,11 @@ class GateOperation:
         # P.combine_equivalent_paulis()
         return P
     
+    def copy(self) -> 'GateOperation':
+        new_gate = GateOperation(self.name, self.qudit_indices, self.mapping, self.dimension)
+        new_gate.acquired_phase = self.acquired_phase
+        return new_gate
+
     @overload
     def act(self, P: Pauli) -> PauliString:
         ...
@@ -219,9 +225,27 @@ class GateOperation:
     def __mul__(self, gate: 'GateOperation') -> 'Circuit':
         # TODO: check if the two gates are compatible, set dimensions accordingly
         # circuit = Circuit([self + gate])  # TODO: add support for gate summation
-        circuit = Circuit(self.dimension + gate.dimension, [self, gate])  # TODO: check, probably not what it was supposed to be
+        if self.dimension != gate.dimension:
+            # this is a choice for the moment, that we select the dimensions of the entire circuit from the beginning
+            # when defining the gates. We could instead define gates only locally and create the circuit from these 
+            # plus the indexes on which they act.
+            raise ValueError("Cannot compile Circuit from gates with different dimensions")
+        circuit = Circuit(self.dimension, [self, gate])
         return circuit
     
+    def __eq__(self, other_gate: 'GateOperation') -> bool:
+        if self.name != other_gate.name:
+            return False
+        if self.qudit_indices != other_gate.qudit_indices:
+            return False
+        if self.mapping != other_gate.mapping:
+            return False
+        if self.dimension != other_gate.dimension:
+            return False
+        if self.acquired_phase != other_gate.acquired_phase:
+            return False
+        return True
+
 
 class CNOT(GateOperation):
     def __init__(self, control: int, target: int, n_qudits: int):
@@ -301,7 +325,7 @@ class SWAP(GateOperation):
 
 
 class Circuit:
-    def __init__(self, dimensions: list[int], gates: list[GateOperation] | None = None):
+    def __init__(self, dimensions: list[int] | np.ndarray, gates: list[GateOperation] | None = None):
         """
         Initialize the Circuit with gates, indexes, and targets.
 
@@ -344,6 +368,12 @@ class Circuit:
         self.gates.pop(index)
         self.indexes.pop(index)
 
+    def n_qudits(self) -> int:
+        """
+        Returns the number of qudits in the circuit.
+        """
+        return len(self.dimensions)
+
     def __add__(self, other: 'Circuit') -> 'Circuit':
         """
         Adds two circuits together by concatenating their gates and indexes.
@@ -364,6 +394,17 @@ class Circuit:
         new_gates = self.gates + other.gates
         return Circuit(self.dimensions, new_gates)
     
+    def __eq__(self, other: 'Circuit') -> bool:
+        if not isinstance(other, Circuit):
+            return False
+        if len(self.gates) != len(other.gates):
+            return False
+        for i in range(len(self.gates)):
+            if self.gates[i] != other.gates[i]:
+                return False
+        
+        return True
+    
     def __getitem__(self, index: int) -> GateOperation:
         return self.gates[index]
     
@@ -381,6 +422,11 @@ class Circuit:
         return str_out
 
     def act(self, pauli: Pauli | PauliString | PauliSum) -> PauliString | PauliSum:
+        if isinstance(pauli, Pauli):
+            if self.dimensions[0] != pauli.dimension or len(self.dimensions) != 1:
+                raise ValueError("Pauli dimension does not match circuit dimensions")
+        elif np.any(self.dimensions != pauli.dimensions):
+            raise ValueError("Pauli dimensions do not match circuit dimensions")
         for gate in self.gates:
             pauli = gate.act(pauli)
         return pauli   # Why this warning? - it is a PauliSum or PauliString, never a Pauli
@@ -398,6 +444,25 @@ class Circuit:
 
         print(circuit)
         return circuit
+    
+    def copy(self) -> 'Circuit':
+        return Circuit(self.dimensions, self.gates.copy())
+
+    def embed_circuit(self, circuit: 'Circuit', qudit_indices: list[int] | np.ndarray | None = None):
+        """
+        Embed a small circuit into current circuit at the specified qudit indices.
+        """
+
+        if qudit_indices is not None:
+            if len(qudit_indices) != circuit.n_qudits():
+                raise ValueError("Number of qudit indices does not match number of qudits in circuit to embed")
+            
+        for gate in circuit.gates:
+            new_gate = gate.copy()
+            if qudit_indices is not None:
+                new_indexes = [qudit_indices[j] for j in gate.qudit_indices]
+                new_gate.qudit_indices = new_indexes
+            self.add_gate(new_gate)
 
 
 if __name__ == "__main__":
