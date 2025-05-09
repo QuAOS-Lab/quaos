@@ -412,27 +412,28 @@ class PauliSum:
     
     def n_qudits(self):
         return len(self.dimensions)
+    
+    def phase_to_weight(self):
+        new_weights = np.zeros(self.n_paulis(), dtype=np.complex128)
+        for i in range(self.n_paulis()):
+            phases = self.phases[i]
+            omega = np.exp(2 * np.pi * 1j * phases / self.lcm)
+            new_weights[i] = self.weights[i] * omega
+        self.phases = np.zeros(self.n_paulis(), dtype=int)
+        self.weights = new_weights
 
-    def _standardise_paulis(self):
+    def standardise(self):
         """
         Standardises the PauliSum object by combining equivalent Paulis and
         adding phase factors to the weights then resetting the phases.
         """
-        # sort
-        self.weights = [x for _, x in sorted(zip(self.pauli_list, self.weights))]
-        self.phases = [x for _, x in sorted(zip(self.pauli_list, self.phases))]
-        self.pauli_list = sorted(self.pauli_list)
         # combine equivalent
-        self.combine_equivalent_paulis()
-        # add phase factors to weights then reset phases
-        new_weights = np.zeros(self.n_paulis())
-        for i in range(self.n_paulis()):
-            phase = self.phases[i]
-            qudit_dim = self.dimensions[i]
-            omega = np.exp(2 * np.pi * 1j * phase / qudit_dim)
-            new_weights[i] = self.weights[i] * omega
-        self.phases = np.zeros(self.n_paulis())
-        self.weights = new_weights
+        # self.combine_equivalent_paulis()
+        # sort
+        self.weights = [x for _, x in sorted(zip(self.pauli_strings, self.weights))]
+        self.phases = [x for _, x in sorted(zip(self.pauli_strings, self.phases))]
+        self.pauli_strings = sorted(self.pauli_strings)
+        self.phase_to_weight()
 
     def __add__(self, A):
         if isinstance(A, PauliString) or isinstance(A, Pauli):

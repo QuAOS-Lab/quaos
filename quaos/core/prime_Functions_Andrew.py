@@ -307,7 +307,7 @@ def H(P, aa):
     X, Z = Q.X, Q.Z
     for a in aa:
         for i in range(Q.paulis()):
-            Q.phases[i] += -1* X[i, a] * Z[i, a] * P.lcm // P.dims[a]
+            Q.phases[i] += X[i, a] * Z[i, a] * P.lcm // P.dims[a]
         X[:, a], Z[:, a] = -Z[:, a].copy(), X[:, a].copy()
     return pauli(X, Z, Q.dims, Q.phases)
 
