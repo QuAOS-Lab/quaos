@@ -1,5 +1,6 @@
 import numpy as np
 from symplectic import Pauli, PauliSum, PauliString
+import sympy as sp
 
 
 def check_mappable_via_clifford(pauli_sum: PauliSum, target_pauli_sum: PauliSum) -> bool:
@@ -50,8 +51,4 @@ def are_subsets_equal(pauli_sum_1: PauliSum, pauli_sum_2: PauliSum,
         if pauli_sum_1[subset_1[i]] != pauli_sum_2[subset_2[i]]:
             return False
     return True
-
-
-def are_mutually_independent(pauli_string1: PauliString, pauli_string2: PauliString):
-    return bool(np.all(pauli_string1.symplectic_product_matrix() @ pauli_string2.symplectic_product_matrix() == 0))
 

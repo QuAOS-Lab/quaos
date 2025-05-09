@@ -368,6 +368,14 @@ class PauliString:
     
     def copy(self) -> 'PauliString':
         return PauliString(x_exp=self.x_exp.copy(), z_exp=self.z_exp.copy(), dimensions=self.dimensions.copy())
+    
+    def commute(self, other_pauli: 'PauliString') -> bool:
+        """
+        Check if two Pauli strings commute
+        :param other_pauli: The other Pauli string
+        :return: True if they commute, False otherwise
+        """
+        return self.symplectic_product(other_pauli) == 0
 
 
 class PauliSum:
@@ -485,7 +493,7 @@ class PauliSum:
         if isinstance(weights, (np.ndarray, list)) and len(pauli_list) != len(weights):
             raise ValueError(f"Length of Pauli list ({len(pauli_list)}) and weights ({len(weights)}) must be equal.")
         
-        return np.asarray(weights, dtype=float)
+        return np.asarray(weights, dtype=complex)
 
     def _sanity_checks(self,
                        pauli_list: list[PauliString] | list[Pauli] | list[str] | PauliString | Pauli,
@@ -768,7 +776,7 @@ class PauliSum:
         self._delete_paulis(to_delete)
 
     def remove_trivial_qudits(self):
-        # If entire Pauli string is I, remove it
+        # If entire qudit is I, remove it
         to_delete = []
         for i in range(self.n_qudits()):
             if np.all(self.x_exp[:, i] == 0) and np.all(self.z_exp[:, i] == 0):

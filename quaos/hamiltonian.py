@@ -267,34 +267,45 @@ def pauli_reduce(hamiltonian: PauliSum) -> tuple[PauliSum, list[PauliSum], Circu
     Reduces the Hamiltonian to a smaller number of qudits by removing leading X and Z operators.
     
     This returns a list of reduced Hamiltonians, each corresponding to a different symmetry sector of the Z symmetries.
+
     """
 
     C = symplectic_pauli_reduction(hamiltonian)
 
     h_red = C.act(hamiltonian)
-
     # first we remove any qudits with only identities
     h_red.remove_trivial_qudits()
 
+    # build list of z symmetries as those qubits with only z
     list_of_z_symmetries = []
+    list_of_phases = []
+    n_sectors = 1
+    z_symmetric_qudits = set()
     for i in range(h_red.n_qudits()):
         if not any(h_red.x_exp[:, i]):  # z only
             list_of_z_symmetries.append((i, np.where(h_red.z_exp[:, i] != 0)[0]))
+            z_symmetric_qudits.add(i)
+            list_of_phases += np.arange(h_red.dimensions[i]).tolist()
+            n_sectors *= h_red.dimensions[i]
 
-    n_sectors = 2 ** len(list_of_z_symmetries)
-    all_eigenvalues = [list(bits) for bits in itertools.product([-1, 1], repeat=len(list_of_z_symmetries))]
-
+    n_symmetries = len(list_of_z_symmetries)
+    all_phases = [list(bits) for bits in itertools.product(list_of_phases)]
+    # z symmetries can simply alter the phase of tha Paulis
     conditioned_hamiltonians = []
+
     for sector in range(n_sectors):
+
         conditioned_hamiltonian = h_red.copy()
-        weights_factor = np.ones(h_red.n_paulis(), dtype=complex)
+        phase_factor = np.zeros(h_red.n_paulis(), dtype=int)
         for i, z_symmetry in enumerate(list_of_z_symmetries):
-            weights_factor[list_of_z_symmetries[i][1]] *= all_eigenvalues[sector][i]
-        conditioned_hamiltonian.weights *= weights_factor
-        conditioned_hamiltonian._delete_qudits(z_symmetry[0])
+
+            phase_factor[list_of_z_symmetries[i][1]] += all_phases[sector]
+        conditioned_hamiltonian.phases += phase_factor
+        conditioned_hamiltonian.phases = conditioned_hamiltonian.phases % conditioned_hamiltonian.lcm
+        conditioned_hamiltonian._delete_qudits(list(z_symmetric_qudits))
         conditioned_hamiltonian.combine_equivalent_paulis()
         conditioned_hamiltonians.append(conditioned_hamiltonian)
-    return h_red, conditioned_hamiltonians, C, all_eigenvalues
+    return h_red, conditioned_hamiltonians, C, all_phases
 
 
 if __name__ == "__main__":
@@ -310,15 +321,14 @@ if __name__ == "__main__":
     for h in conditioned_hams:
         print(h)
 
-
-    # random hamiltonian example  
-    n_qudits = 4
-    n_paulis = 4
-    dimension = 2
-    ham = random_pauli_hamiltonian(n_paulis, [dimension] * n_qudits, mode='uniform')
-    circuit = symplectic_pauli_reduction(ham)
-    print(ham)
-    h_reduced, conditioned_hams, reducing_circuit, eigenvalues = pauli_reduce(ham)
-    print(h_reduced)
-    for h in conditioned_hams:
-        print(h)
+    # random hamiltonian example
+    # n_qudits = 4
+    # n_paulis = 4
+    # dimension = 2
+    # ham = random_pauli_hamiltonian(n_paulis, [dimension] * n_qudits, mode='uniform')
+    # circuit = symplectic_pauli_reduction(ham)
+    # print(ham)
+    # h_reduced, conditioned_hams, reducing_circuit, eigenvalues = pauli_reduce(ham)
+    # print(h_reduced)
+    # for h in conditioned_hams:
+    #     print(h)

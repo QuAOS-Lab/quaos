@@ -37,7 +37,7 @@ class GateOperation:
         self.dimension = dimension
         self.name = name
         self.qudit_indices = qudit_indices
-        self.mapping = mapping  # number of total qudits including those not acted upon - could remove the need for this entirely...
+        self.mapping = mapping
         self.map_from, self.map_to, self.acquired_phase = self._interpret_mapping(mapping)
     
     def _interpret_mapping(self, map_string: list[str]) -> tuple[np.ndarray, np.ndarray, list[int]]:
@@ -256,16 +256,30 @@ class CNOT(GateOperation):
     
 
 class Hadamard(GateOperation):
-    def __init__(self, index: int, dimension: int):
-        Hadamard_operations = self.hadamard_gate_operations(dimension)
-        super().__init__("H", [index], Hadamard_operations, dimension=[dimension])
+    def __init__(self, index: int, dimension: int, inverse: bool = False):
+        if inverse:
+            Hadamard_operations = self.inverse_fourier_gate_operations(dimension)
+        else:
+            Hadamard_operations = self.hadamard_gate_operations(dimension)
+        name = "H" if not inverse else "Hdag"
+        super().__init__(name, [index], Hadamard_operations, dimension=[dimension])
 
     @staticmethod
     def hadamard_gate_operations(dimension: int) -> list[str]:
         operations = []
         for r in range(dimension):
             for s in range(dimension):
-                operations.append(f"x{r}z{s} -> x{-s % dimension}z{r}p{r * s}")
+                phase = (r * s) % dimension
+                operations.append(f"x{r}z{s} -> x{-s % dimension}z{r}p{phase}")
+        return operations
+
+    @staticmethod
+    def inverse_fourier_gate_operations(dimension: int) -> list[str]:
+        operations = []
+        for r in range(dimension):
+            for s in range(dimension):
+                phase = (-r * s) % dimension
+                operations.append(f"x{r}z{s} -> x{s}z{-r % dimension}p{phase}")
         return operations
 
 
@@ -337,9 +351,9 @@ class Circuit:
         
 
         Parameters:
+            dimensions (list[int] | np.ndarray): A list or array of integers representing the dimensions of the qudits.
             gates (list): A list of Gate objects representing the gates in the circuit.
-            indexes (list): A list of integers or tuples for multi-qudit gates,
-              indicating the indexes of qudits the gates act upon.
+            
         """
         if gates is None:
             gates = []
@@ -402,7 +416,6 @@ class Circuit:
         for i in range(len(self.gates)):
             if self.gates[i] != other.gates[i]:
                 return False
-        
         return True
     
     def __getitem__(self, index: int) -> GateOperation:
@@ -433,7 +446,8 @@ class Circuit:
 
     def show(self) -> QuantumCircuit:
         circuit = QuantumCircuit(len(self.dimensions))
-        dict = {'X': circuit.x, 'H': circuit.h, 'S': circuit.s, 'SUM': circuit.cx, 'CNOT': circuit.cx}
+        dict = {'X': circuit.x, 'H': circuit.h, 'S': circuit.s, 'SUM': circuit.cx, 'CNOT': circuit.cx, 
+                'Hdag': circuit.h.inverse()}
 
         for gate in self.gates:
             name = gate.name
@@ -450,7 +464,7 @@ class Circuit:
 
     def embed_circuit(self, circuit: 'Circuit', qudit_indices: list[int] | np.ndarray | None = None):
         """
-        Embed a small circuit into current circuit at the specified qudit indices.
+        Embed a circuit into current circuit at the specified qudit indices.
         """
 
         if qudit_indices is not None:

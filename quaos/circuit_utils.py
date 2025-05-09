@@ -1,9 +1,10 @@
-from gates import Circuit, SUM as CX, PHASE as S, Hadamard as H
+from gates import Circuit, SUM as CX, PHASE as S, Hadamard as H, GateOperation
 from symplectic import Pauli, PauliString, PauliSum, symplectic_product
 import numpy as np
 import sympy as sym
 from pauli_utils import are_subsets_equal
 from sympy.physics.quantum import TensorProduct, Operator
+import random
 # def check_mappable_via_clifford(pauli_sum: PauliSum, target_pauli_sum: PauliSum):
 
 
@@ -196,6 +197,32 @@ def reduce_exponents(expr):
     """
     expr = sym.expand(expr)  # Expand the expression to handle all terms
     return expr.replace(lambda x: x.is_Pow, lambda x: x.base)
+
+
+def random_gate(dimensions: list[int]) -> GateOperation:
+    gate = random.choice(['SUM', 'H', 'S'])
+    qudits = np.arange(len(dimensions))
+    
+    if gate == 'SUM':
+        control = random.choice(qudits)
+        target = random.choice(np.delete(qudits, control))
+        if dimensions[control] != dimensions[target]:  # reselect at random
+            return random_gate(dimensions)
+        return CX(control, target, dimensions[control])
+    elif gate == 'H':
+        qudit = random.choice(qudits)
+        return H(qudit, dimensions[qudit])
+    elif gate == 'S':
+        qudit = random.choice(qudits)
+        return S(qudit, dimensions[qudit])
+
+
+def random_clifford(depth: int, dimensions: list[int] | np.ndarray) -> Circuit:
+    circuit = Circuit(dimensions)
+    for _ in range(depth):
+        gate = random_gate(dimensions)
+        circuit.add_gate(gate)
+    return circuit
 
 
 if __name__ == "__main__":
