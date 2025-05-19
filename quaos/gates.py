@@ -12,25 +12,15 @@ class GateOperation:
     """
     Mapping can be written as set of rules,
     
-    e.g. for CNOT(control=3, target=1, dimensions=2)
+    e.g. for CNOT
                 x1z0*x0z0 -> x1z0*x1z0
                 x0z0*x1z0 -> x0z0*x1z0  # doesn't need specifying
                 x0z1*x0z0 -> x0z1*x0z0  # doesn't need specifying
-                x0z0*x0z1 -> -x0z1*x0z1 # note phase important here
+                x0z0*x0z1 -> x0z-1*x0z1 # 
 
     inputs are:
 
-    qudit_indices = (3, 1)
     mapping = ['x1z0*x0z0 -> x1z0*x1z0', 'x0z0*x0z1 -> -x0z1*x0z1']  # (control*target -> control*target)
-
-    or for SUM(target=1, control=3)
-
-    qudit_indices = (3, 1)
-    mapping = ['X*I -> X*X', 'I*Z -> Z-1*Z']   # Interpreting Xn = X^n, Z-n = Z^{-n}
-    
-    on all mappings (output) % lcm is assumed
-
-    Should act on a PauliSum to return another PauliSum
 
     """
     def __init__(self, name: str, qudit_indices: list[int], mapping: list[str], dimension: list[int]):
@@ -248,12 +238,10 @@ class GateOperation:
 
 
 class CNOT(GateOperation):
-    def __init__(self, control: int, target: int, n_qudits: int):
+    def __init__(self, control: int, target: int):
         CNOT_operations = ['x1z0 x0z0 -> x1z0 x1z0', 'x0z0 x0z1 -> x0z1 x0z1']
         super().__init__("CNOT", [control, target], CNOT_operations, dimension=[2, 2])
-        # TODO: add support for n_qudits parameter or remove it entirely
-        # super().__init__("CNOT", [control, target], CNOT_operations, n_qudits=n_qudits, dimension=[2, 2])
-    
+
 
 class Hadamard(GateOperation):
     def __init__(self, index: int, dimension: int, inverse: bool = False):
