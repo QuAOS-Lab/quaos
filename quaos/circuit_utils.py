@@ -136,22 +136,19 @@ def find_agnostic_circuit(pauli_sum: PauliSum, target_paulis: list[Pauli], targe
 
 def symplectic_effect(circuit):
     n_qudits = len(circuit.dimensions)
-    #print(n_qudits)
     r_now = list(sym.symbols([f'r{i}' for i in range(1, n_qudits+1)]))
     omega = sym.symbols('omega')
-    #print(len(r_now))
     s_now = list(sym.symbols([f's{i}' for i in range(1, n_qudits+1)]))
     r_next = [r_now[i] for i in range(n_qudits)]
     s_next = [s_now[i] for i in range(n_qudits)]
 
-    #r1_start, r2_start, s1_start, s2_start = sym.symbols('r1 r2 s1 s2')
     X = Operator('X')
     Z = Operator('Z')
 
     phase = 0
     gates = circuit.gates
     qubits = circuit.indexes
-    for i,g in enumerate(gates):
+    for i, g in enumerate(gates):
         if g.name == 'SUM':
             r_next[qubits[i][1]] = r_now[qubits[i][0]] + r_now[qubits[i][1]]
             s_next[qubits[i][0]] = s_now[qubits[i][0]] + s_now[qubits[i][1]]
@@ -161,7 +158,7 @@ def symplectic_effect(circuit):
             phase += s_now[qubits[i][0]] * r_now[qubits[i][0]]
         elif g.name == 'S' or g.name == 'PHASE':
             s_next[qubits[i][0]] = s_now[qubits[i][0]] + r_now[qubits[i][0]]
-            phase += r_now[qubits[i][0]] * (r_now[qubits[i][0]]-1)/2
+            phase += r_now[qubits[i][0]] * (r_now[qubits[i][0]] - 1) / 2
         r_now = [r_next[i] for i in range(n_qudits)]
         s_now = [s_next[i] for i in range(n_qudits)]
     final = TensorProduct(X**(modulo_2(r_now[0])) * Z**(modulo_2(s_now[0])), X**(modulo_2(r_now[1])) * Z**(modulo_2(s_now[1])))
@@ -199,7 +196,7 @@ def reduce_exponents(expr):
     return expr.replace(lambda x: x.is_Pow, lambda x: x.base)
 
 
-def random_gate(dimensions: list[int]) -> GateOperation:
+def random_gate(dimensions: list[int] | np.ndarray) -> GateOperation:
     gate = random.choice(['SUM', 'H', 'S'])
     qudits = np.arange(len(dimensions))
     
@@ -243,4 +240,3 @@ if __name__ == "__main__":
     print(C[0])
     print(initial_pauli)
     print(C[0].act(initial_pauli))
-

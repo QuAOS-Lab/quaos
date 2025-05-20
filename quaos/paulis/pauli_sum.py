@@ -1,7 +1,5 @@
-from typing import overload
-from quaos.Paulis.PauliString import PauliString
-from quaos.Paulis.Pauli import Pauli
-from quaos.Paulis.utils import symplectic_product
+from __future__ import annotations
+from typing import Union, overload
 import numpy as np
 import scipy
 
@@ -13,12 +11,16 @@ class PauliSum:
     Represents a weighted sum of Pauli strings with arbitrary phases
     """
     def __init__(self,
-                 pauli_list: list[PauliString] | list[Pauli] | list[str] | PauliString | Pauli,
+                 pauli_list: Union[list[PauliString], list[Pauli], list[str], PauliString, Pauli],
                  weights: list[float | complex] | np.ndarray | float | complex | None = None,
                  phases: list[float] | np.ndarray | None = None,
                  dimensions: list[int] | np.ndarray | None = None,
                  standardise: bool = True):
         """
+        TODO: Change everything possible to numpy arrays.
+        TODO: Remove self.xz_mat - should be in a utils module
+        TODO: Add stack method to concatenate additional strings or sums (could use utils concatenate)
+
         Constructor for SymplecticPauli class.
 
         Parameters
@@ -61,7 +63,7 @@ class PauliSum:
             self.standardise()
 
     @staticmethod
-    def _sanitize_pauli_list(pauli_list: list[PauliString] | list[Pauli] | list[str] | PauliString | Pauli,
+    def _sanitize_pauli_list(pauli_list: Union[list[PauliString], list[Pauli], list[str], PauliString, Pauli],
                              dimensions: list[int] | np.ndarray | None) -> list[PauliString]:
         
         if isinstance(pauli_list, Pauli):
@@ -123,7 +125,7 @@ class PauliSum:
         return np.asarray(weights, dtype=complex)
 
     def _sanity_checks(self,
-                       pauli_list: list[PauliString] | list[Pauli] | list[str] | PauliString | Pauli,
+                       pauli_list: Union[list[PauliString], list[Pauli], list[str], PauliString, Pauli],
                        weights: list[float | complex] | np.ndarray | float | complex | None,
                        phases: list[float] | np.ndarray | None,
                        dimensions: list[int] | np.ndarray | None) -> tuple[list[PauliString], np.ndarray, np.ndarray, np.ndarray]:
@@ -236,30 +238,23 @@ class PauliSum:
         
     def __setitem__(self, key, value):
         # TODO: Error messages here could be improved
-        if isinstance(key, int):
-            # key indexes the pauli_string to be replaced by value
+        if isinstance(key, int):  # key indexes the pauli_string to be replaced by value
             self.pauli_strings[key] = value
         elif isinstance(key, slice):
-            # key indexes the pauli_strings to be replaced by value
             self.pauli_strings[key] = value
         elif isinstance(key, tuple):
             if len(key) != 2:
                 raise ValueError("Tuple key must be of length 2")
             if isinstance(key[0], int):
-                if isinstance(key[1], int):
-                    # key[0] indexes the pauli string, key[1] indexes the qudit
+                if isinstance(key[1], int):  # key[0] indexes the pauli string, key[1] indexes the qudit
                     self.pauli_strings[key[0]][key[1]] = value
-                elif isinstance(key[1], slice):
-                    # key[0] indexes the pauli string, key[1] indexes the qudits
+                elif isinstance(key[1], slice):  # key[0] indexes the pauli string, key[1] indexes the qudits
                     self.pauli_strings[key[0]][key[1]] = value
             if isinstance(key[0], slice):
-                if isinstance(key[1], int):
-                    # key[0] indexes the pauli strings, key[1] indexes the qudit
-                    # we could input a list of paulis here too if we wanted
+                if isinstance(key[1], int):  # key[0] indexes the pauli strings, key[1] indexes the qudit
                     for i in np.arange(self.n_paulis())[key[0]]:
                         self.pauli_strings[i][key[1]] = value
-                elif isinstance(key[1], slice):
-                    # key[0] indexes the pauli strings, key[1] indexes the qudits
+                elif isinstance(key[1], slice):  # key[0] indexes the pauli strings, key[1] indexes the qudits
                     for i_val, i in enumerate(np.arange(self.n_paulis())[key[0]]):
                         print(i, value[int(i_val)])
                         self.pauli_strings[i][key[1]] = value[int(i_val)]
@@ -481,7 +476,7 @@ class PauliSum:
         for i in range(n):
             for j in range(n):
                 if i > j:
-                    spm[i, j] = symplectic_product(self.pauli_strings[i], self.pauli_strings[j])
+                    spm[i, j] = self.pauli_strings[i].symplectic_product(self.pauli_strings[j])
         spm = spm + spm.T
         return spm
     
@@ -558,9 +553,23 @@ class PauliSum:
             new_phase = (np.array(self.phases) + np.array(phases)) % self.lcm
         self.phases = new_phase
 
+    def reorder(self, order: list[int]):
+        self.pauli_strings = [self.pauli_strings[i] for i in order]
+        self.weights = self.weights[order]
+        self.phases = self.phases[order]
+        self.x_exp = self.x_exp[order]
+        self.z_exp = self.z_exp[order]
+
+    def move_string_to_top(self, pauli_index: int):
+        self.pauli_strings.insert(0, self.pauli_strings.pop(pauli_index))
+        self.weights = np.insert(self.weights, 0, self.weights[pauli_index])
+        self.phases = np.insert(self.phases, 0, self.phases[pauli_index])
+
     @staticmethod
     def xz_mat(d: int, aX: int, aZ: int) -> scipy.sparse.csr_matrix:
         """
+        TODO: Move this to a better location and amend where it is used in the Pauli reduction code
+
         Temporary function for pauli reduction.
 
         Function for creating generalized Pauli matrix.

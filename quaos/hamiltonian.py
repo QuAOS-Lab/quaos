@@ -4,8 +4,8 @@ import itertools
 import random
 
 # sys.path.append("./")
-from symplectic import PauliSum, Pauli, PauliString
-from gates import GateOperation, Circuit, Hadamard as H, SUM as CX, PHASE as S
+from quaos.paulis import PauliSum, PauliString
+from quaos.gates import Circuit, Hadamard as H, SUM as CX, PHASE as S
 
 
 def ground_state(P):

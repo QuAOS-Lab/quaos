@@ -1,8 +1,7 @@
+from __future__ import annotations
 import functools
 import numpy as np
 import re
-from quaos.Paulis.Pauli import Pauli
-from quaos.Paulis.PauliSum import PauliSum
 
 
 @functools.total_ordering
@@ -60,13 +59,14 @@ class PauliString:
             p_string += 'x' + f'{self.x_exp[i]}' + 'z' + f'{self.z_exp[i]} '
         return p_string
     
-    def __matmul__(self, A: 'PauliString') -> 'PauliString':
+    def __matmul__(self, A: PauliString) -> PauliString:
         new_x_exp = np.concatenate((self.x_exp, A.x_exp))
         new_z_exp = np.concatenate((self.z_exp, A.z_exp))
         new_dims = np.concatenate((self.dimensions, A.dimensions))
         return PauliString(new_x_exp, new_z_exp, new_dims)
 
-    def __mul__(self, A: 'PauliString | PauliSum | float | int | complex') -> 'PauliString | PauliSum':
+    def __mul__(self, A: PauliString | PauliSum | float | int | complex) -> PauliString | PauliSum:
+        from . import PauliSum
         if isinstance(A, PauliString):
             if np.any(self.dimensions != A.dimensions):
                 raise Exception("To multiply two PauliStrings, their dimensions"
@@ -81,15 +81,18 @@ class PauliString:
         else:
             raise ValueError(f"Cannot multiply PauliString with type {type(A)}")
         
-    def __rmul__(self, A: 'PauliString | PauliSum | float | int | complex') -> 'PauliSum':
+    def __rmul__(self, A: PauliString | PauliSum | float | int | complex) -> PauliSum:
+        from . import PauliSum
         if not (isinstance(A, int) or isinstance(A, float) or isinstance(A, complex)):
             raise ValueError(f"Right multiply only changes weight - passed type = {type(A)}")
         return PauliSum([self], weights=[A])
 
-    def _to_pauli_sum(self) -> 'PauliSum':
+    def _to_pauli_sum(self) -> PauliSum:
+        from . import PauliSum
         return PauliSum([self], weights=[1], phases=[0], dimensions=self.dimensions, standardise=False)
 
-    def __add__(self, A: 'PauliString | PauliSum') -> 'PauliSum':
+    def __add__(self, A: PauliString | PauliSum) -> PauliSum:
+        from . import PauliSum
         if np.all(self.dimensions != A.dimensions):
             raise Exception("To add two PauliStrings, their dimensions"
                             f" {self.dimensions} and {A.dimensions} must be equal")
@@ -104,13 +107,13 @@ class PauliString:
     def __eq__(self, other_pauli: 'PauliString') -> bool:
         if not isinstance(other_pauli, PauliString):
             return False
-        
+    
         return bool(np.all(self.x_exp == other_pauli.x_exp) and np.all(self.z_exp == other_pauli.z_exp) and np.all(self.dimensions == other_pauli.dimensions))
 
-    def __ne__(self, other_pauli: 'PauliString') -> bool:
+    def __ne__(self, other_pauli: PauliString) -> bool:
         return not self.__eq__(other_pauli)
     
-    def __gt__(self, other_pauli: 'PauliString') -> bool:
+    def __gt__(self, other_pauli: PauliString) -> bool:
         """
         Arbitrary but useful in making a standard form
 
@@ -157,14 +160,14 @@ class PauliString:
         symp[self.n_qudits():2 * self.n_qudits()] = self.z_exp
         return symp
 
-    def symplectic_product(self, A: 'PauliString') -> np.ndarray:
+    def symplectic_product(self, A: PauliString) -> np.ndarray:
         n = self.n_qudits()
         symp = self.symplectic()
         symp_A = A.symplectic()
         prod = sum([symp[i] * symp_A[i + n] - symp[i + n] * symp_A[i] for i in range(n)]) % self.lcm
         return prod
     
-    def amend(self, qudit_index: int, new_x: int, new_z: int) -> 'PauliString':
+    def amend(self, qudit_index: int, new_x: int, new_z: int) -> PauliString:
         if new_x > self.dimensions[qudit_index] or new_z > self.dimensions[qudit_index]:
             raise ValueError(f"Exponents ({new_x, new_z}) cannot be larger than qudit dimension"
                              f" ({self.dimensions[qudit_index]})")
@@ -180,7 +183,7 @@ class PauliString:
             phase += phi * (self.x_exp[i] * other_pauli.z_exp[i] + self.z_exp[i] * other_pauli.x_exp[i])
         return phase % self.lcm
     
-    def _replace_symplectic(self, symplectic: np.ndarray, qudit_indices: list[int]) -> 'PauliString':
+    def _replace_symplectic(self, symplectic: np.ndarray, qudit_indices: list[int]) -> PauliString:
         x_exp_replace = symplectic[0:len(qudit_indices)]
         z_exp_replace = symplectic[len(qudit_indices):2 * len(qudit_indices)]
 
@@ -192,7 +195,7 @@ class PauliString:
 
         return PauliString(x_exp=x_exp, z_exp=z_exp, dimensions=self.dimensions)
     
-    def _delete_qudits(self, qudit_indices: list[int], return_new=True) -> 'PauliString':  # not sure if here it is best to return a new object or not
+    def _delete_qudits(self, qudit_indices: list[int], return_new=True) -> PauliString:  # not sure if here it is best to return a new object or not
         x_exp = np.delete(self.x_exp, qudit_indices)
         z_exp = np.delete(self.z_exp, qudit_indices)
         dimensions = np.delete(self.dimensions, qudit_indices)
@@ -205,13 +208,13 @@ class PauliString:
             self._sanity_check()
             return self
         
-    def __getitem__(self, key: int | slice) -> 'PauliString | Pauli':
+    def __getitem__(self, key: int | slice) -> PauliString | Pauli:
         if isinstance(key, int):
             return self.get_paulis()[key]
         else:
             return PauliString(x_exp=self.x_exp[key], z_exp=self.z_exp[key], dimensions=self.dimensions[key])
         
-    def __setitem__(self, key: int | slice, value: 'Pauli | PauliString'):
+    def __setitem__(self, key: int | slice, value: Pauli | PauliString):
         if isinstance(key, int):
             self.x_exp[key] = value.x_exp
             self.z_exp[key] = value.z_exp
@@ -221,14 +224,14 @@ class PauliString:
             self.z_exp[key] = value.z_exp
             self.dimensions[key] = value.dimensions
 
-    def get_subspace(self, qudit_indices: list[int] | int) -> 'PauliString':
+    def get_subspace(self, qudit_indices: list[int] | int) -> PauliString:
         return PauliString(x_exp=self.x_exp[qudit_indices], z_exp=self.z_exp[qudit_indices],
                            dimensions=self.dimensions[qudit_indices])
     
-    def copy(self) -> 'PauliString':
+    def copy(self) -> PauliString:
         return PauliString(x_exp=self.x_exp.copy(), z_exp=self.z_exp.copy(), dimensions=self.dimensions.copy())
     
-    def commute(self, other_pauli: 'PauliString') -> bool:
+    def commute(self, other_pauli: PauliString) -> bool:
         """
         Check if two Pauli strings commute
         :param other_pauli: The other Pauli string

@@ -1,7 +1,7 @@
 import numpy as np
 from typing import overload
 from qiskit import QuantumCircuit
-from symplectic import (
+from quaos.symplectic import (
     PauliSum, PauliString, Pauli,
     #  Xnd, Ynd, Znd, Id, symplectic_to_string,
     string_to_symplectic,
@@ -47,98 +47,10 @@ class GateOperation:
             symplectic_mapped_to.append(s)
             acquired_phase.append(p)
         
-        # For an n qubit operation there should be a set of 2n mappings.
-        # If the rest are unspecified, they should be identity mappings (those with equal looked_for and mapped_to)
-        # If the user specifies less than 2n mappings, then the remaining ones will be identity mappings
-        # These remaining identity mappings must all be linearly independent of the specified ones
-        # note that this will fail if the input mappings are not of the form X*I*...*I, Z*I*...*I, (having only a single
-        # X or Z in the string - checked for below) - generalisable if needed
-        # This will only be needed to obtain the symplectic matrix for the gate operation, not for current method...
-        # if len(symplectic_looked_for) < 2 * self.n_qudits:
-        #     for s in symplectic_looked_for:
-        #         if np.sum(s) != 1:
-        #             raise Exception('Unable to automate completion of mappings. Specify 2*n_qudits linearly '
-        #                             'independent mappings to fully define the gate operation.')
-        #     for i in range(2 * self.n_qudits):
-        #         mapping = np.zeros(2 * self.n_qudits, dtype=int)
-        #         mapping[i] = 1
-        #         if not any(np.array_equal(mapping, arr) for arr in symplectic_looked_for):
-        #             symplectic_looked_for.append(mapping)
-        #             symplectic_mapped_to.append(mapping)
-
-        # ## remove once debugged
-        # assert len(symplectic_looked_for) == self.dimension ** (self.n_qudits), (len(symplectic_looked_for),
-        #                                                                              self.dimension ** (self.n_qudits))
-        # assert len(symplectic_mapped_to) == self.dimension ** (self.n_qudits)
-        # ##
-
         symplectic_looked_for = np.array(symplectic_looked_for)
         symplectic_mapped_to = np.array(symplectic_mapped_to)
 
-        # reorder such that the symplectic looked for is always the identity
-        # (this would need to be altered to generalise)
-        # perm = np.argmax(symplectic_looked_for, axis=1)
-        # inverse_perm = np.argsort(perm)
-        # symplectic_looked_for = symplectic_looked_for[inverse_perm]
-        # symplectic_mapped_to = symplectic_mapped_to[inverse_perm]
-
-        # symplectic = self.build_symplectic_from_mappings(symplectic_looked_for, symplectic_mapped_to)
-
         return symplectic_looked_for, symplectic_mapped_to, acquired_phase
-    
-    # def mod_inv(self, a):
-    #     """Modular inverse of a mod d, where d = self.dimension."""
-    #     a = a % self.dimension
-    #     if a == 0:
-    #         raise ValueError("0 has no inverse modulo d")
-    #     return pow(int(a), -1, self.dimension)
-
-    # def mod_mat_inv(self, A):
-    #     """Modular inverse of matrix A over Z_d using Gauss-Jordan elimination."""
-    #     A = np.array(A, dtype=int) % self.dimension
-    #     n = A.shape[0]
-    #     I = np.eye(n, dtype=int)
-    #     AI = np.hstack([A, I])  # Augmented matrix [A | I]
-
-    #     for i in range(n):
-    #         # Find pivot
-    #         pivot = AI[i, i]
-    #         if pivot == 0:
-    #             # Try to swap with a lower row
-    #             for j in range(i + 1, n):
-    #                 if AI[j, i] != 0:
-    #                     AI[[i, j]] = AI[[j, i]]
-    #                     pivot = AI[i, i]
-    #                     break
-    #             else:
-    #                 raise ValueError("Matrix not invertible")
-
-    #         # Normalize pivot row
-    #         inv_pivot = self.mod_inv(pivot)
-    #         AI[i] = (AI[i] * inv_pivot) % self.dimension
-
-    #         # Eliminate other rows
-    #         for j in range(n):
-    #             if j != i:
-    #                 factor = AI[j, i]
-    #                 AI[j] = (AI[j] - factor * AI[i]) % self.dimension
-
-    #     A_inv = AI[:, n:]  # Extract right half
-    #     return A_inv
-
-    # def build_symplectic_from_mappings(self, looked_for, mapped_to):
-    #     """Build symplectic matrix from Pauli generator mappings."""
-    #     looked_for = np.array(looked_for, dtype=int) % self.dimension
-    #     mapped_to = np.array(mapped_to, dtype=int) % self.dimension
-
-    #     if looked_for.shape != mapped_to.shape:
-    #         raise ValueError("Shape mismatch between looked_for and mapped_to.")
-    #     # if looked_for.shape[0] != looked_for.shape[1]:
-    #     #     raise ValueError("Expect square matrix of 2n symplectic vectors.", looked_for)
-
-    #     inv_looked_for = self.mod_mat_inv(looked_for)
-    #     S = (mapped_to @ inv_looked_for) % self.dimension
-    #     return S
 
     def _act_on_pauli_string(self, P: PauliString) -> tuple[PauliString, float]:
         # Extract symplectic of PauliString
@@ -434,7 +346,7 @@ class Circuit:
 
     def show(self) -> QuantumCircuit:
         circuit = QuantumCircuit(len(self.dimensions))
-        dict = {'X': circuit.x, 'H': circuit.h, 'S': circuit.s, 'SUM': circuit.cx, 'CNOT': circuit.cx, 
+        dict = {'X': circuit.x, 'H': circuit.h, 'S': circuit.s, 'SUM': circuit.cx, 'CNOT': circuit.cx,
                 'Hdag': circuit.h.inverse()}
 
         for gate in self.gates:
