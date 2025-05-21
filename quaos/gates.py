@@ -1,7 +1,7 @@
 import numpy as np
 from typing import overload
 from qiskit import QuantumCircuit
-from quaos.symplectic import (
+from quaos.paulis import (
     PauliSum, PauliString, Pauli,
     #  Xnd, Ynd, Znd, Id, symplectic_to_string,
     string_to_symplectic,

@@ -1,5 +1,5 @@
 from quaos.gates import Circuit, SUM as CX, PHASE as S, Hadamard as H
-from quaos.symplectic import PauliString, PauliSum
+from quaos.paulis import PauliString, PauliSum
 from math import gcd
 
 

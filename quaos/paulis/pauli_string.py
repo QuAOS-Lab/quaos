@@ -122,6 +122,7 @@ class PauliString:
         higher powers of x are first, then higher powers of z,
         then sorted by weight, then phase
         """
+        from . import Pauli
         for i in range(self.n_qudits()):
             pauli_i = Pauli(x_exp=self.x_exp[i], z_exp=self.z_exp[i], dimension=self.dimensions[i])
             other_pauli_i = Pauli(x_exp=other_pauli.x_exp[i], z_exp=other_pauli.z_exp[i], dimension=other_pauli.dimensions[i])

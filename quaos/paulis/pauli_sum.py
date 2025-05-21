@@ -65,7 +65,7 @@ class PauliSum:
     @staticmethod
     def _sanitize_pauli_list(pauli_list: Union[list[PauliString], list[Pauli], list[str], PauliString, Pauli],
                              dimensions: list[int] | np.ndarray | None) -> list[PauliString]:
-        
+        from . import Pauli, PauliString
         if isinstance(pauli_list, Pauli):
             pauli_list = [pauli_list]
         if isinstance(pauli_list, PauliString):
@@ -554,16 +554,23 @@ class PauliSum:
         self.phases = new_phase
 
     def reorder(self, order: list[int]):
-        self.pauli_strings = [self.pauli_strings[i] for i in order]
-        self.weights = self.weights[order]
-        self.phases = self.phases[order]
-        self.x_exp = self.x_exp[order]
-        self.z_exp = self.z_exp[order]
+        """
+        Reorder the Paulis in the PauliSum. If a set of indices are not in the list, they are
+        appended to the end in the original order.
 
-    def move_string_to_top(self, pauli_index: int):
-        self.pauli_strings.insert(0, self.pauli_strings.pop(pauli_index))
-        self.weights = np.insert(self.weights, 0, self.weights[pauli_index])
-        self.phases = np.insert(self.phases, 0, self.phases[pauli_index])
+        e.g. reorder[10, 42] will put 10th Pauli first and 42nd Pauli second, followed by the remaining paulis
+        in their original order
+        """
+        if len(order) != self.n_paulis():
+            for i in range(self.n_paulis()):
+                if i not in order:
+                    order.append(i)
+        self.pauli_strings = [self.pauli_strings[i] for i in order]
+        self.weights = np.array([self.weights[i] for i in order])
+        self.phases = np.array([self.phases[i] for i in order])
+        self.x_exp = np.array([self.x_exp[i] for i in order])
+        self.z_exp = np.array([self.z_exp[i] for i in order])
+
 
     @staticmethod
     def xz_mat(d: int, aX: int, aZ: int) -> scipy.sparse.csr_matrix:

@@ -17,11 +17,12 @@ def find_anticommuting_pairs(pauli_sum: PauliSum) -> list[tuple[int, int]]:
     for i in range(pauli_sum.n_paulis()):
         if i not in used_paulis:
             for j in range(pauli_sum.n_paulis()):
-                if i != j and j not in used_paulis:
+                if i != j and j not in used_paulis and i not in used_paulis:
                     if spm[i, j] == 1:
                         anticommuting_pairs.append((i, j))
                         used_paulis.append(i)
                         used_paulis.append(j)
+                        
 
     return anticommuting_pairs
 
@@ -70,11 +71,17 @@ def pauli_sum_to_basis(pauli_sum: PauliSum) -> Circuit:
 if __name__ == "__main__":
 
     dims = [2, 2, 2, 2]
-    ham = random_pauli_hamiltonian(4, dims, mode='random')
+    ham = random_pauli_hamiltonian(4, dims, mode='uniform')
+
     print(ham)
     pairs = find_anticommuting_pairs(ham)
     order = [x for tup in pairs for x in tup]
+    print(ham.weights)
+    print(order)
+    print(pairs)
     ham.reorder(order)
+    print(ham.weights)
+    print(ham)
     print(order)
 
     print(pairs)
