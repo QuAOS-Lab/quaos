@@ -333,6 +333,18 @@ class Circuit:
         for gate in self.gates:
             str_out += gate.name + ' ' + str(gate.qudit_indices) + '\n'
         return str_out
+    
+    @overload
+    def act(self, pauli: Pauli) -> PauliString:
+        ...
+
+    @overload
+    def act(self, pauli: PauliString) -> PauliString:
+        ...
+
+    @overload
+    def act(self, pauli: PauliSum) -> PauliSum:
+        ...
 
     def act(self, pauli: Pauli | PauliString | PauliSum) -> PauliString | PauliSum:
         if isinstance(pauli, Pauli):
@@ -374,8 +386,8 @@ class Circuit:
         for gate in circuit.gates:
             new_gate = gate.copy()
             if qudit_indices is not None:
-                new_indexes = [qudit_indices[j] for j in gate.qudit_indices]
-                new_gate.qudit_indices = new_indexes
+                new_indices = [qudit_indices[j] for j in gate.qudit_indices]
+                new_gate.qudit_indices = new_indices
             self.add_gate(new_gate)
 
 

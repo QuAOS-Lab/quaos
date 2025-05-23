@@ -1,4 +1,3 @@
-from __future__ import annotations
 import numpy as np
 from typing import Any
 
@@ -38,7 +37,7 @@ class Pauli:
         if self.dimension - 1 < x_exp or self.dimension - 1 < z_exp:
             raise ValueError(f"Dimension {self.dimension} is too small for exponents {self.x_exp} and {self.z_exp}")
 
-    def __mul__(self, A: str | Pauli | float) -> Pauli | PauliSum:
+    def __mul__(self, A: 'str | Pauli') -> 'Pauli':
         if isinstance(A, str):
             return self * Pauli(A)
         elif isinstance(A, Pauli):
@@ -49,46 +48,11 @@ class Pauli:
             return Pauli(x_exp=(self.x_exp + A.x_exp) % self.dimension,
                          z_exp=(self.z_exp + A.z_exp) % self.dimension,
                          dimension=self.dimension)
-        elif isinstance(A, float):
-            from . import PauliSum
-            return PauliSum(self, weights=A)
         else:
             raise Exception(f"Cannot multiply Pauli with type {type(A)}")
     
     def __str__(self) -> str:
         return f'x{self.x_exp}z{self.z_exp}'
-    
-    def __matmul__(self, A: Pauli) -> PauliString:
-        from . import PauliString
-        return PauliString(x_exp=[self.x_exp] + [A.x_exp], z_exp=[self.z_exp] + [A.z_exp],
-                           dimensions=[self.dimension] + [A.dimension])
-
-    def __add__(self, A: Pauli | PauliString | PauliSum) -> PauliSum:
-        from . import PauliSum, PauliString
-
-        ps1 = PauliString(x_exp=[self.x_exp], z_exp=[self.z_exp], dimensions=[self.dimension])
-        if isinstance(A, Pauli):
-            ps2 = PauliString(x_exp=[A.x_exp], z_exp=[A.z_exp], dimensions=[A.dimension])
-        elif isinstance(A, PauliString) or isinstance(A, PauliSum):
-            ps2 = A
-        else:
-            raise Exception(f"Cannot add Pauli with type {type(A)}")
-        return ps1 + ps2
-    
-    def __sub__(self, A: Pauli | PauliString | PauliSum) -> PauliSum:
-        from . import PauliSum, PauliString
-        ps1 = PauliString(x_exp=[self.x_exp], z_exp=[self.z_exp], dimensions=[self.dimension])
-        ps1 = PauliSum([ps1])
-        if isinstance(A, Pauli):
-            ps2 = PauliString(x_exp=[A.x_exp], z_exp=[A.z_exp], dimensions=[A.dimension])
-            ps2 = ps2._to_pauli_sum()
-        elif isinstance(A, PauliString):
-            ps2 = A._to_pauli_sum()
-        elif isinstance(A, PauliSum):
-            ps2 = A
-        else:
-            raise Exception(f"Cannot add Pauli with type {type(A)}")
-        return ps1 - ps2
 
     def __eq__(self, other_pauli: Any) -> bool:
         if not isinstance(other_pauli, Pauli):
@@ -101,13 +65,7 @@ class Pauli:
     def __dict__(self) -> dict:
         return {'x_exp': self.x_exp, 'z_exp': self.z_exp, 'dimension': self.dimension}
     
-    def _to_pauli_string(self) -> 'PauliString':
-        return PauliString(x_exp=[self.x_exp], z_exp=[self.z_exp], dimensions=[self.dimension])
-    
-    def _to_pauli_sum(self) -> PauliSum:
-        return PauliSum([self._to_pauli_string()], standardise=False)
-    
-    def __gt__(self, other_pauli: Pauli) -> bool:
+    def __gt__(self, other_pauli: 'Pauli') -> bool:
         d = self.dimension
         x_measure = min(self.x_exp % d, (d - self.x_exp) % d)
         x_measure_new = min(other_pauli.x_exp % d, (d - other_pauli.x_exp) % d)
@@ -124,7 +82,7 @@ class Pauli:
         
         return False
     
-    def copy(self) -> Pauli:
+    def copy(self) -> 'Pauli':
         return Pauli(x_exp=self.x_exp, z_exp=self.z_exp, dimension=self.dimension)
     
 
