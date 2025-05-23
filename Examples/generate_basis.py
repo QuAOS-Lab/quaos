@@ -1,7 +1,7 @@
 import sys
 sys.path.append("./")
 from quaos.paulis import PauliString, PauliSum
-from quaos.circuits import Circuit, Gates
+from quaos.circuits import Circuit
 from quaos.known_circuits import to_x, to_ix
 from quaos.hamiltonian import random_pauli_hamiltonian
 
@@ -23,7 +23,6 @@ def find_anticommuting_pairs(pauli_sum: PauliSum) -> list[tuple[int, int]]:
                         used_paulis.append(i)
                         used_paulis.append(j)
                         
-
     return anticommuting_pairs
 
 
@@ -35,11 +34,32 @@ def to_basis(pauli_sum: PauliSum, anticommuting_pairs: list[tuple[int, int]]) ->
         anticommuting_pairs = anticommuting_pairs[0:2 * pauli_sum.n_qudits()]
 
     ps = pauli_sum.copy()
-    c = Circuit(dimensions = pauli_sum.dimensions)
+    c = Circuit(dimensions=pauli_sum.dimensions)
+    ignore = []
     for qudit_number, pair in enumerate(anticommuting_pairs):
-        pass
+        print(qudit_number, pair)
 
+        c_temp = to_ix(ps[pair[0]], qudit_number, ignore)
+        ps = c_temp.act(ps)
+        c += c_temp
+        c_temp = to_ix(ps[pair[1]], qudit_number, ignore)
+        ps = c_temp.act(ps)
+        c += c_temp
+        print(ps)
+        ignore.append(qudit_number)
 
+    anticommuting = [x for tup in pairs for x in tup]
+    remaining = [p for p in range(pauli_sum.n_paulis()) if p not in anticommuting]
+
+    for qudit_number in range(pauli_sum.n_paulis()):
+        if len(remaining) > 0:
+            if qudit_number not in ignore and len(ignore) < pauli_sum.n_qudits() - 2:
+                c_temp = to_ix(ps[remaining[0]], qudit_number, ignore)
+                ps = c_temp.act(ps)
+                c += c_temp
+                remaining.pop(0)
+    
+    return c
 
 def pauli_sum_to_basis(pauli_sum: PauliSum) -> Circuit:
     """
@@ -66,22 +86,40 @@ def pauli_sum_to_basis(pauli_sum: PauliSum) -> Circuit:
     if commuting_basis_pairs == 0:
         return to_complete_basis(pauli_sum, pairs)
 
+def basis_anticommuting_iteration(pauli_sum: PauliSum, anticommuting_pair: tuple[int, int]) -> Circuit:
+    # First we get the form
+    # Z IIII
+    # X IIII
+    # whatever
+    ps = pauli_sum.copy()
+    c = to_ix(ps[anticommuting_pair[0]], 0)
+    ps = c.act(ps)
+    c = to_ix(ps[anticommuting_pair[1]], 0)
+    ps = c.act(ps)
+    # Now we want
+    # X IIII
+    # Z IIII
+    # I ...
+    # I ...
+
+    return c
 
 
 if __name__ == "__main__":
 
     dims = [2, 2, 2, 2]
     ham = random_pauli_hamiltonian(4, dims, mode='uniform')
+    # ham = PauliSum(['x0z0 x0z1 x1z0 x1z1', 'x0z1 x0z1 x1z0 x0z1',
+    #                 'x1z0 x0z1 x1z0 x1z0', 'x0z1 x0z0 x0z0 x1z1'], dimensions=dims)
+    print(ham)
 
     print(ham)
     pairs = find_anticommuting_pairs(ham)
     order = [x for tup in pairs for x in tup]
-    print(ham.weights)
-    print(order)
-    print(pairs)
-    ham.reorder(order)
-    print(ham.weights)
-    print(ham)
-    print(order)
 
+    # ham.reorder(order)
+    c = to_basis(ham, pairs)
+    print(ham)
+    print(c.act(ham))
+    print(order)
     print(pairs)

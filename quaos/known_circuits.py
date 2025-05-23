@@ -1,4 +1,5 @@
-from quaos.gates import Circuit, SUM as CX, PHASE as S, Hadamard as H
+from quaos.gates import SUM as CX, PHASE as S, Hadamard as H
+from quaos.circuits import Circuit
 from quaos.paulis import PauliString, PauliSum
 from math import gcd
 
@@ -321,47 +322,3 @@ def to_x(pauli_string: PauliString, target_index: int, ignore: int | list[int] |
         raise Exception("A case has been missed from the above loop")
     raise Exception(f"No circuit found to convert {pauli_string} pauli to X")
     
-
-if __name__ == "__main__":
-    from quaos.paulis import random_pauli_string
-
-    def test_to_x():
-        target_x = 0
-        list_of_failures = []
-        for _ in range(20000):
-            ps = random_pauli_string([3, 3, 3, 3])
-            if ps.n_identities() == 4:
-                continue
-            c = to_x(ps, 0)
-            if c.act(ps).x_exp[target_x] == 0 or c.act(ps).z_exp[target_x] != 0:
-                print(f"Failed: {ps} -> {c.act(ps)}")
-                list_of_failures.append(ps)
-
-        return list_of_failures
-
-    def test_to_ix():
-        target_x = 0
-        list_of_failures = []
-        for _ in range(20000):
-            ps = random_pauli_string([3, 3, 3, 3])
-            if ps.n_identities() == 4:
-                continue
-            c = to_ix(ps, 0)
-            if c is None:
-                print(f"Failed: {ps} -> {c}")
-                list_of_failures.append(ps)
-                continue
-            failed = False
-            for i in range(ps.n_qudits()):
-                if i == target_x and failed is False:
-                    if c.act(ps).x_exp[target_x] == 0 or c.act(ps).z_exp[target_x] != 0:
-                        print(f"Failed target x: {ps} -> {c.act(ps)}")
-                        list_of_failures.append(ps)
-                        failed = True
-                elif failed is False:
-                    if c.act(ps).x_exp[i] != 0 or c.act(ps).z_exp[i] != 0:
-                        print(f"Failed identity: {ps} -> {c.act(ps)}")
-                        list_of_failures.append(ps)
-                        failed = True
-
-        return list_of_failures

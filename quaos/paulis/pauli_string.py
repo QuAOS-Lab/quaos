@@ -153,6 +153,7 @@ class PauliString:
         Get a list of Pauli objects from the PauliString
         :return: A list of Pauli objects
         """
+        from . import Pauli
         return [Pauli(x_exp=self.x_exp[i], z_exp=self.z_exp[i], dimension=self.dimensions[i]) for i in range(len(self.x_exp))]
 
     def symplectic(self) -> np.ndarray:
