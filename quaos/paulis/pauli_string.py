@@ -81,11 +81,14 @@ class PauliString:
         else:
             raise ValueError(f"Cannot multiply PauliString with type {type(A)}")
         
-    def __rmul__(self, A: PauliString | PauliSum | float | int | complex) -> PauliSum:
+    def __rmul__(self, A: float | int | complex) -> PauliSum:
         from . import PauliSum
         if not (isinstance(A, int) or isinstance(A, float) or isinstance(A, complex)):
             raise ValueError(f"Right multiply only changes weight - passed type = {type(A)}")
         return PauliSum([self], weights=[A])
+    
+    def __pow__(self, A: int) -> PauliString:
+        return PauliString(self.x_exp * A, self.z_exp * A, self.dimensions)
 
     def _to_pauli_sum(self) -> PauliSum:
         from . import PauliSum

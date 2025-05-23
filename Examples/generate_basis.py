@@ -1,9 +1,11 @@
 import sys
+import numpy as np
 sys.path.append("./")
 from quaos.paulis import PauliString, PauliSum
 from quaos.circuits import Circuit
+from quaos.circuits.utils import solve_modular_linear
 from quaos.known_circuits import to_x, to_ix
-from quaos.hamiltonian import random_pauli_hamiltonian
+from quaos.hamiltonian import random_pauli_hamiltonian, pauli_reduce
 
 
 def find_anticommuting_pairs(pauli_sum: PauliSum) -> list[tuple[int, int]]:
@@ -15,13 +17,12 @@ def find_anticommuting_pairs(pauli_sum: PauliSum) -> list[tuple[int, int]]:
     anticommuting_pairs = []
     used_paulis = []
     for i in range(pauli_sum.n_paulis()):
-        if i not in used_paulis:
-            for j in range(pauli_sum.n_paulis()):
-                if i != j and j not in used_paulis and i not in used_paulis:
-                    if spm[i, j] == 1:
-                        anticommuting_pairs.append((i, j))
-                        used_paulis.append(i)
-                        used_paulis.append(j)
+        for j in range(pauli_sum.n_paulis()):
+            if i != j and j not in used_paulis and i not in used_paulis:
+                if spm[i, j] == 1:
+                    anticommuting_pairs.append((i, j))
+                    used_paulis.append(i)
+                    used_paulis.append(j)
                         
     return anticommuting_pairs
 
@@ -35,91 +36,113 @@ def to_basis(pauli_sum: PauliSum, anticommuting_pairs: list[tuple[int, int]]) ->
 
     ps = pauli_sum.copy()
     c = Circuit(dimensions=pauli_sum.dimensions)
-    ignore = []
+
+    n_pairs = len(anticommuting_pairs)
+    n_q = pauli_sum.n_qudits()
+    n_p = pauli_sum.n_paulis()
+    n_unpaired_paulis = n_p - 2 * n_pairs
+    paired_paulis = [x for tup in anticommuting_pairs for x in tup]
+    remaining = [x for x in range(n_p) if x not in paired_paulis]
+
     for qudit_number, pair in enumerate(anticommuting_pairs):
-        print(qudit_number, pair)
+        if qudit_number <= n_q:
+            c_temp = to_ix(ps[pair[0]], qudit_number)
+            ps = c_temp.act(ps)
+            c += c_temp
+            c_temp = to_ix(ps[pair[1]], qudit_number)
+            ps = c_temp.act(ps)
+            c += c_temp
 
-        c_temp = to_ix(ps[pair[0]], qudit_number, ignore)
-        ps = c_temp.act(ps)
-        c += c_temp
-        c_temp = to_ix(ps[pair[1]], qudit_number, ignore)
-        ps = c_temp.act(ps)
-        c += c_temp
-        print(ps)
-        ignore.append(qudit_number)
-
-    anticommuting = [x for tup in pairs for x in tup]
-    remaining = [p for p in range(pauli_sum.n_paulis()) if p not in anticommuting]
-
-    for qudit_number in range(pauli_sum.n_paulis()):
-        if len(remaining) > 0:
-            if qudit_number not in ignore and len(ignore) < pauli_sum.n_qudits() - 2:
-                c_temp = to_ix(ps[remaining[0]], qudit_number, ignore)
-                ps = c_temp.act(ps)
-                c += c_temp
-                remaining.pop(0)
+    i = 0
+    print(remaining)
+    for qudit_number in range(n_pairs, n_pairs + n_unpaired_paulis):
+        if qudit_number <= n_q:
+            c_temp = to_ix(ps[remaining[i]], qudit_number)
+            i += 1
+            ps = c_temp.act(ps)
+            c += c_temp
     
     return c
 
-def pauli_sum_to_basis(pauli_sum: PauliSum) -> Circuit:
-    """
-    Puts the PauliSum as close to the form
 
-    XIIIII...
-    ZIIIII...
-    IXIIII...
-    IZIIII...
-    IIIXII...
-    IIIZII...
-    .
-    . 
-    . 
-
-    as possible
-    """
-    pairs = find_anticommuting_pairs(pauli_sum)
-    if len(pairs) >= 2 * pauli_sum.n_qudits():
-        commuting_basis_pairs = 0
+def is_ix(pauli_string: PauliString) -> bool:
+    if np.any(pauli_string.z_exp != 0):
+        return False
+    if np.count_nonzero(pauli_string.x_exp) == 1:
+        return True
     else:
-        commuting_basis_pairs = 2 * pauli_sum.n_qudits() - len(pairs)
+        return False
 
-    if commuting_basis_pairs == 0:
-        return to_complete_basis(pauli_sum, pairs)
 
-def basis_anticommuting_iteration(pauli_sum: PauliSum, anticommuting_pair: tuple[int, int]) -> Circuit:
-    # First we get the form
-    # Z IIII
-    # X IIII
-    # whatever
-    ps = pauli_sum.copy()
-    c = to_ix(ps[anticommuting_pair[0]], 0)
-    ps = c.act(ps)
-    c = to_ix(ps[anticommuting_pair[1]], 0)
-    ps = c.act(ps)
-    # Now we want
-    # X IIII
-    # Z IIII
-    # I ...
-    # I ...
+def is_iz(pauli_string: PauliString) -> bool:
+    if np.any(pauli_string.x_exp != 0):
+        return False
+    if np.count_nonzero(pauli_string.z_exp) == 1:
+        return True
+    else:
+        return False
+    
 
-    return c
+def find_ix_iz(pauli_sum: PauliSum) -> tuple(list[int], list[int]):
+    ixs = []
+    izs = []
+    for i in range(pauli_sum.n_paulis()):
+        if is_ix(pauli_sum.pauli_strings[i]):
+            ixs.append(i)
+        elif is_iz(pauli_sum.pauli_strings[i]):
+            izs.append(i)
+    return ixs, izs
+
+
+def use_ix_remove_x(pauli_sum: PauliSum, ixs: list[int]):
+    new_ps = pauli_sum.copy()
+    multiplied_paulis = []
+    for ix in ixs:  # the ixth string is the ix - multiply others by this to remove their x terms on x_qudit
+        x_qudit = np.where(new_ps[ix].x_exp != 0)[0][0]
+        x_exp = new_ps[ix].x_exp[x_qudit]
+        for i in range(pauli_sum.n_paulis()):
+            if i != ix:
+                if pauli_sum[i].x_exp[x_qudit] != 0:
+                    n = solve_modular_linear(pauli_sum[i].x_exp[x_qudit], x_exp, pauli_sum.dimensions[x_qudit])
+                    new_ps[i] = pauli_sum[i] * pauli_sum[ix]**n
+                multiplied_paulis.append(())
+
+
+
+def basis_from_standard_form(pauli_sum: PauliSum):
+    ixs, izs = find_ix_iz(pauli_sum)
+
+    if len(ixs) > 0:
+        use_ix_remove_x(pauli_sum, ixs)
+
 
 
 if __name__ == "__main__":
+    from quaos.paulis import commutation_graph
+    import matplotlib.pyplot as plt
+    n_qudits = 7
+    dims = [2] * n_qudits
+    n_paulis = 10
+    ham = random_pauli_hamiltonian(n_paulis, dims, mode='uniform')
 
-    dims = [2, 2, 2, 2]
-    ham = random_pauli_hamiltonian(4, dims, mode='uniform')
-    # ham = PauliSum(['x0z0 x0z1 x1z0 x1z1', 'x0z1 x0z1 x1z0 x0z1',
-    #                 'x1z0 x0z1 x1z0 x1z0', 'x0z1 x0z0 x0z0 x1z1'], dimensions=dims)
-    print(ham)
+    h_red, conditioned_hamiltonians, C, all_phases = pauli_reduce(ham)
+
+    # choose a symmetry subsector and simplify
+    h = conditioned_hamiltonians[0]
+    # anticommuting_pairs = find_anticommuting_pairs(h)
+    # print(anticommuting_pairs)
+    # print(h)
+    # c = to_basis(h, anticommuting_pairs)
+    # print(c.act(h))
+    h_red2, conditioned_hamiltonians2, C2, all_phases2 = pauli_reduce(h)
 
     print(ham)
-    pairs = find_anticommuting_pairs(ham)
-    order = [x for tup in pairs for x in tup]
+    print(h)
+    print(conditioned_hamiltonians2[0])
 
-    # ham.reorder(order)
-    c = to_basis(ham, pairs)
-    print(ham)
-    print(c.act(ham))
-    print(order)
-    print(pairs)
+    # print(h_red == h_red2)
+
+    # c = to_basis(h_red, find_anticommuting_pairs(h_red))
+
+
+    plt.show()

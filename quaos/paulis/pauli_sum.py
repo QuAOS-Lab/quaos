@@ -49,8 +49,14 @@ class PauliSum:
         self.lcm = np.lcm.reduce(self.dimensions)
         self.phases = np.asarray(sanitized_phases, dtype=int) % self.lcm
         
-        x_exp = np.zeros((len(self.pauli_strings), len(self.dimensions)))  # ensures we can always index [pauli #, qudit #]
-        z_exp = np.zeros((len(self.pauli_strings), len(self.dimensions)))  # ensures we can always index [pauli #, qudit #]
+        self._set_exponents()
+
+        if standardise:
+            self.standardise()
+
+    def _set_exponents(self):
+        x_exp = np.zeros((len(self.pauli_strings), len(self.dimensions)))  # we can always index [pauli #, qudit #]
+        z_exp = np.zeros((len(self.pauli_strings), len(self.dimensions)))  # we can always index [pauli #, qudit #]
 
         for i, p in enumerate(self.pauli_strings):
             x_exp[i, :] = p.x_exp
@@ -58,9 +64,6 @@ class PauliSum:
         
         self.x_exp = x_exp
         self.z_exp = z_exp
-
-        if standardise:
-            self.standardise()
 
     @staticmethod
     def _sanitize_pauli_list(pauli_list: Union[list[PauliString], list[Pauli], list[str], PauliString, Pauli],
@@ -258,6 +261,7 @@ class PauliSum:
                     for i_val, i in enumerate(np.arange(self.n_paulis())[key[0]]):
                         print(i, value[int(i_val)])
                         self.pauli_strings[i][key[1]] = value[int(i_val)]
+        self._set_exponents()  # update exponents x_exp and z_exp
 
     def __add__(self, A: 'Pauli | PauliString | PauliSum') -> 'PauliSum':
         if isinstance(A, PauliString) or isinstance(A, Pauli):

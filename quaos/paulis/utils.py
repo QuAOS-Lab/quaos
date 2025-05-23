@@ -2,6 +2,8 @@
 import numpy as np
 import re
 from quaos.paulis import PauliString, PauliSum
+import networkx as nx
+import matplotlib.pyplot as plt
 
 
 def symplectic_product(pauli_string: PauliString, pauli_string2: PauliString) -> bool:
@@ -116,3 +118,21 @@ def are_subsets_equal(pauli_sum_1: PauliSum, pauli_sum_2: PauliSum,
         if pauli_sum_1[subset_1[i]] != pauli_sum_2[subset_2[i]]:
             return False
     return True
+
+
+def commutation_graph(pauli_sum: PauliSum, labels: list[str] | None = None, axis: plt.Axes | None = None):
+    """
+    Plots graph where adjacency matrix is the symplectic product matrix
+    """
+    adjacency_matrix = pauli_sum.symplectic_product_matrix()
+    rows, cols = np.where(adjacency_matrix == 1)
+    edges = zip(rows.tolist(), cols.tolist())
+    gr = nx.Graph()
+    all_rows = range(0, adjacency_matrix.shape[0])
+    for n in all_rows:
+        gr.add_node(n)
+    gr.add_edges_from(edges)
+    pos1 = nx.spring_layout(gr)
+
+    nx.draw(gr, pos1, node_size=900, labels=labels, with_labels=True, ax=axis)
+    return gr
