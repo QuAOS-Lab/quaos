@@ -5,6 +5,7 @@ import re
 import functools
 import scipy
 import re
+from typing import overload
 sys.path.append("./")
 
 
@@ -250,6 +251,21 @@ class PauliString:
     def __ne__(self, other_pauli):
         return not self.__eq__(other_pauli)
     
+    def __getitem__(self, key: int | slice) -> 'PauliString | Pauli':
+        if isinstance(key, int):
+            return self.get_paulis()[key]
+        else:
+            return PauliString(x_exp=self.x_exp[key], z_exp=self.z_exp[key], dimensions=self.dimensions[key])
+    def __setitem__(self, key: int | slice, value: 'Pauli | PauliString'):
+        if isinstance(key, int):
+            self.x_exp[key] = value.x_exp
+            self.z_exp[key] = value.z_exp
+            self.dimensions[key] = value.dimension
+        else:
+            self.x_exp[key] = value.x_exp
+            self.z_exp[key] = value.z_exp
+            self.dimensions[key] = value.dimensions
+    
     def __gt__(self, other_pauli):
         """
         Arbitrary but useful in making a standard form
@@ -326,7 +342,9 @@ class PauliString:
         return PauliString(x_exp, z_exp, self.dimensions)
     
     def delete_qudits(self, qudit_indices):
-        return self._replace_symplectic(np.delete(self.symplectic(), qudit_indices), qudit_indices)
+        remaining_qudits = np.delete(np.arange(self.n_qudits()), qudit_indices)
+        #return self._replace_symplectic(np.delete(self.symplectic(), qudit_indices), qudit_indices)
+        return PauliString(self.x_exp[remaining_qudits], self.z_exp[remaining_qudits], self.dimensions[remaining_qudits])
 
 
 class PauliSum:
@@ -430,10 +448,113 @@ class PauliSum:
         # combine equivalent
         # self.combine_equivalent_paulis()
         # sort
-        self.weights = [x for _, x in sorted(zip(self.pauli_strings, self.weights))]
-        self.phases = [x for _, x in sorted(zip(self.pauli_strings, self.phases))]
-        self.pauli_strings = sorted(self.pauli_strings)
         self.phase_to_weight()
+        self.weights = [x for _, x in sorted(zip(self.pauli_strings, self.weights))]
+        #self.phases = [x for _, x in sorted(zip(self.pauli_strings, self.phases))]
+        self.pauli_strings = sorted(self.pauli_strings)
+
+    @overload
+    def __getitem__(self, key: int) -> PauliString:
+        ...
+
+    @overload
+    def __getitem__(self, key: slice) -> 'PauliSum':
+        ...
+
+    @overload
+    def __getitem__(self, key: tuple[int, int]) -> Pauli:
+        ...
+
+    @overload
+    def __getitem__(self, key: tuple[slice, int]) -> 'PauliSum':
+        ...
+
+    @overload
+    def __getitem__(self, key: tuple[int, slice]) -> PauliString:
+        ...
+
+    @overload
+    def __getitem__(self, key: tuple[slice, slice]) -> 'PauliSum':
+        ...
+
+    def __getitem__(self, key):
+        # TODO: enable list for either input
+        if isinstance(key, int):
+            return self.pauli_strings[key]
+        elif isinstance(key, slice):
+            return PauliSum(self.pauli_strings[key], self.weights[key], self.phases[key], self.dimensions, False)
+        elif isinstance(key, tuple):
+            if len(key) != 2:
+                raise ValueError("Tuple key must be of length 2")
+            if isinstance(key[0], int):
+                return self.pauli_strings[key[0]][key[1]]
+            if isinstance(key[0], slice):
+                pauli_strings_all_qubits = self.pauli_strings[key[0]]
+                pauli_strings = [p[key[1]] for p in pauli_strings_all_qubits]
+                if isinstance(key[1], int):
+                    return PauliSum(pauli_strings, self.weights[key[0]], self.phases[key[0]], np.asarray([self.dimensions[key[1]]]), False)
+                elif isinstance(key[1], slice):
+                    return PauliSum(pauli_strings, self.weights[key[0]], self.phases[key[0]], self.dimensions[key[1]], False)
+        else:
+            raise TypeError(f"Key must be int or slice, not {type(key)}")
+
+    @overload
+    def __setitem__(self, key: int, value: 'PauliString'):
+        ...
+
+    @overload
+    def __setitem__(self, key: slice, value: 'PauliString'):
+        ...
+
+    @overload
+    def __setitem__(self, key: tuple[int, int], value: 'Pauli'):
+        ...
+
+    @overload
+    def __setitem__(self, key: tuple[slice, int], value: 'PauliSum'):
+        ...
+
+    @overload
+    def __setitem__(self, key: tuple[int, slice], value: 'PauliString'):
+        ...
+
+    @overload
+    def __setitem__(self, key: tuple[slice, slice], value: 'PauliSum'):
+        ...
+
+    @overload
+    def __setitem__(self, key: tuple[int, int], value: 'Pauli'):
+        ...
+    def __setitem__(self, key, value):
+        # TODO: Error messages here could be improved
+        if isinstance(key, int):
+            # key indexes the pauli_string to be replaced by value
+            self.pauli_strings[key] = value # works fine
+        elif isinstance(key, slice):
+            # key indexes the pauli_strings to be replaced by value
+            self.pauli_strings[key] = value # works fine
+        elif isinstance(key, tuple):
+            if len(key) != 2:
+                raise ValueError("Tuple key must be of length 2")
+            if isinstance(key[0], int):
+                if isinstance(key[1], int):
+                    # key[0] indexes the pauli string, key[1] indexes the qudit
+                    self.pauli_strings[key[0]][key[1]] = value # works fine
+                elif isinstance(key[1], slice):
+                    # key[0] indexes the pauli string, key[1] indexes the qudits
+                    self.pauli_strings[key[0]][key[1]] = value # works fine
+            if isinstance(key[0], slice):
+                if isinstance(key[1], int):
+                    # key[0] indexes the pauli strings, key[1] indexes the qudit
+                    # we could input a list of paulis here too if we wanted
+                    for i in np.arange(self.n_paulis())[key[0]]:
+                        self.pauli_strings[i][key[1]] = value # works fine
+                elif isinstance(key[1], slice):
+                    # key[0] indexes the pauli strings, key[1] indexes the qudits
+                    for i_val, i in enumerate(np.arange(self.n_paulis())[key[0]]):
+                        print(i, value[int(i_val)])
+                        self.pauli_strings[i][key[1]] = value[int(i_val)]
+        
 
     def __add__(self, A):
         if isinstance(A, PauliString) or isinstance(A, Pauli):
@@ -613,8 +734,8 @@ class PauliSum:
             new_pauli_strings.append(p.delete_qudits(qudit_indices))
 
         self.pauli_strings = np.array(new_pauli_strings)
-        self.x_exp = np.delete(self.x_exp, qudit_indices)
-        self.z_exp = np.delete(self.z_exp, qudit_indices)
+        self.x_exp = np.delete(self.x_exp, qudit_indices,1)
+        self.z_exp = np.delete(self.z_exp, qudit_indices,1)
         self.dimensions = np.delete(self.dimensions, qudit_indices)
 
         self.lcm = np.lcm.reduce(self.dimensions)
