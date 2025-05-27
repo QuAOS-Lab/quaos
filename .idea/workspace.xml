@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="81e0d2a5-6aed-4617-bd50-4fe9ba9e4784" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.vscode/launch.json" beforeDir="false" afterPath="$PROJECT_DIR$/.vscode/launch.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.vscode/settings.json" beforeDir="false" afterPath="$PROJECT_DIR$/.vscode/settings.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/quaos/pauli.py" beforeDir="false" afterPath="$PROJECT_DIR$/quaos/pauli.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/quaos/prime_Functions_Andrew.py" beforeDir="false" afterPath="$PROJECT_DIR$/quaos/prime_Functions_Andrew.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/quaos/prime_Functions_quditV2.py" beforeDir="false" afterPath="$PROJECT_DIR$/quaos/prime_Functions_quditV2.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/notebooks/BFQ_Experimental.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/notebooks/BFQ_Experimental.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/notebooks/BFQ_Numerics.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/notebooks/BFQ_Numerics.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/notebooks/BFQ_Simulation.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/notebooks/BFQ_Simulation.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/notebooks/Get_Hamiltonians.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/notebooks/Get_Hamiltonians.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/notebooks/Profiling.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/notebooks/Profiling.ipynb" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "c-nation"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/QuAOS-Lab/quaos.git",
+    "accountId": "5fb5e956-54c6-4fd9-80c8-d8669b34a2cc"
+  }
+}]]></component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "associatedIndex": 5
+}]]></component>
+  <component name="ProjectId" id="2uWwSxxcnWb3EgsCqxPMNMaUgSu" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "#3 on test-workflow-all",
+    "last_opened_file_path": "/home/charlie/git/quaos"
+  }
+}]]></component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-14705d77f0bb-aa17d162503b-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-243.25659.43" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="81e0d2a5-6aed-4617-bd50-4fe9ba9e4784" name="Changes" comment="" />
+      <created>1742377642103</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1742377642103</updated>
+    </task>
+    <servers />
+  </component>
+</project>

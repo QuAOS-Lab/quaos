@@ -53,7 +53,6 @@ jobs:
           path: benchmark.json
 
   profiling:
-    name: "Profiling: Simulation Experiment"
     needs: [set-runner, benchmark]
     runs-on: ${{ needs.set-runner.outputs.runner }}
 

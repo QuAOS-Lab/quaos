@@ -12,11 +12,12 @@ from IPython.display import display
 
 # Local Imports
 from .prime_Functions_Andrew import (
-    int_to_bases, bases_to_int, weighted_vertex_covering_maximal_cliques, 
-    commutation_graph, graph, diagonalize, act, quditwise_commutation_graph, 
-    scale_variances, circuit
+    int_to_bases, bases_to_int, string_to_pauli,
+    weighted_vertex_covering_maximal_cliques, ground_state,
+    commutation_graph, graph, pauli_product, pauli_to_string,
+    diagonalize, act, quditwise_commutation_graph, quditwise_inner_product,
+    pauli_to_matrix, pauli, Hamiltonian_Mean, scale_variances, circuit
 )
-from .pauli import (pauli, pauli_to_matrix, pauli_to_string, string_to_pauli, pauli_product, quditwise_inner_product)
 
 np.set_printoptions(linewidth=200)
 
@@ -84,7 +85,7 @@ def random_pauli_hamiltonian(num_paulis, qudit_dims):
             pauli_str_H += f"x{exponents_H[2 * j]}z{exponents_H[2 * j + 1]} "
 
             omega = np.exp(2 * np.pi * 1j / qudit_dims[j])
-            phase_factor *= omega**(r * s)
+            phase_factor *= omega ** (r * s)
 
         pauli_strings.append(pauli_str.strip())
         coeff = np.random.normal(0, 1) + 1j * np.random.normal(0, 1)
@@ -114,7 +115,8 @@ def pauli_hermitian(P0):
     if P0.paulis() != 1:
         raise Exception("Product can only be calculated for single Pauli operators.")
     else:
-        return pauli((-1 * P0.X) % P0.dims, (-1 * P0.Z) % P0.dims, P0.dims, P0.phases)
+        return pauli((-1 * P0.X) % P0.dims, (-1 * P0.Z) % P0.dims, P0.dims,
+                     P0.phases)
 
 
 def sort_hamiltonian(P, cc):
@@ -210,8 +212,8 @@ def rand_state(d):
     Returns:
         np.ndarray: A normalized random state vector in the complex space of size d^2.
     """
-    gamma_sample = np.random.gamma(1, 1, int(d**2))
-    phases = np.random.uniform(0, 2 * np.pi, int(d**2))
+    gamma_sample = np.random.gamma(1, 1, int(d ** 2))
+    phases = np.random.uniform(0, 2 * np.pi, int(d ** 2))
     normalized_state = np.sqrt(gamma_sample / np.sum(gamma_sample)) * np.exp(1j * phases)
     return normalized_state
 
@@ -245,8 +247,8 @@ def get_p_matrix(d):
         np.ndarray: The matrix A with dimensions ((2+1)*d, d^2) to assist in probability calculation.
     """
     # Constant factor, replace 2+1 with a more meaningful variable name
-    num_blocks = 3  
-    A = np.zeros((num_blocks * d, d**2))
+    num_blocks = 3
+    A = np.zeros((num_blocks * d, d ** 2))
 
     for k in range(num_blocks):
         for l in range(d):
@@ -267,13 +269,13 @@ def get_p_matrix(d):
 @jit(nopython=True)
 def get_psi(p):
     d = int(len(p) / 3)
-    two_qudit_probabilities = np.zeros(d**2, dtype=np.complex128)
+    two_qudit_probabilities = np.zeros(d ** 2, dtype=np.complex128)
     for i in range(d):
         for j in range(d):
             two_qudit_probabilities[i * d + j] = p[i] * p[d + j]
 
     psi = np.sqrt(two_qudit_probabilities) + 0 * 1j
-    return psi
+    return (psi)
 
 
 @jit(nopython=True)
@@ -288,7 +290,7 @@ def get_p(psi, A):
     Returns:
         np.ndarray: The probability distribution p.
     """
-    psi_sq = np.abs(psi)**2
+    psi_sq = np.abs(psi) ** 2
     return np.dot(A, psi_sq)
 
 
@@ -306,9 +308,9 @@ def mcmc_starting_point(d, c, A):
         tuple: Probability distribution and the corresponding quantum state vector psi.
     """
     p_try = np.zeros(len(c))
-    p_try[0: d] = (c[0: d] + 1) / np.sum(c[0: d] + 1)
-    p_try[d: 2 * d] = (c[d: 2 * d] + 1) / np.sum(c[d: 2 * d] + 1)
-    p_try[2 * d: 3 * d] = (c[2 * d: 3 * d] + 1) / np.sum(c[2 * d: 3 * d] + 1)
+    p_try[0:d] = (c[0:d] + 1) / np.sum(c[0:d] + 1)
+    p_try[d:2 * d] = (c[d:2 * d] + 1) / np.sum(c[d:2 * d] + 1)
+    p_try[2 * d:3 * d] = (c[2 * d:3 * d] + 1) / np.sum(c[2 * d:3 * d] + 1)
 
     psi = get_psi(p_try)
     p = get_p(psi, A)
@@ -331,8 +333,8 @@ def psi_sample(psi, alpha, d):
         np.ndarray: The new sampled quantum state, normalized.
     """
     psi_prime = rand_state(d)
-    psi_new = alpha * psi + np.sqrt(1 - alpha**2) * psi_prime
-    psi_new_norm = np.sqrt(np.sum(np.abs(psi_new)**2))
+    psi_new = alpha * psi + np.sqrt(1 - alpha ** 2) * psi_prime
+    psi_new_norm = np.sqrt(np.sum(np.abs(psi_new) ** 2))
     return psi_new / psi_new_norm
 
 
@@ -366,7 +368,8 @@ def mcmc_covariance_estimate(grid, d):
         float: Estimated covariance of the Paulis.
     """
     Pk_est = np.sum(np.array([xi(i, d) * np.mean(grid[:, 2 * d + i]) for i in range(d)]))
-    PiPj_est = np.sum(np.array([[xi(-i, d) * xi(j, d) * np.mean(grid[:, i] * grid[:, j + d]) for i in range(d)] for j in range(d)]))
+    PiPj_est = np.sum(
+        np.array([[xi(-i, d) * xi(j, d) * np.mean(grid[:, i] * grid[:, j + d]) for i in range(d)] for j in range(d)]))
     cov = Pk_est - PiPj_est
     return cov
 
@@ -414,10 +417,12 @@ def gelman_rubin_test(grid):
 
     for i_theta in range(N_theta):
         chain_means = np.array([np.mean(grid[:, i_theta, i_chain]) for i_chain in range(N_chain)])
-        chain_vars = np.array([np.sum(np.abs(grid[:, i_theta, i_chain] - chain_means[i_chain])**2) / (N - 1) for i_chain in range(N_chain)])
+        chain_vars = np.array(
+            [np.sum(np.abs(grid[:, i_theta, i_chain] - chain_means[i_chain]) ** 2) / (N - 1) for i_chain in
+             range(N_chain)])
         mean_chain_means = np.mean(chain_means)
 
-        d2 = np.abs(chain_means - mean_chain_means)**2 
+        d2 = np.abs(chain_means - mean_chain_means) ** 2
         B = N * np.sum(d2) / (N_chain - 1)
         W = np.mean(chain_vars)
         R = ((N - 1) / N * W + B / N) / W
@@ -484,10 +489,10 @@ def mcmc_integration(N, psi_list, p_list, alpha, d, c, A, N_max=10000):
 
 
 @jit(nopython=True)
-def get_alpha(p_list, psi_list, d, A, c, N_chain, Q_alpha_test=True, target_accept=0.25, 
+def get_alpha(p_list, psi_list, d, A, c, N_chain, Q_alpha_test=True, target_accept=0.25,
               N_accepts=30, b=10, run_max=1000):
     # initial guess for alpha
-    ns = np.concatenate((c[0:d], c[d: 2 * d], c[2 * d: 3 * d]))
+    ns = np.concatenate((c[0:d], c[d:2 * d], c[2 * d:3 * d]))
     alpha = 1 - 1 / np.min(ns[:3]) if np.min(ns) != 0 else 0
     alpha_list = np.array([alpha] * N_chain)
 
@@ -499,7 +504,8 @@ def get_alpha(p_list, psi_list, d, A, c, N_chain, Q_alpha_test=True, target_acce
                 # tune alpha
                 a_probs = np.zeros(N_accepts)
                 for i in range(N_accepts):
-                    p_list[ic], psi_list[ic], a_probs[i] = update_chain(p_list[ic], psi_list[ic], c, alpha_list[ic], d, A)
+                    p_list[ic], psi_list[ic], a_probs[i] = update_chain(p_list[ic], psi_list[ic], c, alpha_list[ic], d,
+                                                                        A)
 
                 accept_avg = np.mean(a_probs)
                 runs += 1
@@ -517,6 +523,7 @@ def get_alpha(p_list, psi_list, d, A, c, N_chain, Q_alpha_test=True, target_acce
     alpha = np.max(alpha_list)
 
     return (p_list, psi_list, alpha)
+
 
 
 # COMPLETE BAYESIAN ESTIMATION WITH MONTE-CARLO INTEGRATION
@@ -584,7 +591,7 @@ def bayes_Var_estimate(xDict):
         [
             alpha[i] * (alpha_conj[i] - alpha_conj[j]) * (xDict[i] + 1) * (xDict[j] + 1) / ((s + lcm) * (s + lcm + 1))
             for i in range(lcm)
-        ] 
+        ]
         for j in range(lcm)
     ])
 
@@ -615,9 +622,10 @@ def variance_graph(P, cc, psi):
     # Compute the covariance matrix
     covariance_matrix = np.array([
         [
-            np.conj(cc[i0]) * cc[i1] * ((psi_dag @ pauli_matrices[i0].conj().T @ pauli_matrices[i1] @ psi) - cc2[i0] * cc1[i1])
+            np.conj(cc[i0]) * cc[i1] * (
+                        (psi_dag @ pauli_matrices[i0].conj().T @ pauli_matrices[i1] @ psi) - cc2[i0] * cc1[i1])
             for i1 in range(num_paulis)
-        ] 
+        ]
         for i0 in range(num_paulis)
     ])
 
@@ -677,26 +685,39 @@ def bayes_covariance_graph(X, cc, CG, p, size_list, d, N_chain=8, N=100, N_max=8
                 A[j0, j0] = cc[j0] * cc_conj[j0] * bayes_Var_estimate(X[j0, j0, :])
                 A[j0 + 1, j0 + 1] = np.conj(A[j0, j0])
 
-                A[j0, j0 + 1] = cc_conj[j0] * cc[j1 + 1] * bayes_covariance_estimation(X[j0, j1 + 1, :], X[j0, j0, :], X[j1 + 1, j1 + 1, :], d, N_chain=N_chain, N=N, N_max=N_max)
+                A[j0, j0 + 1] = cc_conj[j0] * cc[j1 + 1] * bayes_covariance_estimation(X[j0, j1 + 1, :], X[j0, j0, :],
+                                                                                       X[j1 + 1, j1 + 1, :], d,
+                                                                                       N_chain=N_chain, N=N,
+                                                                                       N_max=N_max)
                 A[j0 + 1, j0] = np.conj(A[j0, j0 + 1])
         else:  # Off-diagonal elements (covariance)
             if CG[j0, j1] == 1:
                 if i1 == 1 and i2 == 1:
-                    A[j0, j1] = cc_conj[j0] * cc[j1] * bayes_covariance_estimation(X[j0, j1, :], X[j0, j0, :], X[j1, j1, :], d, N_chain=N_chain, N=N, N_max=N_max)
+                    A[j0, j1] = cc_conj[j0] * cc[j1] * bayes_covariance_estimation(X[j0, j1, :], X[j0, j0, :],
+                                                                                   X[j1, j1, :], d, N_chain=N_chain,
+                                                                                   N=N, N_max=N_max)
                     A[j1, j0] = np.conj(A[j0, j1])
                 elif i1 == 1 and i2 == 2:
-                    A[j0, j1] = cc_conj[j0] * cc[j1] * bayes_covariance_estimation(X[j0, j1, :], X[j0, j0, :], X[j1, j1, :], d, N_chain=N_chain, N=N, N_max=N_max)
+                    A[j0, j1] = cc_conj[j0] * cc[j1] * bayes_covariance_estimation(X[j0, j1, :], X[j0, j0, :],
+                                                                                   X[j1, j1, :], d, N_chain=N_chain,
+                                                                                   N=N, N_max=N_max)
                     A[j0, j1 + 1] = np.conj(A[j0, j1])
 
                     A[j1, j0] = np.conj(A[j0, j1])
                     A[j1 + 1, j0] = A[j0, j1]
                 elif i1 == 2 and i2 == 2:
-                    A[j0, j1] = cc_conj[j0] * cc[j1] * bayes_covariance_estimation(X[j0, j1, :], X[j0, j0, :], X[j1, j1, :], d, N_chain=N_chain, N=N, N_max=N_max)
+                    A[j0, j1] = cc_conj[j0] * cc[j1] * bayes_covariance_estimation(X[j0, j1, :], X[j0, j0, :],
+                                                                                   X[j1, j1, :], d, N_chain=N_chain,
+                                                                                   N=N, N_max=N_max)
                     A[j1, j0] = np.conj(A[j0, j1])
                     A[j0 + 1, j1 + 1] = np.conj(A[j0, j1])
                     A[j1 + 1, j0 + 1] = A[j0, j1]
 
-                    A[j0, j1 + 1] = cc_conj[j0] * cc[j1 + 1] * bayes_covariance_estimation(X[j0, j1 + 1, :], X[j0, j0, :], X[j1 + 1, j1 + 1, :], d, N_chain=N_chain, N=N, N_max=N_max)
+                    A[j0, j1 + 1] = cc_conj[j0] * cc[j1 + 1] * bayes_covariance_estimation(X[j0, j1 + 1, :],
+                                                                                           X[j0, j0, :],
+                                                                                           X[j1 + 1, j1 + 1, :], d,
+                                                                                           N_chain=N_chain, N=N,
+                                                                                           N_max=N_max)
                     A[j1 + 1, j0] = np.conj(A[j0, j1 + 1])
                     A[j0 + 1, j1] = np.conj(A[j0, j1 + 1])
                     A[j1, j0 + 1] = A[j0, j1 + 1]
@@ -712,11 +733,12 @@ def noise_adder_sim(rr, p_noise, dims):
 
 
 # Sample measurement outcomes from Pauli operators in a selected clique
-def clique_sampling(P, psi, aa, D={}, p_noise=0):
+def clique_sampling(P, psi, aa, D=None, p_noise=0):
     """
     Sample measurement outcomes for Pauli operators in a selected clique.
 
-    Args:
+    Parameters:
+        p_noise:
         P (Pauli): Pauli operators for the Hamiltonian.
         psi (np.ndarray): Ground state of the Hamiltonian.
         aa (list of int): Indices of the clique to be measured.
@@ -725,6 +747,8 @@ def clique_sampling(P, psi, aa, D={}, p_noise=0):
     Returns:
         list of int: Measurement outcomes (+1/-1) for each Pauli in the clique.
     """
+    if D is None:
+        D = {}
     if str(aa) in D:
         P1, pdf, k_dict = D[str(aa)]
     else:
@@ -763,7 +787,8 @@ def clique_sampling(P, psi, aa, D={}, p_noise=0):
     a1 = np.random.choice(np.prod(dims1), p=pdf)
     bases_a1 = int_to_bases(a1, dims1)
     bases_a1 = noise_adder_sim(bases_a1, p_noise, dims1)
-    ss = [(phases1[i0] + sum((bases_a1[i1] * P1.Z[i0, i1] * P1.lcm) // P1.dims[i1] for i1 in range(q1))) % P1.lcm for i0 in range(p1)]
+    ss = [(phases1[i0] + sum((bases_a1[i1] * P1.Z[i0, i1] * P1.lcm) // P1.dims[i1] for i1 in range(q1))) % P1.lcm for i0
+          in range(p1)]
 
     return ss, k_dict, D
 
@@ -794,11 +819,11 @@ def quditwise_inner_product(P0, P1):
 
     phase = np.prod(result).real
     if phase == 1:
-        return 0
+        return (0)
     elif phase == -1:
-        return 1
+        return (1)
     else:
-        return 0
+        return (0)
 
 
 def get_phase_matrix(P, CG):
@@ -833,7 +858,7 @@ def get_phase_matrix(P, CG):
                         pauli_phases.append(((Pi.Z[0, k] * (Pi.X[0, k] - Pj.X[0, k])) % dims[k]) * int(d / dims[k]))
                 k_phases[i, j] = np.sum(pauli_phases) % d
 
-    return k_phases
+    return (k_phases)
 
 
 def perform_measurements(P, psi, xxx, X, k_phases, D, p_noise=0):
@@ -849,25 +874,12 @@ def perform_measurements(P, psi, xxx, X, k_phases, D, p_noise=0):
     return (X, D)
 
 
-def bucket_filling_qudit(P, 
-                         cc, 
-                         psi, 
-                         shots, 
-                         part_func, 
-                         pauli_block_sizes, 
-                         mcmc_shot_scale=1,
-                         update_steps=set(), 
-                         full_simulation=False,
-                         general_commutation=True, 
-                         D={}, 
+def bucket_filling_qudit(P, cc, psi, shots, part_func, pauli_block_sizes, mcmc_shot_scale=1,
+                         update_steps=set(), full_simulation=False,
+                         general_commutation=True, D={},
                          M_list=[100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200, 102400],
-                         Q_progress_bar=True, 
-                         best_possible=False,
-                         no_strategy=False, 
-                         allocation_mode='set', 
-                         N_chain=8, 
-                         N_mcmc=500, 
-                         N_mcmc_max=2001,
+                         Q_progress_bar=True, best_possible=False,
+                         no_strategy=False, allocation_mode='set', N_chain=8, N_mcmc=500, N_mcmc_max=2001,
                          p_noise=0):
     """
     Simulate measurements on qudit observables using a bucket-filling algorithm.
@@ -911,7 +923,7 @@ def bucket_filling_qudit(P,
     else:
         aaa = [[i] for i in range(p)]
 
-    # print(aaa)
+    #print(aaa)
 
     # Precompute phase offsets between Pauli operators
     k_phases = get_phase_matrix(P, CG)
@@ -937,14 +949,8 @@ def bucket_filling_qudit(P,
             # update covariance graph
             if not best_possible:
                 if i0 != 0:
-                    A = bayes_covariance_graph(X, 
-                                               np.array(cc), 
-                                               CG.adj, 
-                                               p, 
-                                               pauli_block_sizes, 
-                                               d, 
-                                               N_chain=N_chain, 
-                                               N=N_mcmc + int(i0 * mcmc_shot_scale),
+                    A = bayes_covariance_graph(X, np.array(cc), CG.adj, p, pauli_block_sizes, d,
+                                               N_chain=N_chain, N=N_mcmc + int(i0 * mcmc_shot_scale),
                                                N_max=N_mcmc_max + 4 * int(i0 * mcmc_shot_scale))
                     V = graph(A).adj
                 else:
@@ -966,7 +972,8 @@ def bucket_filling_qudit(P,
         V2 = 2 * V * (S * s * s[:, None] - S * s * s1[:, None])
         aaa, aaa1 = itertools.tee(aaa, 2)
         if allocation_mode == 'set':
-            aa = sorted(max(aaa1, key=lambda xx: np.abs(V1[xx][:, xx].sum() + V2[xx][:, list(index_set.difference(xx))].sum())))
+            aa = sorted(
+                max(aaa1, key=lambda xx: np.abs(V1[xx][:, xx].sum() + V2[xx][:, list(index_set.difference(xx))].sum())))
         elif allocation_mode == 'rand':
             aa = sorted(random.sample(list(set(frozenset(aa1) for aa1 in aaa1)), 1)[0])
 
@@ -976,7 +983,7 @@ def bucket_filling_qudit(P,
 
         # Save intermediate results at specific shot counts
         if i0 in M_list:
-            X_intermediate = np.zeros((p, p, d))                
+            X_intermediate = np.zeros((p, p, d))
             X_intermediate, D = perform_measurements(P, psi, xxx, X_intermediate, k_phases, D, p_noise=p_noise)
             X_list.append(np.copy(X_intermediate))
             S_temp = np.copy(S)
@@ -998,7 +1005,8 @@ def bucket_filling_qudit(P,
     return [S, X, xxx, CG, X_list, S_list, D]
 
 
-# Stuff for experimentalists
+##### Stuff for experimentalists
+
 def construct_circuit_list(P, xxx, D):
     circuit_list = []
     for aa in xxx:
@@ -1046,15 +1054,17 @@ def update_X(xxx, rr, X, k_phases, D):
     for i, aa in enumerate(xxx):
         (P1, C, k_dict) = D[str(aa)]
         p1, q1, phases1, dims1 = P1.paulis(), P1.qudits(), P1.phases, P1.dims
-        bases_a1 = rr[i]  # int_to_bases(rr[i], dims1) # or just rr[i] depending on how experimentalists want to input their results
-        ss = [(phases1[i0] + sum((bases_a1[i1] * P1.Z[i0, i1] * P1.lcm) // P1.dims[i1] for i1 in range(q1))) % P1.lcm for i0 in range(p1)]
+        bases_a1 = rr[
+            i]  #int_to_bases(rr[i], dims1) # or just rr[i] depending on how experimentalists want to input their results
+        ss = [(phases1[i0] + sum((bases_a1[i1] * P1.Z[i0, i1] * P1.lcm) // P1.dims[i1] for i1 in range(q1))) % P1.lcm
+              for i0 in range(p1)]
         for j0, s0 in enumerate(ss):
             for a0, a1 in k_dict[str(j0)]:
                 if a0 != a1:
                     X[a0, a1, int((s0 + k_phases[a0, a1]) % d)] += 1
                 else:
                     X[a0, a1, s0] += 1
-    return X
+    return (X)
 
 
 def choose_measurement(S, V, aaa, allocation_mode, Ones, p, index_set):
@@ -1067,23 +1077,17 @@ def choose_measurement(S, V, aaa, allocation_mode, Ones, p, index_set):
     V2 = 2 * V * (S * s * s[:, None] - S * s * s1[:, None])
     aaa, aaa1 = itertools.tee(aaa, 2)
     if allocation_mode == 'set':
-        aa = sorted(max(aaa1, key=lambda xx: np.abs(V1[xx][:, xx].sum() + V2[xx][:, list(index_set.difference(xx))].sum())))
+        aa = sorted(
+            max(aaa1, key=lambda xx: np.abs(V1[xx][:, xx].sum() + V2[xx][:, list(index_set.difference(xx))].sum())))
     elif allocation_mode == 'rand':
         aa = sorted(random.sample(list(set(frozenset(aa1) for aa1 in aaa1)), 1)[0])
-    return aa
+    return (aa)
 
 
-def bfq_experiment_initial(P,
-                           cc,
-                           pauli_block_sizes,
-                           shots,
-                           general_commutation=True, 
-                           allocation_mode='set',
-                           N_chain=8,
-                           N_mcmc=500,
-                           N_mcmc_max=2001, 
-                           mcmc_shot_scale=1):
-    p, _ = P.paulis(), P.qudits()
+def bfq_experiment_initial(P, cc, pauli_block_sizes, shots, general_commutation=True,
+                           allocation_mode='set', N_chain=8, N_mcmc=500,
+                           N_mcmc_max=2001, mcmc_shot_scale=1):
+    p, q = P.paulis(), P.qudits()
     d = int(P.lcm)
     X = np.zeros((p, p, d))
     xxx = []
@@ -1118,14 +1122,9 @@ def bfq_experiment_initial(P,
     # construct list of circuits
     circuit_list, D = construct_circuit_list(P, xxx, {})
 
-    return (
-        xxx, circuit_list,
-        (
-            P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, 
-            general_commutation, allocation_mode, N_chain, N_mcmc, N_mcmc_max, 
-            mcmc_shot_scale, shots, circuit_list, xxx
-        )
-    )
+    return (xxx, circuit_list, (
+    P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, general_commutation, allocation_mode, N_chain, N_mcmc,
+    N_mcmc_max, mcmc_shot_scale, shots, circuit_list, xxx))
 
 
 def bfq_experiment(xxx, rr, shots, algorithm_variables):
@@ -1142,14 +1141,8 @@ def bfq_experiment(xxx, rr, shots, algorithm_variables):
     index_set = set(range(p))
 
     # covariance matrix
-    A = bayes_covariance_graph(X, 
-                               np.array(cc), 
-                               CG.adj, 
-                               p, 
-                               pauli_block_sizes, 
-                               d, 
-                               N_chain=N_chain, 
-                               N=N_mcmc + int(shots_total * mcmc_shot_scale),
+    A = bayes_covariance_graph(X, np.array(cc), CG.adj, p, pauli_block_sizes, d,
+                               N_chain=N_chain, N=N_mcmc + int(shots_total * mcmc_shot_scale),
                                N_max=N_mcmc_max + 4 * int(shots_total * mcmc_shot_scale))
     V = graph(A).adj
 
@@ -1165,46 +1158,30 @@ def bfq_experiment(xxx, rr, shots, algorithm_variables):
     circuit_list_total += circuit_list
     xxx_total += xxx
 
-    return (
-        xxx, circuit_list,
-        (
-            P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, 
-            general_commutation, allocation_mode, N_chain, N_mcmc, N_mcmc_max, 
-            mcmc_shot_scale, shots_total, circuit_list_total, xxx_total
-        )
-    )
+    return (xxx, circuit_list, (
+    P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, general_commutation, allocation_mode, N_chain, N_mcmc,
+    N_mcmc_max, mcmc_shot_scale, shots_total, circuit_list_total, xxx_total))
 
 
 def bfq_estimation(xxx, rr, algorithm_variables):
     P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, general_commutation, allocation_mode, N_chain, N_mcmc, N_mcmc_max, mcmc_shot_scale, shots_total, circuit_list_total, xxx_total = algorithm_variables
-    p, _ = P.paulis(), P.qudits()
-    _ = int(P.lcm)
+    p, q = P.paulis(), P.qudits()
+    d = int(P.lcm)
     # update measurement dict to include new results 
     X = update_X(xxx, rr, X, k_phases, D)
 
-    mean = sum(cc[i0] * sum(X[i0, i0, i1] * math.e**(2 * 1j * math.pi * i1 / P.lcm) for i1 in range(P.lcm)) / sum(X[i0, i0, i1] for i1 in range(P.lcm)) if sum(X[i0, i0, i1] for i1 in range(P.lcm)) > 0 else 0 for i0 in range(p)).real
+    mean = sum(cc[i0] * sum(X[i0, i0, i1] * math.e ** (2 * 1j * math.pi * i1 / P.lcm) for i1 in range(P.lcm)) / sum(
+        X[i0, i0, i1] for i1 in range(P.lcm)) if sum(X[i0, i0, i1] for i1 in range(P.lcm)) > 0 else 0 for i0 in
+               range(p)).real
 
-    error_estimate = np.sqrt(
-        np.sum(
-            scale_variances(
-                graph(
-                    bayes_covariance_graph(X, np.array(cc), CG.adj, p, 
-                                           pauli_block_sizes, int(P.lcm), 
-                                           N_chain=N_chain, 
-                                           N=N_mcmc + int(shots_total * mcmc_shot_scale), 
-                                           N_max=N_mcmc_max + 4 * int(shots_total * mcmc_shot_scale)
-                                           )),
-                S
-            ).adj)).real
+    error_estimate = np.sqrt(np.sum(scale_variances(graph(
+        bayes_covariance_graph(X, np.array(cc), CG.adj, p, pauli_block_sizes, int(P.lcm), N_chain=N_chain,
+                               N=N_mcmc + int(shots_total * mcmc_shot_scale),
+                               N_max=N_mcmc_max + 4 * int(shots_total * mcmc_shot_scale))), S).adj)).real
 
-    return (
-        mean, error_estimate, 
-        (
-            P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, 
-            general_commutation, allocation_mode, N_chain, N_mcmc, N_mcmc_max, 
-            mcmc_shot_scale, shots_total, circuit_list_total, xxx_total
-        )
-    )
+    return (mean, error_estimate, (
+    P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, general_commutation, allocation_mode, N_chain, N_mcmc,
+    N_mcmc_max, mcmc_shot_scale, shots_total, circuit_list_total, xxx_total))
 
 
 def example_results(psi, xxx, algorithm_variables):
@@ -1218,7 +1195,7 @@ def example_results(psi, xxx, algorithm_variables):
         a1 = np.random.choice(np.prod(dims1), p=pdf)
         bases_a1 = int_to_bases(a1, dims1)
         rr.append(bases_a1)
-    return rr
+    return (rr)
 
 
 def noise_adder(rr, p_noise, dims):
@@ -1226,12 +1203,12 @@ def noise_adder(rr, p_noise, dims):
     for i in range(len(rr)):
         if np.random.uniform() <= p_noise:
             rr[i] = np.array([np.random.randint(dims[j]) for j in range(q)])
-    return rr
+    return (rr)
 
 
 def diagnosis_states(algorithm_variables, mode='Null'):
     P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, general_commutation, allocation_mode, N_chain, N_mcmc, N_mcmc_max, mcmc_shot_scale, shots_total, circuit_list_total, xxx_total = algorithm_variables
-    _ = P.qudits()
+    q = P.qudits()
     # mod circuits
     N = len(circuit_list_total)
     circuit_list_mod = []
@@ -1254,7 +1231,7 @@ def diagnosis_states(algorithm_variables, mode='Null'):
 
 def example_results_calibration(ss, circuit_list_total, algorithm_variables, mode='Null', p_noise=0.01):
     P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, general_commutation, allocation_mode, N_chain, N_mcmc, N_mcmc_max, mcmc_shot_scale, shots_total, circuit_list_total, xxx_total = algorithm_variables
-    _ = P.paulis()
+    p = P.paulis()
     dims = P.dims
     q = P.qudits()
     rr = []
@@ -1265,10 +1242,10 @@ def example_results_calibration(ss, circuit_list_total, algorithm_variables, mod
             else:
                 rr.append(np.zeros(q))
 
-    return rr
+    return (rr)
 
 
-def error_calibration(ss, rr, algorithm_variables, mode='Null'):
+def error_callibration(ss, rr, algorithm_variables, mode='Null'):
     P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, general_commutation, allocation_mode, N_chain, N_mcmc, N_mcmc_max, mcmc_shot_scale, shots_total, circuit_list_total, xxx_total = algorithm_variables
     p = P.paulis()
     X_calibration = np.zeros((p, 2))
@@ -1278,7 +1255,7 @@ def error_calibration(ss, rr, algorithm_variables, mode='Null'):
                 X_calibration[xxx_total[i], 0] += 1
             else:
                 X_calibration[xxx_total[i], 1] += 1
-    return X_calibration
+    return (X_calibration)
 
 
 def bfq_error_correction(X_calibration, algorithm_variables):
@@ -1302,10 +1279,12 @@ def bfq_error_correction(X_calibration, algorithm_variables):
             theta_est[i, :] = 1 / d
 
     # eigenvalues
-    # print('w',w)
+    #print('w',w)
     xis = [np.exp(2 * 1j * np.pi * beta / d) for beta in range(d)]
-    error_correction = np.sum([cc[i0] * np.sum([xis[beta] * (theta_est[i0, beta] - 1 / d) for beta in range(d)]) * w[i0, 0] for i0 in range(p)])
-    return (np.abs(error_correction)**2)
+    error_correction = np.sum(
+        [cc[i0] * np.sum([xis[beta] * (theta_est[i0, beta] - 1 / d) for beta in range(d)]) * w[i0, 0] for i0 in
+         range(p)])
+    return (np.abs(error_correction) ** 2)
 
 
 def error_correction_estimation(P, cc, X, xxx, p_noise):
@@ -1336,10 +1315,12 @@ def error_correction_estimation(P, cc, X, xxx, p_noise):
             theta_est[i, :] = 1 / d
 
     # eigenvalues
-    # print('w',w)
+    #print('w',w)
     xis = [np.exp(2 * 1j * np.pi * beta / d) for beta in range(d)]
-    error_correction = np.sum([cc[i0] * np.sum([xis[beta] * (theta_est[i0, beta] - 1 / d) for beta in range(d)]) * w[i0, 0] for i0 in range(p)])
-    return (np.abs(error_correction)**2)
+    error_correction = np.sum(
+        [cc[i0] * np.sum([xis[beta] * (theta_est[i0, beta] - 1 / d) for beta in range(d)]) * w[i0, 0] for i0 in
+         range(p)])
+    return (np.abs(error_correction) ** 2)
 
 
 def example_calibration(ss, circuit_list_total, algorithm_variables, mode='Null', p_noise=0.01):

@@ -5,28 +5,7 @@ on:
     branches: [main, dev]
 
 jobs:
-  validate-branch:
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    outputs:
-      proceed: ${{ steps.branch-check.outputs.proceed }}
-    steps:
-      - name: Check PR Source Branch
-        id: branch-check
-        run: |
-          FROM_BRANCH="${{ github.head_ref }}"
-          if [[ "$FROM_BRANCH" != "dev" && "$FROM_BRANCH" != "release" && ! "$FROM_BRANCH" =~ "test-workflow" ]]; then
-            echo "This workflow only runs for PRs from branches named 'dev', 'release', or containing 'test-workflow'. Exiting gracefully."
-            echo "proceed=false" >> $GITHUB_OUTPUT
-            echo "proceed=false" >> $GITHUB_ENV
-            exit 0 
-          fi
-          echo "proceed=true" >> $GITHUB_OUTPUT
-          echo "proceed=true" >> $GITHUB_ENV
-
   set-runner:
-    needs: validate-branch
-    if: needs.validate-branch.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     outputs:
       runner: ${{ steps.set-matrix.outputs.runner }}
