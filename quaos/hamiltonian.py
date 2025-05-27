@@ -1,9 +1,11 @@
 import numpy as np
 import sys
-sys.path.append("./")
-from quaos.symplectic import PauliSum, Pauli, PauliString
-from quaos.gates import GateOperation, Circuit, Hadamard as H, SUM as CX, PHASE as S
+import itertools
 import random
+
+# sys.path.append("./")
+from quaos.paulis import PauliSum, PauliString
+from quaos.gates import Circuit, Hadamard as H, SUM as CX, PHASE as S
 
 
 def ground_state(P):
@@ -53,8 +55,8 @@ def random_pauli_hamiltonian(num_paulis, qudit_dims, mode='rand', seed=None):
     coefficients = []
     
     for p in range(num_paulis):
-        x_exp = [random.randint(0, qudit_dims[i]) for i in range(n_qudits)]  # np.random.randint(qudit_dims, size=n_qudits)
-        z_exp = [random.randint(0, qudit_dims[i]) for i in range(n_qudits)]  # np.random.randint(qudit_dims, size=n_qudits)
+        x_exp = [random.randint(0, qudit_dims[i] - 1) for i in range(n_qudits)]  # np.random.randint(qudit_dims, size=n_qudits)
+        z_exp = [random.randint(0, qudit_dims[i] - 1) for i in range(n_qudits)]  # np.random.randint(qudit_dims, size=n_qudits)
         x_exp_H = np.zeros_like(x_exp)
         z_exp_H = np.zeros_like(z_exp)
         phase_factor = 1
@@ -96,30 +98,13 @@ def pauli_eigenvalue(index, dimension):
     return np.exp(2 * np.pi * 1j * index / dimension)
 
 
-def symplectic_reduction_qudit(P):
-    d = P.dimensions
-    q = P.n_qudits()
-    P1 = P.copy()
-    C = Circuit(d)
-    pivots = []
-
-    for i in range(P.n_qudits()):
-        C, pivots = symplectic_reduction_iter_qudit_(P1.copy(), C, pivots, i)
-    P1 = C.act(P1)
-
-    removable_qubits = set(range(q)) - set([pivot[1] for pivot in pivots])
-    conditional_qubits = sorted(set(range(q)) - removable_qubits - set([pivot[1] for pivot in pivots if pivot[2] == 'Z']))
-    if any(conditional_qubits):
-
-        for cq in conditional_qubits:
-            g = H(cq, d[cq])
-            C.add_gate(g)
-        P1 = g.act(P1)
-
-    return C, sorted(pivots, key=lambda x: x[1])
-
-
 def number_of_SUM_X(r_control, r_target, d):
+    """
+    Find the smallest positive integer N such that:
+        (r_target + N * r_control) % d == 0
+
+    This counts the number N of SUM gates needed to cancel out the X part of a Pauli operator.
+    """
     N = 1
     while (r_target + N * r_control) % d != 0:
         if N > d:
@@ -152,11 +137,7 @@ def number_of_S(x_exp, z_exp, d):
 def cancel_X(pauli_sum, qudit, pauli_index, C, q_max):
     list_of_gates = []
     for i in range(qudit + 1, q_max):
-        # print(pauli_sum.x_exp[pauli_index, :])
         if pauli_sum.x_exp[pauli_index, i]:
-            # print('num', i, number_of_SUM_X(pauli_sum.x_exp[pauli_index, qudit],
-            #                                                                                pauli_sum.x_exp[pauli_index, i],
-            #                                                                                pauli_sum.dimensions[i]))
             list_of_gates += [CX(qudit, i, pauli_sum.dimensions[qudit])] * number_of_SUM_X(pauli_sum.x_exp[pauli_index, qudit],
                                                                                            pauli_sum.x_exp[pauli_index, i],
                                                                                            pauli_sum.dimensions[i])
@@ -193,6 +174,12 @@ def cancel_Y(pauli_sum, qudit, pauli_index, C):
 
 
 def cancel_pauli(P, current_qudit, pauli_index, circuit, n_q_max):
+    """
+    Needs an x component on current_qudit
+
+    P -> p_1 ... p_current_qudit  I I ... I p_n_q_max p.... p_n_paulis
+    
+    """
     # add CX gates to cancel out all non-zero X-parts on Pauli pauli_index, i > qudit
     if any(P.x_exp[pauli_index, i] for i in range(current_qudit + 1, n_q_max)):
         P, circuit = cancel_X(P, current_qudit, pauli_index, circuit, n_q_max)
@@ -207,17 +194,42 @@ def cancel_pauli(P, current_qudit, pauli_index, circuit, n_q_max):
     return P, circuit
 
 
+def symplectic_reduction_qudit(P):
+    d = P.dimensions
+    q = P.n_qudits()
+    P1 = P.copy()
+    C = Circuit(d)
+    pivots = []
+
+    for i in range(P.n_qudits()):
+        C, pivots = symplectic_reduction_iter_qudit_(P1.copy(), C, pivots, i)
+    P1 = C.act(P1)
+
+    removable_qubits = set(range(q)) - set([pivot[1] for pivot in pivots])
+    conditional_qubits = sorted(set(range(q)) - removable_qubits - set([pivot[1] for pivot in pivots if pivot[2] == 'Z']))
+    if any(conditional_qubits):
+
+        for cq in conditional_qubits:
+            g = H(cq, d[cq])
+            C.add_gate(g)
+        P1 = g.act(P1)
+
+    return C, sorted(pivots, key=lambda x: x[1])
+
+
 def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
     n_p, n_q = P.n_paulis(), P.n_qudits()
     P = C.act(P)
     n_q_max = n_q
+    # find n_q_max, the last qudit of the same dimension as current_qudit
     for i in range(n_q - current_qudit):
         if P.dimensions[current_qudit + i] != P.dimensions[current_qudit]:
             n_q_max = current_qudit + i - 1
             break
 
+    # does the current qudit have any X or Z components?
     if any(P.x_exp[:, current_qudit]) or any(P.z_exp[:, current_qudit]):
-        if not any(P.x_exp[:, current_qudit]):
+        if not any(P.x_exp[:, current_qudit]):  # If it is z we need to add a Hadamard gate to make it an X
             g = H(current_qudit, P.dimensions[current_qudit])
             C.add_gate(g)
             P = g.act(P)
@@ -227,6 +239,7 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
 
         P, C = cancel_pauli(P, current_qudit, current_pauli, C, n_q_max)
 
+    # If there was previously a y we need to cancel the left over z parts
     if any(P.z_exp[:, current_qudit]):
         current_pauli = min(i for i in range(n_p) if P.z_exp[i, current_qudit])  # first Pauli that has a z-component
         pivots.append((current_pauli, current_qudit, 'Z'))
@@ -235,7 +248,7 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
         C.add_gate(g)
         P = g.act(P)
 
-        P, C = cancel_pauli(P, current_qudit, current_pauli, C, n_q_max)  ## ### ## 
+        P, C = cancel_pauli(P, current_qudit, current_pauli, C, n_q_max)
 
         g = H(current_qudit, P.dimensions[current_qudit])
         C.add_gate(g)
@@ -244,24 +257,78 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
     return C, pivots
 
 
-def symplectic_pauli_reduction(hamiltonian: PauliSum) -> PauliSum:
+def symplectic_pauli_reduction(hamiltonian: PauliSum) -> Circuit:
     C, pivots = symplectic_reduction_qudit(hamiltonian)
-    return C, pivots
+    return C
+
+
+def pauli_reduce(hamiltonian: PauliSum) -> tuple[PauliSum, list[PauliSum], Circuit, list]:
+    """
+    Reduces the Hamiltonian to a smaller number of qudits by removing leading X and Z operators.
+    
+    This returns a list of reduced Hamiltonians, each corresponding to a different symmetry sector of the Z symmetries.
+
+    """
+
+    C = symplectic_pauli_reduction(hamiltonian)
+
+    h_red = C.act(hamiltonian)
+    # first we remove any qudits with only identities
+    h_red.remove_trivial_qudits()
+
+    # build list of z symmetries as those qubits with only z
+    list_of_z_symmetries = []
+    list_of_phases = []
+    n_sectors = 1
+    z_symmetric_qudits = set()
+    for i in range(h_red.n_qudits()):
+        if not any(h_red.x_exp[:, i]):  # z only
+            list_of_z_symmetries.append((i, np.where(h_red.z_exp[:, i] != 0)[0]))
+            z_symmetric_qudits.add(i)
+            list_of_phases += np.arange(h_red.dimensions[i]).tolist()
+            n_sectors *= h_red.dimensions[i]
+
+    n_symmetries = len(list_of_z_symmetries)
+    all_phases = [list(bits) for bits in itertools.product(list_of_phases)]
+    # z symmetries can simply alter the phase of tha Paulis
+    conditioned_hamiltonians = []
+
+    for sector in range(n_sectors):
+
+        conditioned_hamiltonian = h_red.copy()
+        phase_factor = np.zeros(h_red.n_paulis(), dtype=int)
+        for i, z_symmetry in enumerate(list_of_z_symmetries):
+
+            phase_factor[list_of_z_symmetries[i][1]] += all_phases[sector]
+        conditioned_hamiltonian.phases += phase_factor
+        conditioned_hamiltonian.phases = conditioned_hamiltonian.phases % conditioned_hamiltonian.lcm
+        conditioned_hamiltonian._delete_qudits(list(z_symmetric_qudits))
+        conditioned_hamiltonian.combine_equivalent_paulis()
+        conditioned_hamiltonians.append(conditioned_hamiltonian)
+    return h_red, conditioned_hamiltonians, C, all_phases
 
 
 if __name__ == "__main__":
-    n_paulis = 5
-    n_qudits = 5
-    dimension = 2
 
-    for i in range(10):
-        print(i)
+    # Example from the paper
 
-        ham = random_pauli_hamiltonian(n_paulis, [dimension] * n_qudits, mode='random')
-        # print(ham, '/n')
+    ham = ['x1z0 x1z0 x0z0', 'x0z0 x1z0 x1z0', 'x0z1 x0z0 x0z1']
+    ham = PauliSum(ham, weights=[1, 1, 1], dimensions=[2, 2, 2])
+    print(ham, '/n')
+    circuit = symplectic_pauli_reduction(ham)
+    h_reduced, conditioned_hams, reducing_circuit, eigenvalues = pauli_reduce(ham)
+    print(h_reduced)
+    for h in conditioned_hams:
+        print(h)
 
-        circuit, pivots = symplectic_pauli_reduction(ham)
-        reduced_hamiltonian = circuit.act(ham)
-        # print(circuit)
-        print(reduced_hamiltonian)
-        # circuit.show()
+    # random hamiltonian example
+    # n_qudits = 4
+    # n_paulis = 4
+    # dimension = 2
+    # ham = random_pauli_hamiltonian(n_paulis, [dimension] * n_qudits, mode='uniform')
+    # circuit = symplectic_pauli_reduction(ham)
+    # print(ham)
+    # h_reduced, conditioned_hams, reducing_circuit, eigenvalues = pauli_reduce(ham)
+    # print(h_reduced)
+    # for h in conditioned_hams:
+    #     print(h)

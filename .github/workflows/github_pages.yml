@@ -28,6 +28,10 @@ jobs:
     continue-on-error: true
     runs-on: ${{ needs.set-runner.outputs.runner }}
 
+    needs: set-runner
+    continue-on-error: true
+    runs-on: ${{ needs.set-runner.outputs.runner }}
+
     permissions:
       pages: write
       id-token: write
@@ -44,6 +48,10 @@ jobs:
           touch docs/final_doc_requirements.txt
           [ -f docs/doc_requirements.txt ] && cat docs/doc_requirements.txt >> docs/final_doc_requirements.txt && echo "" >> docs/final_doc_requirements.txt
           [ -f configs/requirements.txt ] && cat configs/requirements.txt >> docs/final_doc_requirements.txt && echo "" >> docs/final_doc_requirements.txt
+        run: |
+          touch docs/final_doc_requirements.txt
+          [ -f docs/doc_requirements.txt ] && cat docs/doc_requirements.txt >> docs/final_doc_requirements.txt && echo "" >> docs/final_doc_requirements.txt
+          [ -f configs/requirements.txt ] && cat configs/requirements.txt >> docs/final_doc_requirements.txt && echo "" >> docs/final_doc_requirements.txt
 
       - id: build
         uses: sphinx-notes/pages@v3
@@ -52,8 +60,14 @@ jobs:
           python_version: "3.11"
           sphinx_version: "7.4.7"
           checkout: false
+          requirements_path: "./docs/final_doc_requirements.txt"
+          python_version: "3.11"
+          sphinx_version: "7.4.7"
+          checkout: false
 
   deploy:
+    continue-on-error: true
+    needs: [set-runner, build]
     continue-on-error: true
     needs: [set-runner, build]
 
@@ -65,6 +79,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
+    runs-on: ${{ needs.set-runner.outputs.runner }}
     runs-on: ${{ needs.set-runner.outputs.runner }}
     steps:
       - name: Deploy to GitHub Pages

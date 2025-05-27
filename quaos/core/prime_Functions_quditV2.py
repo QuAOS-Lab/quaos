@@ -12,11 +12,9 @@ from IPython.display import display
 
 # Local Imports
 from .prime_Functions_Andrew import (
-    int_to_bases, bases_to_int, string_to_pauli,
-    weighted_vertex_covering_maximal_cliques, ground_state,
-    commutation_graph, graph, pauli_product, pauli_to_string,
-    diagonalize, act, quditwise_commutation_graph, quditwise_inner_product,
-    pauli_to_matrix, pauli, Hamiltonian_Mean, scale_variances, circuit
+    int_to_bases, bases_to_int, weighted_vertex_covering_maximal_cliques, 
+    commutation_graph, graph, diagonalize, act, quditwise_commutation_graph, 
+    scale_variances, circuit
 )
 
 np.set_printoptions(linewidth=200)
@@ -275,7 +273,7 @@ def get_psi(p):
             two_qudit_probabilities[i * d + j] = p[i] * p[d + j]
 
     psi = np.sqrt(two_qudit_probabilities) + 0 * 1j
-    return (psi)
+    return psi
 
 
 @jit(nopython=True)
@@ -308,9 +306,9 @@ def mcmc_starting_point(d, c, A):
         tuple: Probability distribution and the corresponding quantum state vector psi.
     """
     p_try = np.zeros(len(c))
-    p_try[0:d] = (c[0:d] + 1) / np.sum(c[0:d] + 1)
-    p_try[d:2 * d] = (c[d:2 * d] + 1) / np.sum(c[d:2 * d] + 1)
-    p_try[2 * d:3 * d] = (c[2 * d:3 * d] + 1) / np.sum(c[2 * d:3 * d] + 1)
+    p_try[0: d] = (c[0: d] + 1) / np.sum(c[0: d] + 1)
+    p_try[d: 2 * d] = (c[d: 2 * d] + 1) / np.sum(c[d: 2 * d] + 1)
+    p_try[2 * d: 3 * d] = (c[2 * d: 3 * d] + 1) / np.sum(c[2 * d: 3 * d] + 1)
 
     psi = get_psi(p_try)
     p = get_p(psi, A)
@@ -489,10 +487,10 @@ def mcmc_integration(N, psi_list, p_list, alpha, d, c, A, N_max=10000):
 
 
 @jit(nopython=True)
-def get_alpha(p_list, psi_list, d, A, c, N_chain, Q_alpha_test=True, target_accept=0.25,
+def get_alpha(p_list, psi_list, d, A, c, N_chain, Q_alpha_test=True, target_accept=0.25, 
               N_accepts=30, b=10, run_max=1000):
     # initial guess for alpha
-    ns = np.concatenate((c[0:d], c[d:2 * d], c[2 * d:3 * d]))
+    ns = np.concatenate((c[0:d], c[d: 2 * d], c[2 * d: 3 * d]))
     alpha = 1 - 1 / np.min(ns[:3]) if np.min(ns) != 0 else 0
     alpha_list = np.array([alpha] * N_chain)
 

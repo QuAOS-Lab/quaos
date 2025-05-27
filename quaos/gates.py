@@ -1,122 +1,36 @@
-import sys
 import numpy as np
+from typing import overload
 from qiskit import QuantumCircuit
-sys.path.append("./")
-
-import time
-from quaos.symplectic import PauliSum, PauliString, Pauli, Xnd, Ynd, Znd, Id, string_to_symplectic, symplectic_to_string
-
-
-# class Gate(PauliSum):
-#     def __init__(self, name, index, generalised_pauli_list, weights=None, phases=None, dims=None):
-#         self.name = name
-#         self.index = index
-#         super().__init__(generalised_pauli_list, weights, phases, dims)
-
-#     def act(self, P):
-#         return self * P * self
+from quaos.paulis import (
+    PauliSum, PauliString, Pauli,
+    #  Xnd, Ynd, Znd, Id, symplectic_to_string,
+    string_to_symplectic,
+)
 
 
-# class Hadamard(Gate):
-#     def __init__(self, n_qudits, index, dims):
-#         str1 = ''
-#         str2 = ''
-#         for i in range(n_qudits):
-#             if i == index:
-#                 str1 += 'X'
-#                 str2 += 'Z'
-#             else:
-#                 str1 += 'I'
-#                 str2 += 'I'
-#         pauli_string = [str1, str2]
-#         weights = 1. / np.sqrt(2) * np.ones(2)
-#         super().__init__(name='H', generalised_pauli_list=pauli_string, weights=weights, phases=None, dims=dims)
-
-
-# class CNOT(Gate):
-#     """
-#     |0><0|_control I_all + |1><1|_control X_target I_rest
-
-#     Uses:
-#         |0><0| = (I - Z) / 2
-#         |1><1| = (I + Z) / 2
-#     """
-
-#     def __init__(self, control, target, n_qubits):
-#         dims = [2] * n_qubits
-#         # strings depend on state of the control - each state has two contributions I +- Z
-#         control_0_str1 = ''
-#         control_0_str2 = ''
-#         control_1_str1 = ''
-#         control_1_str2 = ''
-#         for i in range(n_qubits):
-#             if i == control:
-#                 control_0_str1 += 'x0z0'
-#                 control_0_str2 += 'x0z1'
-#                 control_1_str1 += 'x0z0'
-#                 control_1_str2 += 'x0z1'
-
-#             elif i == target:
-#                 control_0_str1 += 'x0z0'
-#                 control_0_str2 += 'x0z0'
-#                 control_1_str1 += 'x1z0'
-#                 control_1_str2 += 'x1z0'
-
-#             else:
-#                 control_0_str1 += 'x0z0'
-#                 control_0_str2 += 'x0z0'
-#                 control_1_str1 += 'x0z0'
-#                 control_1_str2 += 'x0z0'
-
-#         w01 = 1 / 2
-#         w02 = -1 / 2
-#         w11 = 1 / 2
-#         w12 = 1 / 2
-#         weights = [w01, w02, w11, w12]
-#         pauli_string = [control_0_str1, control_0_str2, control_1_str1, control_1_str2]
-#         super().__init__(name='CNOT', index=(control, target), generalised_pauli_list=pauli_string,
-#                          weights=weights, phases=None, dims=dims)
-
-
-# class SUM(Gate):
-#     def __init__(self, index, generalised_pauli_list, weights=None, phases=None, dims=None):
-#         super().__init__('SUM', index, generalised_pauli_list, weights, phases, dims)
-
-        
 class GateOperation:
     """
     Mapping can be written as set of rules,
     
-    e.g. for CNOT(control=3, target=1, dimensions=2)
+    e.g. for CNOT
                 x1z0*x0z0 -> x1z0*x1z0
                 x0z0*x1z0 -> x0z0*x1z0  # doesn't need specifying
                 x0z1*x0z0 -> x0z1*x0z0  # doesn't need specifying
-                x0z0*x0z1 -> -x0z1*x0z1 # note phase important here
+                x0z0*x0z1 -> x0z-1*x0z1 # 
 
-    inputs are: 
+    inputs are:
 
-    qudit_indices = (3, 1)
     mapping = ['x1z0*x0z0 -> x1z0*x1z0', 'x0z0*x0z1 -> -x0z1*x0z1']  # (control*target -> control*target)
 
-    or for SUM(target=1, control=3)
-
-    qudit_indices = (3, 1)
-    mapping = ['X*I -> X*X', 'I*Z -> Z-1*Z']   # Interpreting Xn = X^n, Z-n = Z^{-n}
-    
-    on all mappings (output) % lcm is assumed
-
-    Should act on a PauliSum to return another PauliSum
-
     """
-    def __init__(self, name, qudit_indices, mapping, dimension):
-        
+    def __init__(self, name: str, qudit_indices: list[int], mapping: list[str], dimension: list[int]):
         self.dimension = dimension
         self.name = name
-        self.qudit_indices = qudit_indices  # number of total qudits including those not acted upon - could remove the need for this entirely...
+        self.qudit_indices = qudit_indices
+        self.mapping = mapping
         self.map_from, self.map_to, self.acquired_phase = self._interpret_mapping(mapping)
     
-    def _interpret_mapping(self, map_string):
-
+    def _interpret_mapping(self, map_string: list[str]) -> tuple[np.ndarray, np.ndarray, list[int]]:
         map_from, map_to = zip(*[map_string[i].split('->') for i in range(len(map_string))])
 
         n_maps = len(map_from)
@@ -133,100 +47,12 @@ class GateOperation:
             symplectic_mapped_to.append(s)
             acquired_phase.append(p)
         
-        # For an n qubit operation there should be a set of 2n mappings.
-        # If the rest are unspecified, they should be identity mappings (those with equal looked_for and mapped_to)
-        # If the user specifies less than 2n mappings, then the remaining ones will be identity mappings
-        # These remaining identity mappings must all be linearly independent of the specified ones
-        # note that this will fail if the input mappings are not of the form X*I*...*I, Z*I*...*I, (having only a single
-        # X or Z in the string - checked for below) - generalisable if needed
-        # This will only be needed to obtain the symplectic matrix for the gate operation, not for current method...
-        # if len(symplectic_looked_for) < 2 * self.n_qudits:
-        #     for s in symplectic_looked_for:
-        #         if np.sum(s) != 1:
-        #             raise Exception('Unable to automate completion of mappings. Specify 2*n_qudits linearly '
-        #                             'independent mappings to fully define the gate operation.')
-        #     for i in range(2 * self.n_qudits):
-        #         mapping = np.zeros(2 * self.n_qudits, dtype=int)
-        #         mapping[i] = 1
-        #         if not any(np.array_equal(mapping, arr) for arr in symplectic_looked_for):
-        #             symplectic_looked_for.append(mapping)
-        #             symplectic_mapped_to.append(mapping)
-
-        ### remove once debugged
-        # assert len(symplectic_looked_for) == self.dimension ** (self.n_qudits), (len(symplectic_looked_for),
-        #                                                                              self.dimension ** (self.n_qudits))
-        # assert len(symplectic_mapped_to) == self.dimension ** (self.n_qudits)
-        ###
-
         symplectic_looked_for = np.array(symplectic_looked_for)
         symplectic_mapped_to = np.array(symplectic_mapped_to)
 
-        # reorder such that the symplectic looked for is always the identity
-        # (this would need to be altered to generalise)
-        # perm = np.argmax(symplectic_looked_for, axis=1)
-        # inverse_perm = np.argsort(perm)
-        # symplectic_looked_for = symplectic_looked_for[inverse_perm]
-        # symplectic_mapped_to = symplectic_mapped_to[inverse_perm]
-
-        # symplectic = self.build_symplectic_from_mappings(symplectic_looked_for, symplectic_mapped_to)
-
         return symplectic_looked_for, symplectic_mapped_to, acquired_phase
-    
-    # def mod_inv(self, a):
-    #     """Modular inverse of a mod d, where d = self.dimension."""
-    #     a = a % self.dimension
-    #     if a == 0:
-    #         raise ValueError("0 has no inverse modulo d")
-    #     return pow(int(a), -1, self.dimension)
 
-    # def mod_mat_inv(self, A):
-    #     """Modular inverse of matrix A over Z_d using Gauss-Jordan elimination."""
-    #     A = np.array(A, dtype=int) % self.dimension
-    #     n = A.shape[0]
-    #     I = np.eye(n, dtype=int)
-    #     AI = np.hstack([A, I])  # Augmented matrix [A | I]
-
-    #     for i in range(n):
-    #         # Find pivot
-    #         pivot = AI[i, i]
-    #         if pivot == 0:
-    #             # Try to swap with a lower row
-    #             for j in range(i + 1, n):
-    #                 if AI[j, i] != 0:
-    #                     AI[[i, j]] = AI[[j, i]]
-    #                     pivot = AI[i, i]
-    #                     break
-    #             else:
-    #                 raise ValueError("Matrix not invertible")
-
-    #         # Normalize pivot row
-    #         inv_pivot = self.mod_inv(pivot)
-    #         AI[i] = (AI[i] * inv_pivot) % self.dimension
-
-    #         # Eliminate other rows
-    #         for j in range(n):
-    #             if j != i:
-    #                 factor = AI[j, i]
-    #                 AI[j] = (AI[j] - factor * AI[i]) % self.dimension
-
-    #     A_inv = AI[:, n:]  # Extract right half
-    #     return A_inv
-
-    # def build_symplectic_from_mappings(self, looked_for, mapped_to):
-    #     """Build symplectic matrix from Pauli generator mappings."""
-    #     looked_for = np.array(looked_for, dtype=int) % self.dimension
-    #     mapped_to = np.array(mapped_to, dtype=int) % self.dimension
-
-    #     if looked_for.shape != mapped_to.shape:
-    #         raise ValueError("Shape mismatch between looked_for and mapped_to.")
-    #     # if looked_for.shape[0] != looked_for.shape[1]:
-    #     #     raise ValueError("Expect square matrix of 2n symplectic vectors.", looked_for)
-
-    #     inv_looked_for = self.mod_mat_inv(looked_for)
-    #     S = (mapped_to @ inv_looked_for) % self.dimension
-    #     return S
-
-    def _act_on_pauli_string(self, P, return_phase=False):
+    def _act_on_pauli_string(self, P: PauliString) -> tuple[PauliString, float]:
         # Extract symplectic of PauliString
         # Extract the symplectic of the relevant qudit numbers in self.qudit_indices
         # Check if these correspond to any of the self.symplectics_looked_for
@@ -250,22 +76,18 @@ class GateOperation:
                 break
 
         P = P._replace_symplectic(local_symplectic, self.qudit_indices)
-        if return_phase:
-            return P, acquired_phase
-        else:
-            return P
+        return P, acquired_phase
 
-    def _act_on_pauli_sum(self, P):
+    def _act_on_pauli_sum(self, P: PauliSum) -> PauliSum:
         if np.all(self.acquired_phase == 0):
-
             # In this case each output of _act_on_pauli_string is a PauliString
-            P = PauliSum([self._act_on_pauli_string(p) for p in P.pauli_strings], P.weights, P.phases, P.dims, False)
+            P = PauliSum([self._act_on_pauli_string(p)[0] for p in P.pauli_strings], P.weights, P.phases, P.dimensions, False)
         else:
             # in this case at least one is a PauliSum
             pauli_list = []
             acquired_phase = []
             for p in P.pauli_strings:
-                new_pauli_string, additional_phase = self._act_on_pauli_string(p, return_phase=True)
+                new_pauli_string, additional_phase = self._act_on_pauli_string(p)
                 acquired_phase.append(additional_phase)
                 pauli_list.append(new_pauli_string)
             weights = P.weights
@@ -273,49 +95,101 @@ class GateOperation:
             P.acquire_phase(acquired_phase)
         # P.combine_equivalent_paulis()
         return P
+    
+    def copy(self) -> 'GateOperation':
+        new_gate = GateOperation(self.name, self.qudit_indices, self.mapping, self.dimension)
+        new_gate.acquired_phase = self.acquired_phase
+        return new_gate
 
-    def act(self, P):
+    @overload
+    def act(self, P: Pauli) -> PauliString:
+        ...
+
+    @overload
+    def act(self, P: PauliString) -> PauliString:
+        ...
+
+    @overload
+    def act(self, P: PauliSum) -> PauliSum:
+        ...
+
+    def act(self, P: Pauli | PauliString | PauliSum) -> PauliString | PauliSum:
         if isinstance(P, Pauli):
-            P = P.to_pauli_string()
+            P = P._to_pauli_string()
+
         if isinstance(P, PauliString):
-            return self._act_on_pauli_string(P)
+            return self._act_on_pauli_string(P)[0]
         elif isinstance(P, PauliSum):
             return self._act_on_pauli_sum(P)
         else:
-            raise ValueError(f"TwoQuditOperation cannot act on type {type(P)}")
-        
-    def __mul__(self, gate):
-        circuit = Circuit([self + gate])
+            raise ValueError(f"GateOperation cannot act on type {type(P)}")
+    
+    def __mul__(self, gate: 'GateOperation') -> 'Circuit':
+        # TODO: check if the two gates are compatible, set dimensions accordingly
+        # circuit = Circuit([self + gate])  # TODO: add support for gate summation
+        if self.dimension != gate.dimension:
+            # this is a choice for the moment, that we select the dimensions of the entire circuit from the beginning
+            # when defining the gates. We could instead define gates only locally and create the circuit from these 
+            # plus the indexes on which they act.
+            raise ValueError("Cannot compile Circuit from gates with different dimensions")
+        circuit = Circuit(self.dimension, [self, gate])
         return circuit
     
+    def __eq__(self, other_gate: 'GateOperation') -> bool:
+        if self.name != other_gate.name:
+            return False
+        if self.qudit_indices != other_gate.qudit_indices:
+            return False
+        if self.mapping != other_gate.mapping:
+            return False
+        if self.dimension != other_gate.dimension:
+            return False
+        if self.acquired_phase != other_gate.acquired_phase:
+            return False
+        return True
+
 
 class CNOT(GateOperation):
-    def __init__(self, control, target, n_qudits):
+    def __init__(self, control: int, target: int):
         CNOT_operations = ['x1z0 x0z0 -> x1z0 x1z0', 'x0z0 x0z1 -> x0z1 x0z1']
-        super().__init__("CNOT", [control, target], CNOT_operations, n_qudits=n_qudits, dimension=[2, 2])
-    
+        super().__init__("CNOT", [control, target], CNOT_operations, dimension=[2, 2])
+
 
 class Hadamard(GateOperation):
-    def __init__(self, index, dimension):
-        Hadamard_operations = self.hadamard_gate_operations(dimension)
-        super().__init__("H", [index], Hadamard_operations, dimension=[dimension])
+    def __init__(self, index: int, dimension: int, inverse: bool = False):
+        if inverse:
+            Hadamard_operations = self.inverse_fourier_gate_operations(dimension)
+        else:
+            Hadamard_operations = self.hadamard_gate_operations(dimension)
+        name = "H" if not inverse else "Hdag"
+        super().__init__(name, [index], Hadamard_operations, dimension=[dimension])
 
     @staticmethod
-    def hadamard_gate_operations(dimension):
+    def hadamard_gate_operations(dimension: int) -> list[str]:
         operations = []
         for r in range(dimension):
             for s in range(dimension):
-                operations.append(f"x{r}z{s} -> x{-s % dimension}z{r}p{r * s}")
+                phase = (r * s) % dimension
+                operations.append(f"x{r}z{s} -> x{-s % dimension}z{r}p{phase}")
         return operations
-    
-
-class PHASE(GateOperation):
-    def __init__(self, index, dimension):
-        SGate_operations = self.s_gate_operations(dimension)  # ['x1z0 -> x1z1', 'x0z1 -> x1z0']
-        super().__init__("S", [index], SGate_operations, dimension=dimension)
 
     @staticmethod
-    def s_gate_operations(dimension):
+    def inverse_fourier_gate_operations(dimension: int) -> list[str]:
+        operations = []
+        for r in range(dimension):
+            for s in range(dimension):
+                phase = (-r * s) % dimension
+                operations.append(f"x{r}z{s} -> x{s}z{-r % dimension}p{phase}")
+        return operations
+
+
+class PHASE(GateOperation):
+    def __init__(self, index: int, dimension: int):
+        SGate_operations = self.s_gate_operations(dimension)  # ['x1z0 -> x1z1', 'x0z1 -> x1z0']
+        super().__init__("S", [index], SGate_operations, dimension=[dimension])
+
+    @staticmethod
+    def s_gate_operations(dimension: int) -> list[str]:
         operations = []
         for r in range(dimension):
             for s in range(dimension):
@@ -329,7 +203,7 @@ class SUM(GateOperation):
         super().__init__("SUM", [control, target], SGate_operations, dimension=dimension)
    
     @staticmethod
-    def sum_gate_operations(dimension):
+    def sum_gate_operations(dimension: int) -> list[str]:
         operations = []
         for r1 in range(dimension):
             for s1 in range(dimension):
@@ -344,8 +218,28 @@ class SUM(GateOperation):
         return operations
 
 
+class SWAP(GateOperation):
+    def __init__(self, index1, index2, dimension):
+        SGate_operations = self.swap_gate_operations(dimension)
+        super().__init__("SWAP", [index1, index2], SGate_operations, dimension=dimension)
+   
+    @staticmethod
+    def swap_gate_operations(dimension):
+        operations = []
+        for r1 in range(dimension):
+            for s1 in range(dimension):
+                for r2 in range(dimension):
+                    for s2 in range(dimension):
+                        new_r1 = r2
+                        new_s1 = s2
+                        new_r2 = r1
+                        new_s2 = s1
+                        operations.append(f"x{r1}z{s1} x{r2}z{s2} -> x{new_r1}z{new_s1} x{new_r2}z{new_s2}")
+        return operations
+
+
 class Circuit:
-    def __init__(self, dimensions, gates=None):
+    def __init__(self, dimensions: list[int] | np.ndarray, gates: list[GateOperation] | None = None):
         """
         Initialize the Circuit with gates, indexes, and targets.
 
@@ -357,9 +251,9 @@ class Circuit:
         
 
         Parameters:
+            dimensions (list[int] | np.ndarray): A list or array of integers representing the dimensions of the qudits.
             gates (list): A list of Gate objects representing the gates in the circuit.
-            indexes (list): A list of integers or tuples for multi-qudit gates,
-              indicating the indexes of qudits the gates act upon.
+            
         """
         if gates is None:
             gates = []
@@ -367,7 +261,7 @@ class Circuit:
         self.gates = gates
         self.indexes = [gate.qudit_indices for gate in gates]  # indexes accessible at the Circuit level
 
-    def add_gate(self, gate):
+    def add_gate(self, gate: GateOperation | list[GateOperation]):
         """
         Appends a gate to qudit index with specified target (if relevant)
 
@@ -381,27 +275,91 @@ class Circuit:
             self.gates.append(gate)
             self.indexes.append(gate.qudit_indices)
 
-    def remove_gate(self, index):
+    def remove_gate(self, index: int):
         """
         Removes a gate from the circuit at the specified index
         """
         self.gates.pop(index)
         self.indexes.pop(index)
 
-    def __str__(self):
+    def n_qudits(self) -> int:
+        """
+        Returns the number of qudits in the circuit.
+        """
+        return len(self.dimensions)
+
+    def __add__(self, other: 'Circuit') -> 'Circuit':
+        """
+        Adds two circuits together by concatenating their gates and indexes.
+        """
+        if not isinstance(other, Circuit):
+            raise TypeError("Can only add another Circuit object.")
+        new_gates = self.gates + other.gates
+        return Circuit(self.dimensions, new_gates)
+    
+    def __mul__(self, other: 'Circuit') -> 'Circuit':
+        """
+        THIS IS THE SAME FUNCTION AS ADDITION  -  PROBABLY WANT TO CHOOSE WHICH ONE DOES THIS
+
+        Adds two circuits together by concatenating their gates and indexes.
+        """
+        if not isinstance(other, Circuit):
+            raise TypeError("Can only add another Circuit object.")
+        new_gates = self.gates + other.gates
+        return Circuit(self.dimensions, new_gates)
+    
+    def __eq__(self, other: 'Circuit') -> bool:
+        if not isinstance(other, Circuit):
+            return False
+        if len(self.gates) != len(other.gates):
+            return False
+        for i in range(len(self.gates)):
+            if self.gates[i] != other.gates[i]:
+                return False
+        return True
+    
+    def __getitem__(self, index: int) -> GateOperation:
+        return self.gates[index]
+    
+    def __setitem__(self, index: int, value: GateOperation):
+        self.gates[index] = value
+        self.indexes[index] = value.qudit_indices
+
+    def __len__(self) -> int:
+        return len(self.gates)
+
+    def __str__(self) -> str:
         str_out = ''
         for gate in self.gates:
             str_out += gate.name + ' ' + str(gate.qudit_indices) + '\n'
         return str_out
+    
+    @overload
+    def act(self, pauli: Pauli) -> PauliString:
+        ...
 
-    def act(self, pauli):
+    @overload
+    def act(self, pauli: PauliString) -> PauliString:
+        ...
+
+    @overload
+    def act(self, pauli: PauliSum) -> PauliSum:
+        ...
+
+    def act(self, pauli: Pauli | PauliString | PauliSum) -> PauliString | PauliSum:
+        if isinstance(pauli, Pauli):
+            if self.dimensions[0] != pauli.dimension or len(self.dimensions) != 1:
+                raise ValueError("Pauli dimension does not match circuit dimensions")
+        elif np.any(self.dimensions != pauli.dimensions):
+            raise ValueError("Pauli dimensions do not match circuit dimensions")
         for gate in self.gates:
             pauli = gate.act(pauli)
-        return pauli
-    
-    def show(self):
+        return pauli   # Why this warning? - it is a PauliSum or PauliString, never a Pauli
+
+    def show(self) -> QuantumCircuit:
         circuit = QuantumCircuit(len(self.dimensions))
-        dict = {'X': circuit.x, 'H': circuit.h, 'S': circuit.s, 'SUM': circuit.cx, 'CNOT': circuit.cx}
+        dict = {'X': circuit.x, 'H': circuit.h, 'S': circuit.s, 'SUM': circuit.cx, 'CNOT': circuit.cx,
+                'Hdag': circuit.h.inverse()}
 
         for gate in self.gates:
             name = gate.name
@@ -412,10 +370,34 @@ class Circuit:
 
         print(circuit)
         return circuit
+    
+    def copy(self) -> 'Circuit':
+        return Circuit(self.dimensions, self.gates.copy())
+
+    def embed_circuit(self, circuit: 'Circuit', qudit_indices: list[int] | np.ndarray | None = None):
+        """
+        Embed a circuit into current circuit at the specified qudit indices.
+        """
+
+        if qudit_indices is not None:
+            if len(qudit_indices) != circuit.n_qudits():
+                raise ValueError("Number of qudit indices does not match number of qudits in circuit to embed")
+            
+        for gate in circuit.gates:
+            new_gate = gate.copy()
+            if qudit_indices is not None:
+                new_indices = [qudit_indices[j] for j in gate.qudit_indices]
+                new_gate.qudit_indices = new_indices
+            self.add_gate(new_gate)
 
 
 if __name__ == "__main__":
-    from quaos.hamiltonian import cancel_X, random_pauli_hamiltonian
+    import sys
+    from pathlib import Path
+    root_path = Path(__file__).parent.parent
+    print(root_path)
+    sys.path.append(str(root_path))
+    from hamiltonian import random_pauli_hamiltonian
     import random
     random.seed(27)
 
@@ -453,7 +435,7 @@ if __name__ == "__main__":
     # psum1 = ps1 + 0.5 * ps2 + 1j * ps3 - 0.5j * ps4
     # print(psum1, '\n -> \n', CNOT3.act(psum1))
 
-    # Hg = Hadamard(0, 2)
+    Hg = Hadamard(0, 2)
     # print(ps1, '->', H.act(ps1))
     # print(ps2, '->', H.act(ps2))
     # print(ps3, '->', H.act(ps3))
@@ -469,3 +451,4 @@ if __name__ == "__main__":
     # ps2, c = cancel_X(ps, 0, 5, c, 5)
 
     # print(ps2)
+

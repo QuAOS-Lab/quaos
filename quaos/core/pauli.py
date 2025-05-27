@@ -155,7 +155,7 @@ class pauli:
                 self.X = np.delete(self.X, a, axis=1)
                 self.Z = np.delete(self.Z, a, axis=1)
                 self.dims = np.delete(self.dims, a)
-        self.lcm = np.lcm.reduce(dims)  # ???
+        self.lcm = np.lcm.reduce(self.dims)
 
     def copy(self) -> 'pauli':
         """
