@@ -240,7 +240,6 @@ class PauliSum:
         ...
         
     def __setitem__(self, key, value):
-        # TODO: Error messages here could be improved
         if isinstance(key, int):  # key indexes the pauli_string to be replaced by value
             self.pauli_strings[key] = value
         elif isinstance(key, slice):
@@ -264,6 +263,7 @@ class PauliSum:
         self._set_exponents()  # update exponents x_exp and z_exp
 
     def __add__(self, A: 'Pauli | PauliString | PauliSum') -> 'PauliSum':
+        from . import Pauli, PauliString
         if isinstance(A, PauliString) or isinstance(A, Pauli):
             A = A._to_pauli_sum()
         elif isinstance(A, Pauli):
@@ -284,6 +284,7 @@ class PauliSum:
         """
         @ is the operator for tensor product
         """
+        from . import Pauli, PauliString
         if isinstance(A, PauliString):
             A = A._to_pauli_sum()
         elif isinstance(A, Pauli):
@@ -306,7 +307,7 @@ class PauliSum:
         """
         Operator multiplication on two SymplecticPauli objects or multiplication of weights by constant
         """
-
+        from . import Pauli, PauliString
         if isinstance(A, (int, float)):
             return PauliSum(list(self.pauli_strings), np.array(self.weights) * A, self.phases)
         elif isinstance(A, PauliString):
@@ -336,7 +337,7 @@ class PauliSum:
         if not isinstance(value, PauliSum):
             return False
         t1 = np.all(self.pauli_strings == value.pauli_strings)
-        t2 = np.all(self.weights == value.weights)
+        t2 = np.all(np.asarray(self.weights) - np.asarray(value.weights) <= 1e-15)
         t3 = np.all(self.phases == value.phases)
         return bool(t1 and t2 and t3)
     
@@ -370,15 +371,16 @@ class PauliSum:
             for j in range(i + 1, self.n_paulis()):
                 if self.pauli_strings[i] == self.pauli_strings[j]:
                     self.weights[i] = self.weights[i] + self.weights[j]
-                    to_delete.append(j)
-        self._delete_paulis(to_delete)
+                    if j not in to_delete:
+                        to_delete.append(j)
+        self.delete_paulis(to_delete)
 
         # remove zero weight Paulis
         to_delete = []
         for i in range(self.n_paulis()):
             if self.weights[i] == 0:
                 to_delete.append(i)
-        self._delete_paulis(to_delete)
+        self.delete_paulis(to_delete)
 
     def remove_trivial_paulis(self):
         # If entire Pauli string is I, remove it
@@ -386,7 +388,7 @@ class PauliSum:
         for i in range(self.n_paulis()):
             if np.all(self.x_exp[i, :] == 0) and np.all(self.z_exp[i, :] == 0):
                 to_delete.append(i)
-        self._delete_paulis(to_delete)
+        self.delete_paulis(to_delete)
 
     def remove_trivial_qudits(self):
         # If entire qudit is I, remove it
@@ -394,9 +396,9 @@ class PauliSum:
         for i in range(self.n_qudits()):
             if np.all(self.x_exp[:, i] == 0) and np.all(self.z_exp[:, i] == 0):
                 to_delete.append(i)
-        self._delete_qudits(to_delete)
+        self.delete_qudits(to_delete)
 
-    def symplectic_matrix(self) -> np.ndarray:
+    def symplectic(self) -> np.ndarray:
         symplectic = np.zeros([self.n_paulis(), 2 * self.n_qudits()])
         for i, p in enumerate(self.pauli_strings):
             symplectic[i, :] = p.symplectic()
@@ -429,7 +431,7 @@ class PauliSum:
         #     (PauliString) - the indexed Pauli in self
         return self.pauli_strings[pauli_index]
 
-    def _delete_paulis(self, pauli_indices: list[int] | int):
+    def delete_paulis(self, pauli_indices: list[int] | int):
         # Inputs:
         #     pauli_indices - (list of int or int)
         if isinstance(pauli_indices, int):
@@ -448,7 +450,7 @@ class PauliSum:
         self.x_exp = new_x_exp
         self.z_exp = new_z_exp
 
-    def _delete_qudits(self, qudit_indices: list[int] | int):
+    def delete_qudits(self, qudit_indices: list[int] | int):
         # Inputs:
         #     qudit_indices - (list of int)
         if isinstance(qudit_indices, int):
