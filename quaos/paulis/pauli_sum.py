@@ -3,6 +3,11 @@ import numpy as np
 import scipy
 from . import Pauli, PauliString
 
+PauliStringDerivedType = Union[list[PauliString], list[Pauli], list[str], PauliString, Pauli]
+PauliType = Union[Pauli, PauliString, 'PauliSum']
+ScalarType = Union[float, complex, int]
+PauliOrScalarType = Union[PauliType, ScalarType]
+
 
 class PauliSum:
     """
@@ -11,7 +16,7 @@ class PauliSum:
     Represents a weighted sum of Pauli strings with arbitrary phases
     """
     def __init__(self,
-                 pauli_list: Union[list[PauliString], list[Pauli], list[str], PauliString, Pauli],
+                 pauli_list: PauliStringDerivedType,
                  weights: list[float | complex] | np.ndarray | float | complex | None = None,
                  phases: list[float] | np.ndarray | None = None,
                  dimensions: list[int] | np.ndarray | None = None,
@@ -56,7 +61,7 @@ class PauliSum:
 
     @classmethod
     def from_pauli(cls, pauli: Pauli) -> 'PauliSum':
-        return PauliSum([PauliString.from_pauli(pauli)], standardise=False)
+        return cls([PauliString.from_pauli(pauli)], standardise=False)
 
     @classmethod
     def from_pauli_strings(cls, pauli_string: PauliString) -> 'PauliSum':
@@ -78,7 +83,7 @@ class PauliSum:
         self.z_exp = z_exp
 
     @staticmethod
-    def _sanitize_pauli_list(pauli_list: Union[list[PauliString], list[Pauli], list[str], PauliString, Pauli],
+    def _sanitize_pauli_list(pauli_list: PauliStringDerivedType,
                              dimensions: list[int] | np.ndarray | None) -> list[PauliString]:
         if isinstance(pauli_list, Pauli):
             pauli_list = [pauli_list]
@@ -139,7 +144,7 @@ class PauliSum:
         return np.asarray(weights, dtype=complex)
 
     def _sanity_checks(self,
-                       pauli_list: Union[list[PauliString], list[Pauli], list[str], PauliString, Pauli],
+                       pauli_list: PauliStringDerivedType,
                        weights: list[float | complex] | np.ndarray | float | complex | None,
                        phases: list[float] | np.ndarray | None,
                        dimensions: list[int] | np.ndarray | None) -> tuple[list[PauliString], np.ndarray, np.ndarray, np.ndarray]:
@@ -178,27 +183,15 @@ class PauliSum:
         self.weights = new_weights
 
     @overload
-    def __getitem__(self, key: int) -> PauliString:
-        ...
-
-    @overload
-    def __getitem__(self, key: slice) -> 'PauliSum':
-        ...
-
-    @overload
     def __getitem__(self, key: tuple[int, int]) -> Pauli:
         ...
 
     @overload
-    def __getitem__(self, key: tuple[slice, int]) -> 'PauliSum':
+    def __getitem__(self, key: int | tuple[int, slice]) -> PauliString:
         ...
 
     @overload
-    def __getitem__(self, key: tuple[int, slice]) -> PauliString:
-        ...
-
-    @overload
-    def __getitem__(self, key: tuple[slice, slice]) -> 'PauliSum':
+    def __getitem__(self, key: slice | tuple[slice, int] | tuple[slice, slice] | tuple[slice, int]) -> 'PauliSum':
         ...
 
     def __getitem__(self, key):
@@ -223,31 +216,15 @@ class PauliSum:
             raise TypeError(f"Key must be int or slice, not {type(key)}")
 
     @overload
-    def __setitem__(self, key: int, value: 'PauliString'):
-        ...
-
-    @overload
-    def __setitem__(self, key: slice, value: 'PauliString'):
-        ...
-
-    @overload
     def __setitem__(self, key: tuple[int, int], value: 'Pauli'):
         ...
 
     @overload
-    def __setitem__(self, key: tuple[slice, int], value: 'PauliSum'):
+    def __setitem__(self, key: int | slice | tuple[int, slice], value: 'PauliString'):
         ...
 
     @overload
-    def __setitem__(self, key: tuple[int, slice], value: 'PauliString'):
-        ...
-
-    @overload
-    def __setitem__(self, key: tuple[slice, slice], value: 'PauliSum'):
-        ...
-
-    @overload
-    def __setitem__(self, key: tuple[int, int], value: 'Pauli'):
+    def __setitem__(self, key: tuple[slice, int] | tuple[slice, slice], value: 'PauliSum'):
         ...
         
     def __setitem__(self, key, value):
@@ -274,7 +251,7 @@ class PauliSum:
                         self.pauli_strings[i][key[1]] = value[int(i_val)]
         self._set_exponents()  # update exponents x_exp and z_exp
 
-    def __add__(self, A: 'Pauli | PauliString | PauliSum') -> 'PauliSum':
+    def __add__(self, A: PauliType) -> 'PauliSum':
         if isinstance(A, Pauli):
             A_sum = PauliSum.from_pauli(A)
         elif isinstance(A, PauliString):
@@ -289,7 +266,7 @@ class PauliSum:
         new_phases = np.concatenate([self.phases, A_sum.phases])
         return PauliSum(list(new_pauli_list), new_weights, new_phases, self.dimensions, False)
     
-    def __radd__(self, A: 'Pauli | PauliString | PauliSum') -> 'PauliSum':
+    def __radd__(self, A: PauliType) -> 'PauliSum':
         ps1 = self.copy()
         if isinstance(A, Pauli):
             ps2 = PauliString.from_pauli(A)
@@ -307,7 +284,7 @@ class PauliSum:
         new_phases = np.concatenate([self.phases, A.phases])
         return PauliSum(list(new_pauli_list), new_weights, new_phases, self.dimensions, False)
     
-    def __rsub__(self, A: 'Pauli | PauliString | PauliSum') -> 'PauliSum':
+    def __rsub__(self, A: PauliType) -> 'PauliSum':
         ps1 = self.copy()
         if isinstance(A, Pauli):
             ps2 = PauliSum.from_pauli_strings(PauliString.from_pauli(A))
@@ -319,7 +296,7 @@ class PauliSum:
             raise Exception(f"Cannot add Pauli with type {type(A)}")
         return ps1 - ps2
     
-    def __matmul__(self, A: 'Pauli | PauliString | PauliSum') -> 'PauliSum':
+    def __matmul__(self, A: PauliType) -> 'PauliSum':
         """
         @ is the operator for tensor product
         """
@@ -341,7 +318,7 @@ class PauliSum:
         output_pauli = PauliSum(new_pauli_list, new_weights, new_phases, new_dimensions, False)
         return output_pauli
 
-    def __mul__(self, A: 'PauliSum | PauliString | Pauli | float | int | complex') -> 'PauliSum':
+    def __mul__(self, A: PauliOrScalarType) -> 'PauliSum':
         """
         Operator multiplication on two SymplecticPauli objects or multiplication of weights by constant
         """
@@ -367,13 +344,13 @@ class PauliSum:
 
         return output_pauli
     
-    def __rmul__(self, A: 'PauliSum | PauliString | Pauli | float | int | complex') -> 'PauliSum':
+    def __rmul__(self, A: PauliOrScalarType) -> 'PauliSum':
         if isinstance(A, (Pauli, PauliString, PauliSum, float, int, complex)):
             return self * A
         else:
             raise ValueError(f"Cannot multiply PauliString with type {type(A)}")
 
-    def __truediv__(self, A: 'PauliSum | PauliString | Pauli') -> 'PauliSum':
+    def __truediv__(self, A: PauliType) -> 'PauliSum':
         if not isinstance(A, (int, float)):
             raise ValueError("Division only supported with scalar")
         return self * (1 / A)
