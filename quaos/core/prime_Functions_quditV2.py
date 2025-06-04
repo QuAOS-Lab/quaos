@@ -16,7 +16,6 @@ from .prime_Functions_Andrew import (
     commutation_graph, graph, diagonalize, act, quditwise_commutation_graph, 
     scale_variances, circuit
 )
-from .pauli import (pauli, pauli_to_matrix, pauli_to_string, string_to_pauli, pauli_product, quditwise_inner_product)
 
 np.set_printoptions(linewidth=200)
 
@@ -522,6 +521,7 @@ def get_alpha(p_list, psi_list, d, A, c, N_chain, Q_alpha_test=True, target_acce
     alpha = np.max(alpha_list)
 
     return (p_list, psi_list, alpha)
+
 
 
 # COMPLETE BAYESIAN ESTIMATION WITH MONTE-CARLO INTEGRATION

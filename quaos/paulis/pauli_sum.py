@@ -205,13 +205,13 @@ class PauliSum:
                 raise ValueError("Tuple key must be of length 2")
             if isinstance(key[0], int):
                 return self.pauli_strings[key[0]][key[1]]
-            # if isinstance(key[0], slice):
-            #     pauli_strings_all_qubits = self.pauli_strings[key[0]]
-            #     pauli_strings = [p[key[1]] for p in pauli_strings_all_qubits]
-            #     if isinstance(key[1], int):
-            #         return PauliSum(pauli_strings, self.weights[key[0]], self.phases[key[0]], np.asarray([self.dimensions[key[1]]]), False)
-            #     elif isinstance(key[1], slice):
-            #         return PauliSum(pauli_strings, self.weights[key[0]], self.phases[key[0]], self.dimensions[key[1]], False)
+            if isinstance(key[0], slice):
+                pauli_strings_all_qubits = self.pauli_strings[key[0]]
+                pauli_strings = [p[key[1]] for p in pauli_strings_all_qubits]
+                if isinstance(key[1], int):
+                    return PauliSum(pauli_strings, self.weights[key[0]], self.phases[key[0]], np.asarray([self.dimensions[key[1]]]), False)
+                elif isinstance(key[1], slice):
+                    return PauliSum(pauli_strings, self.weights[key[0]], self.phases[key[0]], self.dimensions[key[1]], False)
         else:
             raise TypeError(f"Key must be int or slice, not {type(key)}")
 
