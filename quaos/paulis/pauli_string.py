@@ -95,8 +95,8 @@ class PauliString:
         return not self.__eq__(other_pauli)
     
     def __gt__(self, other_pauli: PauliString) -> bool:
-        this_pauli = pauli_string_to_int(self, reverse=True)
-        other_pauli = pauli_string_to_int(other_pauli, reverse=True)
+        this_pauli = self._to_int(reverse=True)
+        other_pauli = other_pauli._to_int(reverse=True)
         return this_pauli > other_pauli
     
     def _to_int(self, reverse=False):
@@ -108,8 +108,8 @@ class PauliString:
         if not reverse:
             return bases_to_int(base, dims_double)
         else:
-            base[:len(dims)] = pauli_string.z_exp
-            base[len(dims):] = pauli_string.x_exp
+            base[:len(dims)] = self.z_exp
+            base[len(dims):] = self.x_exp
             return bases_to_int(base[::-1], dims_double[::-1])
 
     def __hash__(self) -> int:

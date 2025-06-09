@@ -113,9 +113,11 @@ class Circuit:
         return pauli   # Why this warning? - it is a PauliSum or PauliString, never a Pauli
 
     def show(self) -> QuantumCircuit:
+        if np.all(np.array(self.dimensions) == 2):
+            print("Circuit dimensions are all 2, using Qiskit QuantumCircuit, some gates may not be supported")
         circuit = QuantumCircuit(len(self.dimensions))
         dict = {'X': circuit.x, 'H': circuit.h, 'S': circuit.s, 'SUM': circuit.cx, 'CNOT': circuit.cx,
-                'Hdag': circuit.h.inverse()}
+                'Hdag': circuit.h}
 
         for gate in self.gates:
             name = gate.name
