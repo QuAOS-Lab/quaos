@@ -219,3 +219,20 @@ class PauliString:
         :return: True if they commute, False otherwise
         """
         return self.symplectic_product(other_pauli) == 0
+    
+    def hermitian(self) -> PauliString:
+        """
+        Return the Hermitian conjugate of the PauliString.
+
+        The Hermitian conjugate is obtained by negating the exponents
+        of the Pauli operations and taking the modulus with respect to
+        their dimensions.
+
+        :return: A new PauliString representing the Hermitian conjugate.
+        """
+        return PauliString(x_exp=(-self.x_exp)%self.dimensions, z_exp=(-self.z_exp)%self.dimensions, dimensions=self.dimensions)
+    
+
+        
+
+        
