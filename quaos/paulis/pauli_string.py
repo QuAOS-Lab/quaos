@@ -159,9 +159,7 @@ class PauliString:
     def acquired_phase(self, other_pauli: 'PauliString') -> int:
         # phases acquired when multiplying two Pauli strings
         phi = 1.  # / self.dimensions
-        phase = 0
-        for i in range(self.n_qudits()):
-            phase += phi * (self.x_exp[i] * other_pauli.z_exp[i] + self.z_exp[i] * other_pauli.x_exp[i])
+        phase = phi * (np.dot(self.x_exp, other_pauli.z_exp) - np.dot(self.z_exp, other_pauli.x_exp))
         return phase % self.lcm
     
     def _replace_symplectic(self, symplectic: np.ndarray, qudit_indices: list[int]) -> PauliString:

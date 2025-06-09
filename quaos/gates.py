@@ -362,7 +362,7 @@ class Circuit:
     def show(self) -> QuantumCircuit:
         circuit = QuantumCircuit(len(self.dimensions))
         dict = {'X': circuit.x, 'H': circuit.h, 'S': circuit.s, 'SUM': circuit.cx, 'CNOT': circuit.cx,
-                'Hdag': circuit.h.inverse()}
+                'Hdag': circuit.h}
 
         for gate in self.gates:
             name = gate.name

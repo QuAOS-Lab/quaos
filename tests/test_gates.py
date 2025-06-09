@@ -75,7 +75,7 @@ class TestGates():
         pass
 
     def test_group_homomorphism(self):
-        gate = Hadamard(0, 2)
+        gate = SUM(0, 1, 2)
         for x0 in range(2):
             for z0 in range(2):
                 for x1 in range(2):
@@ -86,8 +86,8 @@ class TestGates():
                                     for z1p in range(2):
                                         p1 = PauliSum([f'x{x0}z{z0} x{x1}z{z1}'], dimensions=[2, 2])
                                         p2 = PauliSum([f'x{x0p}z{z0p} x{x1p}z{z1p}'], dimensions=[2, 2])
-                                        err0 = '\n' + p1.__str__() + '\n' + p2.__str__()
-                                        err = '\n' + (gate.act(p1) * gate.act(p2)).__str__() + '\n' + gate.act(p1 * p2).__str__()
+                                        err0 = 'In: \n' + p1.__str__() + '\n' + p2.__str__()
+                                        err = 'Out: \n' + (gate.act(p1) * gate.act(p2)).__str__() + '\n' + gate.act(p1 * p2).__str__()
                                         assert gate.act(p1) * gate.act(p2) == gate.act(p1 * p2), err0 + err
 
 
