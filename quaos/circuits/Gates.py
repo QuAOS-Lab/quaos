@@ -1,155 +1,86 @@
 import numpy as np
-from quaos.paulis.pauli_string import PauliString
-from quaos.paulis.pauli_sum import PauliSum
-from sympy import Matrix
-from typing import List, Optional
+from quaos.paulis import PauliString, PauliSum, Pauli
 
 
 class Gate:
     """
     Mapping can be written as set of rules,
     
-    e.g. for CNOT
-                x1z0*x0z0 -> x1z0*x1z0
-                x0z0*x1z0 -> x0z0*x1z0  # doesn't need specifying
-                x0z1*x0z0 -> x0z1*x0z0  # doesn't need specifying
-                x0z0*x0z1 -> x0z-1*x0z1 # 
-
     inputs are:
 
-    mapping = ['x1z0*x0z0 -> x1z0*x1z0', 'x0z0*x0z1 -> -x0z1*x0z1']  # (control*target -> control*target)
-
     """
-    def __init__(self, name: str, qudit_indices: list[int], images: list[str], dimension: list[int]):
+    def __init__(self, name: str, qudit_indices: list[int], images: list[np.ndarray], dimension: int,
+                 phase_matrix: np.ndarray | None = None):
         self.dimension = dimension
         self.name = name
         self.qudit_indices = qudit_indices
         self.images = images
         self.n_qudits = len(qudit_indices)
-        symplectic, phase_function = compute_symplectic_and_phase_function(images, dimension)
-        self.symplectic = symplectic
-        self.phase_function
-
-    def act_on_pauli_string(self, P: PauliString):
-        # Extract the relevant symplectics from the PauliString corresponding to self.qudit_indices
-        
-
-        # Act on the symplectic of the PauliString with the symplectic of the gate
-
-
-        # Replace the symplectics in the positions in self.qudit_indices
-
-
-        return 
-    
-
-    def act_on_pauli_sum(self, P: PauliSum):
-        return
-    
-
-
-    def act(self, P: PauliString | PauliSum):
-        return
-    
-
-
-    
-def solve_underdetermined_symplectic_mapping(A: np.ndarray, B: np.ndarray, d: int) -> Optional[np.ndarray]:
-    try:
-        n = A.shape[1] // 2
-        dim = 2 * n
-        Omega = symplectic_form(n, d)
-
-        A_mat = Matrix(A.tolist()).applyfunc(lambda x: x % d)
-        B_mat = Matrix(B.tolist()).applyfunc(lambda x: x % d)
-
-        basis_A = A.tolist()
-        while len(basis_A) < dim:
-            for i in range(dim):
-                candidate = np.eye(dim, dtype=int)[i]
-                if all(symplectic_inner(candidate, np.array(v), Omega, d) == 0 for v in basis_A):
-                    basis_A.append(candidate.tolist())
-                    break
-            else:
-                raise ValueError("Could not extend A to full symplectic basis.")
-
-        extra = len(basis_A) - len(B)
-        basis_B = B.tolist() + np.eye(dim, dtype=int)[:extra].tolist()
-
-        A_full = Matrix(basis_A).applyfunc(lambda x: x % d)
-        B_full = Matrix(basis_B).applyfunc(lambda x: x % d)
-        S = A_full.solve_least_squares(B_full, method='LDL')
-        S = np.array(S.applyfunc(lambda x: x % d)).astype(int)
-
-        if (S.T @ Omega @ S % d == Omega).all():  # Check if S is symplectic
-            return S
+        self.symplectic = np.stack([v % dimension for v in images]).T
+        if phase_matrix is None:
+            self.phase_matrix = make_phase_matrix_from_symplectic(self.symplectic, self.dimension)
         else:
-            return None
+            self.phase_matrix = phase_matrix
+        # self.phase_function = phase_function
 
-    except Exception:
-        print("Warning: Could not solve underdetermined symplectic mapping.")
-        return None
+    def _act_on_pauli_string(self, P: PauliString) -> tuple[PauliString, int]:
+        local_symplectic = np.concatenate([P.x_exp[self.qudit_indices], P.z_exp[self.qudit_indices]])
+        acquired_phase = ((local_symplectic.T @ self.phase_matrix @ local_symplectic) // 2) % self.dimension
 
+        local_symplectic = (self.symplectic @ local_symplectic) % self.dimension
+        P = P._replace_symplectic(local_symplectic, self.qudit_indices)
+        return P, acquired_phase
+    
+    def _act_on_pauli_sum(self, P: PauliSum):
+        pauli_strings, phases = zip(*[self._act_on_pauli_string(p) for p in P.pauli_strings])
+        P = PauliSum(pauli_strings, P.weights, np.asarray(phases), P.dimensions, False)
+        return P
 
-def compute_symplectic_from_images(images: List[np.ndarray], d: int) -> Optional[np.ndarray]:
-    n = len(images) // 2
-    dim = 2 * n
-    if len(images) != dim:
-        raise ValueError("Need exactly 2n image vectors for n-qudit Clifford.")
-
-    standard_basis = np.eye(dim, dtype=int)
-    A = np.stack(standard_basis)
-    B = np.stack([v % d for v in images])
-    return solve_underdetermined_symplectic_mapping(A, B, d)
-
-
-def compute_symplectic_and_phase_function(images: List[np.ndarray], d: int):
-    """
-    Computes the symplectic matrix S and a phase function for a Clifford gate defined by Pauli generator images.
-
-    Parameters:
-    - images: List of length-2n vectors specifying the images of [X0, ..., Xn-1, Z0, ..., Zn-1] under the gate
-    - d: Dimension of the qudit system
-
-    Returns:
-    - S: symplectic matrix ∈ Sp(2n, Z_d)
-    - phase_fn: function accepting symplectic vector v and returning the induced phase (in ω^k form)
-    """
-    n = len(images) // 2
-    dim = 2 * n
-    Omega = symplectic_form(n, d)
-
-    S = compute_symplectic_from_images(images, d)
-    if S is None:
-        return None, None
-
-    # Define phase function: maps input Pauli vector to its acquired phase (as exponent of ω)
-    def phase_fn(pauli_vec: np.ndarray) -> int:
-        """
-        Computes the phase exponent k such that:
-            U P(v) U† = ω^k P(S v)
-        where ω = exp(2πi / d), and v is the symplectic representation of the Pauli operator.
-
-        Parameters:
-        - pauli_vec: A symplectic vector v ∈ Z_d^{2n}
-
-        Returns:
-        - Integer k ∈ Z_d representing the phase exponent ω^k
-        """
-        v = pauli_vec % d
-        Sv = S @ v % d
-
-        # Symplectic inner product (v, Sv) / 2 mod d gives phase
-        # This works for standard Clifford gates; phase is linear mod d
-        k = symplectic_inner(v, Sv, Omega, d)
-        if d % 2 == 0:
-            k = (k * pow(2, -1, d)) % d  # divide by 2 mod d
+    def act(self, P: Pauli | PauliString | PauliSum):
+        if isinstance(P, Pauli):
+            P = P._to_pauli_string()
+        if isinstance(P, PauliString):
+            return self._act_on_pauli_string(P)[0]
+        elif isinstance(P, PauliSum):
+            return self._act_on_pauli_sum(P)
         else:
-            k = (k * pow(2, -1, d)) % d
-        return k
+            raise TypeError(f"Unsupported type {type(P)} for Gate.act. Expected Pauli, PauliString or PauliSum.")
 
-    return S, phase_fn
 
+def make_phase_matrix_from_symplectic(symplectic: np.ndarray, dimension: int) -> np.ndarray:
+    """
+    Note that this is not unique! For example putting the SUM gate symplectic in here will not return the phase matrix
+    of the SUM gate.
+
+    This gives a consistent choice of the phase matrix only, as it is not uniquely determined by the symplectic.
+    """
+    n = symplectic.shape[0] // 2
+    # Define standard symplectic form Omega
+    id = np.eye(n, dtype=int)
+    zero_mat = np.zeros((n, n), dtype=int)
+    Omega = np.block([[zero_mat, id], [-id, zero_mat]]) % dimension
+    
+    # Compute modular inverse of 2 mod d (for odd prime d)
+    inv2 = pow(2, -1, dimension)
+    
+    # Define N = Omega / 2 mod d
+    N = (inv2 * Omega) % dimension
+    
+    # Calculate M = S.T @ N @ S - N mod d
+    M = (symplectic.T @ N @ symplectic - N) % dimension
+    
+    # Ensure skew-symmetry: M = (M - M.T) mod d
+    M = (M - M.T) % dimension
+    
+    return M
+
+
+def symplectic_inner(u, v, d):
+    n = len(u) // 2
+    x1, z1 = u[:n], u[n:]
+    x2, z2 = v[:n], v[n:]
+    return (np.dot(x1, z2) - np.dot(x2, z1)) % d
+    
 
 class SUM(Gate):
     def __init__(self, control, target, dimension):
@@ -158,14 +89,59 @@ class SUM(Gate):
                   np.array([0, 0, 1, 0]),  # image of Z0:  Z0 -> Z0
                   np.array([0, 0, -1, 1])  # image of Z1:  Z1 -> Z0^-1 Z1
                   ]
-        super().__init__("SUM", [control, target], images, dimension=dimension)
+        phase_matrix = np.array([[0, 0, 0, 0],
+                                [0, 0, 0, 0],
+                                [0, 0, 1, 0],
+                                [0, 0, 0, 1]], dtype=int)
+        super().__init__("SUM", [control, target], images, dimension=dimension, phase_matrix=phase_matrix)
     
 
-def symplectic_form(n: int, d: int) -> np.ndarray:
-    I = np.eye(n, dtype=int)
-    O = np.zeros((n, n), dtype=int)
-    return np.block([[O, I], [-I % d, O]])
+class SWAP(Gate):
+    def __init__(self, index1, index2, dimension):
+        images = [np.array([0, 1, 0, 0]),  # image of X0:  X0 -> X0 X1
+                  np.array([1, 0, 0, 0]),  # image of X1:  X1 -> X1
+                  np.array([0, 0, 0, 1]),  # image of Z0:  Z0 -> Z0
+                  np.array([0, 0, 1, 0])  # image of Z1:  Z1 -> Z0^-1 Z1
+                  ]
+        super().__init__("SWAP", [index1, index2], images, dimension=dimension)
+   
+
+class CNOT(Gate):
+    def __init__(self, control: int, target: int):
+        images = [np.array([1, 1, 0, 0]),  # image of X0:  X0 -> X0 X1
+                  np.array([1, 0, 0, 0]),  # image of X1:  X1 -> X1
+                  np.array([0, 0, 1, 0]),  # image of Z0:  Z0 -> Z0
+                  np.array([0, 0, -1, 1])  # image of Z1:  Z1 -> Z0^-1 Z1
+                  ]
+        phase_matrix = np.array([[0, 0, 0, 0],
+                                [0, 0, 0, 0],
+                                [0, 0, 1, 0],
+                                [0, 0, 0, 1]], dtype=int)
+        super().__init__("SUM", [control, target], images, dimension=2, phase_matrix=phase_matrix)
 
 
-def symplectic_inner(a: np.ndarray, b: np.ndarray, Omega: np.ndarray, d: int) -> int:
-    return int(np.dot(a, Omega @ b) % d)
+class Hadamard(Gate):
+    def __init__(self, index: int, dimension: int, inverse: bool = False):
+        if inverse:
+            images = [np.array([0, 1]),  # image of X:  X -> Z
+                      np.array([-1, 0]),  # image of Z:  Z -> -X
+                      ]
+        else:
+            images = [np.array([0, -1]),  # image of X:  X -> -Z
+                      np.array([1, 0]),  # image of Z:  Z -> X
+                      ]
+        phase_matrix = np.array([[0, 0.5 if dimension == 2 else pow(2, -1, dimension)],
+                                [0.5 if dimension == 2 else pow(2, -1, dimension), 0]]) % dimension
+        name = "H" if not inverse else "Hdag"
+        super().__init__(name, [index], images, dimension=dimension, phase_matrix=phase_matrix)
+
+
+class PHASE(Gate):
+    
+    def __init__(self, index: int, dimension: int):
+        images = [np.array([1, 1]),  # image of X:  X -> XZ
+                  np.array([0, 1]),  # image of Z:  Z -> Z
+            ]
+        phase_matrix = np.array([[0, pow(2, -1, dimension)],
+                                [pow(2, -1, dimension), 0]]) % dimension
+        super().__init__("S", [index], images, dimension=dimension, phase_matrix=phase_matrix)

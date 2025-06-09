@@ -1,9 +1,26 @@
 
 import numpy as np
 import re
-from quaos.paulis import PauliString, PauliSum
+from .pauli import Pauli
+from .pauli_string import PauliString
+from .pauli_sum import PauliSum
 import networkx as nx
 import matplotlib.pyplot as plt
+
+
+def to_pauli_sum(P: Pauli | PauliString) -> PauliSum:
+    if isinstance(P, Pauli):
+        x = P.x_exp
+        z = P.z_exp
+        dims = P.dimension
+        ps = PauliString([x], [z], dimensions=[dims])
+        return PauliSum([ps])
+    elif isinstance(P, PauliString):
+        return PauliSum([P])
+
+
+def to_pauli_string(pauli: Pauli) -> PauliString:
+    raise NotImplementedError
 
 
 def symplectic_product(pauli_string: PauliString, pauli_string2: PauliString) -> bool:

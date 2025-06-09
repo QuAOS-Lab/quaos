@@ -1,5 +1,5 @@
 from gates import Circuit, SUM as CX, PHASE as S, Hadamard as H, GateOperation
-from symplectic import Pauli, PauliString, PauliSum, symplectic_product
+from paulis import Pauli, PauliString, PauliSum, symplectic_product
 import numpy as np
 import sympy as sym
 from pauli_utils import are_subsets_equal

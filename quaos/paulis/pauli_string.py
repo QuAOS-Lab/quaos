@@ -2,6 +2,8 @@ from __future__ import annotations
 import functools
 import numpy as np
 import re
+from .pauli import Pauli
+from quaos.core.prime_Functions_Andrew import bases_to_int   # should move somewhere else
 
 
 @functools.total_ordering
@@ -19,8 +21,8 @@ class PauliString:
             z_exp = np.array(xz_exponents[1::2], dtype=int)
             x_exp = np.array(xz_exponents[0::2], dtype=int)
         elif isinstance(x_exp, list):
-            z_exp = np.array(z_exp)
-            x_exp = np.array(x_exp)
+            z_exp = np.array(z_exp, dtype=int)
+            x_exp = np.array(x_exp, dtype=int)
         
         if dimensions is None:
             self.dimensions = (max(max(self.x_exp), max(self.z_exp)) + 1) * np.ones(len(self.x_exp))
@@ -65,8 +67,7 @@ class PauliString:
         new_dims = np.concatenate((self.dimensions, A.dimensions))
         return PauliString(new_x_exp, new_z_exp, new_dims)
 
-    def __mul__(self, A: PauliString | PauliSum | float | int | complex) -> PauliString | PauliSum:
-        from . import PauliSum
+    def __mul__(self, A: PauliString) -> PauliString:
         if isinstance(A, PauliString):
             if np.any(self.dimensions != A.dimensions):
                 raise Exception("To multiply two PauliStrings, their dimensions"
@@ -74,39 +75,16 @@ class PauliString:
             x_new = np.mod(self.x_exp + A.x_exp, (self.dimensions))
             z_new = np.mod(self.z_exp + A.z_exp, (self.dimensions))
             return PauliString(x_new, z_new, self.dimensions)
-        elif isinstance(A, PauliSum):
-            return self._to_pauli_sum() * A
-        elif isinstance(A, float) or isinstance(A, int) or isinstance(A, complex):
-            return PauliSum([self], weights=[A])
         else:
             raise ValueError(f"Cannot multiply PauliString with type {type(A)}")
-        
-    def __rmul__(self, A: float | int | complex) -> PauliSum:
-        from . import PauliSum
-        if not (isinstance(A, int) or isinstance(A, float) or isinstance(A, complex)):
-            raise ValueError(f"Right multiply only changes weight - passed type = {type(A)}")
-        return PauliSum([self], weights=[A])
-    
+
     def __pow__(self, A: int) -> PauliString:
         return PauliString(self.x_exp * A, self.z_exp * A, self.dimensions)
 
-    def _to_pauli_sum(self) -> PauliSum:
-        from . import PauliSum
-        return PauliSum([self], weights=[1], phases=[0], dimensions=self.dimensions, standardise=False)
+    # def _to_pauli_sum(self) -> PauliSum:
+    #     from . import PauliSum
+    #     return PauliSum([self], weights=[1], phases=[0], dimensions=self.dimensions, standardise=False)
 
-    def __add__(self, A: PauliString | PauliSum) -> PauliSum:
-        from . import PauliSum
-        if np.all(self.dimensions != A.dimensions):
-            raise Exception("To add two PauliStrings, their dimensions"
-                            f" {self.dimensions} and {A.dimensions} must be equal")
-        if isinstance(A, PauliString):
-            return self._to_pauli_sum() + A._to_pauli_sum()
-        elif isinstance(A, PauliSum):
-            return self._to_pauli_sum() + A
-        else:
-            raise ValueError("A PauliString can only be added to another PauliString or a PauliSum,"
-                             f" not a {type(A)}")
-    
     def __eq__(self, other_pauli: 'PauliString') -> bool:
         if not isinstance(other_pauli, PauliString):
             return False
@@ -117,24 +95,23 @@ class PauliString:
         return not self.__eq__(other_pauli)
     
     def __gt__(self, other_pauli: PauliString) -> bool:
-        """
-        Arbitrary but useful in making a standard form
+        this_pauli = pauli_string_to_int(self, reverse=True)
+        other_pauli = pauli_string_to_int(other_pauli, reverse=True)
+        return this_pauli > other_pauli
+    
+    def _to_int(self, reverse=False):
+        dims = self.dimensions
+        dims_double = [d for d in dims for _ in range(2)]
+        base = np.zeros(len(dims_double), dtype=int)
+        base[:len(dims)] = self.x_exp
+        base[len(dims):] = self.z_exp
+        if not reverse:
+            return bases_to_int(base, dims_double)
+        else:
+            base[:len(dims)] = pauli_string.z_exp
+            base[len(dims):] = pauli_string.x_exp
+            return bases_to_int(base[::-1], dims_double[::-1])
 
-        Note: Some other standard form may be preferable and can be determined here by defining a sorting
-
-        higher powers of x are first, then higher powers of z,
-        then sorted by weight, then phase
-        """
-        from . import Pauli
-        for i in range(self.n_qudits()):
-            pauli_i = Pauli(x_exp=self.x_exp[i], z_exp=self.z_exp[i], dimension=self.dimensions[i])
-            other_pauli_i = Pauli(x_exp=other_pauli.x_exp[i], z_exp=other_pauli.z_exp[i], dimension=other_pauli.dimensions[i])
-            if pauli_i > other_pauli_i:
-                return True
-            elif pauli_i == other_pauli_i:
-                continue
-        return False
-        
     def __hash__(self) -> int:
         return hash((tuple(self.x_exp), tuple(self.z_exp), tuple(self.dimensions)))
     
@@ -156,7 +133,6 @@ class PauliString:
         Get a list of Pauli objects from the PauliString
         :return: A list of Pauli objects
         """
-        from . import Pauli
         return [Pauli(x_exp=self.x_exp[i], z_exp=self.z_exp[i], dimension=self.dimensions[i]) for i in range(len(self.x_exp))]
 
     def symplectic(self) -> np.ndarray:
@@ -213,21 +189,23 @@ class PauliString:
             self._sanity_check()
             return self
         
-    def __getitem__(self, key: int | slice) -> PauliString | Pauli:
+    def __getitem__(self, key: int | slice | list[int]) -> PauliString | Pauli:
         if isinstance(key, int):
             return self.get_paulis()[key]
         else:
             return PauliString(x_exp=self.x_exp[key], z_exp=self.z_exp[key], dimensions=self.dimensions[key])
         
     def __setitem__(self, key: int | slice, value: Pauli | PauliString):
-        if isinstance(key, int):
+        if isinstance(key, int) and isinstance(value, Pauli):
             self.x_exp[key] = value.x_exp
             self.z_exp[key] = value.z_exp
             self.dimensions[key] = value.dimension
-        else:
+        elif isinstance(value, PauliString):
             self.x_exp[key] = value.x_exp
             self.z_exp[key] = value.z_exp
             self.dimensions[key] = value.dimensions
+        else:
+            raise Exception(f"Cannot set PauliString with type {type(value)}")
 
     def get_subspace(self, qudit_indices: list[int] | int) -> PauliString:
         return PauliString(x_exp=self.x_exp[qudit_indices], z_exp=self.z_exp[qudit_indices],

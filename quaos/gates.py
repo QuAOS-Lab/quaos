@@ -1,3 +1,6 @@
+
+import sys
+sys.path.append("./")
 import numpy as np
 from typing import overload
 from qiskit import QuantumCircuit
@@ -419,18 +422,18 @@ if __name__ == "__main__":
     # CNOT on two qubits
 
     # CNOT_operations = ['x1z0 x0z0 -> x1z0 x1z0', 'x0z0 x0z1 -> x0z1 x0z1']
-    # CNOT3 = GateOperation('CNOT', [0, 1], CNOT_operations, 2)
+    CNOT3 = SUM(0, 1, 2)
 
-    # ps1 = PauliString('x1z0 x0z0', dimensions=[2, 2])
-    # ps2 = PauliString('x0z0 x0z1', dimensions=[2, 2])
-    # ps3 = PauliString('x1z0 x1z0', dimensions=[2, 2])
-    # ps4 = PauliString('x0z1 x0z1', dimensions=[2, 2])
-    # ps5 = PauliString('x1z1 x0z0', dimensions=[2, 2])
+    ps1 = PauliString('x1z0 x0z0', dimensions=[2, 2])
+    ps2 = PauliString('x0z0 x0z1', dimensions=[2, 2])
+    ps3 = PauliString('x1z0 x1z0', dimensions=[2, 2])
+    ps4 = PauliString('x0z1 x0z1', dimensions=[2, 2])
+    ps5 = PauliString('x1z1 x0z0', dimensions=[2, 2])
 
-    # print(ps1, '->', CNOT3.act(ps1))
-    # print(ps2, '->', CNOT3.act(ps2))
-    # print(ps3, '->', CNOT3.act(ps3))
-    # print(ps4, '->', CNOT3.act(ps4))
+    print(ps1, '->', CNOT3.act(ps1))
+    print(ps2, '->', CNOT3.act(ps2))
+    print(ps3, '->', CNOT3.act(ps3))
+    print(ps4, '->', CNOT3.act(ps4))
 
     # psum1 = ps1 + 0.5 * ps2 + 1j * ps3 - 0.5j * ps4
     # print(psum1, '\n -> \n', CNOT3.act(psum1))
@@ -442,10 +445,10 @@ if __name__ == "__main__":
     # print(ps4, '->', Hg.act(ps4))
     # print(ps5, '->', Hg.act(ps5))
 
-    ps = random_pauli_hamiltonian(5, [2] * 5, mode='uniform')
-    Sum01 = SUM(0, 1, 2)
+    # ps = random_pauli_hamiltonian(5, [2] * 5, mode='uniform')
+    # Sum01 = SUM(0, 1, 2)
 
-    print(Sum01.act(ps))
+    # print(Sum01.act(ps))
     # print(Sum03.act(Sum02.act(Sum01.act(ps))))RP
     # c = Circuit([2 * 5])
     # ps2, c = cancel_X(ps, 0, 5, c, 5)

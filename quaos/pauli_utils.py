@@ -1,5 +1,5 @@
 import numpy as np
-from symplectic import PauliSum
+from paulis import PauliSum
 print('Warning: This module quaos.pauli_utils is deprecated and will be removed in a future version. Use quaos.paulis instead.')
 
 

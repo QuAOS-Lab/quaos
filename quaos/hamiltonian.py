@@ -1,9 +1,8 @@
 import numpy as np
-import sys
 import itertools
 import random
-
-# sys.path.append("./")
+import sys
+sys.path.append("./")
 from quaos.paulis import PauliSum, PauliString
 from quaos.gates import Circuit, Hadamard as H, SUM as CX, PHASE as S
 
@@ -191,6 +190,7 @@ def cancel_pauli(P, current_qudit, pauli_index, circuit, n_q_max):
     # if indexed Pauli, qudit is Y, add S gate to make it X
     if P.z_exp[pauli_index, current_qudit] and P.x_exp[pauli_index, current_qudit]:
         P, circuit = cancel_Y(P, current_qudit, pauli_index, circuit)
+        
     return P, circuit
 
 
@@ -207,13 +207,11 @@ def symplectic_reduction_qudit(P):
 
     removable_qubits = set(range(q)) - set([pivot[1] for pivot in pivots])
     conditional_qubits = sorted(set(range(q)) - removable_qubits - set([pivot[1] for pivot in pivots if pivot[2] == 'Z']))
-    if any(conditional_qubits):
-
+    if len(conditional_qubits) > 0:
         for cq in conditional_qubits:
             g = H(cq, d[cq])
             C.add_gate(g)
         P1 = g.act(P1)
-
     return C, sorted(pivots, key=lambda x: x[1])
 
 
@@ -253,7 +251,6 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
         g = H(current_qudit, P.dimensions[current_qudit])
         C.add_gate(g)
         P = g.act(P)
-    
     return C, pivots
 
 
@@ -269,7 +266,7 @@ def pauli_reduce(hamiltonian: PauliSum) -> tuple[PauliSum, list[PauliSum], Circu
     This returns a list of reduced Hamiltonians, each corresponding to a different symmetry sector of the Z symmetries.
 
     """
-
+    # hamiltonian.remove_trivial_qudits()
     C = symplectic_pauli_reduction(hamiltonian)
 
     h_red = C.act(hamiltonian)
@@ -290,10 +287,10 @@ def pauli_reduce(hamiltonian: PauliSum) -> tuple[PauliSum, list[PauliSum], Circu
 
     n_symmetries = len(list_of_z_symmetries)
     all_phases = [list(bits) for bits in itertools.product(list_of_phases)]
-    # z symmetries can simply alter the phase of tha Paulis
+    # z symmetries can simply alter the phase of the Paulis
     conditioned_hamiltonians = []
 
-    for sector in range(n_sectors):
+    for sector in range(min(n_sectors, len(all_phases))):
 
         conditioned_hamiltonian = h_red.copy()
         phase_factor = np.zeros(h_red.n_paulis(), dtype=int)
@@ -302,7 +299,7 @@ def pauli_reduce(hamiltonian: PauliSum) -> tuple[PauliSum, list[PauliSum], Circu
             phase_factor[list_of_z_symmetries[i][1]] += all_phases[sector]
         conditioned_hamiltonian.phases += phase_factor
         conditioned_hamiltonian.phases = conditioned_hamiltonian.phases % conditioned_hamiltonian.lcm
-        conditioned_hamiltonian._delete_qudits(list(z_symmetric_qudits))
+        conditioned_hamiltonian.delete_qudits(list(z_symmetric_qudits))
         conditioned_hamiltonian.combine_equivalent_paulis()
         conditioned_hamiltonians.append(conditioned_hamiltonian)
     return h_red, conditioned_hamiltonians, C, all_phases
@@ -312,18 +309,19 @@ if __name__ == "__main__":
 
     # Example from the paper
 
-    ham = ['x1z0 x1z0 x0z0', 'x0z0 x1z0 x1z0', 'x0z1 x0z0 x0z1']
-    ham = PauliSum(ham, weights=[1, 1, 1], dimensions=[2, 2, 2])
-    print(ham, '/n')
-    circuit = symplectic_pauli_reduction(ham)
-    h_reduced, conditioned_hams, reducing_circuit, eigenvalues = pauli_reduce(ham)
-    print(h_reduced)
-    for h in conditioned_hams:
-        print(h)
+    # ham = ['x1z0 x1z0 x0z0', 'x0z0 x1z0 x1z0', 'x0z1 x0z0 x0z1']
+    # ham = PauliSum(ham, weights=[1, 1, 1], dimensions=[2, 2, 2])
+    # print(ham, '/n')
+    # circuit = symplectic_pauli_reduction(ham)
+    # h_reduced, conditioned_hams, reducing_circuit, eigenvalues = pauli_reduce(ham)
+    # print(h_reduced)
+    # for h in conditioned_hams:
+    #     print(h)
 
     # random hamiltonian example
-    # n_qudits = 4
-    # n_paulis = 4
+
+    # n_qudits = 10
+    # n_paulis = 10
     # dimension = 2
     # ham = random_pauli_hamiltonian(n_paulis, [dimension] * n_qudits, mode='uniform')
     # circuit = symplectic_pauli_reduction(ham)
@@ -332,3 +330,19 @@ if __name__ == "__main__":
     # print(h_reduced)
     # for h in conditioned_hams:
     #     print(h)
+
+
+    ps = ['x1z0 x1z0',
+          'x1z0 x0z1',
+          'x1z0 x0z0',
+          'x1z0 x1z1'
+          ]
+    
+    ps = PauliSum(ps, dimensions=[2, 2], standardise=True)
+    print(ps)
+    circuit = symplectic_pauli_reduction(ps)
+    h_reduced, conditioned_hams, reducing_circuit, eigenvalues = pauli_reduce(ps)
+
+    print(circuit.act(ps))
+    for h in conditioned_hams:
+        print(h)
