@@ -1,0 +1,101 @@
+name: Benchmark And Profiling
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  set-runner:
+    runs-on: ubuntu-latest
+    outputs:
+      runner: ${{ steps.set-matrix.outputs.runner }}
+    steps:
+      - name: Determine Runner
+        id: set-matrix
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          if [[ "$BRANCH" =~ test-workflow ]]; then
+          echo "runner=self-hosted" >> $GITHUB_ENV
+          echo "runner=self-hosted" >> $GITHUB_OUTPUT
+          else
+          echo "runner=ubuntu-latest" >> $GITHUB_ENV
+          echo "runner=ubuntu-latest" >> $GITHUB_OUTPUT
+          fi
+          echo "Using runner: $GITHUB_ENV"
+
+  benchmark:
+    needs: set-runner
+    runs-on: ${{ needs.set-runner.outputs.runner }}
+    outputs:
+      runner: ${{ steps.set-matrix.outputs.runner }}
+    steps:
+      - name: Determine Runner
+        id: set-matrix
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          if [[ "$BRANCH" =~ test-workflow ]]; then
+          echo "runner=self-hosted" >> $GITHUB_ENV
+          echo "runner=self-hosted" >> $GITHUB_OUTPUT
+          else
+          echo "runner=ubuntu-latest" >> $GITHUB_ENV
+          echo "runner=ubuntu-latest" >> $GITHUB_OUTPUT
+          fi
+          echo "Using runner: $GITHUB_ENV"
+
+  benchmark:
+    needs: set-runner
+    runs-on: ${{ needs.set-runner.outputs.runner }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up environment
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ./configs/requirements.txt
+
+      - name: Run benchmarks
+        run: |
+          pytest --benchmark-only --benchmark-save=benchmark.json
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmark.json
+
+  profiling:
+    needs: [set-runner, benchmark]
+    runs-on: ${{ needs.set-runner.outputs.runner }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up environment
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ./configs/requirements.txt
+
+      - name: Run profiling with cProfile
+        run: |
+          python -m cProfile -o profile.out ./scripts/experiments/BFQ_Simulation.py
+
+      - name: Upload profiling results
+        uses: actions/upload-artifact@v4
+        with:
+          name: profiling-results
+          path: profile.out

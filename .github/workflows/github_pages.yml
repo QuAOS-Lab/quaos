@@ -1,0 +1,71 @@
+name: GitHub Pages
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  set-runner:
+    runs-on: ubuntu-latest
+    outputs:
+      runner: ${{ steps.set-matrix.outputs.runner }}
+    steps:
+      - name: Determine Runner
+        id: set-matrix
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          if [[ "$BRANCH" =~ test-workflow ]]; then
+          echo "runner=self-hosted" >> $GITHUB_ENV
+          echo "runner=self-hosted" >> $GITHUB_OUTPUT
+          else
+          echo "runner=ubuntu-latest" >> $GITHUB_ENV
+          echo "runner=ubuntu-latest" >> $GITHUB_OUTPUT
+          fi
+          echo "Using runner: $GITHUB_ENV"
+
+  build:
+    needs: set-runner
+    continue-on-error: true
+    runs-on: ${{ needs.set-runner.outputs.runner }}
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Create temporary requirements file
+        run: |
+          touch src/docs/final_doc_requirements.txt
+          [ -f src/docs/doc_requirements.txt ] && cat src/docs/doc_requirements.txt >> src/docs/final_doc_requirements.txt && echo "" >> src/docs/final_doc_requirements.txt
+          [ -f configs/requirements.txt ] && cat configs/requirements.txt >> src/docs/final_doc_requirements.txt && echo "" >> src/docs/final_doc_requirements.txt
+      - id: build
+        uses: sphinx-notes/pages@v3
+        with:
+          requirements_path: "./src/docs/final_doc_requirements.txt"
+          python_version: "3.11"
+          sphinx_version: "7.4.7"
+          checkout: false
+
+  deploy:
+    continue-on-error: true
+    needs: [set-runner, build]
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ${{ needs.set-runner.outputs.runner }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

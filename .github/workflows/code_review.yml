@@ -1,0 +1,81 @@
+name: Linting And Testing
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  set-runner:
+    runs-on: ubuntu-latest
+    outputs:
+      runner: ${{ steps.set-matrix.outputs.runner }}
+
+    steps:
+      - name: Determine Runner
+        id: set-matrix
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          if [[ "$BRANCH" =~ test-workflow ]]; then
+          echo "runner=self-hosted" >> $GITHUB_ENV
+          echo "runner=self-hosted" >> $GITHUB_OUTPUT
+          else
+          echo "runner=ubuntu-latest" >> $GITHUB_ENV
+          echo "runner=ubuntu-latest" >> $GITHUB_OUTPUT
+          fi
+          echo "Using runner: $GITHUB_ENV"
+
+  linting:
+    needs: set-runner
+    runs-on: ${{ needs.set-runner.outputs.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up environment
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ./configs/requirements.txt
+
+      - name: Flake8
+        continue-on-error: true
+        run: |
+          pip install flake8
+          flake8 ./quaos
+
+  testing:
+    needs: [set-runner, linting]
+    runs-on: ${{ needs.set-runner.outputs.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up environment
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ./configs/requirements.txt
+
+      - name: Pytest (No Benchmarking)
+        run: |
+          pip install pytest pytest-cov
+          cd ./configs
+          pytest --override-ini "pytest.ini=./configs/pytest.ini"
+          cd ..
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          with:
+          file: ./docs/tests_results/coverage_report.xml
