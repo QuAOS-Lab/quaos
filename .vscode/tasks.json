@@ -1,0 +1,59 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Sphinx Documentation",
+            "type": "shell",
+            "windows": {
+                "command": "${workspaceFolder}/scripts/shell/docs.bat",
+            },
+            "linux": {
+                "command": "${workspaceFolder}/scripts/shell/docs.sh",
+            },
+            "osx": {
+                "command": "echo Automatic docs build not supported on macOS."
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Sync Python Requirements",
+            "type": "shell",
+            "windows": {
+                "command": "${workspaceFolder}/scripts/shell/sync_requirements.bat",
+            },
+            "linux": {
+                "command": "${workspaceFolder}/scripts/shell/sync_requirements.sh",
+            },
+            "osx": {
+                "command": "echo Automatic requirements version syncronization not supported on macOS."
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Setup Dev Environment",
+            "type": "shell",
+            "windows": {
+                "command": "${workspaceFolder}/scripts/shell/setup_environment.bat",
+            },
+            "linux": {
+                "command": "${workspaceFolder}/scripts/shell/setup_environment.sh",
+            },
+            "osx": {
+                "command": "echo Automatic environment setup not supported on macOS."
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+    ]
+}

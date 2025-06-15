@@ -5,7 +5,28 @@ on:
     branches: [main, dev]
 
 jobs:
+  validate-branch:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    outputs:
+      proceed: ${{ steps.branch-check.outputs.proceed }}
+    steps:
+      - name: Check PR Source Branch
+        id: branch-check
+        run: |
+          FROM_BRANCH="${{ github.head_ref }}"
+          if [[ "$FROM_BRANCH" != "dev" && "$FROM_BRANCH" != "release" && ! "$FROM_BRANCH" =~ "test-workflow" ]]; then
+            echo "This workflow only runs for PRs from branches named 'dev', 'release', or containing 'test-workflow'. Exiting gracefully."
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            echo "proceed=false" >> $GITHUB_ENV
+            exit 0 
+          fi
+          echo "proceed=true" >> $GITHUB_OUTPUT
+          echo "proceed=true" >> $GITHUB_ENV
+
   set-runner:
+    needs: validate-branch
+    if: needs.validate-branch.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     outputs:
       runner: ${{ steps.set-matrix.outputs.runner }}
@@ -41,13 +62,14 @@ jobs:
 
       - name: Create temporary requirements file
         run: |
-          touch src/docs/final_doc_requirements.txt
-          [ -f src/docs/doc_requirements.txt ] && cat src/docs/doc_requirements.txt >> src/docs/final_doc_requirements.txt && echo "" >> src/docs/final_doc_requirements.txt
-          [ -f configs/requirements.txt ] && cat configs/requirements.txt >> src/docs/final_doc_requirements.txt && echo "" >> src/docs/final_doc_requirements.txt
+          touch docs/final_doc_requirements.txt
+          [ -f docs/doc_requirements.txt ] && cat docs/doc_requirements.txt >> docs/final_doc_requirements.txt && echo "" >> docs/final_doc_requirements.txt
+          [ -f configs/requirements.txt ] && cat configs/requirements.txt >> docs/final_doc_requirements.txt && echo "" >> docs/final_doc_requirements.txt
+
       - id: build
         uses: sphinx-notes/pages@v3
         with:
-          requirements_path: "./src/docs/final_doc_requirements.txt"
+          requirements_path: "./docs/final_doc_requirements.txt"
           python_version: "3.11"
           sphinx_version: "7.4.7"
           checkout: false
