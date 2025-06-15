@@ -1,7 +1,7 @@
 #!/bin/bash
 
 cd "$(dirname "$0")"
-cd ../..
+cd ../../..
 
 if [ ! -d "venv" ]; then
     echo "Virtual environment not found."
@@ -15,7 +15,7 @@ fi
 
 source venv/bin/activate
 pip freeze > ./configs/current_requirements.txt
-python scripts/python/sync_requirements.py --r ./configs/requirements.txt
+python scripts/python/tools/sync_requirements.py --r ./configs/requirements.txt
 
 cd configs
 mv -f updated_requirements.txt requirements.txt
