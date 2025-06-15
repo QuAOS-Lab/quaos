@@ -1,0 +1,42 @@
+name: Documentation request
+description: Suggest improvements or additions to the project documentation
+labels: [documentation]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Documentation Request
+
+        Thank you for helping us improve our documentation!
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the documentation update
+      description: What part of the documentation needs to be updated or added?
+      placeholder: Please describe the documentation improvement...
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why is this documentation change important?
+      placeholder: This would help users because...
+    validations:
+      required: false
+  - type: textarea
+    id: location
+    attributes:
+      label: Location of documentation
+      description: Where should this documentation appear? (e.g., README, docs folder, code comments)
+      placeholder: Suggested location...
+    validations:
+      required: false
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Add any other context or suggestions for the documentation update.
+      placeholder: Any other details...
+    validations:
+      required: false

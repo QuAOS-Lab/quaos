@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a problem or unexpected behavior in the project
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Bug Report
+
+        Thank you for helping us improve the project by reporting a bug!
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+      placeholder: The bug is...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce the bug? Please provide step-by-step instructions.
+      placeholder: 1. Go to '...'
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+      placeholder: I expected...
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened?
+      placeholder: Actually...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Please provide information about your environment (OS, Python version, dependencies, etc.).
+      placeholder: |
+        OS...
+        Python...
+        Dependencies...
+    validations:
+      required: false
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Add any other context, error messages, or screenshots about the problem here.
+      placeholder: Any other details...
+    validations:
+      required: false
