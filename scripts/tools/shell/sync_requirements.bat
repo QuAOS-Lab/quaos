@@ -1,7 +1,7 @@
 @echo off
 
 cd /d %~dp0
-cd ../..
+cd ../../..
 
 if not exist "venv" (
     echo Virtual environment not found.
@@ -15,7 +15,7 @@ if not exist "./configs/requirements.txt" (
 
 call venv/Scripts/activate
 call pip freeze > ./configs/current_requirements.txt
-call python scripts/python/sync_requirements.py  --r ./configs/requirements.txt
+call python scripts/python/tools/sync_requirements.py  --r ./configs/requirements.txt
 
 cd configs
 move /y updated_requirements.txt requirements.txt
