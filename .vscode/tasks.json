@@ -5,10 +5,10 @@
             "label": "Build Sphinx Documentation",
             "type": "shell",
             "windows": {
-                "command": "${workspaceFolder}/scripts/shell/docs.bat",
+                "command": "${workspaceFolder}/scripts/tools/shell/docs.bat",
             },
             "linux": {
-                "command": "${workspaceFolder}/scripts/shell/docs.sh",
+                "command": "${workspaceFolder}/scripts/tools/shell/docs.sh",
             },
             "osx": {
                 "command": "echo Automatic docs build not supported on macOS."
@@ -23,10 +23,10 @@
             "label": "Sync Python Requirements",
             "type": "shell",
             "windows": {
-                "command": "${workspaceFolder}/scripts/shell/sync_requirements.bat",
+                "command": "${workspaceFolder}/scripts/tools/shell/sync_requirements.bat",
             },
             "linux": {
-                "command": "${workspaceFolder}/scripts/shell/sync_requirements.sh",
+                "command": "${workspaceFolder}/scripts/tools/shell/sync_requirements.sh",
             },
             "osx": {
                 "command": "echo Automatic requirements version syncronization not supported on macOS."
@@ -41,13 +41,31 @@
             "label": "Setup Dev Environment",
             "type": "shell",
             "windows": {
-                "command": "${workspaceFolder}/scripts/shell/setup_environment.bat",
+                "command": "${workspaceFolder}/scripts/tools/shell/setup_environment.bat",
             },
             "linux": {
-                "command": "${workspaceFolder}/scripts/shell/setup_environment.sh",
+                "command": "${workspaceFolder}/scripts/tools/shell/setup_environment.sh",
             },
             "osx": {
                 "command": "echo Automatic environment setup not supported on macOS."
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Clear Notebooks Content",
+            "type": "shell",
+            "windows": {
+                "command": "${workspaceFolder}/scripts/tools/shell/clear_ipynb.bat",
+            },
+            "linux": {
+                "command": "${workspaceFolder}/scripts/tools/shell/clear_ipynb.sh",
+            },
+            "osx": {
+                "command": "echo Automatic notebooks content clearing not supported on macOS."
             },
             "group": {
                 "kind": "build",
