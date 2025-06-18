@@ -1,3 +1,4 @@
+from typing import overload
 from quaos.gates import GateOperation
 import numpy as np
 from qiskit import QuantumCircuit
@@ -101,6 +102,14 @@ class Circuit:
         for gate in self.gates:
             str_out += gate.name + ' ' + str(gate.qudit_indices) + '\n'
         return str_out
+
+    @overload
+    def act(self, pauli: Pauli) -> PauliSum:
+        ...
+
+    @overload
+    def act(self, pauli: PauliString) -> PauliString:
+        ...
 
     def act(self, pauli: Pauli | PauliString | PauliSum) -> PauliString | PauliSum:
         if isinstance(pauli, Pauli):

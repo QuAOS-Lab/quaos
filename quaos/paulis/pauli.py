@@ -3,9 +3,39 @@ import numpy as np
 from typing import Any
 
 
+def get_sanitized_x_exp(x_exp: int | np.integer | None) -> int:
+    if x_exp is None:
+        return 0
+
+    if not isinstance(x_exp, (int, np.integer)):
+        raise TypeError("x_exp must be an integer type.")
+    return int(x_exp)
+
+
+def get_sanitized_z_exp(z_exp: int | np.integer | None) -> int:
+    if z_exp is None:
+        return 0
+
+    if not isinstance(z_exp, (int, np.integer)):
+        raise TypeError("z_exp must be an integer type.")
+    return int(z_exp)
+
+
+def get_sanitized_dimension(dimension: int | np.integer,
+                            x_exp: int,
+                            z_exp: int) -> int:
+    if not isinstance(dimension, (int, np.integer)):
+        raise TypeError("dimension must be an integer type.")
+    
+    if dimension - 1 < x_exp or dimension - 1 < z_exp:
+        raise ValueError(f"Dimension {dimension} is too small for exponents {x_exp} and {z_exp}")
+    
+    return int(dimension)
+
+
 class Pauli:
     def __init__(self,
-                 x_exp: int | str,
+                 x_exp: int | None = None,
                  z_exp: int | None = None,
                  dimension: int = 2):
 
@@ -22,25 +52,17 @@ class Pauli:
         dimension : int
             The dimension of the qudit. Default is 2.
         """
-        if isinstance(x_exp, str):
-            if z_exp is not None:
-                raise Warning('If input string is provided, z_exp is unnecessary')
-            z_exp = int(x_exp[3])
-            x_exp = int(x_exp[1])
-        else:
-            if (type(x_exp) not in [int, np.int64, np.int32]) or (type(z_exp) not in [int, np.int64, np.int32]):
-                raise TypeError("x_exp and z_exp must be integers or x_exp must be a string of format 'xrzs'")
+        self.x_exp = get_sanitized_x_exp(x_exp)
+        self.z_exp = get_sanitized_z_exp(z_exp)
+        self.dimension = get_sanitized_dimension(dimension, self.x_exp, self.z_exp)
 
-        self.x_exp = x_exp
-        self.z_exp = z_exp
-        self.dimension = dimension
+    @classmethod
+    def from_string(cls, pauli_str: str, dimension: int = 2) -> Pauli:
+        return cls(x_exp=int(pauli_str[1]), z_exp=int(pauli_str[3]), dimension=dimension)
 
-        if self.dimension - 1 < x_exp or self.dimension - 1 < z_exp:
-            raise ValueError(f"Dimension {self.dimension} is too small for exponents {self.x_exp} and {self.z_exp}")
-
-    def __mul__(self, A: str | Pauli) -> Pauli :
+    def __mul__(self, A: str | Pauli) -> Pauli:
         if isinstance(A, str):
-            return self * Pauli(A)
+            return self * Pauli.from_string(A)
         elif isinstance(A, Pauli):
             if A.dimension != self.dimension:
                 raise Exception("To multiply two Paulis, their dimensions"
