@@ -10,7 +10,7 @@ class Gate:
                  images: list[np.ndarray],
                  dimension: int,
                  phase_function: Callable):
-        
+
         self.dimension = dimension
         self.name = name
         self.qudit_indices = qudit_indices
@@ -26,15 +26,20 @@ class Gate:
         local_symplectic = (self.symplectic @ local_symplectic) % self.dimension
         P = P._replace_symplectic(local_symplectic, self.qudit_indices)
         return P, acquired_phase
-    
-    def _act_on_pauli_sum(self, P: PauliSum):
-        pauli_strings, phases = zip(*[self._act_on_pauli_string(p) for p in P.pauli_strings])
-        P = PauliSum(pauli_strings, P.weights, np.asarray(phases), P.dimensions, False)
-        return P
+
+    def _act_on_pauli_sum(self, P: PauliSum) -> PauliSum:
+        pauli_strings: list[PauliString] = []
+        phases: list[int] = []
+        for p in P.pauli_strings:
+            ps, phase = self._act_on_pauli_string(p)
+            pauli_strings.append(ps)
+            phases.append(phase)
+
+        return PauliSum(pauli_strings, P.weights, np.asarray(phases), P.dimensions, False)
 
     def act(self, P: Pauli | PauliString | PauliSum):
         if isinstance(P, Pauli):
-            P = PauliString(P, dimensions=[P.dimension])
+            P = PauliString.from_pauli(P)
         if isinstance(P, PauliString):
             return self._act_on_pauli_string(P)[0]
         elif isinstance(P, PauliSum):
@@ -50,16 +55,16 @@ class SUM(Gate):
                   np.array([0, 0, 1, 0]),  # image of Z0:  Z0 -> Z0
                   np.array([0, 0, -1, 1])  # image of Z1:  Z1 -> Z0^-1 Z1
                   ]
-        
+
         @staticmethod
         def phase_function(P: PauliString) -> int:
             """
             Returns the phase acquired by the PauliString P when acted upon by this SUM gate.
             """
             return P.x_exp[control] * P.z_exp[target] % P.lcm
-        
+
         super().__init__("SUM", [control, target], images, dimension=dimension, phase_function=phase_function)
-    
+
 
 class SWAP(Gate):
     def __init__(self, index1, index2, dimension):
@@ -68,9 +73,9 @@ class SWAP(Gate):
                   np.array([0, 0, 0, 1]),  # image of Z0:  Z0 -> Z0
                   np.array([0, 0, 1, 0])  # image of Z1:  Z1 -> Z0^-1 Z1
                   ]
-        
+
         super().__init__("SWAP", [index1, index2], images, dimension=dimension, phase_function=lambda P: 0)
-   
+
 
 class CNOT(Gate):
     def __init__(self, control, target):
@@ -79,14 +84,14 @@ class CNOT(Gate):
                   np.array([0, 0, 1, 0]),  # image of Z0:  Z0 -> Z0
                   np.array([0, 0, -1, 1])  # image of Z1:  Z1 -> Z0^-1 Z1
                   ]
-        
+
         @staticmethod
         def phase_function(P: PauliString) -> int:
             """
             Returns the phase acquired by the PauliString P when acted upon by this SUM gate.
             """
             return P.x_exp[control] * P.z_exp[target] % 2
-        
+
         super().__init__("SUM", [control, target], images, dimension=2, phase_function=phase_function)
 
 
@@ -100,7 +105,7 @@ class Hadamard(Gate):
             images = [np.array([0, -1]),  # image of X:  X -> -Z
                       np.array([1, 0]),  # image of Z:  Z -> X
                       ]
-            
+
         @staticmethod
         def phase_function(P: PauliString) -> int:
             """
@@ -113,7 +118,7 @@ class Hadamard(Gate):
 
 
 class PHASE(Gate):
-    
+
     def __init__(self, index: int, dimension: int):
         images = [np.array([1, 1]),  # image of X:  X -> XZ
                   np.array([0, 1]),  # image of Z:  Z -> Z

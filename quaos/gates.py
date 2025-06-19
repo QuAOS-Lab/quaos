@@ -1,6 +1,4 @@
 
-import sys
-sys.path.append("./")
 import numpy as np
 from typing import overload
 from qiskit import QuantumCircuit
@@ -14,12 +12,12 @@ from quaos.paulis import (
 class GateOperation:
     """
     Mapping can be written as set of rules,
-    
+
     e.g. for CNOT
                 x1z0*x0z0 -> x1z0*x1z0
                 x0z0*x1z0 -> x0z0*x1z0  # doesn't need specifying
                 x0z1*x0z0 -> x0z1*x0z0  # doesn't need specifying
-                x0z0*x0z1 -> x0z-1*x0z1 # 
+                x0z0*x0z1 -> x0z-1*x0z1 #
 
     inputs are:
 
@@ -32,7 +30,7 @@ class GateOperation:
         self.qudit_indices = qudit_indices
         self.mapping = mapping
         self.map_from, self.map_to, self.acquired_phase = self._interpret_mapping(mapping)
-    
+
     def _interpret_mapping(self, map_string: list[str]) -> tuple[np.ndarray, np.ndarray, list[int]]:
         map_from, map_to = zip(*[map_string[i].split('->') for i in range(len(map_string))])
 
@@ -49,7 +47,7 @@ class GateOperation:
             s, p = string_to_symplectic(map_to[i])
             symplectic_mapped_to.append(s)
             acquired_phase.append(p)
-        
+
         symplectic_looked_for = np.array(symplectic_looked_for)
         symplectic_mapped_to = np.array(symplectic_mapped_to)
 
@@ -98,7 +96,7 @@ class GateOperation:
             P.acquire_phase(acquired_phase)
         # P.combine_equivalent_paulis()
         return P
-    
+
     def copy(self) -> 'GateOperation':
         new_gate = GateOperation(self.name, self.qudit_indices, self.mapping, self.dimension)
         new_gate.acquired_phase = self.acquired_phase
@@ -118,7 +116,7 @@ class GateOperation:
 
     def act(self, P: Pauli | PauliString | PauliSum) -> PauliString | PauliSum:
         if isinstance(P, Pauli):
-            P = P._to_pauli_string()
+            P = PauliString.from_pauli(P)
 
         if isinstance(P, PauliString):
             return self._act_on_pauli_string(P)[0]
@@ -126,18 +124,18 @@ class GateOperation:
             return self._act_on_pauli_sum(P)
         else:
             raise ValueError(f"GateOperation cannot act on type {type(P)}")
-    
+
     def __mul__(self, gate: 'GateOperation') -> 'Circuit':
         # TODO: check if the two gates are compatible, set dimensions accordingly
         # circuit = Circuit([self + gate])  # TODO: add support for gate summation
         if self.dimension != gate.dimension:
             # this is a choice for the moment, that we select the dimensions of the entire circuit from the beginning
-            # when defining the gates. We could instead define gates only locally and create the circuit from these 
+            # when defining the gates. We could instead define gates only locally and create the circuit from these
             # plus the indexes on which they act.
             raise ValueError("Cannot compile Circuit from gates with different dimensions")
         circuit = Circuit(self.dimension, [self, gate])
         return circuit
-    
+
     def __eq__(self, other_gate: 'GateOperation') -> bool:
         if self.name != other_gate.name:
             return False
@@ -204,7 +202,7 @@ class SUM(GateOperation):
     def __init__(self, control, target, dimension):
         SGate_operations = self.sum_gate_operations(dimension)
         super().__init__("SUM", [control, target], SGate_operations, dimension=dimension)
-   
+
     @staticmethod
     def sum_gate_operations(dimension: int) -> list[str]:
         operations = []
@@ -225,7 +223,7 @@ class SWAP(GateOperation):
     def __init__(self, index1, index2, dimension):
         SGate_operations = self.swap_gate_operations(dimension)
         super().__init__("SWAP", [index1, index2], SGate_operations, dimension=dimension)
-   
+
     @staticmethod
     def swap_gate_operations(dimension):
         operations = []
@@ -251,12 +249,12 @@ class Circuit:
 
         gate = 'CNOT'
         indexes = (1, 3)
-        
+
 
         Parameters:
             dimensions (list[int] | np.ndarray): A list or array of integers representing the dimensions of the qudits.
             gates (list): A list of Gate objects representing the gates in the circuit.
-            
+
         """
         if gates is None:
             gates = []
@@ -299,7 +297,7 @@ class Circuit:
             raise TypeError("Can only add another Circuit object.")
         new_gates = self.gates + other.gates
         return Circuit(self.dimensions, new_gates)
-    
+
     def __mul__(self, other: 'Circuit') -> 'Circuit':
         """
         THIS IS THE SAME FUNCTION AS ADDITION  -  PROBABLY WANT TO CHOOSE WHICH ONE DOES THIS
@@ -310,7 +308,7 @@ class Circuit:
             raise TypeError("Can only add another Circuit object.")
         new_gates = self.gates + other.gates
         return Circuit(self.dimensions, new_gates)
-    
+
     def __eq__(self, other: 'Circuit') -> bool:
         if not isinstance(other, Circuit):
             return False
@@ -320,10 +318,10 @@ class Circuit:
             if self.gates[i] != other.gates[i]:
                 return False
         return True
-    
+
     def __getitem__(self, index: int) -> GateOperation:
         return self.gates[index]
-    
+
     def __setitem__(self, index: int, value: GateOperation):
         self.gates[index] = value
         self.indexes[index] = value.qudit_indices
@@ -336,7 +334,7 @@ class Circuit:
         for gate in self.gates:
             str_out += gate.name + ' ' + str(gate.qudit_indices) + '\n'
         return str_out
-    
+
     @overload
     def act(self, pauli: Pauli) -> PauliString:
         ...
@@ -353,11 +351,14 @@ class Circuit:
         if isinstance(pauli, Pauli):
             if self.dimensions[0] != pauli.dimension or len(self.dimensions) != 1:
                 raise ValueError("Pauli dimension does not match circuit dimensions")
+            else:
+                pauli = PauliString.from_pauli(pauli)
+
         elif np.any(self.dimensions != pauli.dimensions):
             raise ValueError("Pauli dimensions do not match circuit dimensions")
         for gate in self.gates:
             pauli = gate.act(pauli)
-        return pauli   # Why this warning? - it is a PauliSum or PauliString, never a Pauli
+        return pauli
 
     def show(self) -> QuantumCircuit:
         circuit = QuantumCircuit(len(self.dimensions))
@@ -373,7 +374,7 @@ class Circuit:
 
         print(circuit)
         return circuit
-    
+
     def copy(self) -> 'Circuit':
         return Circuit(self.dimensions, self.gates.copy())
 
@@ -385,7 +386,7 @@ class Circuit:
         if qudit_indices is not None:
             if len(qudit_indices) != circuit.n_qudits():
                 raise ValueError("Number of qudit indices does not match number of qudits in circuit to embed")
-            
+
         for gate in circuit.gates:
             new_gate = gate.copy()
             if qudit_indices is not None:
@@ -413,7 +414,7 @@ if __name__ == "__main__":
 
     # # print((I + Z) @ X)
     # # print(I @ X + Z @ X)
-    
+
     # CNOT1 = ((I - Z) @ I + (I + Z) @ X) / 2.
     # CNOT2 = CNOT(0, 1, 2)
     # print(CNOT1.symplectic_matrix())

@@ -43,7 +43,7 @@ def H_mat(d):
     """Return the d-dimensional Hadarmard matrix."""
     omega = math.e**(2 * math.pi * 1j / d)
     H_mat = np.array([[omega**(i0 * i1) for i0 in range(d)] for i1 in range(d)])
-    H_mat = 1 / np.sqrt(d) * H_mat 
+    H_mat = 1 / np.sqrt(d) * H_mat
     return scipy.sparse.csr_matrix(H_mat)
 
 
@@ -124,7 +124,7 @@ def loading_bar(runs, length=50, scalings=[]):
     ss1 = ' '.join(str(runs[i][0]) + '/' + str(runs[i][1]) for i in range(a0))
     bar = '█' * int(length * a1 / a2) + '-' * (length - int(length * a1 / a2))
     print(f' |{bar}| {ss0}% {ss1}', end="\r")
-    if runs[0][0] >= runs[0][1] - 1: 
+    if runs[0][0] >= runs[0][1] - 1:
         print(" " * (length + 6 + len(ss0) + len(ss1)), end="\r")
 
 
@@ -293,7 +293,7 @@ def act(P, C):
 
 def H(P, aa):
     """
-    Function for the gate representation of Hadamard gate. Transformation: 
+    Function for the gate representation of Hadamard gate. Transformation:
     X: Z, Z: -X
 
     Args:
@@ -315,7 +315,7 @@ def H(P, aa):
 def S(P, aa):
     """
     Function for the gate representation of phase gate. Phase gate transformation: X: XZ, Z: Z
-    
+
     Args:
         P (pauli): Pauli to be acted upon.
         aa (list[int]): Qudits to be acted upon.
@@ -360,7 +360,7 @@ def CX(P, aa):
 
 
 def SWAP(P, aa):
-    """Function for the gate representation of SWAP gate. Gate transformation: 
+    """Function for the gate representation of SWAP gate. Gate transformation:
     X*I -> I*X, I*X -> X*I, Z*I -> I*Z, I*Z -> Z*I
 
     Args:
@@ -861,7 +861,7 @@ def weighted_vertex_covering_maximal_cliques(A, A1=None, cc=None, k=1):
 
 def vertex_covering_maximal_cliques(A, k=1):
     """Returns a clique covering of a graph which hits every vertex at least a certain number of times.
-    
+
     Args:
         A - (graph) - commutation graph for which covering should be found
         k - (int)   - number of times each vertex must be covered
@@ -1131,7 +1131,7 @@ def ground_state(P):
     Args:
         P: pauli, Paulis for Hamiltonian
         cc: list[int], coefficients for Hamiltonian
-    
+
     Returns:
         numpy.array: eigenvector corresponding to lowest eigenvalue of Hamiltonian
     """
@@ -1157,7 +1157,7 @@ def ground_state(P):
 
     # print(gs)
     # print(np.linalg.norm(gs))
-    # print(np.transpose(np.conjugate(gs))@m@gs) 
+    # print(np.transpose(np.conjugate(gs))@m@gs)
 
     return gs
 
@@ -1371,7 +1371,7 @@ def variance_estimate_(P, cc, psi, D, X, xxx):
             list of cliques to-be-sampled
 
     Returns:
-        tuple: (numpy.array[float], dict, numpy.array[dict]): (variance graph 
+        tuple: (numpy.array[float], dict, numpy.array[dict]): (variance graph
         calculated with Bayesian estimates, (updated) dictionary for storing pdf and negations for future samples, (updated) array of measurement outcome counts)
     """
     p = P.paulis()
@@ -1451,15 +1451,15 @@ def bucket_filling(P, cc, psi, shots, part_func, update_steps=set([]), repeats=(
     return S, X, xxx
 
 
-def bucket_filling_mod(P, 
-                       cc, 
-                       psi, 
-                       shots, 
-                       part_func, 
-                       update_steps=set([]), 
+def bucket_filling_mod(P,
+                       cc,
+                       psi,
+                       shots,
+                       part_func,
+                       update_steps=set([]),
                        repeats=(0, 1),
-                       full_simulation=False, 
-                       general_commutation=True, 
+                       full_simulation=False,
+                       general_commutation=True,
                        best_possible=False):
     """Partitions Hamiltonian and repeatedly samples cliques while minimizing total variance.
 
@@ -1536,7 +1536,7 @@ def equal_allocation_algorithm(P, cc, general_commutation=True):
     """
     Provides a dictionary which contains the circuits, Paulis, eigenvalues, et al. for every group in the partition
     Returns a dictionary indexed by the indices of the sets of Paulis (converetd to strings) containing:
-    a circuit which diagonalizes these Paulis, alist of Paulis within the partition, 
+    a circuit which diagonalizes these Paulis, alist of Paulis within the partition,
     a list of Paulis within the partition after applying diagonalization circuit, a list of coefficients corresponding to these Paulis,
     a list of tuples of measurement outcomes and eigenvalues (each measurement outcome is paired with a list of the corresponding eigenvalues of each Pauli
     the eigenvalues are stored as integers modulo the least common multiple of the dimensions)
@@ -1605,20 +1605,20 @@ def equal_allocation_measurements(P, cc, error, general_commutation=True):
 
 # EXTRA STUFF:
 # Function to reconstruct expectation values (and errors)
-def expt_rec(beta_exp, 
-             Ptot, 
-             Pe, 
-             Pm, 
-             cce, 
-             ccm, 
-             elmag, 
+def expt_rec(beta_exp,
+             Ptot,
+             Pe,
+             Pm,
+             cce,
+             ccm,
+             elmag,
              Michael_state=True,
-             shots=1000, 
-             part_func=LDF, 
-             no_simulation=False, 
-             full_simulation=True, 
-             update_steps=set([10000, 100000]), 
-             printing=False, 
+             shots=1000,
+             part_func=LDF,
+             no_simulation=False,
+             full_simulation=True,
+             update_steps=set([10000, 100000]),
+             printing=False,
              general_commutation=False):
     # beta value and coefficients of total Hamiltonian:
     beta = 10**beta_exp
@@ -1708,7 +1708,7 @@ def expt_rec(beta_exp,
             print()
             print()
 
-        # magnetic (plaquette) contribution 
+        # magnetic (plaquette) contribution
         plaq_true = -Hamiltonian_Mean(Pm, ccm, psi).real / 4
         if printing:
             print('TRUE PLAQUETTE')
@@ -1730,14 +1730,14 @@ def expt_rec(beta_exp,
 
         # return
         if Xt is not None:
-            return ([tot_en_true, tot_en_est, tot_en_error_true, tot_en_error_est], 
-                    [elec_true, elec_est, elec_error_true, elec_error_est], 
+            return ([tot_en_true, tot_en_est, tot_en_error_true, tot_en_error_est],
+                    [elec_true, elec_est, elec_error_true, elec_error_est],
                     [plaq_true, plaq_est, plaq_error_true, plaq_error_est])
         else:
-            return ([tot_en_true, tot_en_error_true], 
-                    [elec_true, elec_error_true], 
+            return ([tot_en_true, tot_en_error_true],
+                    [elec_true, elec_error_true],
                     [plaq_true, plaq_error_true])
     else:
-        return ([Hamiltonian_Mean(Ptot, cct, psi).real, "None", "None", "None"], 
-                [Hamiltonian_Mean(Pe, cce, psi).real, "None", "None", "None"], 
+        return ([Hamiltonian_Mean(Ptot, cct, psi).real, "None", "None", "None"],
+                [Hamiltonian_Mean(Pe, cce, psi).real, "None", "None", "None"],
                 [-Hamiltonian_Mean(Pm, ccm, psi).real / 4, "None", "None", "None"])

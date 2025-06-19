@@ -1,9 +1,8 @@
 from gates import Circuit, SUM as CX, PHASE as S, Hadamard as H, GateOperation
-from paulis import Pauli, PauliString, PauliSum, symplectic_product
+from paulis import Pauli, PauliSum
 import numpy as np
+from numpy.typing import NDArray
 import sympy as sym
-from pauli_utils import are_subsets_equal
-from sympy.physics.quantum import TensorProduct, Operator
 import random
 # def check_mappable_via_clifford(pauli_sum: PauliSum, target_pauli_sum: PauliSum):
 
@@ -15,12 +14,12 @@ def check_mappable_via_clifford(pauli_sum: PauliSum, target_pauli_sum: PauliSum)
         raise ValueError("Pauli sums must have the same dimensions")
     if pauli_sum.n_paulis() != target_pauli_sum.n_paulis():
         raise ValueError("Pauli sums must have the same number of paulis")
-    return np.all(pauli_sum.symplectic_product_matrix() == target_pauli_sum.symplectic_product_matrix())
+    return bool(np.all(pauli_sum.symplectic_product_matrix() == target_pauli_sum.symplectic_product_matrix()))
 
 
 def find_circuit(pauli_sum: PauliSum, target_pauli_sum: PauliSum, iterations: int,
                  compare_phases: bool = True, stop_if_found: bool = True) -> list[Circuit]:
-    
+
     mappable = check_mappable_via_clifford(pauli_sum, target_pauli_sum)
     if not mappable:
         return []
@@ -54,7 +53,7 @@ def find_circuit(pauli_sum: PauliSum, target_pauli_sum: PauliSum, iterations: in
                         return [C_temp]
     return goal_circuits
 
-
+# TODO: implement find_agnostic_circuit
 # def find_agnostic_circuit(pauli_sum: PauliSum, target_paulis: list[Pauli], target_indexes: list[tuple[int, int]],
 #                           iterations: int, compare_phases: bool = True) -> Circuit | None:
 #     """
@@ -69,7 +68,7 @@ def find_circuit(pauli_sum: PauliSum, target_pauli_sum: PauliSum, iterations: in
 #     current_target = pauli_sum.copy()  # the target starts as a copy of the initial pauli_sum with target paulis changed only
 #     for i, indexes in enumerate(target_indexes):
 #         current_target[indexes[0], indexes[1]] = target_paulis[i]
-    
+
 #     for max_iter in range(1, iterations):
 
 #         mappable = check_mappable_via_clifford(pauli_sum, current_target)
@@ -82,7 +81,7 @@ def find_circuit(pauli_sum: PauliSum, target_pauli_sum: PauliSum, iterations: in
 #             C = find_circuit(pauli_sum, current_target, max_iter, compare_phases, True)
 #             if C != []:
 #                 return C[0]
-        
+
 #         paulis = [Pauli(0, 0, 2), Pauli(0, 1, 2), Pauli(1, 0, 2), Pauli(1, 1, 2)]  # only works for qubits for now
 #         agnostic_pauli_locations = [(i, j) for i in range(pauli_sum.n_paulis()) for j in range(pauli_sum.n_qudits()) if (i, j) not in target_indexes]
 #         # we make random changes to the target until we find one that works
@@ -96,7 +95,7 @@ def find_circuit(pauli_sum: PauliSum, target_pauli_sum: PauliSum, iterations: in
 #                 if C != []:
 #                     print('Found on trial number ', trial_number + 1, ', depth = ', max_iter)
 #                     return C[0]
-                
+
 #     return None
 
 
@@ -133,39 +132,39 @@ def find_agnostic_circuit(pauli_sum: PauliSum, target_paulis: list[Pauli], targe
                         return [C_temp]
     return goal_circuits
 
+# TODO: implement symplectic effect of circuit
+# def symplectic_effect(circuit):
+#     n_qudits = len(circuit.dimensions)
+#     r_now = list(sym.symbols([f'r{i}' for i in range(1, n_qudits + 1)]))
+#     omega = sym.symbols('omega')
+#     s_now = list(sym.symbols([f's{i}' for i in range(1, n_qudits + 1)]))
+#     r_next = [r_now[i] for i in range(n_qudits)]
+#     s_next = [s_now[i] for i in range(n_qudits)]
 
-def symplectic_effect(circuit):
-    n_qudits = len(circuit.dimensions)
-    r_now = list(sym.symbols([f'r{i}' for i in range(1, n_qudits+1)]))
-    omega = sym.symbols('omega')
-    s_now = list(sym.symbols([f's{i}' for i in range(1, n_qudits+1)]))
-    r_next = [r_now[i] for i in range(n_qudits)]
-    s_next = [s_now[i] for i in range(n_qudits)]
+#     X = Operator('X')
+#     Z = Operator('Z')
 
-    X = Operator('X')
-    Z = Operator('Z')
+#     phase = 0
+#     gates = circuit.gates
+#     qubits = circuit.indexes
+#     for i, g in enumerate(gates):
+#         if g.name == 'SUM':
+#             r_next[qubits[i][1]] = r_now[qubits[i][0]] + r_now[qubits[i][1]]
+#             s_next[qubits[i][0]] = s_now[qubits[i][0]] + s_now[qubits[i][1]]
+#         elif g.name == 'H' or g.name == 'HADAMARD':
+#             r_next[qubits[i][0]] = s_now[qubits[i][0]]
+#             s_next[qubits[i][0]] = r_now[qubits[i][0]]
+#             phase += s_now[qubits[i][0]] * r_now[qubits[i][0]]
+#         elif g.name == 'S' or g.name == 'PHASE':
+#             s_next[qubits[i][0]] = s_now[qubits[i][0]] + r_now[qubits[i][0]]
+#             phase += r_now[qubits[i][0]] * (r_now[qubits[i][0]] - 1) / 2
+#         r_now = [r_next[i] for i in range(n_qudits)]
+#         s_now = [s_next[i] for i in range(n_qudits)]
+#     final = TensorProduct(X**(modulo_2(r_now[0])) * Z**(modulo_2(s_now[0])), X**(modulo_2(r_now[1])) * Z**(modulo_2(s_now[1])))
+#     for i in range(2, n_qudits):
+#         final = TensorProduct(final, X**(modulo_2(r_now[i])) * Z**(modulo_2(s_now[i])))
 
-    phase = 0
-    gates = circuit.gates
-    qubits = circuit.indexes
-    for i, g in enumerate(gates):
-        if g.name == 'SUM':
-            r_next[qubits[i][1]] = r_now[qubits[i][0]] + r_now[qubits[i][1]]
-            s_next[qubits[i][0]] = s_now[qubits[i][0]] + s_now[qubits[i][1]]
-        elif g.name == 'H' or g.name == 'HADAMARD':
-            r_next[qubits[i][0]] = s_now[qubits[i][0]]
-            s_next[qubits[i][0]] = r_now[qubits[i][0]]
-            phase += s_now[qubits[i][0]] * r_now[qubits[i][0]]
-        elif g.name == 'S' or g.name == 'PHASE':
-            s_next[qubits[i][0]] = s_now[qubits[i][0]] + r_now[qubits[i][0]]
-            phase += r_now[qubits[i][0]] * (r_now[qubits[i][0]] - 1) / 2
-        r_now = [r_next[i] for i in range(n_qudits)]
-        s_now = [s_next[i] for i in range(n_qudits)]
-    final = TensorProduct(X**(modulo_2(r_now[0])) * Z**(modulo_2(s_now[0])), X**(modulo_2(r_now[1])) * Z**(modulo_2(s_now[1])))
-    for i in range(2, n_qudits):
-        final = TensorProduct(final, X**(modulo_2(r_now[i])) * Z**(modulo_2(s_now[i])))
-    
-    display(omega**modulo_2(reduce_exponents(modulo_2(sym.simplify(phase)))) * final)
+#     display(omega**modulo_2(reduce_exponents(modulo_2(sym.simplify(phase)))) * final)
 
 
 def modulo_2(expr):
@@ -174,21 +173,21 @@ def modulo_2(expr):
     """
     # Expand the expression to handle all terms
     expr = expr.expand()
-    
+
     # Iterate through the terms and apply modulo 2 to coefficients
     terms = expr.as_ordered_terms()
     mod_expr = sum(sym.Mod(term.as_coeff_Mul()[0], 2) * term.as_coeff_Mul()[1] for term in terms)
-    
+
     return mod_expr
 
 
 def reduce_exponents(expr):
     """
     Reduces all exponents in a SymPy expression to zero, assuming symbols are binary (0 or 1).
-    
+
     Args:
         expr (sympy.Expr): The input SymPy expression.
-    
+
     Returns:
         sympy.Expr: The modified expression with all exponents set to zero.
     """
@@ -196,22 +195,25 @@ def reduce_exponents(expr):
     return expr.replace(lambda x: x.is_Pow, lambda x: x.base)
 
 
-def random_gate(dimensions: list[int] | np.ndarray) -> GateOperation:
+def random_gate(dimensions: list[int] | NDArray[np.integer]) -> GateOperation:
     gate = random.choice(['SUM', 'H', 'S'])
-    qudits = np.arange(len(dimensions))
-    
+    npa_dimensions = np.array(dimensions, dtype=np.int64)
+    qudits = np.arange(len(npa_dimensions))
+
     if gate == 'SUM':
         control = random.choice(qudits)
         target = random.choice(np.delete(qudits, control))
-        if dimensions[control] != dimensions[target]:  # reselect at random
+        if npa_dimensions[control] != npa_dimensions[target]:  # reselect at random
             return random_gate(dimensions)
-        return CX(control, target, dimensions[control])
+        return CX(control, target, npa_dimensions[control])
     elif gate == 'H':
-        qudit = random.choice(qudits)
-        return H(qudit, dimensions[qudit])
+        qudit: int = random.choice(qudits)
+        return H(qudit, npa_dimensions[qudit])
     elif gate == 'S':
-        qudit = random.choice(qudits)
-        return S(qudit, dimensions[qudit])
+        qudit: int = random.choice(qudits)
+        return S(qudit, npa_dimensions[qudit])
+    else:
+        raise ValueError(f"Unexpected random gate choice: unknown gate type '{gate}'.")
 
 
 def random_clifford(depth: int, dimensions: list[int] | np.ndarray) -> Circuit:

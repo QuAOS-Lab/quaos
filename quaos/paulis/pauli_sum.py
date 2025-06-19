@@ -1,7 +1,7 @@
 from typing import Union, overload
 import numpy as np
 import scipy
-from .pauli import Pauli 
+from .pauli import Pauli
 from .pauli_string import PauliString
 
 PauliStringDerivedType = Union[list[PauliString], list[Pauli], list[str], PauliString, Pauli]
@@ -54,7 +54,7 @@ class PauliSum:
         self.dimensions = sanitized_dimensions
         self.lcm = np.lcm.reduce(self.dimensions)
         self.phases = np.asarray(sanitized_phases, dtype=int) % self.lcm
-        
+
         self._set_exponents()
 
         if standardise:
@@ -79,7 +79,7 @@ class PauliSum:
         for i, p in enumerate(self.pauli_strings):
             x_exp[i, :] = p.x_exp
             z_exp[i, :] = p.z_exp
-        
+
         self.x_exp = x_exp
         self.z_exp = z_exp
 
@@ -119,7 +119,7 @@ class PauliSum:
                 if not np.array_equal(pauli_list[i].dimensions, pauli_list[0].dimensions):
                     raise ValueError("The dimensions of all Pauli strings must be equal.")
             dimensions = pauli_list[0].dimensions
-            
+
         return np.array(dimensions)
 
     @staticmethod
@@ -141,7 +141,7 @@ class PauliSum:
 
         if isinstance(weights, (np.ndarray, list)) and len(pauli_list) != len(weights):
             raise ValueError(f"Length of Pauli list ({len(pauli_list)}) and weights ({len(weights)}) must be equal.")
-        
+
         return np.asarray(weights, dtype=complex)
 
     def _sanity_checks(self,
@@ -155,16 +155,16 @@ class PauliSum:
         sanitized_weights = self._sanitize_weights(sanitized_pauli_list, weights)
 
         return sanitized_pauli_list, sanitized_dimensions, sanitized_phases, sanitized_weights
-    
+
     def n_paulis(self) -> int:
         return len(self.pauli_strings)
-    
+
     def n_qudits(self) -> int:
         return len(self.dimensions)
-    
+
     def shape(self) -> tuple[int, int]:
         return self.n_paulis(), self.n_qudits()
-    
+
     def n_identities(self):
         """
         Get the number of identities in the PauliSum
@@ -227,7 +227,7 @@ class PauliSum:
     @overload
     def __setitem__(self, key: tuple[slice, int] | tuple[slice, slice], value: 'PauliSum'):
         ...
-        
+
     def __setitem__(self, key, value):
         # TODO: Error messages here could be improved
         if isinstance(key, int):  # key indexes the pauli_string to be replaced by value
@@ -261,12 +261,12 @@ class PauliSum:
             A_sum = A
         else:
             raise ValueError(f"Cannot add Pauli with type {type(A)}")
-            
+
         new_pauli_list = self.pauli_strings + A_sum.pauli_strings
         new_weights = np.concatenate([self.weights, A_sum.weights])
         new_phases = np.concatenate([self.phases, A_sum.phases])
         return PauliSum(list(new_pauli_list), new_weights, new_phases, self.dimensions, False)
-    
+
     def __radd__(self, A: PauliType) -> 'PauliSum':
         ps1 = self.copy()
         if isinstance(A, Pauli):
@@ -278,13 +278,13 @@ class PauliSum:
         else:
             raise ValueError(f"Cannot add Pauli with type {type(A)}")
         return ps1 + ps2
-    
+
     def __sub__(self, A: 'PauliSum') -> 'PauliSum':
         new_pauli_list = self.pauli_strings + A.pauli_strings
         new_weights = np.concatenate([self.weights, -np.array(A.weights)])
         new_phases = np.concatenate([self.phases, A.phases])
         return PauliSum(list(new_pauli_list), new_weights, new_phases, self.dimensions, False)
-    
+
     def __rsub__(self, A: PauliType) -> 'PauliSum':
         ps1 = self.copy()
         if isinstance(A, Pauli):
@@ -296,7 +296,7 @@ class PauliSum:
         else:
             raise Exception(f"Cannot add Pauli with type {type(A)}")
         return ps1 - ps2
-    
+
     def __matmul__(self, A: PauliType) -> 'PauliSum':
         """
         @ is the operator for tensor product
@@ -305,7 +305,7 @@ class PauliSum:
             A = PauliSum.from_pauli_strings(A)
         elif isinstance(A, Pauli):
             A = PauliSum.from_pauli(A)
-        
+
         new_dimensions = np.hstack((self.dimensions, A.dimensions))
         new_lcm = np.lcm.reduce(new_dimensions)
         new_pauli_list = []
@@ -344,7 +344,7 @@ class PauliSum:
         output_pauli = PauliSum(new_p_sum, new_weights, new_phases, self.dimensions, False)
 
         return output_pauli
-    
+
     def __rmul__(self, A: PauliOrScalarType) -> 'PauliSum':
         if isinstance(A, (Pauli, PauliString, PauliSum, float, int, complex)):
             return self * A
@@ -355,7 +355,7 @@ class PauliSum:
         if not isinstance(A, (int, float)):
             raise ValueError("Division only supported with scalar")
         return self * (1 / A)
-    
+
     def __eq__(self, value: 'PauliSum') -> bool:
         if not isinstance(value, PauliSum):
             return False
@@ -363,13 +363,13 @@ class PauliSum:
         t2 = np.all(self.weights == value.weights)
         t3 = np.all(self.phases == value.phases)
         return bool(t1 and t2 and t3)
-    
+
     def __ne__(self, value: 'PauliSum') -> bool:
         return not self == value
-    
+
     def __hash__(self) -> int:
         return hash((tuple(self.pauli_strings), tuple(self.weights), tuple(self.phases), tuple(self.dimensions)))
-    
+
     def __dict__(self) -> dict:
         return {'pauli_strings': self.pauli_strings, 'weights': self.weights, 'phases': self.phases}
 
@@ -385,7 +385,7 @@ class PauliSum:
         self.weights = [x for _, x in sorted(zip(self.pauli_strings, self.weights))]
         # self.phases = [x for _, x in sorted(zip(self.pauli_strings, self.phases))]
         self.pauli_strings = sorted(self.pauli_strings)
-        
+
     def combine_equivalent_paulis(self):
         self.standardise()  # makes sure all phases are 0
         # combine equivalent Paulis
@@ -425,7 +425,7 @@ class PauliSum:
         for i, p in enumerate(self.pauli_strings):
             symplectic[i, :] = p.symplectic()
         return symplectic
-        
+
     def is_x(self) -> bool:
         # check whether self has only X component
         # Outputs: (bool) - True if self has only X component, False otherwise
@@ -477,7 +477,7 @@ class PauliSum:
         #     qudit_indices - (list of int)
         if isinstance(qudit_indices, int):
             qudit_indices = [qudit_indices]
-        
+
         new_pauli_strings = []
         for p in self.pauli_strings:
             new_pauli_strings.append(p._delete_qudits(qudit_indices))
@@ -507,7 +507,7 @@ class PauliSum:
                     spm[i, j] = self.pauli_strings[i].symplectic_product(self.pauli_strings[j])
         spm = spm + spm.T
         return spm
-    
+
     def __str__(self) -> str:
         p_string = ''
         max_str_len = max([len(f'{self.weights[i]}') for i in range(self.n_paulis())])
@@ -517,7 +517,7 @@ class PauliSum:
             n_spaces = max_str_len - len(f'{self.weights[i]}')
             p_string += f'{self.weights[i]}' + ' ' * n_spaces + '|' + qudit_string + f'| {self.phases[i]} \n'
         return p_string
-    
+
     def get_subspace(self, qudit_indices: list[int], pauli_indices: list | None = None):
         """
         Get the subspace of the PauliSum corresponding to the qudit indices for the given Paulis
@@ -555,7 +555,7 @@ class PauliSum:
             for i in range(self.n_paulis()):
                 X, Z, dim, phase = int(self.x_exp[i, 0]), int(self.z_exp[i, 0]), self.dimensions[0], self.phases[i]
                 h = self.xz_mat(dim, X, Z)
-                
+
                 for n in range(1, self.n_qudits()):
                     X, Z, dim, phase = int(self.x_exp[i, n]), int(self.z_exp[i, n]), self.dimensions[n], self.phases[i]
                     h_next = self.xz_mat(dim, X, Z)
@@ -565,7 +565,7 @@ class PauliSum:
             m = sum(list_of_pauli_matrices)
 
         return m
-    
+
     def acquire_phase(self, phases: list[int], pauli_index: int | list[int] | None = None):
         if pauli_index is not None:
             if isinstance(pauli_index, int):

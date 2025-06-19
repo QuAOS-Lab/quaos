@@ -26,10 +26,10 @@ def get_sanitized_dimension(dimension: int | np.integer,
                             z_exp: int) -> int:
     if not isinstance(dimension, (int, np.integer)):
         raise TypeError("dimension must be an integer type.")
-    
+
     if dimension - 1 < x_exp or dimension - 1 < z_exp:
         raise ValueError(f"Dimension {dimension} is too small for exponents {x_exp} and {z_exp}")
-    
+
     return int(dimension)
 
 
@@ -67,13 +67,13 @@ class Pauli:
             if A.dimension != self.dimension:
                 raise Exception("To multiply two Paulis, their dimensions"
                                 f" {A.dimension} and {self.dimension} must be equal")
-            
+
             return Pauli(x_exp=(self.x_exp + A.x_exp) % self.dimension,
                          z_exp=(self.z_exp + A.z_exp) % self.dimension,
                          dimension=self.dimension)
         else:
             raise Exception(f"Cannot multiply Pauli with type {type(A)}")
-    
+
     def __str__(self) -> str:
         return f'x{self.x_exp}z{self.z_exp}'
 
@@ -81,13 +81,13 @@ class Pauli:
         if not isinstance(other_pauli, Pauli):
             return False
         return self.x_exp == other_pauli.x_exp and self.z_exp == other_pauli.z_exp and self.dimension == other_pauli.dimension
-    
+
     def __ne__(self, other_pauli: Any) -> bool:
         return not self.__eq__(other_pauli)
-    
+
     def __dict__(self) -> dict:
         return {'x_exp': self.x_exp, 'z_exp': self.z_exp, 'dimension': self.dimension}
-    
+
     def __gt__(self, other_pauli: Pauli) -> bool:
         d = self.dimension
         x_measure = min(self.x_exp % d, (d - self.x_exp) % d)
@@ -102,12 +102,12 @@ class Pauli:
                 return True
             elif z_measure == z_measure_new:
                 return False
-        
+
         return False
-    
+
     def copy(self) -> Pauli:
         return Pauli(x_exp=self.x_exp, z_exp=self.z_exp, dimension=self.dimension)
-    
+
 
 class Xnd(Pauli):
     def __init__(self, x_exp: int, dimension: int):

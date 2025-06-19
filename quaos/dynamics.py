@@ -1,19 +1,18 @@
-from quspin.operators import hamiltonian, quantum_operator
-from quspin.basis import spin_basis_1d
-import numpy as np
-
+# TODO: evaluate if this library is useful for our purposes, eventually add it to requirements.txt
+# from quspin.operators import hamiltonian, quantum_operator
+# from quspin.basis import spin_basis_1d
+# import numpy as np
 
 
 def pauli_sum_to_quspin(hamiltonian_ps):
-    if not np.all(hamiltonian_ps.dimensions == 2):
-        raise ValueError("PauliString must be a 2-dimensional PauliString")
-    
-    L = hamiltonian_ps.n_qudits()
-    basis = spin_basis_1d(L, kblock=0, kshift=0, pbc=False)
-    for ps in hamiltonian_ps.pauli_strings:
-        h_eff_statis = pauli_string_to_quspin(ps)
+    # if not np.all(hamiltonian_ps.dimensions == 2):
+    #     raise ValueError("PauliString must be a 2-dimensional PauliString")
 
-
+    # L = hamiltonian_ps.n_qudits()
+    # basis = spin_basis_1d(L, kblock=0, kshift=0, pbc=False)
+    # for ps in hamiltonian_ps.pauli_strings:
+    #     h_eff_statis = pauli_string_to_quspin(ps)
+    raise NotImplementedError()
 
 
 def pauli_string_to_quspin(pauli_string):
@@ -29,4 +28,4 @@ def pauli_string_to_quspin(pauli_string):
     where 'op' is 'xx', 'yy', 'zz', 'x', 'y', 'z' or 'I' or even larger n-body terms like 'xyzz...zzy...'
     """
     L = pauli_string.n_qudits()
-    
+    raise NotImplementedError()
