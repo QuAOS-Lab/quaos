@@ -12,8 +12,8 @@ from IPython.display import display
 
 # Local Imports
 from .prime_Functions_Andrew import (
-    int_to_bases, bases_to_int, weighted_vertex_covering_maximal_cliques, 
-    commutation_graph, graph, diagonalize, act, quditwise_commutation_graph, 
+    int_to_bases, bases_to_int, weighted_vertex_covering_maximal_cliques,
+    commutation_graph, graph, diagonalize, act, quditwise_commutation_graph,
     scale_variances, circuit
 )
 from .pauli import (pauli, pauli_to_matrix, pauli_to_string, string_to_pauli, pauli_product, quditwise_inner_product)
@@ -488,7 +488,7 @@ def mcmc_integration(N, psi_list, p_list, alpha, d, c, A, N_max=10000):
 
 
 @jit(nopython=True)
-def get_alpha(p_list, psi_list, d, A, c, N_chain, Q_alpha_test=True, target_accept=0.25, 
+def get_alpha(p_list, psi_list, d, A, c, N_chain, Q_alpha_test=True, target_accept=0.25,
               N_accepts=30, b=10, run_max=1000):
     # initial guess for alpha
     ns = np.concatenate((c[0:d], c[d: 2 * d], c[2 * d: 3 * d]))
@@ -1128,7 +1128,7 @@ def bfq_experiment_initial(P, cc, pauli_block_sizes, shots, general_commutation=
 def bfq_experiment(xxx, rr, shots, algorithm_variables):
     P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, general_commutation, allocation_mode, N_chain, N_mcmc, N_mcmc_max, mcmc_shot_scale, shots_total, circuit_list_total, xxx_total = algorithm_variables
     shots_total += shots
-    # update 
+    # update
     X = update_X(xxx, rr, X, k_phases, D)
     xxx = []
 
@@ -1165,7 +1165,7 @@ def bfq_estimation(xxx, rr, algorithm_variables):
     P, cc, pauli_block_sizes, X, S, D, CG, aaa, k_phases, general_commutation, allocation_mode, N_chain, N_mcmc, N_mcmc_max, mcmc_shot_scale, shots_total, circuit_list_total, xxx_total = algorithm_variables
     p, q = P.paulis(), P.qudits()
     d = int(P.lcm)
-    # update measurement dict to include new results 
+    # update measurement dict to include new results
     X = update_X(xxx, rr, X, k_phases, D)
 
     mean = sum(cc[i0] * sum(X[i0, i0, i1] * math.e ** (2 * 1j * math.pi * i1 / P.lcm) for i1 in range(P.lcm)) / sum(

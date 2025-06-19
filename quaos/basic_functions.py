@@ -27,7 +27,9 @@ def read_luca_test_2(path: str, dims: list[int] | int = 2, spaces: bool = True):
         pauli_str = ' '.join(f"x{item.count('X')}z{item.count('Z')}" for item in pauli_list[1:])
         pauli_strings.append(pauli_str.strip())
 
-    return PauliSum(pauli_strings, weights=coefficients, dimensions=dims)
+    return PauliSum(pauli_strings,
+                    weights=coefficients,
+                    dimensions=dims if isinstance(dims, list) else [dims])
 
 
 def bases_to_int(base, dimensions) -> int:
@@ -143,7 +145,7 @@ def commutation_graph(P: PauliSum) -> np.ndarray:
         P (PauliSum): A set of Pauli operators represented as a PauliSum object.
 
     Returns:
-        np.ndarray: A 2D numpy array representing the commutation graph. Each element [i, j] is 1 if the i-th and 
+        np.ndarray: A 2D numpy array representing the commutation graph. Each element [i, j] is 1 if the i-th and
                     j-th Pauli operators commute, otherwise 0.
     """
     p = P.n_paulis()
@@ -178,5 +180,3 @@ def rand_state(dimension):
     phases = np.random.uniform(0, 2 * np.pi, int(dimension))
     normalized_state = np.sqrt(gamma_sample / np.sum(gamma_sample)) * np.exp(1j * phases)
     return normalized_state
-
-

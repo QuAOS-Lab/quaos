@@ -7,17 +7,17 @@ This module provides functionalities for managing and manipulating sets of Pauli
 import numpy as np
 import itertools
 import re
-import math 
+import math
 import scipy
 
 
 class pauli:
-    """A class for storing sets of Pauli operators as pairs of symplectic matrices"""	
+    """A class for storing sets of Pauli operators as pairs of symplectic matrices"""
 
-    def __init__(self, 
-                 X: np.ndarray, 
-                 Z: np.ndarray, 
-                 dims: int | list[int] = 2, 
+    def __init__(self,
+                 X: np.ndarray,
+                 Z: np.ndarray,
+                 dims: int | list[int] = 2,
                  phases: int | list[int] = 0):
         """
         Initialize the Pauli object with symplectic matrices.
@@ -94,7 +94,7 @@ class pauli:
         Returns:
             pauli: The ath Pauli in self.
         """
-        return pauli(np.array([self.X[a, :]]), 
+        return pauli(np.array([self.X[a, :]]),
                      np.array([self.Z[a, :]]),
                      self.dims,
                      np.array([self.phases[a]]))
@@ -178,7 +178,7 @@ class pauli:
 
     def print_symplectic(self) -> None:
         """Print the symplectic representation of the Pauli object."""
-        print(''.join(str(int(i)) for i in self.dims), 
+        print(''.join(str(int(i)) for i in self.dims),
               ''.join(str(int(i)) for i in self.dims))
 
         print('-' * self.qudits(), '-' * self.qudits())
@@ -206,8 +206,8 @@ def pauli_to_matrix(P: 'pauli') -> scipy.sparse.csr_matrix:
     return math.e**(phase * 2 * math.pi * 1j / P.lcm) * tensor([XZ_mat(dims[i], X[i], Z[i]) for i in range(P.qudits())])
 
 
-def string_to_pauli(sss: str | list[str], 
-                    dims: int | list[int] = 2, 
+def string_to_pauli(sss: str | list[str],
+                    dims: int | list[int] = 2,
                     phases: int | list[int] = 0) -> 'pauli':
     """
     Convert a collection of strings (or single string) to a pauli object.
@@ -253,7 +253,7 @@ def pauli_to_string(P: 'pauli') -> str | list[str]:
 def symplectic_inner_product(P0: 'pauli', P1: 'pauli') -> bool:
     """Compute the symplectic inner product of two pauli objects (each with a single Pauli).
     For two Pauli operators :math:`P_0` and :math:`P_1`, each of which is represented in terms of its X and Z components:
-    
+
     .. math::
 
         P = (X, Z)
@@ -278,7 +278,7 @@ def symplectic_inner_product(P0: 'pauli', P1: 'pauli') -> bool:
         bool: True if the symplectic inner product is odd (anti-commuting), False otherwise (commuting).
 
     References:
-        Bandyopadhyay, et al. *"A new proof for the existence of mutually unbiased bases."* 
+        Bandyopadhyay, et al. *"A new proof for the existence of mutually unbiased bases."*
         Available at: `arXiv:quant-ph/0103162 <https://arxiv.org/abs/quant-ph/0103162>`_
     """
     if (P0.paulis() != 1) or (P1.paulis() != 1):

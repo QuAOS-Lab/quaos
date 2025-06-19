@@ -1,8 +1,6 @@
 import numpy as np
 import itertools
 import random
-import sys
-sys.path.append("./")
 from quaos.paulis import PauliSum, PauliString
 from quaos.gates import Circuit, Hadamard as H, SUM as CX, PHASE as S
 
@@ -13,7 +11,7 @@ def ground_state(P):
     Args:
         P: pauli, Paulis for Hamiltonian
         cc: list[int], coefficients for Hamiltonian
-    
+
     Returns:
         numpy.array: eigenvector corresponding to lowest eigenvalue of Hamiltonian
     """
@@ -40,19 +38,19 @@ def ground_state(P):
 def random_pauli_hamiltonian(num_paulis, qudit_dims, mode='rand', seed=None):
     """
     Generates a random Pauli Hamiltonian with the given number of Pauli operators plus their Hermitian conjugate pairs.
-    
+
     Parameters:
         num_paulis (int): Number of Pauli operators to generate.
         qudit_dims (list): List of dimensions for each qudit.
         mode (str): 'rand' or 'uniform' - dictates form of weights in the PauliSum
-    
+
     Returns:
         tuple: A random PauliSum
     """
     n_qudits = len(qudit_dims)
     pauli_strings = []
     coefficients = []
-    
+
     for p in range(num_paulis):
         x_exp = [random.randint(0, qudit_dims[i] - 1) for i in range(n_qudits)]  # np.random.randint(qudit_dims, size=n_qudits)
         z_exp = [random.randint(0, qudit_dims[i] - 1) for i in range(n_qudits)]  # np.random.randint(qudit_dims, size=n_qudits)
@@ -68,16 +66,16 @@ def random_pauli_hamiltonian(num_paulis, qudit_dims, mode='rand', seed=None):
             x_exp_H[j] = (-r) % qudit_dims[j]
             z_exp_H[j] = (-s) % qudit_dims[j]
             pauli_str_H += f"x{x_exp_H[j]}z{z_exp_H[j]} "
-            
+
             omega = np.exp(2 * np.pi * 1j / qudit_dims[j])
             phase_factor *= omega**(r * s)
-        
+
         pauli_strings.append(PauliString(pauli_str.strip(), dimensions=qudit_dims))
         if mode == 'rand' or mode == 'random':
             coeff = np.random.normal(0, 1) + 1j * np.random.normal(0, 1)
         elif mode == 'uniform' or mode == 'one':
             coeff = 1 + 0 * 1j
-        
+
         if (not np.array_equal(x_exp, x_exp_H)) and (not np.array_equal(z_exp, z_exp_H)):
             # random string not Hermitian, add conjugate pair
             coefficients.append(coeff)
@@ -109,7 +107,7 @@ def number_of_SUM_X(r_control, r_target, d):
         if N > d:
             raise Exception('Error in Exponents r_control = ' + str(r_control) + ' r_target = ' + str(r_target))
         N += 1
-        
+
     return N
 
 
@@ -119,7 +117,7 @@ def number_of_SUM_Z(s_control, s_target, d):
         if N > d:
             raise Exception('Error in Exponents s_control = ' + str(s_control) + ' s_target = ' + str(s_target))
         N += 1
-        
+
     return N
 
 
@@ -129,7 +127,7 @@ def number_of_S(x_exp, z_exp, d):
         if N > d:
             raise Exception('Error in Exponents x_exp = ' + str(x_exp) + ' z_exp = ' + str(z_exp))
         N += 1
-        
+
     return N
 
 
@@ -177,7 +175,7 @@ def cancel_pauli(P, current_qudit, pauli_index, circuit, n_q_max):
     Needs an x component on current_qudit
 
     P -> p_1 ... p_current_qudit  I I ... I p_n_q_max p.... p_n_paulis
-    
+
     """
     # add CX gates to cancel out all non-zero X-parts on Pauli pauli_index, i > qudit
     if any(P.x_exp[pauli_index, i] for i in range(current_qudit + 1, n_q_max)):
@@ -190,7 +188,7 @@ def cancel_pauli(P, current_qudit, pauli_index, circuit, n_q_max):
     # if indexed Pauli, qudit is Y, add S gate to make it X
     if P.z_exp[pauli_index, current_qudit] and P.x_exp[pauli_index, current_qudit]:
         P, circuit = cancel_Y(P, current_qudit, pauli_index, circuit)
-        
+
     return P, circuit
 
 
@@ -262,7 +260,7 @@ def symplectic_pauli_reduction(hamiltonian: PauliSum) -> Circuit:
 def pauli_reduce(hamiltonian: PauliSum) -> tuple[PauliSum, list[PauliSum], Circuit, list]:
     """
     Reduces the Hamiltonian to a smaller number of qudits by removing leading X and Z operators.
-    
+
     This returns a list of reduced Hamiltonians, each corresponding to a different symmetry sector of the Z symmetries.
 
     """
@@ -337,7 +335,7 @@ if __name__ == "__main__":
           'x1z0 x0z0',
           'x1z0 x1z1'
           ]
-    
+
     ps = PauliSum(ps, dimensions=[2, 2], standardise=True)
     print(ps)
     circuit = symplectic_pauli_reduction(ps)

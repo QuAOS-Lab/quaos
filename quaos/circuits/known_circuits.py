@@ -203,7 +203,7 @@ def ensure_zx_components(pauli_sum: PauliSum, pauli_index_x: int, pauli_index_z:
 
 def to_ix(pauli_string: PauliString, target_index: int, ignore: int | list[int] | None = None) -> Circuit:
     """Finds a circuit to turn a PauliString to III...IXI...II where the X is at target_index
-    
+
     for qudits X = xrz0 for any r != 0, I = x0z0
 
     ignore is a list of qudits to not try to turn into an I
@@ -265,7 +265,7 @@ def to_x(pauli_string: PauliString, target_index: int, ignore: int | list[int] |
         raise Exception("PauliString is identity - cannot be converted to X")
 
     circuit = Circuit(dimensions=pauli_string.dimensions)  # Empty circuit of correct dimensions
-    
+
     # First we check if we can get there from a single qudit gate
     # target is X
     dim_target = pauli_string.dimensions[target_index]
@@ -296,4 +296,3 @@ def to_x(pauli_string: PauliString, target_index: int, ignore: int | list[int] |
     else:
         raise Exception("A case has been missed from the above loop")
     raise Exception(f"No circuit found to convert {pauli_string} pauli to X")
-    

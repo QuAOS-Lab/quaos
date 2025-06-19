@@ -1,3 +1,4 @@
+from typing import overload
 from quaos.gates import GateOperation
 import numpy as np
 from qiskit import QuantumCircuit
@@ -16,12 +17,12 @@ class Circuit:
 
         gate = 'CNOT'
         indexes = (1, 3)
-        
+
 
         Parameters:
             dimensions (list[int] | np.ndarray): A list or array of integers representing the dimensions of the qudits.
             gates (list): A list of Gate objects representing the gates in the circuit.
-            
+
         """
         if gates is None:
             gates = []
@@ -64,7 +65,7 @@ class Circuit:
             raise TypeError("Can only add another Circuit object.")
         new_gates = self.gates + other.gates
         return Circuit(self.dimensions, new_gates)
-    
+
     def __mul__(self, other: 'Circuit') -> 'Circuit':
         """
         THIS IS THE SAME FUNCTION AS ADDITION  -  PROBABLY WANT TO CHOOSE WHICH ONE DOES THIS
@@ -75,7 +76,7 @@ class Circuit:
             raise TypeError("Can only add another Circuit object.")
         new_gates = self.gates + other.gates
         return Circuit(self.dimensions, new_gates)
-    
+
     def __eq__(self, other: 'Circuit') -> bool:
         if not isinstance(other, Circuit):
             return False
@@ -85,10 +86,10 @@ class Circuit:
             if self.gates[i] != other.gates[i]:
                 return False
         return True
-    
+
     def __getitem__(self, index: int) -> GateOperation:
         return self.gates[index]
-    
+
     def __setitem__(self, index: int, value: GateOperation):
         self.gates[index] = value
         self.indexes[index] = value.qudit_indices
@@ -102,15 +103,26 @@ class Circuit:
             str_out += gate.name + ' ' + str(gate.qudit_indices) + '\n'
         return str_out
 
+    @overload
+    def act(self, pauli: Pauli | PauliString) -> PauliString:
+        ...
+
+    @overload
+    def act(self, pauli: PauliSum) -> PauliSum:
+        ...
+
     def act(self, pauli: Pauli | PauliString | PauliSum) -> PauliString | PauliSum:
         if isinstance(pauli, Pauli):
             if self.dimensions[0] != pauli.dimension or len(self.dimensions) != 1:
                 raise ValueError("Pauli dimension does not match circuit dimensions")
+            else:
+                pauli = PauliString.from_pauli(pauli)
+
         elif np.any(self.dimensions != pauli.dimensions):
             raise ValueError("Pauli dimensions do not match circuit dimensions")
         for gate in self.gates:
             pauli = gate.act(pauli)
-        return pauli   # Why this warning? - it is a PauliSum or PauliString, never a Pauli
+        return pauli
 
     def show(self) -> QuantumCircuit:
         if np.all(np.array(self.dimensions) == 2):
@@ -128,7 +140,7 @@ class Circuit:
 
         print(circuit)
         return circuit
-    
+
     def copy(self) -> 'Circuit':
         return Circuit(self.dimensions, self.gates.copy())
 
@@ -140,7 +152,7 @@ class Circuit:
         if qudit_indices is not None:
             if len(qudit_indices) != circuit.n_qudits():
                 raise ValueError("Number of qudit indices does not match number of qudits in circuit to embed")
-            
+
         for gate in circuit.gates:
             new_gate = gate.copy()
             if qudit_indices is not None:
