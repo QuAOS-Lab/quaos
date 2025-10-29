@@ -15,7 +15,7 @@ P = TypeVar("P", bound="PauliObject")
 
 
 class Circuit:
-    def __init__(self, dimensions: list[int] | np.ndarray, gates: list[Gate] | None = None):
+    def __init__(self, gates: list[Gate] | None = None):
         """
         Initialize the Circuit with gates, indexes, and targets.
 
@@ -37,12 +37,10 @@ class Circuit:
         """
         if gates is None:
             gates = []
-        self.dimensions = dimensions
         self.gates = gates
-        self.indexes = [gate.qudit_indices for gate in gates]  # indexes accessible at the Circuit level
 
     @classmethod
-    def from_random(cls, n_qudits: int, depth: int, dimensions: list[int] | np.ndarray) -> 'Circuit':
+    def from_random(cls, n_qudits: int, depth: int) -> 'Circuit':
         """
         Creates a random circuit with the given number of qudits and depth.
 
@@ -53,53 +51,39 @@ class Circuit:
         Returns:
             Circuit: A new Circuit object.
         """
-        # check if all dimensions are the different
-        if len(set(dimensions)) != len(dimensions):
-            g_max = 3  # only single qudit gates if not all dimensions are different (never selects CX)
-        else:
-            g_max = 2  # all gates possible
-
         gate_list = [H, PHASE, SUM]
         gg = []
-        for i in range(depth):
+        # FIXME: add weight of 2 qubits gates
+        for _ in range(depth):
             g_i = np.random.randint(g_max)
             if g_i == 2:
                 aa = list(random.sample(range(n_qudits), 2))
                 while aa[0] == aa[1] or dimensions[aa[0]] != dimensions[aa[1]]:
                     aa = list(random.sample(range(n_qudits), 2))
-                gg += [gate_list[g_i](aa[0], aa[1], dimensions[aa[0]])]
+                gg += [gate_list[g_i](aa[0], aa[1])]
             else:
                 aa = list(random.sample(range(n_qudits), 1))
-                gg += [gate_list[g_i](aa[0], dimensions[aa[0]])]
+                gg += [gate_list[g_i](aa[0])]
 
-        return cls(dimensions, gg)
+        return cls(gg)
 
-    def add_gate(self, gate: Gate | list[Gate]):
+    def add_gate(self, gates: Gate | list[Gate]):
         """
         Appends a gate to qudit index with specified target (if relevant)
 
         If gate is a list indexes should be a list of integers or tuples
         """
-        if isinstance(gate, list) or isinstance(gate, np.ndarray):
-            for i, g in enumerate(gate):
-                self.gates.append(g)
-                self.indexes.append(g.qudit_indices)
-        else:
-            self.gates.append(gate)
-            self.indexes.append(gate.qudit_indices)
+        if isinstance(gates, Gate):
+            gates = [gates]
+
+        for g in gates:
+            self.gates.append(g)
 
     def remove_gate(self, index: int):
         """
         Removes a gate from the circuit at the specified index
         """
         self.gates.pop(index)
-        self.indexes.pop(index)
-
-    def n_qudits(self) -> int:
-        """
-        Returns the number of qudits in the circuit.
-        """
-        return len(self.dimensions)
 
     def __add__(self, other: "Circuit | Gate") -> "Circuit":
         """
@@ -107,11 +91,12 @@ class Circuit:
         """
         if not isinstance(other, Circuit) and not isinstance(other, Gate):
             raise TypeError("Can only add another Circuit or Gate object.")
+
         if isinstance(other, Gate):
             new_gates = self.gates + [other]
         else:
             new_gates = self.gates + other.gates
-        return Circuit(self.dimensions, new_gates)
+        return Circuit(new_gates)
 
     def __eq__(self, other: 'Circuit') -> bool:
         if not isinstance(other, Circuit):
@@ -128,55 +113,49 @@ class Circuit:
 
     def __setitem__(self, index: int, value: Gate):
         self.gates[index] = value
-        self.indexes[index] = value.qudit_indices
 
     def __len__(self) -> int:
         return len(self.gates)
 
     def __str__(self) -> str:
-        str_out = ''
+        return "\n".join([g.name for g in self.gates])
+
+    @overload
+    def act(self, pauli: Pauli, qudit_indices: int | list[int]) -> Pauli:
+        ...
+
+    @overload
+    def act(self, pauli: PauliString, qudit_indices: int | list[int]) -> PauliString:
+        ...
+
+    @overload
+    def act(self, pauli: PauliSum, qudit_indices: int | list[int]) -> PauliSum:
+        ...
+
+    def act(self, pauli: Pauli | PauliString | PauliSum, qudit_indices: int | list[int]) -> Pauli | PauliString | PauliSum:
         for gate in self.gates:
-            str_out += gate.name + ' ' + str(gate.qudit_indices) + '\n'
-        return str_out
-
-    @overload
-    def act(self, pauli: Pauli) -> Pauli:
-        ...
-
-    @overload
-    def act(self, pauli: PauliString) -> PauliString:
-        ...
-
-    @overload
-    def act(self, pauli: PauliSum) -> PauliSum:
-        ...
-
-    def act(self, pauli: Pauli | PauliString | PauliSum) -> Pauli | PauliString | PauliSum:
-        for gate in self.gates:
-            pauli = gate.act(pauli)
+            pauli = gate.act(pauli, qudit_indices)
 
         return pauli
 
     @overload
-    def act_iter(self, pauli: Pauli) -> Generator[Pauli, None, None]:
+    def act_iter(self, pauli: Pauli, qudit_indices: int | list[int]) -> Generator[Pauli, None, None]:
         ...
 
     @overload
-    def act_iter(self, pauli: PauliString) -> Generator[PauliString, None, None]:
+    def act_iter(self, pauli: PauliString, qudit_indices: int | list[int]) -> Generator[PauliString, None, None]:
         ...
 
     @overload
-    def act_iter(self, pauli: PauliSum) -> Generator[PauliSum, None, None]:
+    def act_iter(self, pauli: PauliSum, qudit_indices: int | list[int]) -> Generator[PauliSum, None, None]:
         ...
 
-    def act_iter(self, pauli: Pauli | PauliString | PauliSum) -> Generator[Pauli | PauliString | PauliSum, None, None]:
+    def act_iter(self, pauli: Pauli | PauliString | PauliSum, qudit_indices: int | list[int]) -> Generator[Pauli | PauliString | PauliSum, None, None]:
         for gate in self.gates:
-            pauli_sum = gate.act(pauli)
+            pauli_sum = gate.act(pauli, qudit_indices)
             yield pauli_sum
 
     def show(self):
-        if np.all(np.array(self.dimensions) != 2):
-            print("Circuit dimensions are all 2, using Qiskit QuantumCircuit, some gates may not be supported")
         circuit = QuantumCircuit(len(self.dimensions))
         dict = {'X': circuit.x, 'H': circuit.h, 'S': circuit.s, 'SUM': circuit.cx, 'CNOT': circuit.cx,
                 'Hdag': circuit.h}
