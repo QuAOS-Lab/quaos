@@ -51,13 +51,12 @@ def symplectic_product_matrix(pauli_sum: np.ndarray) -> np.ndarray:
     return spm
 
 
-def symplectic_form(n: int, p: int = 2) -> np.ndarray:
+def symplectic_form(n: int) -> np.ndarray:
     """
     Construct the symplectic matrix Omega for a given dimension n over GF(p).
 
     Args:
         n: Half the length of the vectors (2n is the full length)
-        p: Modulus (default 2)
 
     Returns:
         Omega matrix as a 2n x 2n numpy array
@@ -65,15 +64,13 @@ def symplectic_form(n: int, p: int = 2) -> np.ndarray:
     Id = np.eye(n, dtype=int)
     Z = np.zeros((n, n), dtype=int)
 
-    if p == 2:
-        return np.block([[Z, Id], [Id, Z]])
-    else:
-        return np.block([[Z, Id], [-Id, Z]])
+    return np.block([[Z, Id], [-Id, Z]])
 
 
-def transvection_matrix(h: np.ndarray, p=2, multiplier=1):
+def transvection_matrix(h: np.ndarray, multiplier: int = 1) -> np.ndarray:
     """
     Compute the transvection matrix corresponding to the vector h.
+    NOTE: we do not take any modulo operation here.
 
     Args:
         h: Binary vector of length 2n
@@ -83,12 +80,13 @@ def transvection_matrix(h: np.ndarray, p=2, multiplier=1):
         The transvection matrix as a 2n x 2n matrix over integers modulo p
     """
     n = len(h) // 2
-    Omega = symplectic_form(n, p)
+    Omega = symplectic_form(n)
 
-    F_h = (np.eye(2 * n, dtype=int) + multiplier * (Omega @ np.outer(h.T, h))) % p
+    F_h = (np.eye(2 * n, dtype=int) + multiplier * (Omega @ np.outer(h.T, h)))
     return F_h
 
 
+# FIXME: pick a different name, there are too many things named transvection
 def transvection(h, x, p=2):
     return (x + symplectic_product_arrays(x, h.T, p) * h) % p
 

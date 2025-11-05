@@ -5,7 +5,7 @@ from .utils import embed_symplectic
 import scipy.sparse as sp
 import random
 
-from .gates import Hadamard as H, SUM, PHASE, Gate, SWAP, CNOT
+from .gates import GATES, Hadamard as H, SUM, PHASE, Gate, SWAP, CNOT
 from sympleq.core.paulis import PauliSum, PauliString, Pauli, PauliObject
 
 
@@ -15,7 +15,7 @@ P = TypeVar("P", bound="PauliObject")
 
 
 class Circuit:
-    def __init__(self, gates: list[Gate] | None = None):
+    def __init__(self, gates: list[Gate] = [], qudit_indices: list[int | tuple[int]] = []):
         """
         Initialize the Circuit with gates, indexes, and targets.
 
@@ -35,9 +35,8 @@ class Circuit:
 
         TODO: Perhaps store the composite gate as an attribute - it will allow gate.act to be significantly faster
         """
-        if gates is None:
-            gates = []
         self.gates = gates
+        self.qudit_indices = qudit_indices
 
     @classmethod
     def from_random(cls, n_qudits: int, depth: int) -> 'Circuit':
@@ -51,21 +50,12 @@ class Circuit:
         Returns:
             Circuit: A new Circuit object.
         """
-        gate_list = [H, PHASE, SUM]
-        gg = []
+        gates = []
         # FIXME: add weight of 2 qubits gates
-        for _ in range(depth):
-            g_i = np.random.randint(g_max)
-            if g_i == 2:
-                aa = list(random.sample(range(n_qudits), 2))
-                while aa[0] == aa[1] or dimensions[aa[0]] != dimensions[aa[1]]:
-                    aa = list(random.sample(range(n_qudits), 2))
-                gg += [gate_list[g_i](aa[0], aa[1])]
-            else:
-                aa = list(random.sample(range(n_qudits), 1))
-                gg += [gate_list[g_i](aa[0])]
-
-        return cls(gg)
+        gates = [GATES.H, GATES.S, GATES.swap, GATES.cnot, GATES.sum]
+        gates = np.random.choice(np.asarray(
+            [GATES.H, GATES.S, GATES.swap, GATES.cnot, GATES.sum]), size=depth, replace=True).tolist()
+        return cls(gates)
 
     def add_gate(self, gates: Gate | list[Gate]):
         """
@@ -121,36 +111,36 @@ class Circuit:
         return "\n".join([g.name for g in self.gates])
 
     @overload
-    def act(self, pauli: Pauli, qudit_indices: int | list[int]) -> Pauli:
+    def act(self, pauli: Pauli) -> Pauli:
         ...
 
     @overload
-    def act(self, pauli: PauliString, qudit_indices: int | list[int]) -> PauliString:
+    def act(self, pauli: PauliString) -> PauliString:
         ...
 
     @overload
-    def act(self, pauli: PauliSum, qudit_indices: int | list[int]) -> PauliSum:
+    def act(self, pauli: PauliSum) -> PauliSum:
         ...
 
-    def act(self, pauli: Pauli | PauliString | PauliSum, qudit_indices: int | list[int]) -> Pauli | PauliString | PauliSum:
-        for gate in self.gates:
+    def act(self, pauli: Pauli | PauliString | PauliSum) -> Pauli | PauliString | PauliSum:
+        for (qudit_indices, gate) in zip(, self.quself.gates):
             pauli = gate.act(pauli, qudit_indices)
 
         return pauli
 
     @overload
-    def act_iter(self, pauli: Pauli, qudit_indices: int | list[int]) -> Generator[Pauli, None, None]:
+    def act_iter(self, pauli: Pauli) -> Generator[Pauli, None, None]:
         ...
 
     @overload
-    def act_iter(self, pauli: PauliString, qudit_indices: int | list[int]) -> Generator[PauliString, None, None]:
+    def act_iter(self, pauli: PauliString) -> Generator[PauliString, None, None]:
         ...
 
     @overload
-    def act_iter(self, pauli: PauliSum, qudit_indices: int | list[int]) -> Generator[PauliSum, None, None]:
+    def act_iter(self, pauli: PauliSum) -> Generator[PauliSum, None, None]:
         ...
 
-    def act_iter(self, pauli: Pauli | PauliString | PauliSum, qudit_indices: int | list[int]) -> Generator[Pauli | PauliString | PauliSum, None, None]:
+    def act_iter(self, pauli: Pauli | PauliString | PauliSum) -> Generator[Pauli | PauliString | PauliSum, None, None]:
         for gate in self.gates:
             pauli_sum = gate.act(pauli, qudit_indices)
             yield pauli_sum
@@ -162,7 +152,7 @@ class Circuit:
 
         for gate in self.gates:
             name = gate.name
-            if len(gate.qudit_indices) == 2:
+            if gate.n_qudits() == 2:
                 dict[name](gate.qudit_indices[0], gate.qudit_indices[1])
             else:
                 dict[name](gate.qudit_indices[0])
@@ -171,7 +161,7 @@ class Circuit:
         # return circuit
 
     def copy(self) -> 'Circuit':
-        return Circuit(self.dimensions, self.gates.copy())
+        return Circuit(self.gates, self.qudit_indices)
 
     def embed_circuit(self, circuit: 'Circuit', qudit_indices: list[int] | np.ndarray | None = None):
         """
@@ -236,7 +226,7 @@ class Circuit:
 
         total_indexes = list(set(np.sort(total_indexes)))
         total_symplectic = total_symplectic.T
-        return Gate('CompositeGate', total_indexes, total_symplectic, self.dimensions, total_phase_vector)
+        return Gate('CompositeGate', total_symplectic, total_phase_vector)
 
     def unitary(self) -> sp.csr_matrix:
         known_unitaries = (H, PHASE, SUM, SWAP, CNOT)
