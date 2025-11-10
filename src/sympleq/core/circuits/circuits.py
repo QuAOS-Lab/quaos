@@ -1,12 +1,17 @@
-from typing import Generator, overload, TypeVar
+from __future__ import annotations
+from typing import Generator, overload, TypeVar, TypeAlias
 import numpy as np
 from qiskit import QuantumCircuit
+
+from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from .utils import embed_symplectic
 import scipy.sparse as sp
 import random
 
-from .gates import GATES, Hadamard as H, SUM, PHASE, Gate, SWAP, CNOT
+from .gates import GATES, Hadamard as H, SUM, PHASE, Gate, SWAP
 from sympleq.core.paulis import PauliSum, PauliString, Pauli, PauliObject
+
+GateTuple: TypeAlias = tuple[Gate, *tuple[int, ...]]
 
 
 # We define a type using TypeVar to let the type checker know that
@@ -15,15 +20,16 @@ P = TypeVar("P", bound="PauliObject")
 
 
 class Circuit:
-    def __init__(self, gates: list[Gate] = [], qudit_indices: list[int | tuple[int]] = []):
+    def __init__(self, n_qudits: int | None = None,
+                 gates: np.ndarray | list[Gate] = [], qudits: np.ndarray | list[list[int]] = []):
         """
-        Initialize the Circuit with gates, indexes, and targets.
+        Initialize the Circuit with gates, qudits.
 
         If a multi-qubit gate has a target, the targets should be at the ent of the tuple of indexes
         e.g. a CNOT with control 1, target 3 is
 
         gate = 'CNOT'
-        indexes = (1, 3)
+        qudits = (1, 3)
 
 
         Parameters:
@@ -35,11 +41,18 @@ class Circuit:
 
         TODO: Perhaps store the composite gate as an attribute - it will allow gate.act to be significantly faster
         """
-        self.gates = gates
-        self.qudit_indices = qudit_indices
+        if n_qudits is None:
+            n_qudits = int(max([idx for q_indices in qudits for idx in q_indices]) + 1)
+        self._n_qudits = n_qudits
+        self._gates = np.asarray(gates, dtype=object)
+        self._qudits = np.asarray(qudits, dtype=object)
 
     @classmethod
-    def from_random(cls, n_qudits: int, depth: int) -> 'Circuit':
+    def empty(cls) -> Circuit:
+        return Circuit(n_qudits=0, gates=[], qudits=[])
+
+    @classmethod
+    def from_random(cls, n_qudits: int, depth: int) -> Circuit:
         """
         Creates a random circuit with the given number of qudits and depth.
 
@@ -50,65 +63,128 @@ class Circuit:
         Returns:
             Circuit: A new Circuit object.
         """
-        gates = []
         # FIXME: add weight of 2 qubits gates
-        gates = [GATES.H, GATES.S, GATES.swap, GATES.cnot, GATES.sum]
-        gates = np.random.choice(np.asarray(
-            [GATES.H, GATES.S, GATES.swap, GATES.cnot, GATES.sum]), size=depth, replace=True).tolist()
-        return cls(gates)
+        if n_qudits > 1:
+            available_gates = np.asarray(
+                [GATES.H, GATES.S, GATES.swap, GATES.cnot, GATES.sum])
+        else:
+            available_gates = np.asarray(
+                [GATES.H, GATES.S])
 
-    def add_gate(self, gates: Gate | list[Gate]):
+        gates = np.random.choice(available_gates, size=depth, replace=True)
+        qudits = [[random.randint(0, n_qudits - 1) for _ in range(g.n_qudits())] for g in gates]
+        C = cls(n_qudits, gates, qudits)
+        C._sanity_check()
+        return C
+
+    @classmethod
+    def from_data(cls, data: GateTuple | list[GateTuple]) -> Circuit:
         """
-        Appends a gate to qudit index with specified target (if relevant)
+        Creates a circuit from the given gates and qudits data.
 
-        If gate is a list indexes should be a list of integers or tuples
+        Parameters:
+            data: list[tuple[Gate, *tuple[int, ...]]]
+                The circuit gates and qudits, given as a list of tuples.
+                Each tuple contains the Gate at first position and one or more qudit index as integer.
+
+        Returns:
+            Circuit: A new Circuit object.
         """
-        if isinstance(gates, Gate):
-            gates = [gates]
 
-        for g in gates:
-            self.gates.append(g)
+        if isinstance(data, tuple):
+            data = [data]
+
+        gates = [d[0] for d in data]
+        qudits = [list(d[1:]) for d in data]
+        C = cls(gates=gates, qudits=qudits)
+        C._sanity_check()
+        return C
+
+    def n_qudits(self) -> int:
+        return self._n_qudits
+
+    size = n_qudits
+
+    def gates(self) -> np.ndarray:
+        return self._gates
+
+    def qudits(self) -> np.ndarray:
+        return self._qudits
+
+    def add_gate(self, gate: Gate, *qudits: int):
+        """
+        Appends a gate to qudit index with specified target (if relevant).
+        If the number of qudits of the Circuit is smaller than any qudit index,
+        it is increased as to match it.
+        """
+
+        if len(qudits) != gate.n_qudits():
+            raise ValueError(f"Gate {gate} acts on {gate.n_qudits()} qudits, but {len(qudits)} qudits were passed.")
+
+        self._gates = np.concatenate(self._gates, np.asarray(gate), dtype=object)
+        self._qudits = np.concatenate(self._qudits, np.asarray(list[qudits]), dtype=object)
+        self._n_qudits = int(max([idx for q_indices in self._qudits for idx in q_indices]) + 1)
+
+    def add_gates(self, gates: list[Gate], *qudits: list[int]):
+        """
+        Appends a gate to qudit index with specified target (if relevant).
+        If the number of qudits of the Circuit is smaller than any qudit index,
+        it is increased as to match it.
+        """
+
+        for (gate_qudits, gate) in zip(qudits, gates):
+            if len(gate_qudits) != gate.n_qudits():
+                raise ValueError(f"Gate {gate} acts on {gate.n_qudits()} qudits, but {len(qudits)} qudits were passed.")
+
+        self._gates = np.concatenate(self._gates, np.asarray(gates), dtype=object)
+        self._qudits = np.concatenate(self._qudits, np.asarray(qudits), dtype=object)
+        self._n_qudits = int(max([idx for q_indices in self._qudits for idx in q_indices]) + 1)
 
     def remove_gate(self, index: int):
         """
         Removes a gate from the circuit at the specified index
         """
-        self.gates.pop(index)
+        np.delete(self._gates, index)
+        np.delete(self._qudits, index)
 
-    def __add__(self, other: "Circuit | Gate") -> "Circuit":
+    def __add__(self, other: Circuit) -> Circuit:
         """
         Adds two circuits together by concatenating their gates and indexes.
         """
-        if not isinstance(other, Circuit) and not isinstance(other, Gate):
-            raise TypeError("Can only add another Circuit or Gate object.")
+        if not isinstance(other, Circuit):
+            raise TypeError("Can only add another Circuit object.")
 
-        if isinstance(other, Gate):
-            new_gates = self.gates + [other]
-        else:
-            new_gates = self.gates + other.gates
-        return Circuit(new_gates)
+        new_gates = np.concatenate(self.gates(), other.gates())
+        new_qudits = np.concatenate(self.qudits(), other.qudits())
 
-    def __eq__(self, other: 'Circuit') -> bool:
+        return Circuit(gates=new_gates, qudits=new_qudits)
+
+    def __eq__(self, other: Circuit) -> bool:
         if not isinstance(other, Circuit):
             return False
-        if len(self.gates) != len(other.gates):
+        if len(self.gates()) != len(other.gates()):
             return False
-        for i in range(len(self.gates)):
-            if self.gates[i] != other.gates[i]:
+        for i in range(len(self.gates())):
+            if self.gates()[i] != other.gates()[i]:
+                return False
+        if len(self.qudits()) != len(other.qudits()):
+            return False
+        for i in range(len(self.qudits())):
+            if self.qudits()[i] != other.qudits()[i]:
                 return False
         return True
 
-    def __getitem__(self, index: int) -> Gate:
-        return self.gates[index]
+    def __getitem__(self, index: int) -> tuple[Gate, tuple[int, ...]]:
+        return self.gates()[index], self.qudits()[index]
 
     def __setitem__(self, index: int, value: Gate):
-        self.gates[index] = value
+        self.gates()[index] = value
 
     def __len__(self) -> int:
-        return len(self.gates)
+        return len(self.gates())
 
     def __str__(self) -> str:
-        return "\n".join([g.name for g in self.gates])
+        return "\n".join([f"{gate.name} {' '.join(qudits)}" for qudits, gate in zip(self.qudits(), self.gates())])
 
     @overload
     def act(self, pauli: Pauli) -> Pauli:
@@ -122,9 +198,13 @@ class Circuit:
     def act(self, pauli: PauliSum) -> PauliSum:
         ...
 
+    @overload
     def act(self, pauli: Pauli | PauliString | PauliSum) -> Pauli | PauliString | PauliSum:
-        for (qudit_indices, gate) in zip(, self.quself.gates):
-            pauli = gate.act(pauli, qudit_indices)
+        ...
+
+    def act(self, pauli: P) -> P:
+        for (qudits, gate) in zip(self.qudits(), self.gates()):
+            pauli = gate.act(pauli, qudits)
 
         return pauli
 
@@ -140,46 +220,41 @@ class Circuit:
     def act_iter(self, pauli: PauliSum) -> Generator[PauliSum, None, None]:
         ...
 
-    def act_iter(self, pauli: Pauli | PauliString | PauliSum) -> Generator[Pauli | PauliString | PauliSum, None, None]:
-        for gate in self.gates:
-            pauli_sum = gate.act(pauli, qudit_indices)
+    def act_iter(self, pauli: P) -> Generator[P, None, None]:
+        for (qudits, gate) in zip(self.qudits(), self.gates()):
+            pauli_sum = gate.act(pauli, qudits)
             yield pauli_sum
 
-    def show(self):
-        circuit = QuantumCircuit(len(self.dimensions))
+    def show(self, n_qudits: int):
+        circuit = QuantumCircuit(n_qudits)
         dict = {'X': circuit.x, 'H': circuit.h, 'S': circuit.s, 'SUM': circuit.cx, 'CNOT': circuit.cx,
                 'Hdag': circuit.h}
 
-        for gate in self.gates:
+        for (qudits, gate) in zip(self.qudits(), self.gates()):
             name = gate.name
             if gate.n_qudits() == 2:
-                dict[name](gate.qudit_indices[0], gate.qudit_indices[1])
+                dict[name](qudits[0], qudits[1])
             else:
-                dict[name](gate.qudit_indices[0])
+                dict[name](qudits[0])
 
         print(circuit)
         # return circuit
 
-    def copy(self) -> 'Circuit':
-        return Circuit(self.gates, self.qudit_indices)
+    def copy(self) -> Circuit:
+        return Circuit(self.n_qudits(), self.gates().copy(), self.qudits().copy())
 
-    def embed_circuit(self, circuit: 'Circuit', qudit_indices: list[int] | np.ndarray | None = None):
+    def embed_circuit(self, circuit: Circuit, qudits: list[int] | np.ndarray | None = None):
         """
         Embed a circuit into current circuit at the specified qudit indices.
         """
+        # FIXME: ask what this is supposed to do
 
-        if qudit_indices is not None:
-            if len(qudit_indices) != circuit.n_qudits():
-                raise ValueError("Number of qudit indices does not match number of qudits in circuit to embed")
+        # for (qudits, gate) in zip(self.qudits(), self.gates()):
+        #     new_qudits = [qudits[j] for j in gate.qudits]
+        #     new_gate.qudits = np.ndarray(new_indexes)
+        #     self.add_gate(new_gate)
 
-        for gate in circuit.gates:
-            new_gate = gate.copy()
-            if qudit_indices is not None:
-                new_indexes = [qudit_indices[j] for j in gate.qudit_indices]
-                new_gate.qudit_indices = np.ndarray(new_indexes)
-            self.add_gate(new_gate)
-
-    def _composite_phase_vector(self, F_1: np.ndarray, F_2: np.ndarray, h_2: np.ndarray, lcm: int) -> np.ndarray:
+    def _composite_phase_vector(self, F_1: np.ndarray, F_2: np.ndarray, h_2: np.ndarray) -> np.ndarray:
         """
         Returns the vector to add to h_1 to obtain h'' in PHYSICAL REVIEW A 71, 042315 (2005) - Eq. (8)
 
@@ -196,7 +271,8 @@ class Circuit:
         p2 = np.diag(np.dot(F_1, np.dot((2 * np.triu(U_conjugated) - np.diag(np.diag(U_conjugated))), F_1.T)))
         p3 = np.dot(F_1, np.diag(U_conjugated))
 
-        h_c = (p1 + p2 - p3) % (2 * lcm)
+        # NOTE: we do not take modulo 2*lcm here.
+        h_c = (p1 + p2 - p3)
 
         return h_c
 
@@ -205,38 +281,65 @@ class Circuit:
 
         total_indexes = []
         total_symplectic = np.eye(2 * self.n_qudits(), dtype=np.uint8)
-        lcm = np.lcm.reduce(self.dimensions)
-        for i, gate in enumerate(self.gates):
+        for i, (qudits, gate) in enumerate(zip(self.qudits(), self.gates())):
             symplectic = gate.symplectic
-            indexes = gate.qudit_indices
             phase_vector = gate.phase_vector
 
-            F, h = embed_symplectic(symplectic, phase_vector, indexes, self.n_qudits())  #
+            F, h = embed_symplectic(symplectic, phase_vector, qudits, self.n_qudits())
             if i == 0:
                 total_phase_vector = h
             else:
-                total_phase_vector = np.mod(total_phase_vector + self._composite_phase_vector(total_symplectic, F, h,
-                                                                                              lcm),
-                                            2 * lcm)
-            print(phase_vector, total_phase_vector)
+                total_phase_vector = total_phase_vector + self._composite_phase_vector(total_symplectic, F, h)
 
-            total_symplectic = np.mod(total_symplectic @ F.T, lcm)
-
-            total_indexes.extend(indexes)
+            # NOTE: we do not take modulo 2*lcm here.
+            total_symplectic = total_symplectic @ F.T
+            total_indexes.extend(qudits)
 
         total_indexes = list(set(np.sort(total_indexes)))
         total_symplectic = total_symplectic.T
         return Gate('CompositeGate', total_symplectic, total_phase_vector)
 
-    def unitary(self) -> sp.csr_matrix:
-        known_unitaries = (H, PHASE, SUM, SWAP, CNOT)
-        if not np.all([isinstance(gate, known_unitaries) for gate in self.gates]):
-            print(self.gates)
+    def unitary(self, dimensions: int | list[int] | np.ndarray | None = None) -> sp.csr_matrix:
+        if dimensions is None:
+            dimensions = np.ones(self.n_qudits()) * DEFAULT_QUDIT_DIMENSION
+        else:  # Catches int but also list and arrays of length 1
+            dimensions = np.asarray(dimensions, dtype=int)
+            if dimensions.ndim == 0:
+                dimensions = np.full(self.n_qudits(), dimensions.item(), dtype=int)
+
+        known_unitaries = (H, PHASE, SUM, SWAP)
+        if not np.all([isinstance(gate, known_unitaries) for gate in self.gates()]):
             raise NotImplementedError("Unitary not implemented for all gates in the circuit.")
 
-        q = self.dimensions
-        m = sp.csr_matrix(([1] * (np.prod(q)), (range(np.prod(q)), range(np.prod(q)))))
-        for g in self.gates:
-            m = g.unitary(dims=self.dimensions) @ m
+        m = sp.csr_matrix(([1] * (np.prod(dimensions)), (range(np.prod(dimensions)), range(np.prod(dimensions)))))
+        for g in self.gates():
+            m = g.unitary(dimensions) @ m
 
         return m
+
+    def _sanity_check(self):
+        """
+        Validates the consistency of the Circuit internal representation.
+
+        Raises
+        ------
+        ValueError
+            If any qudit index is large equal than the number of qudits.
+        """
+
+        if len(self.gates()) != len(self.qudits()):
+            raise ValueError(
+                f"There should be the same number of gates ({len(self.gates())}) and qudits ({len(self.qudits())}).")
+
+        q = self.qudits()
+
+        # Check that each element in qudit is a non-empty list
+        lengths = np.fromiter((len(lst) for lst in q), dtype=int)
+        empty_mask = lengths == 0
+        if np.any(empty_mask):
+            empty_indices = np.where(empty_mask)[0]
+            raise ValueError(f"Gates and indices {empty_indices} must be applied to at least one qudit.")
+
+        all_qudits = np.fromiter((x for lst in q for x in lst), dtype=int, count=sum(lengths))
+        if not np.all((all_qudits >= 0) & (all_qudits < self.n_qudits())):
+            raise ValueError(f"Qudits should be between 0 and {self.n_qudits()} (number of qudits in the circuit).")
