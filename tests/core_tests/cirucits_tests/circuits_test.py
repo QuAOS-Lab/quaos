@@ -1,4 +1,4 @@
-from sympleq.core.circuits.gates import GATES
+from sympleq.core.circuits import GATES
 from sympleq.core.circuits.known_circuits import to_x, to_ix
 from sympleq.core.circuits import Circuit
 from sympleq.core.paulis import PauliSum, PauliString
@@ -62,7 +62,8 @@ class TestCircuits():
             composed_gate = circuit.composite_gate()
             print(composed_gate.symplectic)
             # FIXME: how to get qudits we re acting on?
-            output_composite = composed_gate.act(pauli_sum)
+            qudits = tuple(q for q in range(pauli_sum.n_qudits()))
+            output_composite = composed_gate.act(pauli_sum, qudits)
             output_sequential = circuit.act(pauli_sum)
 
             # show that the composed gate returns the same thing as the circuit when acting on the pauli sum
@@ -76,7 +77,7 @@ class TestCircuits():
         # simple case of two Hadamards on different qubits. Known symplectic in this case.
 
         n_qudits = 1
-        dimensions = 2
+        dimensions = 2  # FIXME: this fails only for dimensions = 2
         n_paulis = 2
         circuit = Circuit.from_data([(GATES.H, 0), (GATES.S, 0)])
 
@@ -84,16 +85,17 @@ class TestCircuits():
         pauli_sum = PauliSum.from_random(n_paulis, [dimensions] * n_qudits)
 
         # compose the circuit and pauli sum
+        # NOTE: the phase of the composite gate has not been reduced modulo 2*lcm yet
         composed_gate = circuit.composite_gate()
-        output_composite = composed_gate.act(pauli_sum)
+        qudits = tuple(q for q in range(pauli_sum.n_qudits()))
+
+        output_composite = composed_gate.act(pauli_sum, qudits)
         output_sequential = circuit.act(pauli_sum)
 
-        # print(composed_gate.symplectic)
+        # print(output_composite)
+        # print(output_sequential)
 
-        # print((Hadamard(0, dimension).symplectic.T @ PHASE(0, dimension).symplectic.T).T)
-
-        print(output_composite)
-        print(output_sequential)
+        print(qudits)
 
         # show that the composed gate returns the same thing as the circuit when acting on the pauli sum
         assert output_composite == output_sequential
@@ -112,12 +114,13 @@ class TestCircuits():
         # For a single-qudit circuit with one Hadamard, the circuit unitary
         # should equal the gate's local unitary.
         for d in [2, 3, 5, 11]:
+            dimensions = np.asarray([d], dtype=int)  # single-qudit circuit
             gate = GATES.H
             qudit = np.random.randint(d, dtype=int)
             circuit = Circuit.from_data((gate, qudit))
-            U_circ = circuit.unitary()
+            U_circ = circuit.unitary(dimensions)
             assert issparse(U_circ)
-            U_gate = gate.unitary(qudit, d)
+            U_gate = gate.unitary(qudit, dimensions)
             assert U_circ.shape == U_gate.shape
             assert np.allclose(U_circ.toarray(), U_gate.toarray())
 
@@ -129,23 +132,24 @@ class TestCircuits():
         for _ in range(N):
             P = PauliSum.from_random(n_paulis, dimensions, rand_weights=False)
             C = Circuit.from_random(n_qudits, depth=np.random.randint(1, 6))
-            U = C.unitary()
+            print("RANDOM C", C)
+            U = C.unitary(dimensions=P.dimensions())
 
             ps_m = P.to_hilbert_space()
             ps_res = C.act(P)
             ps_res_m = ps_res.to_hilbert_space()
             phase_symplectic = ps_res.phases()[0]
 
-            # FIXME: maybe create a new PauliSum, or add API to assign phases
             ps_res.set_phases([0])
             ps_res_m = ps_res.to_hilbert_space().toarray()
             ps_m_res = (U @ ps_m @ U.conj().T).toarray()
             mask = (ps_res_m != 0)
             factors = np.unique(np.around(ps_m_res[mask] / ps_res_m[mask], 10))
+            print("FACTORS", factors)
             assert len(factors) == 1
             factor = factors[0]
-            d = P.lcm()
-            phase_unitary = int(np.around((d * np.angle(factor) / (np.pi)) % (2 * d), 1))
+            lcm = P.lcm()
+            phase_unitary = int(np.around((lcm * np.angle(factor) / (np.pi)) % (2 * lcm), 1))
             assert phase_symplectic == phase_unitary
 
     def test_phase_mixed_species(self):
@@ -238,7 +242,7 @@ class TestCircuits():
         # Verify SWAP on qudits (0,1) within a 2-qudit system with equal dimensions.
         dims = [3, 3]
         c = Circuit.from_data((GATES.swap, 0, 1))
-        U = c.unitary()
+        U = c.unitary(dims)
 
         # Start in |i,j> with i=1, j=2
         i, j = 1, 2
@@ -258,7 +262,7 @@ class TestCircuits():
         d = 5
         dims = [d, d, d]
         c = Circuit.from_data((GATES.sum, 1, 2))
-        U = c.unitary()
+        U = c.unitary(dims)
 
         # Start in |i,j,k> = |3,1,4>
         i, j, k = 3, 1, 4
@@ -278,7 +282,7 @@ class TestCircuits():
         d0, d1, d2 = 3, 5, 2
         dims = [d0, d1, d2]
         c = Circuit.from_data((GATES.S, 1))
-        U = c.unitary()
+        U = c.unitary(dims)
 
         # Basis |i,j,k> = |2,3,1>
         i, j, k = 2, 3, 1

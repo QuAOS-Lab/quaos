@@ -181,13 +181,13 @@ def random_pauli_symmetry_hamiltonian(n_qudits: int, n_paulis: int, n_redundant=
 
     P = PauliSum.from_string(pauli_strings, dimensions=[2] * n_qudits, weights=weights, phases=phases)
 
-    g = Gate.from_random(n_qudits, 2)
-    P = g.act(P)
+    g = Gate.from_random(n_qudits)
+    P = g.act(P, 2)
 
     return P
 
 
-def random_gate_symmetric_hamiltonian(G: 'Gate',
+def random_gate_symmetric_hamiltonian(G: Gate,
                                       n_qudits: int | None = None,
                                       n_paulis: int | None = None,
                                       weight_mode: str = 'uniform',
@@ -218,12 +218,14 @@ def random_gate_symmetric_hamiltonian(G: 'Gate',
     with zero weight are removed.
     """
     if n_qudits is None:
-        n_qudits = len(G.qudit_indices) + 1
+        n_qudits = G.n_qudits()
     if n_paulis is None:
         n_paulis = 2 * n_qudits
     P = random_pauli_symmetry_hamiltonian(n_qudits, n_paulis, 0, 0, weight_mode=weight_mode)
+
+    qudits = tuple(np.random.randint(0, P.n_qudits(), size=G.n_qudits()).tolist())
     G_inv = G.inverse()
-    P_prime = G_inv.act(P)
+    P_prime = G_inv.act(P, qudits)
     P_sym = P + P_prime
     P_sym.phase_to_weight()
     P_sym.combine_equivalent_paulis()
@@ -231,6 +233,6 @@ def random_gate_symmetric_hamiltonian(G: 'Gate',
     P_sym.remove_zero_weight_paulis()
     if scrambled is True:
         g = Gate.from_random(n_qudits, 2)
-        P_sym = g.act(P_sym)
+        P_sym = g.act(P_sym, qudits)
 
     return P_sym

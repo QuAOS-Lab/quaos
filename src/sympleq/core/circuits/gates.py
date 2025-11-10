@@ -1,9 +1,9 @@
 from abc import ABC
 import numpy as np
 import scipy.sparse as sp
-from typing import TypeVar, overload
+from typing import TypeVar
 
-from sympleq.core.paulis import Pauli, PauliString, PauliSum, PauliObject
+from sympleq.core.paulis import PauliSum, PauliObject
 from sympleq.core.circuits.target import find_map_to_target_pauli_sum
 from sympleq.core.circuits.utils import transvection_matrix, symplectic_form, tensor, I_mat, H_mat, S_mat, CX_func
 
@@ -19,18 +19,18 @@ P = TypeVar("P", bound="PauliObject")
 
 class Gate(ABC):
     def __init__(self, name: str, symplectic: np.ndarray, phase_vector: np.ndarray):
-        self.name = name
+        self._name = name
         n_qudits = symplectic.shape[0] // 2
         self._n_qudits = n_qudits
-        self.symplectic = symplectic
+        self._symplectic = symplectic
 
-        self.phase_vector = phase_vector
+        self._phase_vector = phase_vector
 
         # U = [[0_n, 0_n],
         #      [I_n, 0_n]]
         U = np.zeros((2 * self._n_qudits, 2 * self._n_qudits), dtype=int)
         U[self._n_qudits:, :self._n_qudits] = np.eye(self._n_qudits, dtype=int)
-        self.U_symplectic_conjugated = self.symplectic.T @ U @ self.symplectic
+        self.U_symplectic_conjugated = self._symplectic.T @ U @ self._symplectic
 
         self.V_diag = np.diag(self.U_symplectic_conjugated)
 
@@ -40,9 +40,6 @@ class Gate(ABC):
         # This is the part associated with the quadratic form.
         # We remove diagonal part to match definition in Eq.[7] in PHYSICAL REVIEW A 71, 042315 (2005).
         self.p_part = 2 * np.triu(self.U_symplectic_conjugated) - np.diag(self.V_diag)
-
-    def n_qudits(self) -> int:
-        return self._n_qudits
 
     @classmethod
     def solve_from_target(cls, name: str, input_pauli_sum: PauliSum, target_pauli_sum: PauliSum) -> 'Gate':
@@ -69,8 +66,20 @@ class Gate(ABC):
 
         return cls(f"R{n_transvection}", symplectic, np.zeros(len(symplectic)))
 
+    def name(self) -> str:
+        return self._name
+
+    def n_qudits(self) -> int:
+        return self._n_qudits
+
+    def phase_vector(self) -> np.ndarray:
+        return self._phase_vector
+
+    def symplectic(self) -> np.ndarray:
+        return self._symplectic
+
     def __repr__(self):
-        return f"Gate(name={self.name}, n_qudits={self._n_qudits}, phase_vector={self.phase_vector})"
+        return f"Gate(name={self._name}, n_qudits={self._n_qudits}, phase_vector={self._phase_vector})"
 
     # @overload
     # def act(self, pauli: Pauli, qudits: int | list[int] | np.ndarray | tuple[int, ...]) -> Pauli:
@@ -84,26 +93,27 @@ class Gate(ABC):
     # def act(self, pauli: PauliSum, qudits: int | list[int] | np.ndarray | tuple[int, ...]) -> PauliSum:
     #     ...
 
-    def act(self, pauli: P, *qudits: int) -> P:
+    def act(self, pauli: P, qudits: int | tuple[int, ...]) -> P:
         """
         Returns the updated tableau and phases acquired by the PauliSum when acted upon by this gate.
 
         See Eq.[7] in PHYSICAL REVIEW A 71, 042315 (2005)
 
         """
+        if isinstance(qudits, int):
+            qudits = (qudits, )
 
         affected_qudits = np.asarray(qudits, dtype=int)
         T = pauli.tableau()
 
         # Precompute tableau mask. This will be applied to the PauliSum tableau to get
         # the subset of affected columns.
-        tableau_mask = np.concatenate([affected_qudits, affected_qudits + pauli.n_qudits()])
-
+        tableau_mask = np.concatenate([affected_qudits, affected_qudits + pauli.n_qudits()], dtype=int)
         T_affected = T[:, tableau_mask]
 
         pauli_dimensions = pauli.dimensions()[affected_qudits]
         relevant_dimensions = np.tile(pauli_dimensions, 2)
-        updated_tableau = np.mod(T_affected @ self.symplectic.T, relevant_dimensions)
+        updated_tableau = np.mod(T_affected @ self._symplectic.T, relevant_dimensions)
         new_tableau = T.copy()
         new_tableau[:, tableau_mask] = updated_tableau
 
@@ -132,18 +142,18 @@ class Gate(ABC):
             transvection_vector = np.asarray(transvection_vector)
 
         T = transvection_matrix(transvection_vector, multiplier=transvection_weight)
-        if self.name[0] != "T":
-            self.name = "T-" + self.name
+        if self.name()[0] != "T":
+            self._name = "T-" + self.name()
 
         # FIXME: generate correct phase_vector
-        phase_vector = np.zeros(len(self.symplectic))
-        return Gate(self.name, self.symplectic @ T, phase_vector)
+        phase_vector = np.zeros(len(self._symplectic))
+        return Gate(self.name(), self.symplectic @ T, phase_vector)
 
     def inverse(self) -> 'Gate':
         # TODO: Test for mixed dimensions - not clear that the symplectic form here is correct.
         print("Warning: inverse phase vector not working - PHASES MAY BE INCORRECT.")
 
-        C = self.symplectic.T
+        C = self._symplectic.T
 
         U = np.zeros((2 * self._n_qudits, 2 * self._n_qudits), dtype=int)
         U[self._n_qudits:, :self._n_qudits] = np.eye(self._n_qudits, dtype=int)
@@ -157,9 +167,9 @@ class Gate(ABC):
         p3 = C.T @ np.diag(U_c)
 
         phase_vector = (p1 + p2 + p3)
-        return Gate(self.name + "-inv", C_inv.T, phase_vector)
+        return Gate(self.name() + "-inv", C_inv.T, phase_vector)
 
-    def unitary(self, qudits: list[int], dimensions: list[int] | np.ndarray) -> sp.csr_matrix:
+    def unitary(self, qudits: int | tuple[int, ...] | list[int], dimensions: np.ndarray) -> sp.csr_matrix:
         raise NotImplementedError("Unitary not implemented for generic Gate. Use specific gate subclasses.")
 
 
@@ -174,11 +184,13 @@ class SUM(Gate):
 
         super().__init__("SUM", symplectic, np.zeros(len(symplectic)))
 
-    def unitary(self, qudits: list[int], dimensions: list[int] | np.ndarray) -> sp.csr_matrix:
+    def unitary(self, qudits: int | tuple[int, ...] | list[int], dimensions: np.ndarray) -> sp.csr_matrix:
         D = np.prod(dimensions)
-        aa = qudits
-        a0 = aa[0]
-        a1 = aa[1]
+        if isinstance(qudits, int):
+            qudits = [qudits]
+
+        a0 = qudits[0]
+        a1 = qudits[1]
         aa2 = np.array([1 for i in range(D)])
         aa3 = np.array([CX_func(i, a0, a1, dimensions) for i in range(D)])
         aa4 = np.array([i for i in range(D)])
@@ -196,37 +208,37 @@ class SWAP(Gate):
 
         super().__init__("SWAP", symplectic, np.zeros(len(symplectic)))
 
-    def unitary(self, qudits: list[int], dimensions: list[int] | np.ndarray) -> sp.csr_matrix:
+    def unitary(self, qudits: int | tuple[int, ...] | list[int], dimensions: np.ndarray) -> sp.csr_matrix:
         # SWAP on two qudits of equal dimension: |i, j> -> |j, i>.
         # Basis ordering |i>⊗|j> with linear index idx(i, j) = i * d + j.
-        aa = qudits
+        # normalize inputs
+        if isinstance(qudits, int):
+            qudits = (qudits,)
+
+        if len(qudits) != 2:
+            raise ValueError("SWAP gate requires exactly two qudits.")
         q = len(dimensions)
-        D = np.prod(dimensions)
-        a0 = q - 1 - aa[0]
-        a1 = q - 1 - aa[1]
-        aa2 = np.array([1 for i in range(D)])
-        aa3 = np.array([i for i in range(D)])
-        aa4 = np.array([SWAP._swap_linear_index(i, a0, a1, dimensions) for i in range(D)])
-        return sp.csr_matrix((aa2, (aa3, aa4)))
+        D = int(np.prod(dimensions))
 
-    @staticmethod
-    def _swap_linear_index(i: int, a0, a1, dims) -> int:
-        # Convert linear index i to multi-index in row-major order
-        multi_idx = []
-        rem = i
-        for d in reversed(dims):
-            multi_idx.append(rem % d)
-            rem //= d
-        multi_idx = multi_idx[::-1]
+        if any(not (0 <= qi < q) for qi in qudits):
+            raise IndexError("qudit index out of range")
 
-        # Swap the two qudits
-        multi_idx[a0], multi_idx[a1] = multi_idx[a1], multi_idx[a0]
+        # Create array of linear indices shaped by the tensor-product ordering
+        # shape = (d0, d1, ..., d_{q-1}), row-major ordering
+        indices = np.arange(D).reshape(*dimensions)
 
-        # Convert back to linear index (row-major)
-        idx = 0
-        for j, dim in enumerate(dims):
-            idx = idx * dim + multi_idx[j]
-        return idx
+        # swap the axes corresponding to the two qudits
+        a0, a1 = qudits
+        swapped = np.swapaxes(indices, a0, a1)
+
+        # flattened column indices after swap
+        aa3 = np.arange(D, dtype=int)        # rows: original linear indices
+        aa4 = swapped.ravel()                # columns: where basis state i moves to
+        aa2 = np.ones(D, dtype=int)          # ones for permutation matrix
+
+        m = sp.csr_matrix((aa2, (aa3, aa4)), shape=(D, D))
+        assert m.shape == (D, D)
+        return m
 
 
 class Hadamard(Gate):
@@ -244,14 +256,12 @@ class Hadamard(Gate):
 
         name = "H" if not inverse else "H_inv"
 
-        # FIXME: get correct phase_vector
         super().__init__(name, symplectic, np.zeros(len(symplectic)))
 
-    def unitary(self, qudits: int | list[int], dimensions: int | list[int] | np.ndarray) -> sp.csr_matrix:
+    def unitary(self, qudits: int | tuple[int, ...] | list[int], dimensions: np.ndarray) -> sp.csr_matrix:
         if isinstance(qudits, int):
             qudits = [qudits]
-        if isinstance(dimensions, int):
-            dimensions = [dimensions]
+
         return tensor(
             [H_mat(dimensions[i]) if i in qudits else I_mat(dimensions[i]) for i in range(len(dimensions))]
         )
@@ -266,14 +276,16 @@ class PHASE(Gate):
 
         super().__init__("S", symplectic, np.zeros(len(symplectic)))
 
-    @classmethod
-    def phase_vector(cls, dimensions: np.ndarray) -> np.ndarray:
-        if dimensions == 2:
-            return np.array([1, 0], dtype=int)
+    # @classmethod
+    # def phase_vector(cls, dimensions: np.ndarray) -> np.ndarray:
+    #     if dimensions == 2:
+    #         return np.array([1, 0], dtype=int)
 
-        return np.array([0, 0], dtype=int)
+    #     return np.array([0, 0], dtype=int)
 
-    def unitary(self, qudits: list[int], dimensions: list[int] | np.ndarray) -> sp.csr_matrix:
+    def unitary(self, qudits: int | tuple[int, ...] | list[int], dimensions: np.ndarray) -> sp.csr_matrix:
+        if isinstance(qudits, int):
+            qudits = [qudits]
         unitary = tensor([S_mat(dimensions[i]) if i in qudits else I_mat(dimensions[i])
                          for i in range(len(dimensions))])
         return unitary

@@ -91,7 +91,8 @@ def transvection(h, x, p=2):
     return (x + symplectic_product_arrays(x, h.T, p) * h) % p
 
 
-def embed_symplectic(symplectic_local, phase_vector_local, qudit_indices, n_qudits):
+def embed_symplectic(symplectic_local: np.ndarray, phase_vector_local: np.ndarray,
+                     qudit_indices: tuple[int, ...], n_qudits: int) -> tuple[np.ndarray, np.ndarray]:
     """
     Embed a local Clifford (F_local, h_local) into a larger 2n-dimensional space,
     correctly handling arbitrary qudit index ordering.
@@ -106,12 +107,13 @@ def embed_symplectic(symplectic_local, phase_vector_local, qudit_indices, n_qudi
     F_full = np.eye(2 * n_qudits, dtype=int)
     h_full = np.zeros(2 * n_qudits, dtype=int)
 
-    qudit_indices = np.array(qudit_indices, dtype=int)
+    qudits_array = np.asarray(qudit_indices, dtype=int)
 
     # Build row/column index mapping for the full space
     # First X rows/columns
-    row_indices = np.concatenate([qudit_indices, n_qudits + qudit_indices])
-    col_indices = np.concatenate([qudit_indices, n_qudits + qudit_indices])
+    # FIXME: why do we do this twice?
+    row_indices = np.concatenate([qudit_indices, n_qudits + qudits_array])
+    col_indices = np.concatenate([qudit_indices, n_qudits + qudits_array])
 
     # Place the full local symplectic block into the full system
     F_full[np.ix_(row_indices, col_indices)] = symplectic_local

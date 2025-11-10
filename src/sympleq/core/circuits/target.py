@@ -6,37 +6,25 @@ from itertools import product
 from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 
 
-def find_map_to_target_pauli_sum(input_pauli: PauliSum, target_pauli: PauliSum) -> tuple[np.ndarray, np.ndarray,
-                                                                                         list[int], int]:
+# FIXME: improve function name and docstring
+def find_map_to_target_pauli_sum(input_pauli: PauliSum, target_pauli: PauliSum) -> tuple[np.ndarray, np.ndarray]:
     """
     TODO: For efficiency improvement act only on target qudits
 
     Find a gate that maps Pauli P to target Pauli.
 
     Args:
-        P (Pauli): The Pauli to be mapped.
-        target (Pauli): The target Pauli.
-        dimension (int): The dimension of the qudit.
+        input_pauli: PauliSum
+            The Pauli to be mapped.
+        target_pauli: : PauliSum
+            The target Pauli.
 
     Returns:
         images (list[np.ndarray]): The images of the gate.
         h (np.ndarray): The phase vector of the gate.
-        qudit_indices (list[int]): The indices of the qudits acted upon by the gate.
-        gate_dimension (int): The dimension of the gate.
         """
-    if np.all(input_pauli.dimensions() != target_pauli.dimensions()):
-        raise ValueError("PauliSum and gate must have the same dimension.")
-
-    n_qudits = input_pauli.n_qudits()
-    if n_qudits != target_pauli.n_qudits():
-        raise ValueError("PauliSum and target must have the same number of qudits.")
-
-    # get list of qudits where input and target differ
-    qudit_indices = list(range(n_qudits))
-    gate_dimension = input_pauli.dimensions()[qudit_indices[0]]
-
-    if not np.all(input_pauli.dimensions()[qudit_indices] == gate_dimension):
-        raise ValueError("PauliSum must have the same dimension for all qudits acted upon by the gate.")
+    if np.array_equal(input_pauli.dimensions(), target_pauli.dimensions()):
+        raise ValueError("PauliSum and gate must have the same dimensions.")
 
     if np.all(input_pauli.symplectic_product_matrix() != target_pauli.symplectic_product_matrix()):
         raise ValueError("Input and target PauliSum must be symplectically equivalent.")
@@ -45,16 +33,10 @@ def find_map_to_target_pauli_sum(input_pauli: PauliSum, target_pauli: PauliSum) 
     target_symplectic = target_pauli.tableau()  # [:, qudit_indices]
 
     F = map_pauli_sum_to_target_tableau(input_symplectic, target_symplectic)
+    # FIXME: should take input_pauli phases into consideration
+    h = get_phase_vector(F, input_pauli.lcm())
 
-    # print('IN FUNCTION')
-    # # print(input_symplectic)
-    # # print()
-    # print(target_symplectic - input_symplectic @ F % 2)
-    # print('----------')
-
-    h = get_phase_vector(F, gate_dimension)
-
-    return F, h, qudit_indices, gate_dimension
+    return F, h
 
 
 def find_allowed_target(pauli_sum, target_pauli_list):
@@ -116,7 +98,7 @@ def find_allowed_target(pauli_sum, target_pauli_list):
     return possible_targets
 
 
-def get_phase_vector(gate_symplectic: np.ndarray, dimension: int) -> np.ndarray:
+def get_phase_vector(gate_symplectic: np.ndarray, lcm: int) -> np.ndarray:
     """
     Calculate the phase vector for a gate given its symplectic matrix.
 
@@ -134,8 +116,7 @@ def get_phase_vector(gate_symplectic: np.ndarray, dimension: int) -> np.ndarray:
 
     U = np.zeros((2 * n_qudits, 2 * n_qudits), dtype=int)
     U[n_qudits:, :n_qudits] = np.eye(n_qudits, dtype=int)
-    lhs = (dimension - 1) * np.diag(gate_symplectic.T @ U @ gate_symplectic) % 2
-    return lhs
+    return (lcm - 1) * np.diag(gate_symplectic.T @ U @ gate_symplectic) % 2
 
 
 def str_to_int(string):
