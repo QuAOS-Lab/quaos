@@ -23,10 +23,12 @@ def find_map_to_target_pauli_sum(input_pauli: PauliSum, target_pauli: PauliSum) 
         images (list[np.ndarray]): The images of the gate.
         h (np.ndarray): The phase vector of the gate.
         """
-    if np.array_equal(input_pauli.dimensions(), target_pauli.dimensions()):
-        raise ValueError("PauliSum and gate must have the same dimensions.")
+    if not np.array_equal(input_pauli.dimensions(), target_pauli.dimensions()):
+        raise ValueError(
+            f"Input and output PauliSums must have the same dimensions\
+            (got {input_pauli.dimensions()} and {target_pauli.dimensions()}).")
 
-    if np.all(input_pauli.symplectic_product_matrix() != target_pauli.symplectic_product_matrix()):
+    if not np.array_equal(input_pauli.symplectic_product_matrix(), target_pauli.symplectic_product_matrix()):
         raise ValueError("Input and target PauliSum must be symplectically equivalent.")
 
     input_symplectic = input_pauli.tableau()  # [:, qudit_indices]

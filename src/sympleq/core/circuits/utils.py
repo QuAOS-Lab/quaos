@@ -73,7 +73,7 @@ def transvection_matrix(h: np.ndarray, multiplier: int = 1) -> np.ndarray:
     NOTE: we do not take any modulo operation here.
 
     Args:
-        h: Binary vector of length 2n
+        h: Vector of length 2n
         p: Modulus (default 2)
 
     Returns:
@@ -91,8 +91,7 @@ def transvection(h, x, p=2):
     return (x + symplectic_product_arrays(x, h.T, p) * h) % p
 
 
-def embed_symplectic(symplectic_local: np.ndarray, phase_vector_local: np.ndarray,
-                     qudit_indices: tuple[int, ...], n_qudits: int) -> tuple[np.ndarray, np.ndarray]:
+def embed_symplectic(symplectic_local: np.ndarray, qudit_indices: tuple[int, ...], n_qudits: int) -> np.ndarray:
     """
     Embed a local Clifford (F_local, h_local) into a larger 2n-dimensional space,
     correctly handling arbitrary qudit index ordering.
@@ -100,12 +99,9 @@ def embed_symplectic(symplectic_local: np.ndarray, phase_vector_local: np.ndarra
     m = len(qudit_indices)
     if symplectic_local.shape != (2 * m, 2 * m):
         raise ValueError("symplectic_local must be 2m x 2m")
-    if len(phase_vector_local) != 2 * m:
-        raise ValueError("phase_vector_local must have length 2m")
 
     # Full 2n x 2n identity
     F_full = np.eye(2 * n_qudits, dtype=int)
-    h_full = np.zeros(2 * n_qudits, dtype=int)
 
     qudits_array = np.asarray(qudit_indices, dtype=int)
 
@@ -117,11 +113,27 @@ def embed_symplectic(symplectic_local: np.ndarray, phase_vector_local: np.ndarra
 
     # Place the full local symplectic block into the full system
     F_full[np.ix_(row_indices, col_indices)] = symplectic_local
+    return F_full
+
+
+def embed_phase_vector(phase_vector_local: np.ndarray,
+                       qudit_indices: tuple[int, ...], n_qudits: int) -> np.ndarray:
+    """
+    Embed a local Clifford (F_local, h_local) into a larger 2n-dimensional space,
+    correctly handling arbitrary qudit index ordering.
+    """
+    m = len(qudit_indices)
+    if len(phase_vector_local) != 2 * m:
+        raise ValueError("phase_vector_local must have length 2m")
+
+    h_full = np.zeros(2 * n_qudits, dtype=int)
+    qudits_array = np.asarray(qudit_indices, dtype=int)
+    row_indices = np.concatenate([qudit_indices, n_qudits + qudits_array])
 
     # Embed phase vector
     h_full[row_indices] = phase_vector_local
 
-    return F_full, h_full
+    return h_full
 
 
 def _multi_index_to_linear(index: list[int] | np.ndarray, dims: list[int] | np.ndarray) -> int:

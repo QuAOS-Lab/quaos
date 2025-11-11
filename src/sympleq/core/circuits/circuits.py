@@ -4,7 +4,7 @@ import numpy as np
 from qiskit import QuantumCircuit
 
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
-from .utils import embed_symplectic
+from .utils import embed_symplectic, embed_phase_vector
 import scipy.sparse as sp
 import random
 
@@ -213,8 +213,8 @@ class Circuit:
 
     def act_iter(self, pauli: P) -> Generator[P, None, None]:
         for (qudits, gate) in zip(self.qudits(), self.gates()):
-            pauli_sum = gate.act(pauli, qudits)
-            yield pauli_sum
+            pauli = gate.act(pauli, qudits)
+            yield pauli
 
     def show(self, n_qudits: int):
         circuit = QuantumCircuit(n_qudits)
@@ -267,28 +267,39 @@ class Circuit:
 
         return h_c
 
-    def composite_gate(self) -> Gate:
+    def composite_gate(self, dimensions: np.ndarray) -> Gate:
         """Composes the list of symplectics acting on all qudits to a single symplectic"""
 
-        total_indexes = []
         total_symplectic = np.eye(2 * self.n_qudits(), dtype=np.uint8)
+        affected_qudits = sorted(set(q for qudits in self.qudits() for q in qudits))
+        mask = np.array(affected_qudits + [q + self.n_qudits() for q in affected_qudits], dtype=int)
+
+        all_phase_dimensions = set([k for gate in self.gates() for k in gate._phase_vectors.keys()])
+        exceptional_phase_vectors = {}
         for i, (qudits, gate) in enumerate(zip(self.qudits(), self.gates())):
             symplectic = gate.symplectic()
-            phase_vector = gate.phase_vector()
+            F = embed_symplectic(symplectic, qudits, self.n_qudits())
 
-            F, h = embed_symplectic(symplectic, phase_vector, qudits, self.n_qudits())
-            if i == 0:
-                total_phase_vector = h
-            else:
-                total_phase_vector = total_phase_vector + self._composite_phase_vector(total_symplectic, F, h)
+            for d in all_phase_dimensions:
+                phase_vector_local = gate.phase_vector(d)
+                h_d = embed_phase_vector(phase_vector_local, qudits, self.n_qudits())
+                if i == 0:
+                    total_phase_vector_d = h_d
+                else:
+                    total_phase_vector_d = total_phase_vector_d + self._composite_phase_vector(total_symplectic, F, h_d)
+                exceptional_phase_vectors[d] = total_phase_vector_d[mask]
 
             # NOTE: we do not take modulo 2*lcm here.
             total_symplectic = total_symplectic @ F.T
-            total_indexes += [qudits]
 
-        # total_indexes = tuple(set(np.sort(total_indexes)))
         total_symplectic = total_symplectic.T
-        return Gate('CompositeGate', total_symplectic, total_phase_vector)
+        total_symplectic = total_symplectic[np.ix_(mask, mask)]
+        gate = Gate('CompositeGate', total_symplectic, exceptional_phase_vectors=exceptional_phase_vectors)
+
+        return gate
+
+    def affected_qudits(self) -> tuple[int, ...]:
+        return tuple(sorted(set([q for qudits in self.qudits() for q in qudits])))
 
     def unitary(self, dimensions: int | list[int] | np.ndarray | None = None) -> sp.csr_matrix:
         if dimensions is None:

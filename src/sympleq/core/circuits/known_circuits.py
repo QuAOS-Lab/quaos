@@ -133,7 +133,7 @@ def _apply_h_and_cx(
     else:
         C.add_gate(GATES.CX, target_qudit, qudit)
 
-    pauli_sum = Circuit.act(pauli_sum)
+    pauli_sum = C.act(pauli_sum)
     return C, pauli_sum
 
 
@@ -158,7 +158,7 @@ def _handle_x_id_or_x_x(C: Circuit, pauli_sum: PauliSum,
         raise Exception("Both x and z exp are zero.")
 
     C.add_gate(GATES.CX, target_qudit, z_qubit)
-    pauli_sum = GATES.CX.act(pauli_sum, target_qudit, z_qubit)
+    pauli_sum = GATES.CX.act(pauli_sum, (target_qudit, z_qubit))
     return C, pauli_sum, pauli_index_x
 
 
@@ -174,7 +174,7 @@ def _handle_z_id_or_z_z(C, pauli_sum, pauli_index_z, target_qudit):
         raise Exception("Both x and z exp are zero.")
 
     C.add_gate(GATES.CX, x_qubit, target_qudit)
-    pauli_sum = GATES.CX.act(pauli_sum, x_qubit, target_qudit)
+    pauli_sum = GATES.CX.act(pauli_sum, (x_qubit, target_qudit))
     px = pauli_index_z
     return C, pauli_sum, px
 
@@ -183,14 +183,15 @@ def _handle_id_z(C, pauli_sum, pauli_index_x, target_qudit):
     px = None
     x_qubit = _find_first_x_exp(pauli_sum, pauli_index_x, target_qudit)
     z_qubit = _find_first_z_exp(pauli_sum, pauli_index_x, target_qudit)
-    if x_qubit is not None:
-        g = CX(x_qubit, target_qudit, 2)
-    elif z_qubit is not None:
+    if x_qubit is None and z_qubit is not None:
         C, pauli_sum = _apply_h_and_cx(C, pauli_sum, z_qubit, target_qudit, reverse=True)
         x_qubit = _find_first_x_exp(pauli_sum, pauli_index_x, target_qudit)
-        g = CX(x_qubit, target_qudit, 2)
-    C.add_gate(g)
-    pauli_sum = g.act(pauli_sum)
+
+    if x_qubit is None:
+        raise Exception("Both x and z exp are zero.")
+
+    C.add_gate(GATES.CX, x_qubit, target_qudit)
+    pauli_sum = GATES.CX.act(pauli_sum, (x_qubit, target_qudit))
     px = pauli_index_x
     return C, pauli_sum, px
 
@@ -199,14 +200,15 @@ def _handle_id_x(C, pauli_sum, pauli_index_x, pauli_index_z, target_qudit):
     px = None
     z_qubit = _find_first_z_exp(pauli_sum, pauli_index_x, target_qudit)
     x_qubit = _find_first_x_exp(pauli_sum, pauli_index_x, target_qudit)
-    if z_qubit is not None:
-        g = CX(target_qudit, z_qubit, 2)
-    elif x_qubit is not None:
+    if z_qubit is None and x_qubit is not None:
         C, pauli_sum = _apply_h_and_cx(C, pauli_sum, x_qubit, target_qudit)
         z_qubit = _find_first_z_exp(pauli_sum, pauli_index_x, target_qudit)
-        g = CX(target_qudit, z_qubit, 2)
-    C.add_gate(g)
-    pauli_sum = g.act(pauli_sum)
+
+    if z_qubit is None:
+        raise Exception("Both x and z exp are zero.")
+
+    C.add_gate(GATES.CX, target_qudit, z_qubit)
+    pauli_sum = GATES.CX.act(pauli_sum, (target_qudit, z_qubit))
     px = pauli_index_z
     return C, pauli_sum, px
 
@@ -218,30 +220,30 @@ def _handle_id_id(C, pauli_sum, pauli_index_x, pauli_index_z, target_qudit):
     x_qubit_z = _find_first_x_exp(pauli_sum, pauli_index_z, target_qudit)
     z_qubit_z = _find_first_z_exp(pauli_sum, pauli_index_z, target_qudit)
     if x_qubit_x is not None:
-        g = GATES.CX(x_qubit_x, target_qudit, 2)
-        pauli_sum = g.act(pauli_sum)
-        C.add_gate(g)
-        if z_qubit_z is not None:
-            g = GATES.CX(target_qudit, z_qubit_z, 2)
-        elif x_qubit_z is not None:
+        pauli_sum = GATES.CX.act(pauli_sum, (x_qubit_x, target_qudit))
+        C.add_gate(GATES.CX, x_qubit_x, target_qudit)
+        if z_qubit_z is None and x_qubit_z is not None:
             C, pauli_sum = _apply_h_and_cx(C, pauli_sum, x_qubit_z, target_qudit)
             z_qubit_z = _find_first_z_exp(pauli_sum, pauli_index_z, target_qudit)
-            g = GATES.CX(target_qudit, z_qubit_z, 2)
-        C.add_gate(g)
-        pauli_sum = g.act(pauli_sum)
+
+        if z_qubit_z is None:
+            raise Exception("Both x and z exp are zero.")
+
+        C.add_gate(GATES.CX, target_qudit, z_qubit_z)
+        pauli_sum = GATES.CX.act(pauli_sum, (target_qudit, z_qubit_z))
         px = pauli_index_x
     elif z_qubit_x is not None:
-        g = GATES.CX(target_qudit, z_qubit_x, 2)
-        pauli_sum = g.act(pauli_sum)
-        C.add_gate(g)
-        if x_qubit_z is not None:
-            g = GATES.CX(x_qubit_z, target_qudit, 2)
-        elif z_qubit_z is not None:
+        pauli_sum = GATES.CX.act(pauli_sum, (target_qudit, z_qubit_x))
+        C.add_gate(GATES.CX, target_qudit, z_qubit_x)
+        if x_qubit_z is None and z_qubit_z is not None:
             C, pauli_sum = _apply_h_and_cx(C, pauli_sum, z_qubit_z, target_qudit, reverse=True)
             x_qubit_z = _find_first_x_exp(pauli_sum, pauli_index_z, target_qudit)
-            g = GATES.CX(x_qubit_z, target_qudit, 2)
-        C.add_gate(g)
-        pauli_sum = g.act(pauli_sum)
+
+        if x_qubit_z is None:
+            raise Exception("Both x and z exp are zero.")
+
+        C.add_gate(GATES.CX, x_qubit_z, target_qudit)
+        pauli_sum = GATES.CX.act(pauli_sum, (x_qubit_z, target_qudit))
         px = pauli_index_z
     return C, pauli_sum, px
 
@@ -347,7 +349,7 @@ def _validate_inputs(pauli_string, target_index, ignore):
     return ignore, target_index
 
 
-def _single_qudit_x(pauli_string, target_index, circuit):
+def _single_qudit_x(pauli_string: PauliString, target_index: int, circuit: Circuit) -> Circuit | None:
     dim_target = pauli_string.dimensions()[target_index]
     x_exp = pauli_string[target_index].x_exp
     z_exp = pauli_string[target_index].z_exp

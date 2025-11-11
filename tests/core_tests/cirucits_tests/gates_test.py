@@ -1,11 +1,13 @@
 import numpy as np
 import random
 
-from sympleq.core.circuits import SUM, SWAP, Hadamard, PHASE, Gate, Circuit
+from sympleq.core.circuits import Gate, Circuit
+from sympleq.core.circuits.gates import GATES
 from sympleq.core.circuits.utils import is_symplectic
 from sympleq.core.paulis import PauliSum, PauliString
 from sympleq.core.circuits.random_symplectic import symplectic_gf2, \
     symplectic_group_size, symplectic_random_transvection
+from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 
 
 class TestGates():
@@ -21,19 +23,6 @@ class TestGates():
                                       'x1z1 x1z0 x0z0'], dimensions=[dim, dim, dim])
         return ps1, ps2, ps3, ps4, ps5, p_sum
 
-    def random_pauli_sum(self, dim, n_paulis=10):
-        # Generates a random PauliSum with n_paulis random PauliStrings of dimension dim
-        #
-        ps_list = []
-        element_list = [(0, 0, 0, 0)]  # to keep track of already generated PauliStrings. Avoids identity and duplicates
-        for _ in range(n_paulis):
-            ps, r1, r2, s1, s2 = self.random_pauli_string(dim)
-            element_list.append((r1, r2, s1, s2))
-            while (r1, r2, s1, s2) in element_list:
-                ps, r1, r2, s1, s2 = self.random_pauli_string(dim)
-            ps_list.append(ps)
-        return PauliSum.from_pauli_strings(ps_list)
-
     def random_pauli_string(self, dim):
         # Generates a random PauliString of dimension dim
         r1 = np.random.randint(0, dim)
@@ -43,7 +32,7 @@ class TestGates():
         return PauliString.from_string(f'x{r1}z{s1} x{r2}z{s2}', dimensions=[dim, dim]), r1, r2, s1, s2
 
     def test_SUM(self):
-        # acts the SUM gate on a bunch of random pauli strings and pauli sums
+        # acts the GATES.sum gate on a bunch of random pauli strings and pauli sums
         for d in [2, 5, 11]:
             # test pauli_strings
             for i in range(1000):
@@ -56,8 +45,9 @@ class TestGates():
                 output_str_correct = f"x{r1}z{(s1 - s2) % d} x{(r2 + r1) % d}z{s2}"
 
                 input_ps = PauliString.from_string(input_str, dimensions=[d, d])
-                output_ps = SUM(0, 1, d).act(input_ps)
-                assert output_ps == PauliString.from_string(output_str_correct, dimensions=[d, d]), 'Error in SUM gate'
+                output_ps = GATES.sum.act(input_ps, (0, 1))
+                assert output_ps == PauliString.from_string(output_str_correct, dimensions=[
+                                                            d, d]), 'Error in GATES.sum gate'
 
             # test pauli_sums
             for i in range(10):
@@ -82,15 +72,15 @@ class TestGates():
                 input_psum = PauliSum.from_pauli_strings(ps_list_in)
                 output_psum_correct = PauliSum.from_pauli_strings(ps_list_out_correct, phases=ps_phase_out_correct)
 
-                output_psum = SUM(0, 1, d).act(input_psum)
+                output_psum = GATES.sum.act(input_psum, (0, 1))
                 assert output_psum == output_psum_correct, (
-                    'Error in SUM gate: \n' +
+                    'Error in GATES.sum gate: \n' +
                     output_psum.__str__() + '\n' +
                     output_psum_correct.__str__()
                 )
 
     def test_SWAP(self):
-        # acts the SUM gate on a bunch of random pauli strings and pauli sums
+        # acts the GATES.sum gate on a bunch of random pauli strings and pauli sums
         # C = np.array([[0, 1, 0, 0], [1, 0, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]])
         # U = np.zeros((4, 4), dtype=int)
         # U[2:, :2] = np.eye(2, dtype=int)
@@ -106,11 +96,12 @@ class TestGates():
                 output_str_correct = f"x{r2}z{(s2) % d} x{r1}z{s1}"
 
                 input_ps = PauliString.from_string(input_str, dimensions=[d, d])
-                output_ps = SWAP(0, 1, d).act(input_ps)
-                assert output_ps == PauliString.from_string(output_str_correct, dimensions=[d, d]), 'Error in SUM gate'
+                output_ps = GATES.swap.act(input_ps, (0, 1))
+                assert output_ps == PauliString.from_string(output_str_correct, dimensions=[
+                                                            d, d]), 'Error in GATES.sum gate'
 
             # test pauli_sums
-            for i in range(100):
+            for _ in range(100):
                 ps_list_in = []
                 ps_list_out_correct = []
                 ps_phase_out_correct = []
@@ -137,9 +128,9 @@ class TestGates():
                 output_psum_correct = PauliSum.from_pauli_strings(ps_list_out_correct,
                                                                   phases=ps_phase_out_correct)
 
-                output_psum = SWAP(0, 1, d).act(input_psum)
+                output_psum = GATES.swap.act(input_psum, (0, 1))
                 assert output_psum == output_psum_correct, (
-                    'Error in SUM gate: \n' +
+                    'Error in GATES.sum gate: \n' +
                     input_psum.__str__() + '\n' +
                     output_psum.__str__() + '\n' +
                     output_psum_correct.__str__()
@@ -148,35 +139,30 @@ class TestGates():
     def test_Hadamard(self):
         # TODO: Be certain of inverse convention - ultimately arbitrary but should match prevalent literature
         for d in [2, 5, 11]:
-            # test pauli_strings
-            gate = Hadamard(0, d, inverse=False)  # Hadamard on qubit 0
-
-            for i in range(100):
+            for _ in range(100):
                 input_ps, r1, r2, s1, s2 = self.random_pauli_string(d)
                 output_str_correct = f"x{(-s1) % d}z{r1} x{r2}z{s2}"
 
-                output_ps = gate.act(input_ps)
+                output_ps = GATES.H.act(input_ps, 0)
                 assert output_ps == PauliString.from_string(
                     output_str_correct, dimensions=[d, d]
-                ), 'Error in Hadamard gate 0'
+                ), 'Error in GATES.H gate 0'
 
-            gate = Hadamard(1, d, inverse=False)  # Hadamard on qudit 1
-            for i in range(100):
+            for _ in range(100):
                 input_ps, r1, r2, s1, s2 = self.random_pauli_string(d)
                 output_str_correct = f"x{r1}z{s1} x{(-s2) % d}z{r2}"
 
-                output_ps = gate.act(input_ps)
+                output_ps = GATES.H.act(input_ps, 1)
                 assert output_ps == PauliString.from_string(
                     output_str_correct, dimensions=[d, d]
-                ), 'Error in Hadamard gate 1'
-            # test pauli_sums
-            gate = Hadamard(0, d, inverse=False)  # Hadamard on qubit 0
+                ), 'Error in GATES.H gate 1'
 
-            for i in range(100):
+            # test pauli_sums
+            for _ in range(100):
                 ps_list_in = []
                 ps_list_out_correct = []
                 ps_phase_out_correct = []
-                for j in range(10):
+                for _ in range(10):
                     input_ps, r1, r2, s1, s2 = self.random_pauli_string(d)
                     output_str_correct = f"x{(-s1) % d}z{r1} x{r2}z{s2}"
 
@@ -185,44 +171,43 @@ class TestGates():
                     ps_phase_out_correct.append(-2 * r1 * s1)
 
                 input_psum = PauliSum.from_pauli_strings(ps_list_in)
-                output_psum = gate.act(input_psum)
+                output_psum = GATES.H.act(input_psum, 0)
                 output_psum_correct = PauliSum.from_pauli_strings(
                     ps_list_out_correct, phases=ps_phase_out_correct)
                 assert output_psum == output_psum_correct, (
-                    'Error in Hadamard gate: \n' +
+                    'Error in GATES.H gate: \n' +
                     input_psum.__str__() + '\n' +
                     output_psum.__str__() + '\n' +
                     output_psum_correct.__str__()
                 )
 
     def test_PHASE(self):
-        # TODO: Better approach - is there another approach that we can test the first one with like Hadamard?
+        # TODO: Better approach - is there another approach that we can test the first one with like GATES.H?
         for d in [2, 5, 11]:
-            gate = PHASE(0, d)  # PHASE on qubit 0
 
             for i in range(100):
                 input_ps, r1, r2, s1, s2 = self.random_pauli_string(d)
                 output_str_correct = f"x{r1}z{(r1 + s1) % d} x{r2}z{s2}"
 
-                output_ps = gate.act(input_ps)
+                output_ps = GATES.phase.act(input_ps, 0)
                 assert output_ps == PauliString.from_string(output_str_correct, dimensions=[d, d]), 'Error in H gate 0'
 
-            gate = PHASE(1, d)  # PHASE on qudit 1
             for i in range(100):
                 input_ps, r1, r2, s1, s2 = self.random_pauli_string(d)
                 output_str_correct = f"x{r1}z{s1} x{r2}z{(r2 + s2) % d}"
 
-                output_ps = gate.act(input_ps)
+                output_ps = GATES.phase.act(input_ps, 1)
                 assert output_ps == PauliString.from_string(output_str_correct, dimensions=[d, d]), 'Error in H gate 1'
+
             # test pauli_sums
-            gate = PHASE(0, d)  # PHASE on qubit 0
-            h = gate.phase_vector
-            C = gate.symplectic
+            gate = GATES.phase
+            h = gate.phase_vector(d)
+            C = gate.symplectic()
             for i in range(100):
                 ps_list_in = []
                 ps_list_out_correct = []
                 ps_phase_out_correct = []
-                for j in range(10):
+                for _ in range(10):
                     input_ps, r1, r2, s1, s2 = self.random_pauli_string(d)
                     output_str_correct = f"x{r1}z{(r1 + s1) % d} x{r2}z{s2}"
 
@@ -232,7 +217,7 @@ class TestGates():
                     U = np.zeros((input_ps.n_qudits(), input_ps.n_qudits()), dtype=int)
                     U[1, 0] = 1
 
-                    p = (
+                    p = int(
                         np.dot(h, a1) -
                         np.diag(C.T @ U @ C) @ a1 +
                         2 * a1 @ np.triu(C.T @ U @ C) @ a1 -
@@ -241,11 +226,12 @@ class TestGates():
                     ps_phase_out_correct.append(p)
 
                 input_psum = PauliSum.from_pauli_strings(ps_list_in)
-                output_psum = gate.act(input_psum)
+                output_psum = gate.act(input_psum, 0)
                 output_psum_correct = PauliSum.from_pauli_strings(
                     ps_list_out_correct, phases=ps_phase_out_correct)
+
                 assert output_psum == output_psum_correct, (
-                    'Error in Hadamard gate: \n' +
+                    'Error in GATES.H gate: \n' +
                     input_psum.__str__() + '\n' +
                     output_psum.__str__() + '\n' +
                     output_psum_correct.__str__()
@@ -255,11 +241,12 @@ class TestGates():
         # Tests all gates and all combinations of two pauli strings for the group homomorphism property:
         # gate.act(p1) * gate.act(p2) == gate.act(p1 * p2)
 
-        gates = [SUM(0, 1, 2), SUM(1, 0, 2), SWAP(0, 1, 2), Hadamard(0, 2), Hadamard(1, 2), PHASE(0, 2), PHASE(1, 2)]  #
+        gates_data = [(GATES.sum, 0, 1), (GATES.sum, 1, 0), (GATES.swap, 0, 1),
+                      (GATES.H, 0), (GATES.H, 1), (GATES.phase, 0), (GATES.phase, 1)]
         i = 0
 
         # test all for dim = 2
-        for gate in gates:
+        for (gate, *qudits) in gates_data:
             for x0 in range(2):
                 for z0 in range(2):
                     for x1 in range(2):
@@ -274,32 +261,31 @@ class TestGates():
                                             err0 = 'In: \n' + p1.__str__() + '\n' + p2.__str__()
                                             err = (
                                                 'Out: \n' +
-                                                (gate.act(p1) * gate.act(p2)).__str__() +
+                                                (gate.act(p1, qudits) * gate.act(p2, qudits)).__str__() +
                                                 '\n' +
-                                                gate.act(p1 * p2).__str__()
+                                                gate.act(p1 * p2, qudits).__str__()
                                             )
-                                            assert gate.act(p1) * gate.act(p2) == gate.act(p1 * p2), err0 + err + '\n'
+                                            assert gate.act(p1, qudits) * \
+                                                gate.act(p2, qudits) == gate.act(p1 * p2, qudits), err0 + err + '\n'
 
-        for dim in [3, 5, 7, 15]:
-            gates = [SUM(0, 1, dim), SUM(1, 0, dim), SWAP(0, 1, dim), Hadamard(0, dim),
-                     Hadamard(1, dim), PHASE(0, dim), PHASE(1, dim)]
-            for gate in gates:
-
+        for dimensions in [3, 5, 7, 15]:
+            for (gate, *qudits) in gates_data:
                 for _ in range(100):
-                    p1 = self.random_pauli_sum(dim, n_paulis=1)
-                    p2 = self.random_pauli_sum(dim, n_paulis=1)
+                    p1 = PauliSum.from_random(1, [dimensions] * 2)
+                    p2 = PauliSum.from_random(1, [dimensions] * 2)
                     err0 = 'In: \n' + p1.__str__() + '\n' + p2.__str__()
-                    err = 'Out: \n' + (gate.act(p1) * gate.act(p2)).__str__() + '\n' + gate.act(p1 * p2).__str__()
-                    assert gate.act(p1) * gate.act(p2) == gate.act(p1 * p2), err0 + err + '\n'
+                    err = 'Out: \n' + (gate.act(p1, qudits) * gate.act(p2, qudits)
+                                       ).__str__() + '\n' + gate.act(p1 * p2, qudits).__str__()
+                    assert gate.act(p1, qudits) * gate.act(p2, qudits) == gate.act(p1 * p2, qudits), err0 + err + '\n'
 
     def test_is_symplectic(self):
-
         # Tests if the symplectic matrix of the gate is symplectic
-        gates = [SUM(0, 1, 2), SWAP(0, 1, 2), Hadamard(0, 2), Hadamard(1, 2), PHASE(0, 2), PHASE(1, 2)]
-        for gate in gates:
-            assert is_symplectic(gate.symplectic, 2), (
-                f"Gate {gate.name} is not symplectic. \n" +
-                gate.symplectic.__str__()
+        gates_data = [(GATES.sum, 0, 1), (GATES.swap, 0, 1), (GATES.H, 0),
+                      (GATES.H, 1), (GATES.phase, 0), (GATES.phase, 1)]
+        for (gate, *qudits) in gates_data:
+            assert is_symplectic(gate.symplectic(), 2), (
+                f"Gate {gate.name()} is not symplectic. \n" +
+                gate.symplectic().__str__()
             )
 
     def test_random_symplectic(self, num_tests=20, max_n=10, primes=[2, 3, 5, 7]):
@@ -339,23 +325,24 @@ class TestGates():
         input_ps = PauliSum.from_random(n_paulis, dimensions=dimensions)
         input_ps.remove_trivial_paulis()
         input_ps.combine_equivalent_paulis()
-        print(input_ps)
-        circuit = Circuit.from_random(n_qudits, 100, dimensions)
+        print(input_ps.dimensions())
+        circuit = Circuit.from_random(n_qudits, 100)
         target_ps = circuit.act(input_ps)
-        # FIXME: create API to change phases and weights
+        print(target_ps.dimensions())
         target_ps.set_phases(np.zeros(n_paulis))
 
-        gate_from_solver = Gate.solve_from_target('ArbGate', input_ps, target_ps, dimensions)
-        output_ps = gate_from_solver.act(input_ps)
+        gate_from_solver = Gate.solve_from_target('ArbGate', input_ps, target_ps)
+        qudits = tuple(range(n_qudits))
+        output_ps = gate_from_solver.act(input_ps, qudits)
         output_ps.set_phases(np.zeros(n_paulis))
         assert output_ps == target_ps, (
             'Error in gate_from_solver\n input:\n' + input_ps.__str__() +
             '\n target:\n' + target_ps.__str__() + '\n output:\n' + output_ps.__str__())
 
-        for d in [2]:  # only solves on GF(2) for now...
+        for dimensions in [2]:  # only solves on GF(2) for now...
             for i in range(10):
-                input_ps = self.random_pauli_sum(d, n_paulis=6)
-                target_ps = self.random_pauli_sum(d, n_paulis=6)
+                input_ps = PauliSum.from_random(6, [dimensions] * n_qudits)
+                target_ps = PauliSum.from_random(6, [dimensions] * n_qudits)
 
                 if np.all(input_ps.symplectic_product_matrix() == target_ps.symplectic_product_matrix()):
                     print(i)
@@ -363,9 +350,10 @@ class TestGates():
                     print(input_ps.tableau())
                     print('target')
                     print(target_ps.tableau())
-                    gate = Gate.solve_from_target('ArbGate', input_ps, target_ps, dimensions)
-                    output_ps = gate.act(input_ps)
-                    output_ps.phases = input_ps.phases  # So far it does not solve for phases as well
+                    gate = Gate.solve_from_target('ArbGate', input_ps, target_ps)
+                    qudits = tuple(range(n_qudits))
+                    output_ps = gate.act(input_ps, qudits)
+                    output_ps.set_phases(input_ps.phases())  # So far it does not solve for phases as well
                     print('output')
                     print(output_ps.tableau())
                     print('gate')
@@ -387,7 +375,7 @@ class TestGates():
         for _ in range(100):
             g = Gate.from_random(5, 2)
             gt = g.transvection(np.random.randint(0, 1, size=10))
-            assert is_symplectic(gt.symplectic, 2), 'Error in transvection'
+            assert is_symplectic(gt.symplectic(), 2), 'Error in transvection'
 
     # def test_gate_inverse(self):
     #     n_qudits = 2
@@ -401,75 +389,79 @@ class TestGates():
     #         assert rps == g.act(gt.act(rps)), 'Inversion Error:\n' + \
     #               rps.__str__() + '\n' + g.act(gt.act(rps)).__str__()
 
-    def phase_table_local(self, G: Gate) -> tuple[np.ndarray, np.ndarray]:
-        d = G.dimensions[0]
-        phase_table_unitary = np.zeros((d, d))
-        phase_table_symplectic = np.zeros((d, d))
-        for i in range(d):
-            for j in range(d):
+    def phase_table_local(self, G: Gate, dimensions: int, *qudits: int) -> tuple[np.ndarray, np.ndarray]:
+        # dimensions = random.randint(DEFAULT_QUDIT_DIMENSION, 7)
+        lcm = np.lcm.reduce(dimensions)
+
+        phase_table_unitary = np.zeros((dimensions, dimensions))
+        phase_table_symplectic = np.zeros((dimensions, dimensions))
+        for i in range(dimensions):
+            for j in range(dimensions):
                 pauli_string = 'x' + str(i) + 'z' + str(j)
-                ps = PauliSum.from_string(pauli_string, d, weights=[1], phases=[0])
+                ps = PauliSum.from_string(pauli_string, dimensions, weights=[1], phases=[0])
                 ps_m = ps.to_hilbert_space()
 
-                ps_res = G.act(ps)
-                phase_table_symplectic[i, j] = ps_res.phases()[0] % (2 * d)
-                # FIXME: create new PSum or open API to change phases
+                ps_res = G.act(ps, qudits)
+                phase_table_symplectic[i, j] = ps_res.phases()[0] % (2 * lcm)
                 ps_res.set_phases([0])
                 ps_res_m = ps_res.to_hilbert_space().toarray()
 
-                ps_m_res = (G.unitary() @ ps_m @ G.unitary().conj().T).toarray()
+                # FIXME: accept non-list inputs in unitary
+                gate_unitary = G.unitary(qudits, [dimensions] * G.n_qudits())
+                ps_m_res = (gate_unitary @ ps_m @ gate_unitary.conj().T).toarray()
 
                 mask = (ps_res_m != 0)
                 factors = np.around(ps_m_res[mask] / ps_res_m[mask], 14)
                 factor = factors[0]
-                phase_table_unitary[i, j] = np.around(d * np.angle(factor) / (np.pi), 6) % (2 * d)
+                phase_table_unitary[i, j] = np.around(dimensions * np.angle(factor) / (np.pi), 6) % (2 * lcm)
 
         return phase_table_unitary, phase_table_symplectic
 
-    def phase_table_entangling(self, G: Gate) -> tuple[np.ndarray, np.ndarray]:
-        d = G.dimensions[0]
-        phase_table_unitary = np.zeros((d**2, d**2))
-        phase_table_symplectic = np.zeros((d**2, d**2))
-        U = G.unitary()
-        for i1 in range(d):
-            for j1 in range(d):
-                for i2 in range(d):
-                    for j2 in range(d):
+    def phase_table_entangling(self, G: Gate, *qudits: int) -> tuple[np.ndarray, np.ndarray]:
+        dimensions = random.randint(DEFAULT_QUDIT_DIMENSION, 7)
+        lcm = np.lcm.reduce(dimensions)
+
+        phase_table_unitary = np.zeros((dimensions**2, dimensions**2))
+        phase_table_symplectic = np.zeros((dimensions**2, dimensions**2))
+        U = G.unitary(qudits, [dimensions] * G.n_qudits())
+        for i1 in range(dimensions):
+            for j1 in range(dimensions):
+                for i2 in range(dimensions):
+                    for j2 in range(dimensions):
                         pauli_string = 'x' + str(i1) + 'z' + str(j1) + ' ' + 'x' + str(i2) + 'z' + str(j2)
-                        ps = PauliSum.from_string([pauli_string], dimensions=[d, d])
+                        ps = PauliSum.from_string([pauli_string], dimensions=[dimensions, dimensions])
                         ps_m = ps.to_hilbert_space()
 
-                        ps_res = G.act(ps)
-                        phase_table_symplectic[i1 * d + i2, j1 * d + j2] = ps_res.phases()[0] % (2 * d)
+                        ps_res = G.act(ps, qudits)
+                        phase_table_symplectic[i1 * dimensions + i2, j1 *
+                                               dimensions + j2] = ps_res.phases()[0] % (2 * lcm)
                         ps_res.set_phases([0])
                         ps_res_m = ps_res.to_hilbert_space().toarray()
                         ps_m_res = (U @ ps_m @ U.conj().T).toarray()
                         mask = (ps_res_m != 0)
                         factors = np.around(ps_m_res[mask] / ps_res_m[mask], 14)
                         factor = factors[0]
-                        phase_table_unitary[i1 * d + i2,
-                                            j1 * d + j2] = np.around(d * np.angle(factor) / (np.pi), 6) % (2 * d)
+                        phase_table_unitary[i1 * dimensions + i2, j1 * dimensions + j2] = \
+                            np.around(dimensions * np.angle(factor) / (np.pi), 6) % (2 * lcm)
 
         return phase_table_unitary, phase_table_symplectic
 
     def test_phase_table(self):
         for d in [2, 3, 5, 7]:  # 11, 13 These work as well, but it's very slow to run
-            G = Hadamard(0, d)
-            phase_table_unitary, phase_table_symplectic = self.phase_table_local(G)
+            phase_table_unitary, phase_table_symplectic = self.phase_table_local(GATES.H, d, 0)
             diff_m = np.around(phase_table_unitary - phase_table_symplectic, 10)
-            assert not np.any(diff_m), 'Symplectic phase table does not match unitary phase table for Hadamard gate'
+            assert not np.any(diff_m), 'Symplectic phase table does not match unitary phase table for GATES.H gate'
 
-            G = PHASE(0, d)
-            phase_table_unitary, phase_table_symplectic = self.phase_table_local(G)
+            phase_table_unitary, phase_table_symplectic = self.phase_table_local(GATES.phase, d, 0)
             diff_m = np.around(phase_table_unitary - phase_table_symplectic, 10)
             assert not np.any(diff_m), 'Symplectic phase table does not match unitary phase table for Phase gate'
 
-            G = SUM(0, 1, d)
-            phase_table_unitary, phase_table_symplectic = self.phase_table_entangling(G)
+            phase_table_unitary, phase_table_symplectic = self.phase_table_entangling(GATES.sum, 0, 1)
             diff_m = np.around(phase_table_unitary - phase_table_symplectic, 10)
-            assert not np.any(diff_m), 'Symplectic phase table does not match unitary phase table for SUM[0,1] gate'
+            assert not np.any(
+                diff_m), 'Symplectic phase table does not match unitary phase table for GATES.sum[0,1] gate'
 
-            G = SUM(1, 0, d)
-            phase_table_unitary, phase_table_symplectic = self.phase_table_entangling(G)
+            phase_table_unitary, phase_table_symplectic = self.phase_table_entangling(GATES.sum, 1, 0)
             diff_m = np.around(phase_table_unitary - phase_table_symplectic, 10)
-            assert not np.any(diff_m), 'Symplectic phase table does not match unitary phase table for SUM[1,0] gate'
+            assert not np.any(
+                diff_m), 'Symplectic phase table does not match unitary phase table for GATES.sum[1,0] gate'

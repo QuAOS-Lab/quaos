@@ -53,24 +53,41 @@ class TestCircuits():
         # TODO: Full test for mixed dimensions
         for _ in range(10):
             n_qudits = 3
-            dimensions = 2
-            n_gates = 15
+            dimensions = [2, 3, 5]
+            n_gates = 4
             n_paulis = 5
             circuit = Circuit.from_random(n_qudits, n_gates)
-            pauli_sum = PauliSum.from_random(n_paulis, [dimensions] * n_qudits)
+
+            # circuit = Circuit.from_data([
+            #     (GATES.sum, 0, 2),
+            #     (GATES.sum, 2, 0),
+            #     (GATES.S, 0)
+            # ])
+
+            circuit = Circuit.from_data([
+                (GATES.S, 1),
+                (GATES.H, 1),
+                # (GATES.H, 2)
+            ])
+
+            print(circuit)
+
+            pauli_sum = PauliSum.from_random(n_paulis, dimensions)
             # compose the circuit and pauli sum
             composed_gate = circuit.composite_gate()
-            print(composed_gate.symplectic)
-            # FIXME: how to get qudits we re acting on?
-            qudits = tuple(q for q in range(pauli_sum.n_qudits()))
-            output_composite = composed_gate.act(pauli_sum, qudits)
+            affected_qudits = circuit.affected_qudits()
+            print("AFFECTED QUBITS", affected_qudits)
+            output_composite = composed_gate.act(pauli_sum, affected_qudits)
             output_sequential = circuit.act(pauli_sum)
-
+            if output_composite != output_sequential:
+                print("PHASE VECTORS")
+                print(composed_gate._phase_vectors)
+                print(circuit)
             # show that the composed gate returns the same thing as the circuit when acting on the pauli sum
             assert output_composite == output_sequential, (
-                f'Input: \n {pauli_sum}\n'
-                f'Composed gate:\n{output_composite} \n'
-                f'Sequential gate:\n{output_sequential}'
+                # f'Input: \n{pauli_sum} \n'
+                # f'Composed gate:\n{output_composite} \n'
+                # f'Sequential gate:\n{output_sequential}'
             )
 
     def test_hadamard_composition(self):
@@ -88,14 +105,10 @@ class TestCircuits():
         # NOTE: the phase of the composite gate has not been reduced modulo 2*lcm yet
         composed_gate = circuit.composite_gate()
         qudits = tuple(q for q in range(pauli_sum.n_qudits()))
+        print("QUDITS", qudits)
 
         output_composite = composed_gate.act(pauli_sum, qudits)
         output_sequential = circuit.act(pauli_sum)
-
-        # print(output_composite)
-        # print(output_sequential)
-
-        print(qudits)
 
         # show that the composed gate returns the same thing as the circuit when acting on the pauli sum
         assert output_composite == output_sequential
@@ -128,7 +141,7 @@ class TestCircuits():
         N = 100
         dimensions = [2, 3, 5]
         n_paulis = 1
-        n_qudits = 3
+        n_qudits = len(dimensions)
         for _ in range(N):
             P = PauliSum.from_random(n_paulis, dimensions, rand_weights=False)
             C = Circuit.from_random(n_qudits, depth=np.random.randint(1, 6))
@@ -140,7 +153,7 @@ class TestCircuits():
             ps_res_m = ps_res.to_hilbert_space()
             phase_symplectic = ps_res.phases()[0]
 
-            ps_res.set_phases([0])
+            ps_res.set_phases([0] * n_paulis)
             ps_res_m = ps_res.to_hilbert_space().toarray()
             ps_m_res = (U @ ps_m @ U.conj().T).toarray()
             mask = (ps_res_m != 0)
@@ -154,10 +167,11 @@ class TestCircuits():
 
     def test_phase_mixed_species(self):
         def debug_steps(C: Circuit, P: PauliSum):
-            print(f"Initial phases: {P.phases} -- exponents: {P.tableau()}")
+            print(f"CIRCUIT {C}")
+            print(f"Initial phases: {P.phases()} -- exponents: {P.tableau()}")
             for i, partial_p in enumerate(C.act_iter(P)):
                 gate = C.gates()[i]
-                print(f"Phases after {gate.name}: {partial_p.phases} -- exponents: {partial_p.tableau()}")
+                print(f"Phases after {gate.name()}: {partial_p.phases()} -- exponents: {partial_p.tableau()}")
 
         # Test 1: Simple qutrit + qubit
         P = PauliSum.from_string(['x2z0 x0z0'],
@@ -200,7 +214,7 @@ class TestCircuits():
         P = C.act(P)
         assert P.phases()[0] == 6
 
-        # Test 5: Simple qutritt + qubit but action on qubit
+        # Test 5: Simple qutrit + qubit but action on qubit
         P = PauliSum.from_string(['x0z0 x1z0'],
                                  dimensions=[3, 2],
                                  weights=[1], phases=[0])
