@@ -414,7 +414,7 @@ class PauliObject(ABC):
         """
 
         if self.n_paulis() > 1:
-            raise Exception("A Pauli object with more than a PauliString cannot be ordered.")
+            raise Exception("A Pauli object with more than one PauliString cannot be ordered.")
 
         if np.array_equal(self.dimensions, other_pauli.dimensions):
             raise Exception("Cannot compare PauliStrings with different dimensions.")

@@ -31,13 +31,13 @@ class TestPaulis:
             assert y1 * id == y1, 'Error in Pauli multiplication (y * id = y) ' + (y1 * id).__str__()
             assert z1 * id == z1, 'Error in Pauli multiplication (z * id = z) ' + (z1 * id).__str__()
 
-        for dim in [3, 5, 11]:
+        for dim in [3, 5, 7, 11, 13, 17]:
             for i in range(100):
-                s = np.random.randint(0, dim)
-                r = np.random.randint(0, dim)
+                s1 = np.random.randint(0, dim)
+                r1 = np.random.randint(0, dim)
                 s2 = np.random.randint(0, dim)
                 r2 = np.random.randint(0, dim)
-                p1 = Pauli.from_exponents(r, s, dim)
+                p1 = Pauli.from_exponents(r1, s1, dim)
                 p2 = Pauli.from_exponents(r2, s2, dim)
                 p3 = p1 * p2
                 assert p3.x_exp == (p1.x_exp + p2.x_exp) % dim, 'Error in Pauli multiplication (x_exp)'
@@ -45,21 +45,21 @@ class TestPaulis:
                 assert p3.dimension == dim, 'Error in Pauli multiplication (dimension)'
 
     def test_pauli_string_multiplication(self):
-        for dim in [2, 3, 5, 11]:
+        for dim in [2, 3, 5, 7, 11, 13, 15, 17]:
             for i in range(100):
-                r1 = np.random.randint(0, dim)
-                r2 = np.random.randint(0, dim)
-                s1 = np.random.randint(0, dim)
-                s2 = np.random.randint(0, dim)
-
+                r11 = np.random.randint(0, dim)
                 r12 = np.random.randint(0, dim)
-                r22 = np.random.randint(0, dim)
+                s11 = np.random.randint(0, dim)
                 s12 = np.random.randint(0, dim)
+
+                r21 = np.random.randint(0, dim)
+                r22 = np.random.randint(0, dim)
+                s21 = np.random.randint(0, dim)
                 s22 = np.random.randint(0, dim)
 
-                input_str1 = f"x{r1}z{s1} x{r2}z{s2}"
-                input_str2 = f"x{r12}z{s12} x{r22}z{s22}"
-                output_str_correct = f"x{(r1 + r12) % dim}z{(s1 + s12) % dim} x{(r2 + r22) % dim}z{(s2 + s22) % dim}"
+                input_str1 = f"x{r11}z{s11} x{r12}z{s12}"
+                input_str2 = f"x{r21}z{s21} x{r22}z{s22}"
+                output_str_correct = f"x{(r11 + r21) % dim}z{(s11 + s21) % dim} x{(r12 + r22) % dim}z{(s12 + s22) % dim}"
                 input_ps1 = PauliString.from_string(input_str1, dimensions=[dim, dim])
                 input_ps2 = PauliString.from_string(input_str2, dimensions=[dim, dim])
                 output_ps = input_ps1 * input_ps2
@@ -67,7 +67,7 @@ class TestPaulis:
                                                             dim, dim]), 'Error in PauliString multiplication'
 
     def test_pauli_string_tensor_product(self):
-        for dimensions in [2, 3, 5, 11]:
+        for dimensions in [2, 3, 5, 7, 11]:
             for i in range(100):
                 r1 = np.random.randint(0, dimensions)
                 r2 = np.random.randint(0, dimensions)
@@ -90,7 +90,7 @@ class TestPaulis:
                     output_str_correct, dimensions), 'Error in PauliString tensor product'
 
     def test_pauli_string_indexing(self):
-        for dim in [2, 3, 5]:
+        for dim in [2, 3, 5, 7]:
             for _ in range(100):
                 p_string1, r1, r2, s1, s2 = self.random_pauli_string(dim)
                 ps0 = Pauli.from_string(f"x{r1}z{s1}", dimension=dim)
@@ -591,3 +591,7 @@ class TestPaulis:
         ps1 = S.select_pauli_string(1)
         ps3 = S.select_pauli_string(3)
         assert SPM[1, 3] % L == ps1.symplectic_product(ps3, as_scalar=True) % L
+
+    # Comprehensive tests
+    # commutation relations for mixed dimensions
+    # phases for mixed dimensions
