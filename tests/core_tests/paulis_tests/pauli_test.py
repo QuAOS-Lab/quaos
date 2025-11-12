@@ -4,6 +4,8 @@ import pytest
 from sympleq.core.paulis import PauliSum, PauliString, Pauli
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 
+prime_list = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47]
+
 
 class TestPaulis:
 
@@ -32,8 +34,8 @@ class TestPaulis:
             assert y1 * id == y1, 'Error in Pauli multiplication (y * id = y) ' + (y1 * id).__str__()
             assert z1 * id == z1, 'Error in Pauli multiplication (z * id = z) ' + (z1 * id).__str__()
 
-        for dim in [3, 5, 7, 11, 13, 17]:
-            for i in range(100):
+        for dim in prime_list:
+            for _ in range(100):
                 s1 = np.random.randint(0, dim)
                 r1 = np.random.randint(0, dim)
                 s2 = np.random.randint(0, dim)
@@ -46,8 +48,8 @@ class TestPaulis:
                 assert p3.dimension == dim, 'Error in Pauli multiplication (dimension)'
 
     def test_pauli_string_multiplication(self):
-        for dim in [2, 3, 5, 7, 11, 13, 15, 17]:
-            for i in range(100):
+        for dim in prime_list:
+            for _ in range(100):
                 r11 = np.random.randint(0, dim)
                 r12 = np.random.randint(0, dim)
                 s11 = np.random.randint(0, dim)
@@ -60,15 +62,21 @@ class TestPaulis:
 
                 input_str1 = f"x{r11}z{s11} x{r12}z{s12}"
                 input_str2 = f"x{r21}z{s21} x{r22}z{s22}"
-                output_str_correct = f"x{(r11 + r21) % dim}z{(s11 + s21) % dim} x{(r12 + r22) % dim}z{(s12 + s22) % dim}"
+
+                left = f"x{(r11 + r21) % dim}z{(s11 + s21) % dim}"
+                right = f"x{(r12 + r22) % dim}z{(s12 + s22) % dim}"
+                output_str_correct = f"{left} {right}"
+
                 input_ps1 = PauliString.from_string(input_str1, dimensions=[dim, dim])
                 input_ps2 = PauliString.from_string(input_str2, dimensions=[dim, dim])
                 output_ps = input_ps1 * input_ps2
-                assert output_ps == PauliString.from_string(output_str_correct, dimensions=[
-                                                            dim, dim]), 'Error in PauliString multiplication'
+
+                assert output_ps == PauliString.from_string(
+                    output_str_correct, dimensions=[dim, dim]
+                ), 'Error in PauliString multiplication'
 
     def test_pauli_string_tensor_product(self):
-        for dimensions in [2, 3, 5, 7, 11]:
+        for dimensions in prime_list:
             for i in range(100):
                 r1 = np.random.randint(0, dimensions)
                 r2 = np.random.randint(0, dimensions)
@@ -91,7 +99,7 @@ class TestPaulis:
                     output_str_correct, dimensions), 'Error in PauliString tensor product'
 
     def test_pauli_string_indexing(self):
-        for dim in [2, 3, 5, 7]:
+        for dim in prime_list:
             for _ in range(100):
                 p_string1, r1, r2, s1, s2 = self.random_pauli_string(dim)
                 ps0 = Pauli.from_string(f"x{r1}z{s1}", dimension=dim)
@@ -101,7 +109,7 @@ class TestPaulis:
                 assert p_string1[1] == ps1, 'Error in PauliString indexing'
 
     def test_pauli_sum_multiplication(self):
-        for dim in [2, 3, 5]:
+        for dim in prime_list:
 
             for i in range(100):
                 p_string1, r1, r2, s1, s2 = self.random_pauli_string(dim)
@@ -145,8 +153,8 @@ class TestPaulis:
 
     def test_pauli_sum_tensor_product(self):
 
-        for dim in [2, 3, 5, 17]:
-            for _ in range(50):
+        for dim in prime_list:
+            for _ in range(100):
                 p_string1, r1, r2, s1, s2 = self.random_pauli_string(dim)
                 p_string2, r12, r22, s12, s22 = self.random_pauli_string(dim)
                 p_string3, r13, r23, s13, s23 = self.random_pauli_string(dim)
@@ -179,15 +187,23 @@ class TestPaulis:
         np.testing.assert_array_equal(sp.tableau, expected_matrix)
 
     def test_basic_pauli_relations(self):
-        dims = 3
-        x1 = Pauli.from_string('x1z0', dimension=dims)
-        y1 = Pauli.from_string('x1z1', dimension=dims)
-        z1 = Pauli.from_string('x0z1', dimension=dims)
-        id = Pauli.from_string('x0z0', dimension=dims)
+        for d in prime_list:
+            x_exp = random.randint(1, d - 1)
+            z_exp = random.randint(1, d - 1)
+            x1 = Pauli.from_string(f'x{x_exp}z0', dimension=d)
+            z1 = Pauli.from_string(f'x0z{z_exp}', dimension=d)
+            y1 = Pauli.from_string(f'x{x_exp}z{z_exp}', dimension=d)
+            id = Pauli.from_string('x0z0', dimension=d)
 
-        assert x1 * z1 == y1
-        assert x1 * x1 * x1 == id
+            assert x1 * z1 == y1, f'Error in Pauli multiplication for d={d}'
+            assert x1**(d - x_exp) == id, f'Error in Pauli exponentiation (x**{d} = id) for d={d}'
+            assert y1 * z1**(d - z_exp) * \
+                x1**(d - x_exp) == id, f'Error in Pauli exponentiation (y**{d} = id) for d={d}'
+            assert z1**(d - z_exp) == id, f'Error in Pauli exponentiation (z**{d} = id) for d={d}'
+            assert x1 * id == x1, f'Error in Pauli multiplication (x * id = x) for d={d}'
+            assert id * z1 == z1, f'Error in Pauli multiplication (id * z = z) for d={d}'
 
+    # TODO: generalize to different dimensions
     def test_pauli_string_construction(self):
         dims = [3, 3]
         x1x1 = PauliString.from_string('x1z0 x1z0', dimensions=dims)
