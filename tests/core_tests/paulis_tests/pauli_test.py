@@ -487,7 +487,7 @@ class TestPaulis:
                 assert not np.array_equal(H_e, H_e.conjugate().transpose())
 
             pauli_sum = PauliSum.from_hilbert_space(H_e, dimensions)
-            tolerance = 10**(-12)
+            tolerance = 1e-12
             assert np.max(np.abs((pauli_sum.to_hilbert_space().toarray() - H_e))) < tolerance
             assert pauli_sum.is_hermitian() == np.array_equal(H_e, H_e.conjugate().transpose())
 
@@ -635,7 +635,7 @@ class TestPaulis:
                 dimensions = [random.choice(dimensions_to_choose_from)]
             # generate random PauliSum
             P = PauliSum.from_random(n_paulis, dimensions, rand_phases=True)
-            L = P.lcm()
+            L = P.lcm
             # check commutation relations pairwise
             for i in range(n_paulis):
                 for j in range(i + 1, n_paulis):
@@ -705,10 +705,10 @@ class TestPaulis:
             P = PauliSum.from_random(n_paulis, dimensions, rand_phases=False)
             n_terms = P.n_paulis()
 
-            weights = np.array(P.weights(), copy=True)
-            phases = np.array(P.phases(), copy=True)
+            weights = np.array(P.weights, copy=True)
+            phases = np.array(P.phases, copy=True)
 
-            L = P.lcm()
+            L = P.lcm
 
             # random integer shifts: add up to 2*L - 1
             phase_shifts = np.random.randint(0, 2 * L - 1, size=n_terms)
@@ -719,15 +719,15 @@ class TestPaulis:
             new_weights = (weights * np.exp(-2j * np.pi * phase_shifts / (2 * L))).tolist()
 
             # construct new PauliSum
-            P_dephased = PauliSum.from_tableau(P.tableau(), weights=new_weights,
-                                               phases=new_phases, dimensions=P.dimensions())
+            P_dephased = PauliSum.from_tableau(P.tableau, weights=new_weights,
+                                               phases=new_phases, dimensions=P.dimensions)
 
             # remove phases with "phase_to_weight"
             P_rephased = P_dephased.copy()
             P_rephased.phase_to_weight()
 
             # check that the weights of P_rephased match those of P
-            assert np.allclose(P_rephased.weights(), P.weights(), atol=1e-12), "Weights differ after phase_to_weight"
+            assert np.allclose(P_rephased.weights, P.weights, atol=1e-12), "Weights differ after phase_to_weight"
 
             # check that all PauliSums are the same:
             P.standardise()
