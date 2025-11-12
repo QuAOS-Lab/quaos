@@ -1,6 +1,7 @@
 from __future__ import annotations
 import numpy as np
 import scipy.sparse as sp
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -91,11 +92,11 @@ class Pauli(PauliObject):
             If the string cannot be parsed into two integer exponents.
         """
         tableau = np.empty(2, dtype=int)
-        try:
-            tableau[0] = int(pauli_str[1])
-            tableau[1] = int(pauli_str[3])
-        except Exception as e:
-            raise ValueError(f"Could not format tableau from input string: {e}.")
+        xz_exponents = re.split('x|z', pauli_str)[1:]
+        x_exp = int(xz_exponents[0])
+        z_exp = int(xz_exponents[1])
+        tableau[0] = x_exp
+        tableau[1] = z_exp
 
         P = cls(tableau, dimensions=dimension)
         P._sanity_check()
