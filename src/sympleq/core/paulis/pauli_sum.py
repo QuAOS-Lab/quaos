@@ -188,6 +188,7 @@ class PauliSum(PauliObject):
                     n_paulis: int,
                     dimensions: int | list[int] | np.ndarray,
                     rand_weights: bool = True,
+                    rand_phases: bool = False,
                     seed: int | None = None) -> 'PauliSum':
         """
         Create a random PauliSum object.
@@ -202,6 +203,8 @@ class PauliSum(PauliObject):
             The dimensions of the qudits. The size of dimensions determines the number of qudits.
         rand_weights : bool
             Whether to use random weights for the Pauli operators.
+        rand_phases : bool
+            Whether to use random phases for the Pauli operators.
 
         Returns
         -------
@@ -228,8 +231,12 @@ class PauliSum(PauliObject):
                 j += 1
                 ps = PauliString.from_random(dimensions, seed=string_seeds[j])
             strings.append(ps)
+        # Generate random phases if required
+        # TODO: check random phases below are correctly generated
+        phases = 2 * np.random.randint(0, 2 * int(np.prod(dimensions)) - 1,
+                                       size=n_paulis) if rand_phases else [0] * n_paulis
 
-        return cls.from_pauli_strings(strings, weights=weights, phases=[0] * n_paulis).to_standard_form()
+        return cls.from_pauli_strings(strings, weights=weights, phases=phases).to_standard_form()
 
     @property
     def phases(self) -> np.ndarray:
@@ -1126,7 +1133,8 @@ class PauliSum(PauliObject):
         scipy.sparse.csr_matrix
             Matrix representation of input Pauli.
         """
-        # TODO: If pauli_string_index is selected it maybe should account for the weights and phases
+        # TODO: If pauli_string_index is selected it maybe should include phase and weight?
+        #       Luca -> Seems to me it already does? Which is totally fine :)
         if pauli_string_index is not None:
             ps = PauliSum(self.tableau[pauli_string_index], self.dimensions, self.weights, self.phases)
             return ps.to_hilbert_space()

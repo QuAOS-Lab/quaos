@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import pytest
 from sympleq.core.paulis import PauliSum, PauliString, Pauli
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
@@ -591,6 +592,69 @@ class TestPaulis:
         ps1 = S.select_pauli_string(1)
         ps3 = S.select_pauli_string(3)
         assert SPM[1, 3] % L == ps1.symplectic_product(ps3, as_scalar=True) % L
+
+    def test_pauli_sum_commutation_with_matrix(self):
+        """
+        Generate a random PauliSum with mixed dimensions and verify that
+        pairwise commutation (via matrices) matches the symplectic scalar product.
+        """
+        for _ in range(100):
+            # number of paulis for each iteration
+            n_paulis = 5
+            # choose random dimensions with product < 16
+            dimensions_to_choose_from = [2, 3, 5, 7, 11, 15]
+            dimensions = []
+            prod = 1
+            while True:
+                d = random.choice(dimensions_to_choose_from)
+                if prod * d >= 16:
+                    break
+                dimensions.append(d)
+                prod *= d
+            if not dimensions:
+                dimensions = [random.choice(dimensions_to_choose_from)]
+            # generate random PauliSum
+            P = PauliSum.from_random(n_paulis, dimensions, rand_phases=True)
+            L = P.lcm()
+            # check commutation relations pairwise
+            for i in range(n_paulis):
+                for j in range(i + 1, n_paulis):
+                    # FIXME: make sure that the next two lines select the correct
+                    # PauliStrings INCLUSIVE of phases and weights
+                    psi = P[i]
+                    psj = P[j]
+
+                    # scalar symplectic product
+                    s = psi.symplectic_product(psj, as_scalar=True)
+
+                    # matrix commutator
+                    Mi = PauliSum.from_pauli_strings(psi).to_hilbert_space().toarray()
+                    Mj = PauliSum.from_pauli_strings(psj).to_hilbert_space().toarray()
+                    comm = Mi @ Mj - Mj @ Mi
+                    is_commuting = np.allclose(comm, np.zeros_like(comm), atol=1e-12)
+
+                    # they commute iff scalar symplectic product is 0 (mod L)
+                    assert is_commuting == (s == 0), (
+                        f"Mismatch commutation for pair ({i},{j}): scalar={s} mod {L}, "
+                        f"is_commuting={is_commuting}"
+                        f"PauliStrings:\n{psi}\n{psj}"
+                    )
+
+                    # If they do not commute, check that the product (including phase) computed
+                    # from the PauliString matches the direct matrix product Mi @ Mj.
+                    if not is_commuting:
+                        # define product as a PauliString then get its matrix
+                        prod_ps = psi * psj
+                        M_prod_from_ps = PauliSum.from_pauli_strings(prod_ps).to_hilbert_space().toarray()
+
+                        # directly from matrices
+                        M_prod_direct = Mi @ Mj
+
+                        # check for phases being handled appropriately
+                        assert np.allclose(M_prod_from_ps, M_prod_direct, atol=1e-12), (
+                            f"Product matrix mismatch for pair ({i},{j}): via PauliString vs direct multiplication\n"
+                            f"psi={psi}\npsj={psj}\nVia PauliString matrix:\n{M_prod_from_ps}\nDirect Mi@Mj:\n{M_prod_direct}"
+                        )
 
     # Comprehensive tests
     # commutation relations for mixed dimensions
