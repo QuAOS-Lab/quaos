@@ -236,7 +236,7 @@ class PauliSum(PauliObject):
         phases = 2 * np.random.randint(0, 2 * int(np.prod(dimensions)) - 1,
                                        size=n_paulis) if rand_phases else [0] * n_paulis
 
-        return cls.from_pauli_strings(strings, weights=weights, phases=phases).to_standard_form()
+        return cls.from_pauli_strings(strings, weights=weights, phases=phases)
 
     @property
     def phases(self) -> np.ndarray:
@@ -334,7 +334,7 @@ class PauliSum(PauliObject):
         if isinstance(key, int):
             # Here we don't copy and return a view.
             tableau = self.tableau[key]
-            return PauliString(tableau, self.dimensions)
+            return PauliString(tableau, self.dimensions, self.weights[key], self.phases[key])
 
         if isinstance(key, (list, np.ndarray, slice)):
             return PauliSum(self.tableau[key], self.dimensions, self.weights[key], self.phases[key])
@@ -356,7 +356,7 @@ class PauliSum(PauliObject):
                 if isinstance(qudit_indices, (list, np.ndarray, slice)):
                     sub_tableau = self.tableau[pauli_indices, :][qudit_indices]
                     sub_dims = self.dimensions[qudit_indices]
-                    return PauliString(sub_tableau, sub_dims)
+                    return PauliString(sub_tableau, sub_dims, self.weights[key], self.phases[key])
 
             return self.get_subspace(qudit_indices, pauli_indices)
 
