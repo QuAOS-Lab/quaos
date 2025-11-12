@@ -593,6 +593,10 @@ class TestPaulis:
         ps3 = S.select_pauli_string(3)
         assert SPM[1, 3] % L == ps1.symplectic_product(ps3, as_scalar=True) % L
 
+    # Comprehensive tests
+    # commutation relations for mixed dimensions
+    # phases for mixed dimensions
+
     def test_pauli_sum_commutation_with_matrix(self):
         """
         Generate a random PauliSum with mixed dimensions and verify that
@@ -621,8 +625,8 @@ class TestPaulis:
                 for j in range(i + 1, n_paulis):
                     # FIXME: make sure that the next two lines select the correct
                     # PauliStrings INCLUSIVE of phases and weights
-                    psi = P[i]
-                    psj = P[j]
+                    psi = P[i].copy()
+                    psj = P[j].copy()
 
                     # scalar symplectic product
                     s = psi.symplectic_product(psj, as_scalar=True)
@@ -653,9 +657,71 @@ class TestPaulis:
                         # check for phases being handled appropriately
                         assert np.allclose(M_prod_from_ps, M_prod_direct, atol=1e-12), (
                             f"Product matrix mismatch for pair ({i},{j}): via PauliString vs direct multiplication\n"
-                            f"psi={psi}\npsj={psj}\nVia PauliString matrix:\n{M_prod_from_ps}\nDirect Mi@Mj:\n{M_prod_direct}"
+                            f"element i = {str(psi)}\n "
+                            f"element j = {str(psj)}\n"
+                            f"product i*j = {str(prod_ps)}\n"
                         )
 
-    # Comprehensive tests
-    # commutation relations for mixed dimensions
-    # phases for mixed dimensions
+    def test_pauli_sum_phase_invariance_matrix_equivalence(self):
+        """
+        Create a random PauliSum, then modify both the integer phases by adding
+        multiples of 2*L and the complex weights by integer multiples of 2π
+        (which are unity) so the resulting PauliSum should represent the same
+        matrix. Verify matrices are equal.
+        """
+        for _ in range(30):
+            # build random dimensions with small product
+            # choose random dimensions with product < 16
+            dimensions_to_choose_from = [2, 3, 5, 7, 11, 15]
+            dimensions = []
+            prod = 1
+            while True:
+                d = random.choice(dimensions_to_choose_from)
+                if prod * d >= 16:
+                    break
+                dimensions.append(d)
+                prod *= d
+            if not dimensions:
+                dimensions = [random.choice(dimensions_to_choose_from)]
+
+            # random number of paulis
+            n_paulis = random.randint(1, int(max(dimensions)**2))
+            P = PauliSum.from_random(n_paulis, dimensions, rand_phases=False)
+            n_terms = P.n_paulis()
+
+            weights = np.array(P.weights(), copy=True)
+            phases = np.array(P.phases(), copy=True)
+
+            L = P.lcm()
+
+            # random integer shifts: add up to 2*L - 1
+            phase_shifts = np.random.randint(0, 2 * L - 1, size=n_terms)
+            new_phases = (phases + phase_shifts).tolist()
+
+            # fix coefficients accordingly
+            # FIXME: ensure weights are correct (notice the "-" sign to undo the added phases above)
+            new_weights = (weights * np.exp(-2j * np.pi * phase_shifts / (2 * L))).tolist()
+
+            # construct new PauliSum
+            P_dephased = PauliSum.from_tableau(P.tableau(), weights=new_weights,
+                                               phases=new_phases, dimensions=P.dimensions())
+
+            # remove phases with "phase_to_weight"
+            P_rephased = P_dephased.copy()
+            P_rephased.phase_to_weight()
+
+            # check that the weights of P_rephased match those of P
+            assert np.allclose(P_rephased.weights(), P.weights(), atol=1e-12), "Weights differ after phase_to_weight"
+
+            # check that all PauliSums are the same:
+            P.standardise()
+            P_dephased.standardise()
+            P_rephased.standardise()
+            assert P.is_close(P_dephased), "PauliSums differ after applying trivial phase/weight shifts"
+            assert P.is_close(P_rephased), "PauliSums differ after phase_to_weight"
+
+            # compare matrices
+            M1 = P.to_hilbert_space().toarray()
+            M2 = P_dephased.to_hilbert_space().toarray()
+
+            assert np.allclose(M1, M2, atol=1e-12), "Matrices differ after applying trivial phase/weight shifts"
