@@ -193,13 +193,12 @@ class TestPaulis:
             x1 = Pauli.from_string(f'x{x_exp}z0', dimension=d)
             z1 = Pauli.from_string(f'x0z{z_exp}', dimension=d)
             y1 = Pauli.from_string(f'x{x_exp}z{z_exp}', dimension=d)
-            id = Pauli.from_string('x0z0', dimension=d)
+            id = Pauli.Idnd(dimension=d)
 
             assert x1 * z1 == y1, f'Error in Pauli multiplication for d={d}'
-            assert x1**(d - x_exp) == id, f'Error in Pauli exponentiation (x**{d} = id) for d={d}'
-            assert y1 * z1**(d - z_exp) * \
-                x1**(d - x_exp) == id, f'Error in Pauli exponentiation (y**{d} = id) for d={d}'
-            assert z1**(d - z_exp) == id, f'Error in Pauli exponentiation (z**{d} = id) for d={d}'
+            assert x1**d == id, f'Error in Pauli exponentiation (x**{d} = id) for d={d}'
+            assert y1**d == id, f'Error in Pauli exponentiation (y**{d} = id) for d={d}'
+            assert z1**d == id, f'Error in Pauli exponentiation (z**{d} = id) for d={d}'
             assert x1 * id == x1, f'Error in Pauli multiplication (x * id = x) for d={d}'
             assert id * z1 == z1, f'Error in Pauli multiplication (id * z = z) for d={d}'
 
