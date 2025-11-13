@@ -340,7 +340,26 @@ class PauliString(PauliObject):
                             f" {self.dimensions} and {A.dimensions} must be equal.")
 
         tableau = np.mod(self.tableau + A.tableau, np.tile(self.dimensions, 2))
-        return PauliString(tableau, self.dimensions.copy())
+
+        w1 = self._weights[:, None]
+        w2 = A._weights[None, :]
+        new_weights = (w1 * w2).reshape(-1)
+
+        p1 = self._phases[:, None]
+        p2 = A._phases[None, :]
+
+        # Extract z- and x-parts from tableau
+        n1, n2 = self.n_qudits(), A.n_qudits()
+        a_z = self.tableau[:, n1:]
+        b_x = A.tableau[:, :n2]
+        # Compute acquired phases via symplectic form
+        factors = (self.lcm // self.dimensions)
+        acquired_phases = 2 * factors * a_z  @ b_x.T
+
+        # Combine with existing phases and flatten
+        new_phases = (p1 + p2 + acquired_phases) % (2 * self.lcm)
+        new_phases = new_phases.reshape(-1)
+        return PauliString(tableau, self.dimensions.copy(), weights=new_weights, phases=new_phases)
 
     @property
     def x_exp(self) -> np.ndarray:
