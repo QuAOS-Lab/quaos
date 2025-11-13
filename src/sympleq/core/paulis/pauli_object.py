@@ -187,6 +187,9 @@ class PauliObject(ABC):
         """
         pass
 
+    def reset_phases(self):
+        self._phases = np.zeros(len(self._phases))
+
     @property
     @abstractmethod
     def weights(self) -> np.ndarray:
@@ -270,7 +273,7 @@ class PauliObject(ABC):
             acquired_phases.append(2 * hermitian_conjugate_phase)
         acquired_phases = np.asarray(acquired_phases, dtype=int)
 
-        conjugate_initial_phases = (-self.phases) % (2 * self.lcm)
+        conjugate_initial_phases = (-self._phases) % (2 * self.lcm)
         conjugate_phases = (conjugate_initial_phases + acquired_phases) % (2 * self.lcm)
 
         return self.__class__(tableau=conjugate_tableau, dimensions=self.dimensions,
@@ -491,7 +494,7 @@ class PauliObject(ABC):
             raise Exception("A Pauli object with more than a PauliString cannot be exponentiated.")
 
         tableau = np.mod(self.tableau * A, np.tile(self.dimensions, 2))
-        return self.__class__(tableau, self.dimensions.copy(), self.weights.copy(), self.phases.copy())
+        return self.__class__(tableau, self._dimensions.copy(), self._weights.copy(), self._phases.copy())
 
     def __hash__(self) -> int:
         """
@@ -544,7 +547,7 @@ class PauliObject(ABC):
         """
         new_weights = np.zeros(self.n_paulis(), dtype=np.complex128)
         for i in range(self.n_paulis()):
-            phase = self.phases[i]
+            phase = self._phases[i]
             omega = np.exp(2 * np.pi * 1j * phase / (2 * self.lcm))
             new_weights[i] = self.weights[i] * omega
         self._phases = np.zeros(self.n_paulis(), dtype=int)

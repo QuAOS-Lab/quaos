@@ -410,7 +410,9 @@ class PauliString(PauliObject):
         PauliSum
             The PauliSum containing the PauliString as single entry.
         """
-        return PauliSum(self.tableau, self.dimensions, self.weights, self.phases)
+        # FIXME: import at the top. Currently we can't because of circular imports.
+        from .pauli_sum import PauliSum
+        return PauliSum(self._tableau, self._dimensions, self._weights, self._phases)
 
     def n_identities(self) -> int:
         """
@@ -683,7 +685,7 @@ class PauliString(PauliObject):
         if isinstance(key, np.ndarray):
             tableau_mask = np.concatenate([key, key + self.n_qudits()])
             return PauliString(
-                self.tableau[tableau_mask], self.dimensions[key])
+                self.tableau[tableau_mask], self.dimensions[key], self._weights, self._phases)
 
         raise ValueError(f"Cannot get item with key {key}. Key must be aof type int, slice, np.ndarray, or list[int].")
 

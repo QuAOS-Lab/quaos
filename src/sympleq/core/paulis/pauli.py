@@ -224,7 +224,9 @@ class Pauli(PauliObject):
         PauliSum
             A PauliSum instance representing the given Pauli operator.
         """
-        return PauliSum(self.tableau, self.dimensions, self.weights, self.phases)
+        # FIXME: import at the top. Currently we can't because of circular imports.
+        from .pauli_sum import PauliSum
+        return PauliSum(self._tableau, self._dimensions, self._weights, self._phases)
 
     def as_pauli_string(self) -> PauliString:
         """
@@ -235,7 +237,9 @@ class Pauli(PauliObject):
         PauliString
             A PauliString instance representing the given Pauli operator.
         """
-        return PauliString(self.tableau, self.dimensions, self.weights, self.phases)
+        # FIXME: import at the top. Currently we can't because of circular imports.
+        from .pauli_string import PauliString
+        return PauliString(self._tableau, self._dimensions, self._weights, self._phases)
 
     def to_hilbert_space(self) -> sp.csr_matrix:
         """

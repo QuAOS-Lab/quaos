@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import overload, TYPE_CHECKING, Union
 import numpy as np
 import scipy.sparse as sp
+import warnings
 
 from .pauli_object import PauliObject
 from .pauli_string import PauliString
@@ -47,7 +48,7 @@ class PauliSum(PauliObject):
         return P
 
     @classmethod
-    def from_pauli(cls, pauli: Pauli) -> 'PauliSum':
+    def from_pauli(cls, pauli: Pauli) -> PauliSum:
         """
         Create a PauliSum instance from a single Pauli.
 
@@ -123,7 +124,8 @@ class PauliSum(PauliObject):
     @classmethod
     def from_pauli_strings(cls, pauli_string: PauliString | list[PauliString],
                            weights: int | float | complex | list[int | float | complex] | np.ndarray | None = None,
-                           phases: int | list[int] | np.ndarray | None = None,) -> PauliSum:
+                           phases: int | list[int] | np.ndarray | None = None,
+                           inherit_phases: bool = False) -> PauliSum:
         """
         Create a PauliSum instance from a (list of) PauliString object.
 
@@ -148,7 +150,12 @@ class PauliSum(PauliObject):
                 if not np.array_equal(ps.dimensions, dimensions):
                     raise ValueError("The dimensions of all Pauli strings must be equal.")
 
-        tableau = np.vstack([p.tableau for p in pauli_string])
+        tableau = np.vstack([p._tableau for p in pauli_string])
+
+        if inherit_phases:
+            if phases is not None:
+                warnings.warn("Phases are disregarded if inherit_phases is set to True.")
+            phases = np.hstack([p._phases for p in pauli_string])
         return cls(tableau, dimensions, weights, phases)
 
     @classmethod
@@ -446,10 +453,8 @@ class PauliSum(PauliObject):
         if not np.array_equal(self.dimensions, A.dimensions):
             raise ValueError(f"The dimensions of the PauliSums do not match ({self.dimensions}, {A.dimensions}).")
 
-        if isinstance(A, Pauli):
-            A = PauliSum(A.tableau, A.dimensions)
-        elif isinstance(A, PauliString):
-            A = PauliSum(A.tableau, A.dimensions)
+        if isinstance(A, (Pauli, PauliString)):
+            A = A.as_pauli_sum()
         elif isinstance(A, PauliSum):
             pass
         else:
@@ -605,13 +610,13 @@ class PauliSum(PauliObject):
         """
 
         if isinstance(A, ScalarType):
-            return PauliSum(self.tableau, self.dimensions, self.weights * A, self.phases)
+            return PauliSum(self._tableau, self._dimensions, self._weights * A, self._phases)
 
         if isinstance(A, Pauli):
-            return self * PauliSum.from_pauli(A)
+            return self * A.as_pauli_sum()
 
         if isinstance(A, PauliString):
-            return self * PauliSum.from_pauli_strings(A)
+            return self * A.as_pauli_sum()
 
         if not isinstance(A, PauliSum):
             raise ValueError("Multiplication only supported with Pauli, PauliSum, PauliString, or scalar")
@@ -919,7 +924,7 @@ class PauliSum(PauliObject):
         """
         # NOTE: We pass a view to the tableau row and the dimensions,
         #       meaning that they could be modified from the PauliString.
-        return PauliString(self.tableau[index], self.dimensions)
+        return PauliString(self.tableau[index], self.dimensions, self.weights[index], self.phases[index])
 
     def select_pauli(self, index: tuple[int, int]) -> Pauli:
         """
@@ -1133,10 +1138,8 @@ class PauliSum(PauliObject):
         scipy.sparse.csr_matrix
             Matrix representation of input Pauli.
         """
-        # TODO: If pauli_string_index is selected it maybe should include phase and weight?
-        #       Luca -> Seems to me it already does? Which is totally fine :)
         if pauli_string_index is not None:
-            ps = PauliSum(self.tableau[pauli_string_index], self.dimensions, self.weights, self.phases)
+            ps = self.select_pauli_string(pauli_string_index)
             return ps.to_hilbert_space()
 
         list_of_pauli_matrices = []
