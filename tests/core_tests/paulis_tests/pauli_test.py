@@ -5,7 +5,7 @@ import pytest
 from sympleq.core.paulis import PauliSum, PauliString, Pauli
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 
-prime_list = [2, 3, 5, 7, 11]
+prime_list = [2, 3, 5, 7, 11, 13]
 N_tests = 100
 
 
