@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 import math
-
+from pathlib import Path
 from sympleq.core.paulis import PauliSum, PauliString, Pauli
 
 
@@ -118,3 +118,13 @@ class TestPauliSumFactories:
             for xe, ze, d in zip(ps.x_exp, ps.z_exp, dims):
                 assert 0 <= xe < d
                 assert 0 <= ze < d
+
+    def test_pauli_sum_to_and_from_file(self, tmp_path: Path):
+        path = tmp_path / "paulisum.data"
+        dimensions = [2, 3, 5, 7, 11]
+
+        for _ in range(50):
+            P = PauliSum.from_random(10, dimensions)
+            P.to_file(path)
+            P_from_file = PauliSum.from_file(path, dimensions)
+            assert P == P_from_file
