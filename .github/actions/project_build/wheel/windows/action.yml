@@ -1,0 +1,101 @@
+name: "Build Windows Python Wheel"
+description: "Build Python wheels for Windows platform"
+inputs:
+  matrix-arc:
+    description: "Matrix architecture (x64, x86, arm64)"
+    required: true
+  architecture:
+    description: "Target architecture (x64, x86, arm64)"
+    required: true
+  python-version:
+    description: "Python version"
+    required: true
+  cuda-version:
+    description: "CUDA version to install"
+    required: false
+    default: "12.6"
+  vcpkg-commit:
+    description: "vcpkg commit ID to use"
+    required: false
+    default: "15fd3bbcf7cc66249ba11f87a6215ee6f291bb26"
+    type: string
+  cmake-preset:
+    description: "CMake preset to use"
+    required: true
+  source-path:
+    description: "Source path for the project"
+    required: false
+    default: "src"
+  project-name:
+    description: "Project name for testing"
+    required: false
+    default: "sympleq"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Python environment
+      id: python-setup
+      uses: ./.github/actions/setup/python-environment
+      with:
+        python-version: "${{ inputs.python-version }}.x"
+        architecture: ${{ inputs.matrix-arc }}
+        include-cibuildwheel: "false"
+
+    - name: Set up MSVC environment
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Setup CUDA
+      id: cuda-setup
+      uses: Jimver/cuda-toolkit@v0.2.24
+      with:
+        cuda: ${{ env.CUDA_VERSION }}
+        log-file-suffix: "windows_${{ inputs.matrix-arc }}_${{ inputs.python-version }}.txt"
+
+    - name: Setup vcpkg
+      id: vcpkg-setup
+      uses: ./.github/actions/setup/vcpkg
+      with:
+        vcpkg-commit: ${{ inputs.vcpkg-commit }}
+        platform: windows
+
+    - name: Build Windows wheel
+      shell: pwsh
+      env:
+        CMAKE_TOOLCHAIN_FILE: ${{ steps.vcpkg-setup.outputs.cmake-toolchain }}
+        CUDA_PATH: ${{ steps.cuda-setup.outputs.CUDA_PATH }}
+        VCPKG_ROOT: ${{ steps.vcpkg-setup.outputs.vcpkg-root }}
+      run: |
+        Write-Host "🔨 Building wheel for Windows (${{ inputs.architecture }})..."
+        python -m pip install --upgrade pip setuptools wheel
+        python -m pip install build scikit-build-core[pyproject] nanobind cmake ninja delvewheel setuptools-scm
+        python -m build --wheel --outdir dist --config-setting "cmake.args=-G;Ninja;-S;${{ inputs.source-path }};--preset;${{ inputs.cmake-preset }}"
+
+    - name: Repair Windows wheels with delvewheel
+      shell: pwsh
+      run: |
+        $wheels = Get-ChildItem -Path dist -Filter "${{ inputs.project-name }}*.whl" -ErrorAction SilentlyContinue
+        if (-not $wheels) {
+          Write-Host "⚠️ No ${{ inputs.project-name }} wheels found in dist; skipping delvewheel repair"
+        } else {
+          Write-Host "Found wheels to repair: $($wheels.Count)"
+          Remove-Item -Path dist\* -Include *.whl -Exclude ${{ inputs.project-name }}*.whl -Force -ErrorAction SilentlyContinue
+          foreach ($wheel in $wheels) {
+            Write-Host "Repairing $($wheel.Name)..."
+            python -m delvewheel repair --add-path "${{ github.workspace }}/${{ inputs.source-path }}/${{ inputs.project-name }}.libs" --wheel-dir dist $wheel.FullName
+          }
+        }
+
+    - name: Test Windows wheel
+      shell: pwsh
+      run: |
+        $wheels = Get-ChildItem -Path dist -Filter "${{ inputs.project-name }}*.whl"
+        if ($wheels) {
+          foreach ($wheel in $wheels) {
+            Write-Host "Installing $($wheel.Name)..."
+            python -m pip install $wheel.FullName
+          }
+          
+          python -m pip install pytest pytest-benchmark
+          python -m pytest tests -v -k "not benchmark" --benchmark-quiet --benchmark-disable
+        }

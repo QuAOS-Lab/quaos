@@ -1,0 +1,141 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21 },
+  "configurePresets": [
+    {
+      "name": "Base-Release",
+      "description": "Base Release preset",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_RUNTIME_OUTPUT_DIRECTORY": "sympleq/core/light",
+        "LIGHT_SRC_DIRECTORY": "${sourceDir}/light"
+      }
+    },
+    {
+    "name": "Base-RelWithDebInfo",
+    "description": "Base RelWithDebInfo preset",
+    "generator": "Ninja",
+    "binaryDir": "${sourceDir}/build/${presetName}",
+    "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_RUNTIME_OUTPUT_DIRECTORY": "${sourceDir}/sympleq/core/light",
+        "LIGHT_SRC_DIRECTORY": "${sourceDir}/light"
+      }
+    },
+    {
+      "name": "linux-x86_64-Release",
+      "generator": "Ninja",
+      "inherits": "Base-Release",
+      "description": "Linux x86_64 Release build",
+      "hidden": false,
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    },
+    {
+      "name": "linux-x86_64-RelWithDebInfo",
+      "generator": "Ninja",
+      "inherits": "Base-RelWithDebInfo",
+      "description": "Linux x86_64 RelWithDebInfo build",
+      "hidden": false,
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_TOOLCHAIN_FILE": "$env{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+      }
+    },
+    {
+      "name": "linux-arm64-Release",
+      "generator": "Ninja",
+      "inherits": "Base-Release",
+      "description": "Linux ARM64 Release build",
+      "hidden": false,
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "aarch64-linux-gnu-gcc",
+        "CMAKE_CXX_COMPILER": "aarch64-linux-gnu-g++"
+      }
+    },
+    {
+      "name": "linux-arm64-RelWithDebInfo",
+      "generator": "Ninja",
+      "inherits": "Base-RelWithDebInfo",
+      "description": "Linux ARM64 RelWithDebInfo build",
+      "hidden": false,
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "aarch64-linux-gnu-gcc",
+        "CMAKE_CXX_COMPILER": "aarch64-linux-gnu-g++",
+        "CMAKE_TOOLCHAIN_FILE": "$env{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+      }
+    },
+    {
+      "name": "macos-x86_64-Release",
+      "generator": "Ninja",
+      "description": "macOS x86_64 Release build",
+      "hidden": false,
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_Fortran_COMPILER": "gfortran"
+      }
+    },
+    {
+      "name": "macos-x86_64-RelWithDebInfo",
+      "generator": "Ninja",
+      "description": "macOS x86_64 RelWithDebInfo build",
+      "hidden": false,
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_Fortran_COMPILER": "gfortran"
+      }
+    },
+    {
+      "name": "macos-arm64-Release",
+      "generator": "Ninja",
+      "description": "macOS ARM64 Release build",
+      "hidden": false,
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_Fortran_COMPILER": "gfortran"
+      }
+    },
+    {
+      "name": "macos-arm64-RelWithDebInfo",
+      "generator": "Ninja",
+      "description": "macOS ARM64 RelWithDebInfo build",
+      "hidden": false,
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_Fortran_COMPILER": "gfortran"
+      }
+    },
+    {
+      "name": "windows-x86_64-Release",
+      "generator": "Ninja",
+      "inherits": "Base-Release",
+      "description": "Windows x86_64 Release build",
+      "hidden": false,
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl"
+      }
+    },
+    {
+      "name": "windows-x86_64-RelWithDebInfo",
+      "generator": "Ninja",
+      "inherits": "Base-RelWithDebInfo",
+      "description": "Windows x86_64 RelWithDebInfo build",
+      "hidden": false,
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "CMAKE_TOOLCHAIN_FILE": "$env{USERPROFILE}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+      }
+    }
+  ]
+}

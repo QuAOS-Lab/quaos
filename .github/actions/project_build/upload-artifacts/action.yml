@@ -1,0 +1,37 @@
+name: "Upload Wheel Artifacts"
+description: "Upload built wheels as GitHub artifacts"
+inputs:
+  artifact-name:
+    description: "Name for the artifact"
+    required: true
+  wheel-path:
+    description: "Path to wheels (glob pattern)"
+    required: false
+    default: "dist/*.whl"
+  retention-days:
+    description: "Days to retain artifacts"
+    required: false
+    default: "30"
+
+runs:
+  using: "composite"
+  steps:
+    - name: List wheels before upload
+      shell: bash
+      run: |
+        echo "📦 Wheels found for upload:"
+        ls -la dist/*.whl 2>/dev/null || echo "No wheels found in dist/"
+
+    - name: Upload wheels as artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.wheel-path }}
+        retention-days: ${{ inputs.retention-days }}
+        if-no-files-found: warn
+
+    - name: Upload summary
+      shell: bash
+      run: |
+        wheel_count=$(ls dist/*.whl 2>/dev/null | wc -l)
+        echo "✅ Uploaded $wheel_count wheel(s) as artifact: ${{ inputs.artifact-name }}"

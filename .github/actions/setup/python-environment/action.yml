@@ -1,0 +1,50 @@
+name: "Setup Python Environment"
+description: "Setup Python with cibuildwheel and build dependencies"
+inputs:
+  python-version:
+    description: "Python version to setup"
+    required: true
+  architecture:
+    description: "Architecture for Python (x64, x86, etc.)"
+    required: false
+    default: "x64"
+  include-cibuildwheel:
+    description: "Whether to install cibuildwheel"
+    required: false
+    default: "true"
+
+outputs:
+  cibw-build:
+    description: "The CIBW_BUILD value for the Python version"
+    value: ${{ steps.set-cibw.outputs.cibw-build }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        architecture: ${{ inputs.architecture }}
+
+    - name: Generate CIBW_BUILD value
+      id: set-cibw
+      shell: bash
+      run: |
+        PYTHON_VERSION="${{ inputs.python-version }}"
+        CIBW_BUILD_VALUE="cp${PYTHON_VERSION//./}-*"
+        echo "cibw-build=$CIBW_BUILD_VALUE" >> $GITHUB_OUTPUT
+        echo "✅ Generated CIBW_BUILD: $CIBW_BUILD_VALUE"
+
+    - name: Install base dependencies
+      shell: bash
+      run: |
+        echo "📦 Installing base Python dependencies..."
+        python -m pip install --upgrade pip setuptools wheel
+
+    - name: Install cibuildwheel
+      if: inputs.include-cibuildwheel == 'true'
+      shell: bash
+      run: |
+        echo "📦 Installing cibuildwheel and build tools..."
+        python -m pip install cibuildwheel twine

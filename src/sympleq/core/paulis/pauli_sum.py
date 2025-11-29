@@ -389,8 +389,8 @@ class PauliSum(PauliObject):
 
         Notes:
         - If a weight is (numerically) zero, we leave it and add no phase.
-        - We try the nearest discrete phase (by rounding the argument), and also ±1
-            neighbor to break ties in favor of larger positive real part.
+        - We try the nearest discrete phase (by rounding the argument),
+        and also ±1 neighbor to break ties in favor of larger positive real part.
         """
         d = int(self.lcm)
         two_d = 2 * d

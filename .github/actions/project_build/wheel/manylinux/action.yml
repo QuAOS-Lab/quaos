@@ -1,0 +1,97 @@
+name: "Build Python Wheel"
+description: "Build Python wheels using cibuildwheel"
+inputs:
+  platform:
+    description: "Target platform (linux or windows)"
+    required: true
+  matrix-arc:
+    description: "Matrix architecture (x64, x86, arm64)"
+    required: true
+  architecture:
+    description: "Target architecture"
+    required: true
+  python-version:
+    description: "Python version"
+    required: true
+  cmake-preset:
+    description: "CMake preset to use"
+    required: true
+  source-path:
+    description: "Source path for the project"
+    required: false
+    default: "src"
+  gcc-version:
+    description: "GCC version for Linux builds"
+    required: false
+    default: "12"
+  project-name:
+    description: "Project name for testing"
+    required: false
+    default: "sympleq"
+  cuda-version:
+    description: "CUDA version to install"
+    required: false
+    default: "12.6"
+  vcpkg-commit:
+    description: "vcpkg commit ID"
+    required: false
+    default: "15fd3bbcf7cc66249ba11f87a6215ee6f291bb26"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Python environment
+      id: python-setup
+      uses: ./.github/actions/setup/python-environment
+      with:
+        python-version: "${{ inputs.python-version }}.x"
+        architecture: ${{ inputs.matrix-arc }}
+        include-cibuildwheel: "true"
+
+    - name: Set CIBW_BUILD for Python version
+      shell: bash
+      run: |
+        PYTHON_VERSION="${{ inputs.python-version }}"
+        CIBW_BUILD_VALUE="cp${PYTHON_VERSION//./}-*"
+        echo "CIBW_BUILD_VALUE=$CIBW_BUILD_VALUE" >> $GITHUB_ENV
+        echo "Building for Python $PYTHON_VERSION -> $CIBW_BUILD_VALUE"
+
+    - name: Build wheels (Linux)
+      shell: bash
+      env:
+        CIBW_BUILD: ${{ env.CIBW_BUILD_VALUE }}
+        CIBW_ARCHS: ${{ inputs.architecture }}
+        CIBW_SKIP: "pp* *-musllinux*"
+        CIBW_BUILD_VERBOSITY: 1
+        CIBW_ENVIRONMENT: >-
+          CMAKE_TOOLCHAIN_FILE=/tmp/vcpkg/scripts/buildsystems/vcpkg.cmake
+          CUDA_PATH=/usr/local/cuda
+          VCPKG_ROOT=/tmp/vcpkg
+          PATH=/usr/local/cuda/bin:/opt/rh/gcc-toolset-${{ inputs.gcc-version }}/root/usr/bin:$PATH
+          LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+        CIBW_BEFORE_ALL_LINUX: >-
+          yum install -y epel-release &&
+          yum remove -y gcc gcc-c++ &&
+          yum install -y make git which gcc-toolset-${{ inputs.gcc-version }} curl zip unzip tar &&
+          source /opt/rh/gcc-toolset-${{ inputs.gcc-version }}/enable &&
+          export CC=/opt/rh/gcc-toolset-${{ env.GCC_VERSION }}/root/usr/bin/gcc &&
+          export CXX=/opt/rh/gcc-toolset-${{ env.GCC_VERSION }}/root/usr/bin/g++ &&
+          curl -fsSL -o /etc/yum.repos.d/cuda-rhel8.repo https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo &&
+          rpm --import https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/7fa2af80.pub &&
+          dnf clean all &&
+          dnf install -y cuda-toolkit-${{ inputs.cuda-version }} &&
+          git clone https://github.com/Microsoft/vcpkg.git /tmp/vcpkg &&
+          cd /tmp/vcpkg && 
+          git checkout ${{ inputs.vcpkg-commit }} &&
+          ./bootstrap-vcpkg.sh &&
+          ls
+        CIBW_BEFORE_BUILD: pip install scikit-build-core[pyproject] nanobind cmake ninja setuptools-scm
+        CIBW_CONFIG_SETTINGS: cmake.args=-S;${{ inputs.source-path }};--preset;${{ inputs.cmake-preset }}
+        CIBW_TEST_REQUIRES: pytest pytest-benchmark
+        CIBW_TEST_COMMAND: pytest {project}/tests -v -k "not benchmark" --benchmark-quiet --benchmark-disable
+        CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
+          export LD_LIBRARY_PATH="$(find / -type d -path '*/intel64' 2>/dev/null | paste -sd: -):$LD_LIBRARY_PATH" &&
+          export LD_LIBRARY_PATH="$(find / -type d -path '*/${{ inputs.project-name }}.libs' 2>/dev/null | paste -sd: -):$LD_LIBRARY_PATH" &&
+          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" &&
+          auditwheel repair -w {dest_dir} {wheel}
+      run: python -m cibuildwheel --output-dir ./dist

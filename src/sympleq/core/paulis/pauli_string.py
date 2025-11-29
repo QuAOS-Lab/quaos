@@ -484,8 +484,8 @@ class PauliString(PauliObject):
         We generalise to mixed dimensions as follows:
 
         If as_scalar=True (default): return a single integer r (mod LCM),
-        defined by the phase-preserving lift
-            r = sum_j (L / d_j) * r_j   (mod L),   L = lcm(d_j),  r_j as in symplectic_residues().
+        defined by the phase-preserving lift:
+        r = sum_j (L / d_j) * r_j   (mod L),   L = lcm(d_j),  r_j as in symplectic_residues().
 
         If as_scalar=False: return the per-qudit residue vector r_j (mod d_j).
 

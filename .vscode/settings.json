@@ -1,24 +1,13 @@
 {
-  // Editor settings
   "editor.renderWhitespace": "all",
   "editor.rulers": [120],
   "editor.formatOnSave": true,
-  "files.exclude": {
-    "**/_autosummary": true
-  },
-  "search.exclude": {
-    "**/_autosummary": true
-  },
-
-  // Language-specific formatters
   "[python]": {
     "editor.defaultFormatter": "ms-python.autopep8"
   },
   "[cuda-cpp]": {
     "editor.defaultFormatter": "ms-vscode.cpptools"
   },
-
-  // Linter and formatter configurations
   "flake8.severity": {
     "C": "Warning",
     "E": "Warning",
@@ -32,24 +21,23 @@
     "--select=W291,E101,E111,E114,E117,E121,E122,E123,E124,E126,E127,E128,E201,E202,E303,E501",
     "--max-line-length=120"
   ],
-  "flake8.args": ["--config=${workspaceFolder}/scripts/configs/setup.cfg"],
-  "restructuredtext.linter.disabledLinters": ["doc8", "rstcheck"],
-
-  // Spell checker
-  "cSpell.import": ["${workspaceFolder}/scripts/configs/cspell.json"],
-
-  // Esbonio/Sphinx settings
+  "flake8.args": [
+    "--config=${workspaceFolder}/scripts/configs/setup.cfg"
+  ],
+  "restructuredtext.linter.disabledLinters": [
+    "doc8",
+    "rstcheck"
+  ],
+  "cSpell.import": [
+    "${workspaceFolder}/scripts/configs/cspell.json"
+  ],
   "esbonio.server.pythonPath": "${workspaceFolder}/docs/doc_venv/Scripts/python",
   "esbonio.sphinx.confDir": "${workspaceFolder}/docs",
   "esbonio.sphinx.buildDir": "${workspaceFolder}/docs/_build",
-
-  // Python analysis and testing
   "python.analysis.typeCheckingMode": "basic",
   "python.testing.pytestArgs": ["tests"],
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,
-
-  // Miscellaneous
   "jupyter.notebookFileRoot": "${workspaceFolder}",
   "task.autoDetect": "off",
   "python-envs.pythonProjects": [],

@@ -17,12 +17,12 @@ set DOC_BUILD_DIR=%DOC_ROOT%/_build/html
 set DOC_INDEX=%DOC_ROOT%/_build/html/index.html
 
 REM Setup dev environment env variables
-set PYTHON_PY_SETUP=%CONFIGS_ROOT%
+set PYTHON_PY_SETUP="./"
 set PERSONAL_FOLDER=scripts/personal
+set DIST_FOLDER=dist/
 set DEV_REQUIREMENTS=scripts/configs/dev_requirements.txt
-
-REM Python requirements synching env variables
-set SYNC_REQUIREMENTS_SCRIPT=scripts/tools/python/sync_requirements.py
+set CMAKE_X86_64_PRESET=windows-x86_64-RelWithDebInfo
+set VCVARSALL_PATH="C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat"
 
 REM Clear notebooks env variables
 set NOTEBOOKS_ROOT_DIR=%PROJECT_ROOT%

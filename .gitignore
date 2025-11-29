@@ -1,5 +1,7 @@
 # Custom
 scripts/personal/
+sympleq.libs
+quaos.libs
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -8,6 +10,10 @@ __pycache__/
 
 # C extensions
 *.so
+*.dll
+*.pdb
+*.lib
+*.ilk
 
 # Utility directories
 data/

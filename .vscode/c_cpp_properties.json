@@ -1,0 +1,21 @@
+{
+  "configurations": [
+    {
+      "name": "windows-gcc-x64",
+      "includePath": [
+        "${workspaceFolder}/src/sympleq/core/light/src/Base/include/**",
+        "${workspaceFolder}/src/sympleq/core/light/src/Base/include/Base/**",
+        "${workspaceFolder}/**",
+        "${env:LOCALAPPDATA}/Programs/Python/Python311/include"
+      ],
+      "compilerPath": "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/<version>/bin/Hostx64/x64/cl.exe",
+      "cStandard": "${default}",
+      "cppStandard": "${default}",
+      "intelliSenseMode": "windows-msvc-x64",
+      "compilerArgs": [
+        ""
+      ]
+    }
+  ],
+  "version": 4
+}

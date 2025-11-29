@@ -1,0 +1,69 @@
+name: "Publish Wheels"
+description: "Download artifacts and publish wheels to PyPI"
+inputs:
+  pypi-token:
+    description: "PyPI API token"
+    required: true
+  project-name:
+    description: "Project name for wheel filtering"
+    required: true
+  publish-to-test:
+    description: "Whether to publish to Test PyPI"
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Download all wheel artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: wheels-*
+        path: artifacts
+        merge-multiple: true
+
+    - name: Prepare distribution directory
+      shell: bash
+      run: |
+        echo "📦 Preparing wheels for publishing..."
+        ls -la artifacts/
+        mkdir -p dist
+        cp artifacts/*.whl dist/ 2>/dev/null || echo "No wheels found"
+        echo "📊 Final wheel count:"
+        ls -la dist/
+
+    - name: Set up Python for publishing
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install twine
+      shell: bash
+      run: pip install twine
+
+    - name: Publish to Test PyPI
+      if: inputs.publish-to-test == 'true'
+      shell: bash
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ inputs.pypi-token }}
+      run: |
+        echo "🚀 Publishing to Test PyPI..."
+        python -m twine upload --repository testpypi dist/${{ inputs.project-name }}-*.whl --verbose --skip-existing
+
+    - name: Publish to PyPI
+      if: inputs.publish-to-test == 'false'
+      shell: bash
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ inputs.pypi-token }}
+      run: |
+        echo "🚀 Publishing to PyPI..."
+        python -m twine upload dist/${{ inputs.project-name }}-*.whl --verbose
+
+    - name: Publishing summary
+      shell: bash
+      run: |
+        wheel_count=$(ls dist/${{ inputs.project-name }}-*.whl 2>/dev/null | wc -l)
+        echo "✅ Processing complete:"
+        echo "   - Found $wheel_count ${{ inputs.project-name }} wheel(s)"

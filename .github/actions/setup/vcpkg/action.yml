@@ -1,0 +1,74 @@
+name: "Setup vcpkg"
+description: "Setup vcpkg package manager"
+inputs:
+  vcpkg-commit:
+    description: "vcpkg commit ID to checkout"
+    required: true
+  platform:
+    description: "Target platform (linux or windows)"
+    required: true
+  install-path:
+    description: "Installation path for vcpkg"
+    required: false
+    default: "/tmp/vcpkg"
+
+outputs:
+  vcpkg-root:
+    description: "Path to vcpkg root directory"
+    value: ${{ steps.setup.outputs.vcpkg-root }}
+  cmake-toolchain:
+    description: "Path to vcpkg CMake toolchain file"
+    value: ${{ steps.setup.outputs.cmake-toolchain }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup vcpkg (Linux)
+      if: inputs.platform == 'linux'
+      id: setup-linux
+      shell: bash
+      run: |
+        echo "📦 Setting up vcpkg for Linux..."
+
+        # Clone vcpkg
+        git clone https://github.com/Microsoft/vcpkg.git ${{ inputs.install-path }}
+        cd ${{ inputs.install-path }}
+        git checkout "${{ inputs.vcpkg-commit }}"
+
+        # Bootstrap
+        ./bootstrap-vcpkg.sh
+
+        # Set outputs
+        echo "vcpkg-root=${{ inputs.install-path }}" >> $GITHUB_OUTPUT
+        echo "cmake-toolchain=${{ inputs.install-path }}/scripts/buildsystems/vcpkg.cmake" >> $GITHUB_OUTPUT
+
+    - name: Setup vcpkg (Windows)
+      if: inputs.platform == 'windows'
+      uses: lukka/run-vcpkg@v11
+      id: setup-windows
+      with:
+        vcpkgDirectory: "${{ github.workspace }}/vcpkg"
+        vcpkgGitCommitId: ${{ inputs.vcpkg-commit }}
+        runVcpkgInstall: true
+        vcpkgJsonGlob: "**/src/vcpkg.json"
+        doNotCache: true
+
+    - name: Set unified outputs
+      id: setup
+      shell: bash
+      run: |
+        if [ "${{ inputs.platform }}" == "windows" ]; then
+          VCPKG_ROOT="${{ github.workspace }}/vcpkg"
+          CMAKE_TOOLCHAIN="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+        else
+          VCPKG_ROOT="${{ steps.setup-linux.outputs.vcpkg-root }}"
+          CMAKE_TOOLCHAIN="${{ steps.setup-linux.outputs.cmake-toolchain }}"
+        fi
+
+        echo "VCPKG_ROOT=$VCPKG_ROOT" >> $GITHUB_ENV
+        echo "CMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN" >> $GITHUB_ENV
+        echo "vcpkg-root=$VCPKG_ROOT" >> $GITHUB_OUTPUT
+        echo "cmake-toolchain=$CMAKE_TOOLCHAIN" >> $GITHUB_OUTPUT
+        echo "✅ vcpkg setup complete:"
+        echo "   Root: $VCPKG_ROOT"
+        echo "   Toolchain: $CMAKE_TOOLCHAIN"

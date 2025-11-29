@@ -1,0 +1,71 @@
+name: "Determine Runner"
+description: "Determines whether to use self-hosted or GitHub-hosted runner based on branch pattern"
+
+inputs:
+  branch:
+    description: "Branch name to check (optional - will auto-detect if not provided)"
+    required: false
+    type: string
+  branch-pattern:
+    description: "Regex pattern to match against branch names for self-hosted runner"
+    required: false
+    default: "test-workflow"
+    type: string
+  self-hosted-runner:
+    description: "Runner name to use for self-hosted"
+    required: false
+    default: "self-hosted"
+    type: string
+  github-runner:
+    description: "Runner name to use for GitHub-hosted"
+    required: false
+    default: "ubuntu-latest"
+    type: string
+
+outputs:
+  runner:
+    description: "The runner to use for jobs (self-hosted or github-hosted)"
+    value: ${{ steps.determine.outputs.runner }}
+  is-self-hosted:
+    description: "Boolean indicating if self-hosted runner should be used"
+    value: ${{ steps.determine.outputs.is-self-hosted }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Determine runner
+      id: determine
+      shell: bash
+      run: |
+        # Use input branch if provided, otherwise detect from context
+        if [ -n "${{ inputs.branch }}" ]; then
+          BRANCH="${{ inputs.branch }}"
+        else
+          # Try different branch detection methods
+          if [ -n "${{ github.head_ref }}" ]; then
+            BRANCH="${{ github.head_ref }}"
+          elif [ -n "${{ github.ref_name }}" ]; then
+            BRANCH="${{ github.ref_name }}"
+          else
+            BRANCH="main"
+          fi
+        fi
+
+        echo "Detected branch: $BRANCH"
+
+        # Determine runner based on configurable branch pattern
+        if [[ "$BRANCH" =~ ${{ inputs.branch-pattern }} ]]; then
+          RUNNER="${{ inputs.self-hosted-runner }}"
+          IS_SELF_HOSTED="true"
+          echo "Branch matches pattern '${{ inputs.branch-pattern }}', using self-hosted runner"
+        else
+          RUNNER="${{ inputs.github-runner }}"
+          IS_SELF_HOSTED="false"
+          echo "Branch does not match pattern '${{ inputs.branch-pattern }}', using GitHub-hosted runner"
+        fi
+
+        echo "Selected runner: $RUNNER"
+
+        # Set outputs
+        echo "runner=$RUNNER" >> $GITHUB_OUTPUT
+        echo "is-self-hosted=$IS_SELF_HOSTED" >> $GITHUB_OUTPUT

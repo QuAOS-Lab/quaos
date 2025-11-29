@@ -98,7 +98,7 @@ scripts
         └── shell/
 
 sympleq
-#####
+#######
 
 .. code-block:: text
 

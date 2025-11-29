@@ -174,7 +174,7 @@ def are_subsets_equal(PauliSum_1: PauliSum,
                       ) -> bool:
     """
     Check if two subsets of two PauliSums objects are equal.
-    I.e., the first `subset_1' of `PauliSum_1' must match the second `subset_2' of `PauliSum_2'.
+    I.e., the first `subset_1` of `PauliSum_1` must match the second `subset_2` of `PauliSum_2`.
 
     Parameters
     ----------

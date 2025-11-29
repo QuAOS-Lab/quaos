@@ -1,0 +1,7 @@
+{
+    "dependencies": [
+        { "name": "fmt", "version>=": "11.2.0" },
+        { "name": "intel-mkl", "platform": "x64", "version>=": "2023.2.0"},
+        { "name": "gtest", "version>=": "1.17.0" }
+    ]
+}

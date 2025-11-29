@@ -1,0 +1,60 @@
+name: "Version Injection"
+description: "Replace dynamic version with static version in pyproject.toml"
+inputs:
+  fallback-version:
+    description: "Fallback version if SCM detection fails"
+    required: false
+    default: "0.0.0.0a0"
+  include-distance:
+    description: "Include distance (aN) in version for non-exact tags"
+    required: false
+    default: "true"
+
+outputs:
+  version:
+    description: "The injected version"
+    value: ${{ steps.inject.outputs.version }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install setuptools-scm (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: python -m pip install setuptools-scm
+
+    - name: Install setuptools-scm (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: python -m pip install setuptools-scm
+
+    - name: Inject version (Linux/macOS)
+      if: runner.os != 'Windows'
+      id: inject-unix
+      shell: bash
+      run: |
+        python "${{ github.action_path }}/inject_version.py" \
+          --fallback-version "${{ inputs.fallback-version }}" \
+          --include-distance "${{ inputs.include-distance }}" \
+          >> $GITHUB_OUTPUT
+
+    - name: Inject version (Windows)
+      if: runner.os == 'Windows'
+      id: inject-windows
+      shell: pwsh
+      run: |
+        $scriptPath = "${{ github.action_path }}/inject_version.py" -replace '/', '\'
+        python $scriptPath `
+          --fallback-version "${{ inputs.fallback-version }}" `
+          --include-distance "${{ inputs.include-distance }}" `
+          | Add-Content $env:GITHUB_OUTPUT
+
+    - name: Set output
+      id: inject
+      shell: bash
+      run: |
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          echo "version=${{ steps.inject-windows.outputs.version }}" >> $GITHUB_OUTPUT
+        else
+          echo "version=${{ steps.inject-unix.outputs.version }}" >> $GITHUB_OUTPUT
+        fi

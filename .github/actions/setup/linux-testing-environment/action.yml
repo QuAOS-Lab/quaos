@@ -1,0 +1,224 @@
+name: "Setup Linux Testing Environment"
+description: "Sets up complete Linux environment with Python, CUDA, vcpkg, and CMake for testing and development"
+
+inputs:
+  python-version:
+    description: "Python version to install"
+    required: false
+    default: "3.11"
+    type: string
+  setup-path:
+    description: "Path to setup.py or pyproject.toml for project installation"
+    required: false
+    default: "./"
+    type: string
+  dev-requirements:
+    description: "Path to development requirements file"
+    required: false
+    default: "./scripts/configs/dev_requirements.txt"
+    type: string
+  install-project:
+    description: "Whether to install the project itself"
+    required: false
+    default: "true"
+    type: string
+  extra-packages:
+    description: "Additional packages to install (space-separated)"
+    required: false
+    type: string
+  checkout:
+    description: "Whether to checkout the repository"
+    required: false
+    default: "true"
+    type: string
+  # CUDA inputs
+  enable-cuda:
+    description: "Whether to install CUDA toolkit"
+    required: false
+    default: "true"
+    type: string
+  cuda-version:
+    description: "CUDA version to install"
+    required: false
+    default: "12.6.0"
+    type: string
+  cuda_logs:
+    description: "Logs artifact name"
+    required: true
+  # vcpkg inputs
+  enable-vcpkg:
+    description: "Whether to setup vcpkg"
+    required: false
+    default: "true"
+    type: string
+  vcpkg-commit:
+    description: "vcpkg commit ID to checkout"
+    required: false
+    default: "15fd3bbcf7cc66249ba11f87a6215ee6f291bb26"
+    type: string
+  vcpkg-install-path:
+    description: "vcpkg installation path"
+    required: false
+    default: "/tmp/vcpkg"
+    type: string
+  # Cleanup inputs
+  enable-cleanup:
+    description: "Whether to free up disk space"
+    required: false
+    default: "true"
+    type: string
+  cleanup-aggressive:
+    description: "Perform aggressive cleanup"
+    required: false
+    default: "false"
+    type: string
+
+outputs:
+  python-path:
+    description: "Path to Python executable"
+    value: ${{ steps.python-outputs.outputs.python-path }}
+  pip-cache-dir:
+    description: "Pip cache directory"
+    value: ${{ steps.python-outputs.outputs.cache-dir }}
+  cuda-path:
+    description: "Path to CUDA installation"
+    value: ${{ steps.cuda-setup.outputs.CUDA_PATH }}
+  vcpkg-root:
+    description: "Path to vcpkg root"
+    value: ${{ steps.vcpkg-setup.outputs.vcpkg-root }}
+  cmake-toolchain:
+    description: "Path to CMake toolchain file"
+    value: ${{ steps.vcpkg-setup.outputs.cmake-toolchain }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout repository
+      if: inputs.checkout == 'true'
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Free up disk space
+      if: inputs.enable-cleanup == 'true'
+      uses: ./.github/actions/cleanup/free-disk-space
+      with:
+        platform: linux
+        aggressive: ${{ inputs.cleanup-aggressive }}
+
+    - name: Set up Python environment
+      id: python-setup
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Setup CUDA
+      if: inputs.enable-cuda == 'true'
+      id: cuda-setup
+      uses: Jimver/cuda-toolkit@v0.2.24
+      with:
+        cuda: ${{ inputs.cuda-version }}
+        log-file-suffix: "${{ inputs.cuda_logs }}.txt"
+
+    - name: Setup vcpkg
+      if: inputs.enable-vcpkg == 'true'
+      id: vcpkg-setup
+      uses: ./.github/actions/setup/vcpkg
+      with:
+        vcpkg-commit: ${{ inputs.vcpkg-commit }}
+        platform: linux
+        install-path: ${{ inputs.vcpkg-install-path }}
+
+    - name: Logs
+      if: inputs.enable-vcpkg == 'true'
+      shell: bash
+      run: |
+        echo "=== Environment Setup Summary ==="
+        echo "Python: $(which python)"
+        echo "CUDA Path: ${{ steps.cuda-setup.outputs.CUDA_PATH }}"
+        echo "vcpkg Root: ${{ steps.vcpkg-setup.outputs.vcpkg-root }}"
+        echo "CMake Toolchain: ${{ steps.vcpkg-setup.outputs.cmake-toolchain }}"
+
+    - name: Install vcpkg dependencies
+      if: inputs.enable-vcpkg == 'true'
+      shell: bash
+      run: |
+        if [ -f "src/vcpkg.json" ]; then
+          echo "=== Installing vcpkg dependencies from src/vcpkg.json ==="
+          cd src
+          ${{ steps.vcpkg-setup.outputs.vcpkg-root }}/vcpkg install --recurse
+          cd ..
+          echo "vcpkg dependencies installed successfully"
+        else
+          echo "Warning: src/vcpkg.json not found, skipping vcpkg dependencies installation"
+        fi
+
+    - name: Install Python dependencies and project
+      id: python-deps
+      shell: bash
+      run: |
+        echo "Upgrading pip and build tools..."
+        python -m pip install --upgrade pip build setuptools wheel
+
+        if [ "${{ inputs.install-project }}" = "true" ]; then
+          if [ -f "${{ inputs.setup-path }}/pyproject.toml" ]; then
+            echo "Installing project from pyproject.toml at ${{ inputs.setup-path }}..."
+            python -m pip install ${{ inputs.setup-path }} --config-settings=cmake.args="-S;src;--preset;linux-x86_64-Release"
+          else
+            echo "Warning: No pyproject.toml found at ${{ inputs.setup-path }}"
+          fi
+        fi
+
+        # Install development requirements if file exists
+        if [ -f "${{ inputs.dev-requirements }}" ]; then
+          echo "Installing development requirements from ${{ inputs.dev-requirements }}..."
+          python -m pip install -r ${{ inputs.dev-requirements }}
+        else
+          echo "Warning: Development requirements file not found at ${{ inputs.dev-requirements }}"
+        fi
+
+        # Install extra packages if provided
+        if [ -n "${{ inputs.extra-packages }}" ]; then
+          echo "Installing extra packages: ${{ inputs.extra-packages }}..."
+          python -m pip install ${{ inputs.extra-packages }}
+        fi
+
+        echo "Python dependencies installation completed"
+
+    - name: Setup library paths for C++ extensions
+      shell: bash
+      run: |
+        echo "=== Setting up LD_LIBRARY_PATH for C++ extensions ==="
+
+        echo "🔍 Searching for Intel MKL libraries..."
+        INTEL_DIRS=$(find ${{ github.workspace }} /usr/local /opt -type d -path '*/intel64' 2>/dev/null || echo "")
+        INTEL_PATH=$(echo "$INTEL_DIRS" | paste -sd: -)
+
+        echo "🔍 Searching for project-specific .libs directories..."
+        PROJECT_LIB_DIRS=$(find ${{ github.workspace }} -type d -name '*.libs' 2>/dev/null || echo "")
+        PROJECT_LIBS=$(echo "$PROJECT_LIB_DIRS" | paste -sd: -)
+
+        echo "🔍 Setting CUDA library paths..."
+        CUDA_LIBS="${CUDA_PATH}/lib64:${CUDA_PATH}/lib"
+        echo "✓ CUDA libs: $CUDA_LIBS"
+        if [ -d "${CUDA_PATH}/lib64" ]; then
+          echo "  CUDA lib64 contents (first 5):"
+          ls "${CUDA_PATH}/lib64"/*.so* 2>/dev/null | head -5 | sed 's/^/    /'
+        fi
+
+        export LD_LIBRARY_PATH="${INTEL_PATH}:${PROJECT_LIBS}:${CUDA_LIBS}:${LD_LIBRARY_PATH}"
+        echo "📋 Final LD_LIBRARY_PATH:"
+        echo "$LD_LIBRARY_PATH" | tr ':' '\n' | nl
+        echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}" >> $GITHUB_ENV
+        echo "✅ Library paths configured successfully"
+
+    - name: Set Python outputs
+      id: python-outputs
+      shell: bash
+      run: |
+        PYTHON_PATH=$(which python)
+        CACHE_DIR=$(python -m pip cache dir 2>/dev/null || echo "")
+        echo "python-path=${PYTHON_PATH}" >> $GITHUB_OUTPUT
+        echo "cache-dir=${CACHE_DIR}" >> $GITHUB_OUTPUT
+        echo "Python path: ${PYTHON_PATH}"
+        echo "Cache dir: ${CACHE_DIR}"

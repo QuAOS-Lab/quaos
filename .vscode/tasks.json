@@ -20,24 +20,6 @@
             "problemMatcher": []
         },
         {
-            "label": "Sync Python Requirements",
-            "type": "shell",
-            "windows": {
-                "command": "${workspaceFolder}/scripts/tools/shell/sync_requirements.bat",
-            },
-            "linux": {
-                "command": "bash ${workspaceFolder}/scripts/tools/shell/sync_requirements.sh",
-            },
-            "osx": {
-                "command": "echo Automatic requirements version syncronization not supported on macOS."
-            },
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "problemMatcher": []
-        },
-        {
             "label": "Setup Dev Environment",
             "type": "shell",
             "windows": {
