@@ -261,7 +261,7 @@ class TestDecomposition:
         if not np.array_equal(G, E):
             raise AssertionError(f"{msg}\nGot=\n{G}\nExp=\n{E}")
 
-    def test_L_block_unit(self):
+    def test_L_block(self):
         """Test L(C) = [[I,0],[C,I]] synthesis correctness."""
         num_trials = 10
         rng = np.random.default_rng()
@@ -274,7 +274,7 @@ class TestDecomposition:
                 F_exp = _full_from_lower(n, C_sym, p)
                 self._check_equal(F, F_exp, p, f"[L] mismatch over GF({p})")
 
-    def test_R_block_unit(self):
+    def test_R_block(self):
         """Test R(S) = [[I,S],[0,I]] synthesis correctness."""
         n = 3
         num_trials = 10

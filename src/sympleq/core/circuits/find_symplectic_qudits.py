@@ -21,6 +21,8 @@ def modinv(a, p):
 
 def solve_gfp(A: np.ndarray, b: np.ndarray, p: int):
     """
+    TODO: Make this file use the solver in finite_field_solving.py
+
     Solve Ax = b over GF(p) using Gaussian elimination.
     Returns one valid solution vector x (length n), or None if no solution exists.
 
