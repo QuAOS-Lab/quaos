@@ -114,7 +114,6 @@ def _full_dfs_complete(
     pauli_sum: PauliSum,
     independent_labels: List[int],
     S_mod: np.ndarray,
-    *,
     coeffs: Optional[np.ndarray],
     base_colors: np.ndarray,
     base_classes: Dict[int, List[int]],
@@ -330,71 +329,6 @@ def _full_dfs_complete(
 # =============================================================================
 
 
-def find_clifford_symmetries(
-    pauli_sum: PauliSum,
-    num_symmetries: int = 1,
-    # Strategy
-    dynamic_refine_every: int = 0,
-    extra_column_invariants: str = "none",
-    p2_bitset: str = "auto",
-    F_known_debug: Optional[np.ndarray] = None,
-    color_mode: str = "wl",   # "wl" | "coeffs_only" | "none"
-    max_wl_rounds: int = 10,
-) -> List[Gate]:
-    """
-    Return up to k automorphisms preserving S and the vector set. See flags above.
-    """
-    independent, dependencies = get_linear_dependencies(pauli_sum.tableau, 2)
-    S = pauli_sum.symplectic_product_matrix()
-    G, basis_order = pauli_sum.matroid()
-    coeffs = pauli_sum.weights
-
-    if not np.all([pauli_sum.dimensions[i] == pauli_sum.dimensions[0] for i in range(1, len(pauli_sum.dimensions))]):
-        raise ValueError("All qubits must have same dimension for now. The key things to fix are: "
-                         "_gf_solve_one_solution, and the symplectic_solver for F.")
-    p = int(pauli_sum.lcm)
-
-    pres_labels = _labels_union(independent, dependencies)
-    n = len(pres_labels)
-
-    col_invariants = None
-    if extra_column_invariants != "none":
-        G_for_inv = G.copy()
-        if extra_column_invariants == "hist":
-            inv = np.zeros((n, min(p, 16)), dtype=np.int64)
-            for j in range(n):
-                col = np.array([int(x) for x in G_for_inv[:, j]])
-                cnt = np.bincount(col, minlength=p)
-                inv[j, :min(p, 16)] = cnt[:min(p, 16)]
-            col_invariants = inv
-        else:
-            raise ValueError("extra_column_invariants must be 'none' or 'hist'.")
-
-    # ---------- choose the base partition via color_mode ----------
-    base_colors, base_classes = _build_base_partition(
-        S, p,
-        coeffs=coeffs,
-        col_invariants=col_invariants if color_mode == "wl" else None,
-        max_rounds=max_wl_rounds,
-        color_mode=color_mode,
-    )
-
-    use_bitset = (p == 2 and (p2_bitset is True or (p2_bitset == "auto" and n <= 256)))
-
-    return _full_dfs_complete(
-        pauli_sum,
-        independent,
-        S,
-        coeffs=coeffs,
-        base_colors=base_colors,
-        base_classes=base_classes,
-        G=G, basis_order=basis_order, labels=pres_labels,
-        k_wanted=num_symmetries,
-        p2_bitset=use_bitset,
-        dynamic_refine_every=int(dynamic_refine_every),
-        F_known_debug=F_known_debug,
-    )
-
 
 def _gf_solve_one_solution(A_int: np.ndarray, b_int: np.ndarray, p: int) -> Optional[np.ndarray]:
     """Gauss–Jordan elimination over GF(p). Return one solution (free vars=0) or None if inconsistent."""
@@ -553,44 +487,3 @@ def _row_basis_indices(A_int: np.ndarray, p: int, want_cols: int) -> np.ndarray:
         if len(basis) >= want_cols:
             break
     return np.array(basis, dtype=int)
-
-
-if __name__ == "__main__":
-    from sympleq.models.random_hamiltonian import random_gate_symmetric_hamiltonian
-    from sympleq.core.circuits import SWAP
-
-    failed = 0
-    for _ in range(3):
-        sym = SWAP(0, 1, 2)
-
-        H = random_gate_symmetric_hamiltonian(sym, 10, 58, scrambled=False)
-        C = Circuit.from_random(100, H.dimensions).composite_gate()
-        H = C.act(H)
-        H.weight_to_phase()
-        scrambled_sym = Circuit(H.dimensions, [C.inv(), sym, C]).composite_gate()
-        assert H.standard_form() == scrambled_sym.act(H).standard_form(
-        ), f"\n{H.standard_form().__str__()}\n{sym.act(H).standard_form().__str__()}"
-
-        independent, dependencies = get_linear_dependencies(H.tableau, 2)
-        known_F = scrambled_sym.symplectic
-        circ = find_clifford_symmetries(H)
-
-        print(len(circ))
-        if len(circ) == 0:
-            failed += 1
-        else:
-            for c in circ:
-                print(np.all(c.symplectic == known_F) and np.all(
-                    c.phase_vector == scrambled_sym.phase_vector))
-                H_s = H.to_standard_form()
-                H_out = c.act(H).to_standard_form()
-                H_s.weight_to_phase()
-                H_out.weight_to_phase()
-                print(np.all(H_s.tableau == H_out.tableau))
-                print(np.all(H_s.phases == H_out.phases))
-                print(np.all(H_s.weights == H_out.weights))
-
-                if c.act(H).to_standard_form() != H.to_standard_form():
-                    failed += 1
-
-    print('Failed = ', failed)

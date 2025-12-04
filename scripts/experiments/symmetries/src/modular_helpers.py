@@ -1,5 +1,4 @@
 import numpy as np
-from typing import Tuple, List
 
 
 def omega_matrix(n: int, p: int) -> np.ndarray:
@@ -73,13 +72,13 @@ def _solve_linear(A: np.ndarray, b: np.ndarray, p: int) -> np.ndarray:
     return x
 
 
-def rref_mod(aug: np.ndarray, p: int) -> Tuple[np.ndarray, List[int]]:
+def rref_mod(aug: np.ndarray, p: int) -> tuple[np.ndarray, list[int]]:
     """RREF over GF(p). Returns (RREF_augmented, pivot_cols)."""
     A = mod_p(aug.copy(), p)
     m, n = A.shape
     r = 0
     c = 0
-    piv_cols: List[int] = []
+    piv_cols: list[int] = []
     while r < m and c < n:
         piv = None
         for i in range(r, m):

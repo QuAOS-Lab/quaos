@@ -1,5 +1,4 @@
 import numpy as np
-from typing import Tuple, List
 from .modular_helpers import (mod_p, rank_mod, _solve_linear, nullspace_mod, rref_mod, omega_matrix, inv_mod_mat,
                               inv_mod_scalar, matmul_mod, is_symplectic)
 from .minimal_block_size import rcf_prepass
@@ -21,7 +20,7 @@ def independent_columns(B: np.ndarray, p: int) -> np.ndarray:
 # Mode graph helpers
 # =========================
 
-def _mode_graph_from_S(S: np.ndarray, p: int) -> List[List[int]]:
+def _mode_graph_from_S(S: np.ndarray, p: int) -> list[list[int]]:
     """
     Build adjacency for 'modes' (pairs). S is [U_all | V_all].
     Connect i--j if any entry in the 4x4 cross-block between modes i and j is nonzero mod p.
@@ -43,7 +42,7 @@ def _mode_graph_from_S(S: np.ndarray, p: int) -> List[List[int]]:
     return adj
 
 
-def _components(adj: List[List[int]]) -> List[List[int]]:
+def _components(adj: list[list[int]]) -> list[list[int]]:
     """Connected components from adjacency list."""
     k = len(adj)
     seen = [False] * k
@@ -107,7 +106,7 @@ def _mode_permutation_for_blocks(S: np.ndarray, p: int) -> np.ndarray:
     return P
 
 
-def _apply_mode_permutation_to_ST(S: np.ndarray, T: np.ndarray, p: int) -> Tuple[np.ndarray, np.ndarray]:
+def _apply_mode_permutation_to_ST(S: np.ndarray, T: np.ndarray, p: int) -> tuple[np.ndarray, np.ndarray]:
     """
     Permute modes with the same P in U and V: Π = diag(P, P).
     Preserves Omega; produces S' = Π^{-1} S Π, T' = T Π.
@@ -264,7 +263,7 @@ def _restricted_action(F: np.ndarray, T_blk: np.ndarray, p: int) -> np.ndarray:
 def _minimal_block_from_seeds(
     F: np.ndarray,
     p: int,
-    seeds: List[np.ndarray],
+    seeds: list[np.ndarray],
     min_block_size: int = 0
 ) -> np.ndarray | None:
     """
@@ -324,7 +323,7 @@ def _minimal_block_from_seeds(
 
 def minimal_symplectic_block_in_complement(
     F: np.ndarray, p: int, N: np.ndarray, trials: int = 64
-) -> Tuple[np.ndarray, np.ndarray] | None:
+) -> tuple[np.ndarray, np.ndarray] | None:
     """
     Find the smallest-dimension invariant non-degenerate symplectic block W for F,
     **constrained to the subspace span(N)** (columns of N).
@@ -332,7 +331,7 @@ def minimal_symplectic_block_in_complement(
     """
     rng = np.random.default_rng(2025)
 
-    seeds: List[np.ndarray] = [N[:, i: i + 1] for i in range(N.shape[1])]
+    seeds: list[np.ndarray] = [N[:, i: i + 1] for i in range(N.shape[1])]
     for _ in range(trials):
         coeffs = rng.integers(0, p, size=(N.shape[1], 1), dtype=np.int64)
         seeds.append(mod_p(N @ coeffs, p))
@@ -344,7 +343,7 @@ def minimal_symplectic_block_in_complement(
     return T_blk, S_blk
 
 
-def minimal_symplectic_block(F: np.ndarray, p: int, trials: int = 64) -> Tuple[np.ndarray, np.ndarray]:
+def minimal_symplectic_block(F: np.ndarray, p: int, trials: int = 64) -> tuple[np.ndarray, np.ndarray]:
     """
     Find a smallest-dimension invariant, non-degenerate symplectic block W for F.
     Returns (T_blk, S_blk).
@@ -352,7 +351,7 @@ def minimal_symplectic_block(F: np.ndarray, p: int, trials: int = 64) -> Tuple[n
     n2 = F.shape[0]
     rng = np.random.default_rng(2025)
 
-    seeds: List[np.ndarray] = [np.eye(n2, dtype=np.int64)[:, i: i + 1] for i in range(n2)]
+    seeds: list[np.ndarray] = [np.eye(n2, dtype=np.int64)[:, i: i + 1] for i in range(n2)]
     seeds += [rng.integers(0, p, size=(n2, 1), dtype=np.int64) for _ in range(trials)]
 
     T_blk = _minimal_block_from_seeds(F, p, seeds, min_block_size=0)
@@ -407,12 +406,12 @@ def minimal_symplectic_block_full(
 ) -> np.ndarray:
     """
     Find a smallest-dimension invariant, non-degenerate, and nontrivial symplectic block W for F.
-    min_block_size is even (2,4,6,...) and lets you prioritize e.g. 4 to "find coupling first".
+    min_block_size is even (2,4,6,...)
     Returns T_blk (n2 x 2k) canonical: T_blk^T Omega T_blk = Omega_k.
     """
     n2 = F.shape[0]
     rng = np.random.default_rng(2025)
-    seeds: List[np.ndarray] = [np.eye(n2, dtype=np.int64)[:, i: i + 1] for i in range(n2)]
+    seeds: list[np.ndarray] = [np.eye(n2, dtype=np.int64)[:, i: i + 1] for i in range(n2)]
     seeds += [rng.integers(0, p, size=(n2, 1), dtype=np.int64) for _ in range(trials)]
 
     T_blk = _minimal_block_from_seeds(F, p, seeds, min_block_size=min_block_size)
@@ -423,7 +422,7 @@ def minimal_symplectic_block_full(
 
 def block_decompose(
     F: np.ndarray, p: int, min_block_size: int = 2, trials: int = 64
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Fully recursive block decomposition using mode-space recursion.
 
@@ -514,6 +513,73 @@ def block_decompose(
     assert np.array_equal(S, mod_p(inv_mod_mat(T_global, p) @ F @ T_global, p))
 
     return S, T_global
+
+
+def block_decompose_optimal(
+    F: np.ndarray,
+    p: int,
+    min_block_size: int = 2,
+    trials: int = 64,
+    certify: bool = True,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Symplectic block decomposition with an optimality certificate.
+
+    This function:
+      1. Runs a structural pre-pass rcf_prepass(F, p) to compute a
+         theoretical lower bound Lmin_star on the half-dimension of any
+         nontrivial symplectic invariant block.
+      2. Calls block_decompose(F, p, ...) to obtain a block-diagonal S
+         and a symplectic similarity T.
+      3. Computes the actual largest block size from S via ordered_block_sizes.
+      4. Optionally checks that the achieved qudit cost equals Lmin_star.
+
+    Returns:
+        S, T, info where:
+          - S = T^{-1} F T is block-structured,
+          - T is symplectic (T^T Ω T = Ω),
+          - info is a dict with:
+              "Lmin_star":  theoretical lower bound on half-dimension,
+              "Q_alg":      achieved qudit cost (max half-block-dim),
+              "block_sizes": list of block sizes in phase-space dimension (2 * n_modes).
+    """
+    # 1. Structural pre-pass: compute sector data and lower bound
+    meta = rcf_prepass(F, p)
+    Lmin_star: int = meta.get("Lmin_star", 0)
+
+    # 2. Run the existing decomposition
+    S, T = block_decompose(F, p, min_block_size=min_block_size, trials=trials)
+
+    # 3. Extract actual block sizes (phase-space dims: 2 * n_modes)
+    sizes = ordered_block_sizes(S, p)
+    Q_alg = max(sizes) // 2 if sizes else 0  # qudit cost = half dimension
+
+    # 4. Optional certification: check optimality against the lower bound
+    if certify:
+        # By theory we have Q(F) >= Lmin_star.
+        # If our algorithm's Q_alg < Lmin_star, something is inconsistent.
+        if Q_alg < Lmin_star:
+            raise RuntimeError(
+                f"Decomposition inconsistent with structural lower bound: "
+                f"Q_alg={Q_alg}, Lmin_star={Lmin_star}"
+            )
+        # If Q_alg > Lmin_star, the decomposition is not qudit-optimal
+        # relative to the theoretical bound.
+        if Q_alg > Lmin_star:
+            raise RuntimeError(
+                f"Decomposition not qudit-optimal: achieved Q_alg={Q_alg}, "
+                f"but structural lower bound is Lmin_star={Lmin_star}."
+            )
+        # If Q_alg == Lmin_star, we have Q(F) = Lmin_star = Q_alg,
+        # so the qudit cost is provably minimal.
+
+    # info: dict[str, Any] = {
+    #     "Lmin_star": Lmin_star,
+    #     "Q_alg": Q_alg,
+    #     "block_sizes": sizes,
+    #     "rcf_meta": meta,  # keep full structural info if you want it
+    # }
+    return S, T  # , info
 
 
 # =========================
