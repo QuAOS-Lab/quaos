@@ -105,12 +105,41 @@ class TestSymmetryFinder:
 
                 assert c.act(H).to_standard_form() == H.to_standard_form()
 
-    # def random_Hadamard_symmetry(self):
-    #     pass
+    def test_random_multi_SWAP_symmetry_with_block_decomposition(self):
+
+        n_tests = 3
+        p = 2
+        n_qudits = 6
+        n_paulis = 15
+        for _ in range(n_tests):
+            sym = Circuit([p] * n_qudits, [SWAP(0, 1, p), SWAP(1, 2, p)])  #
+            sym = sym.composite_gate()
+
+            H = random_gate_symmetric_hamiltonian(sym, n_qudits, n_paulis, scrambled=False)
+            C = Circuit.from_random(100, H.dimensions).composite_gate()  # scrambling circuit
+            H = C.act(H)
+            H.weight_to_phase()
+            scrambled_sym = Circuit(H.dimensions, [C.inv(), sym, C]).composite_gate()
+            assert H.to_standard_form() == scrambled_sym.act(H).to_standard_form(
+            ), f"\n{H.to_standard_form().__str__()}\n{sym.act(H).to_standard_form().__str__()}"
+
+            F, S, T = min_qudit_clifford_symmetry(H, check_symmetry=False)
+
+            # there may be multiple expressions of the symmetry so these are too harsh
+            # assert np.all(F.symplectic == scrambled_sym.symplectic)
+            # assert np.all(F.phase_vector == scrambled_sym.phase_vector)
+
+            assert F == Circuit(F.dimensions, [T.inv(), S, T]).composite_gate()
+
+            assert H.to_standard_form() == F.act(H).to_standard_form()
+            assert T.act(S.act(T.inv().act(H))).to_standard_form() == H.to_standard_form()
+
+            assert S.act(T.inv().act(H)).to_standard_form() == T.inv().act(H).to_standard_form()
+            assert qudit_cost(S) == 3
+
+    def random_Hadamard_symmetry(self):
+        pass
 
     # def test_random_multi_gate_symmetry(self):
     #     """ Selects a random set of gates and injects that as a symmetry."""
-    #     pass
-
-    # def ising_symmetry(self):
     #     pass

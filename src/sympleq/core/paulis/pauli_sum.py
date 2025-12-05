@@ -769,24 +769,39 @@ class PauliSum(PauliObject):
         """
         Combines equivalent Pauli operators in the sum by summing their coefficients and deleting duplicates.
         """
-        to_delete = []
-        for i in reversed(range(self.n_paulis())):
-            ps1 = self.select_pauli_string(i)
-            for j in range(i + 1, self.n_paulis()):
-                ps2 = self.select_pauli_string(j)
-                if ps1 == ps2:
-                    # FIXME: can overflow for very large n_paulis.
-                    #        One solution could be to normalize it by dividing by the smallest weight.
-                    self._weights[i] = self.weights[i] + self.weights[j]
-                    to_delete.append(j)
-        self._delete_paulis(to_delete)
+        if self.n_paulis() == 0:
+            return
 
-        # remove zero weight Paulis
-        to_delete = []
+        T = self.tableau
+        P = self.phases
+        W = self.weights
+
+        # Aggregate weights by (tableau row, phase)
+        acc: dict[tuple[bytes, int], complex] = {}
         for i in range(self.n_paulis()):
-            if self.weights[i] == 0:
-                to_delete.append(i)
-        self._delete_paulis(to_delete)
+            key = (T[i].tobytes(), int(P[i]))
+            acc[key] = acc.get(key, 0j) + W[i]
+
+        new_tableau = []
+        new_phases = []
+        new_weights = []
+
+        for (row_bytes, phase), weight in acc.items():
+            if weight == 0:
+                continue
+            row = np.frombuffer(row_bytes, dtype=T.dtype)
+            new_tableau.append(row)
+            new_phases.append(phase)
+            new_weights.append(weight)
+
+        if len(new_tableau) == 0:
+            self._tableau = np.empty((0, T.shape[1]), dtype=T.dtype)
+            self._phases = np.empty(0, dtype=int)
+            self._weights = np.empty(0, dtype=complex)
+        else:
+            self._tableau = np.vstack(new_tableau)
+            self._phases = np.array(new_phases, dtype=int)
+            self._weights = np.array(new_weights, dtype=complex)
 
     def remove_trivial_paulis(self):
         """

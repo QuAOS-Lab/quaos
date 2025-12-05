@@ -1,7 +1,8 @@
 import numpy as np
 from sympleq.core.circuits import Gate, Circuit
 from sympleq.core.paulis import PauliSum
-from sympleq.core.graphs.graph_isomorphism import _build_base_partition, _full_dfs_complete, _labels_union
+from sympleq.core.graphs.graph_isomorphism import _full_dfs_complete
+from sympleq.core.graphs.graph_coloring import _build_base_partition
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 from scripts.experiments.symmetries.src.block_decomposition import block_decompose, ordered_block_sizes
 from typing import Optional
@@ -162,6 +163,10 @@ def clifford_phase_decomposition(F: np.ndarray, h_F: np.ndarray,
 
     h_S = solve_mod(A, b, mod)
     return h_S.astype(int), h_T.astype(int)
+
+
+def _labels_union(independent: list[int], dependencies: dict[int, list[tuple[int, int]]]) -> list[int]:
+    return sorted(set(independent) | set(dependencies.keys()))
 
 
 def find_clifford_symmetries(

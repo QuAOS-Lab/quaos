@@ -334,6 +334,38 @@ class TestPaulis:
             f"with dimensions {dimensions}"
         )
 
+    def test_combine_equivalent_paulis(self):
+        dims = [2, 2]
+        # Two identical tableau/phase entries that should merge, one with different phase, one different tableau.
+        ps_a = PauliString.from_string("x1z0 x0z1", dims)
+        ps_b = PauliString.from_string("x1z0 x0z1", dims)
+        ps_c = PauliString.from_string("x1z0 x0z1", dims)  # different phase => should stay separate
+        ps_d = PauliString.from_string("x0z1 x1z0", dims)
+
+        P = PauliSum.from_pauli_strings([ps_a, ps_b, ps_c, ps_d],
+                                        weights=[1.0, 2.0, 3.0, 4.0],
+                                        phases=[0, 0, 1, 0])
+
+        P.combine_equivalent_paulis()
+
+        assert P.n_paulis() == 3
+
+        obs = {}
+        for i in range(P.n_paulis()):
+            row = np.asarray(P.tableau[i]).tolist()
+            key = (tuple(row), int(P.phases[i]))
+            obs[key] = P.weights[i]
+
+        key_a = (tuple(ps_a.tableau[0].tolist()), 0)
+        key_c = (tuple(ps_c.tableau[0].tolist()), 1)
+        key_d = (tuple(ps_d.tableau[0].tolist()), 0)
+        exp = {
+            key_a: 3.0,  # merged weights 1.0 + 2.0
+            key_c: 3.0,
+            key_d: 4.0,
+        }
+        assert obs == exp, f"Combined weights/phases mismatch: {obs} vs {exp}"
+
     def test_phase_and_dot_product(self):
 
         for _ in range(N_tests):
