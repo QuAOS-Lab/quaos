@@ -2,6 +2,7 @@ import numpy as np
 from .modular_helpers import (mod_p, rank_mod, _solve_linear, nullspace_mod, rref_mod, omega_matrix, inv_mod_mat,
                               inv_mod_scalar, matmul_mod, is_symplectic)
 from .minimal_block_size import rcf_prepass
+from sympleq.core.graphs.utils import qudit_coupling_graph
 # =========================
 # GF(p) linear algebra utils
 # =========================
@@ -624,3 +625,46 @@ def ordered_block_sizes(S: np.ndarray, p: int) -> list[int]:
 
     ordered = non_triv_ge2 + non_triv_1 + triv
     return [2 * d["n_modes"] for d in ordered]
+
+
+def block_indexes(F: np.ndarray) -> list[list[int]]:
+    """
+    Compute qudit blocks as connected components of the coupling graph.
+
+    Args:
+        F: 2n x 2n symplectic matrix (integer numpy array).
+
+    Returns:
+        A list of blocks, where each block is a sorted list of qudit indices.
+        For example, if qudits (0,1) and (2,3) form two decoupled clusters,
+        returns [[0, 1], [2, 3]] (order of blocks is not guaranteed).
+    """
+    neighbors = qudit_coupling_graph(F)
+    n = len(neighbors)
+
+    visited = [False] * n
+    blocks: list[list[int]] = []
+
+    for start in range(n):
+        if visited[start]:
+            continue
+
+        # BFS/DFS to collect a connected component
+        stack = [start]
+        visited[start] = True
+        component: list[int] = []
+
+        while stack:
+            v = stack.pop()
+            component.append(v)
+            for w in neighbors[v]:
+                if not visited[w]:
+                    visited[w] = True
+                    stack.append(w)
+
+        component.sort()
+        blocks.append(component)
+
+    # Optional: sort blocks by their smallest index for reproducibility
+    blocks.sort(key=lambda comp: comp[0])
+    return blocks
