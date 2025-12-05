@@ -148,6 +148,9 @@ def symplectic_basis_from_span(B: np.ndarray, p: int) -> np.ndarray:
     Construct a canonical symplectic basis [U | V] from a non-degenerate even-dimensional span B.
     Output: T (n2 x 2k) such that T^T Omega T = Omega_k.
     """
+    # Ensure even ambient dimension; pad a zero row if necessary.
+    if B.shape[0] % 2 != 0:
+        B = np.vstack([B, np.zeros((1, B.shape[1]), dtype=np.int64)])
     n2, s = B.shape
     Omega = omega_matrix(n2 // 2, p)
     S = independent_columns(B, p)
@@ -156,50 +159,62 @@ def symplectic_basis_from_span(B: np.ndarray, p: int) -> np.ndarray:
     if dS % 2 != 0:
         raise ValueError("Subspace dimension must be even")
 
-    # Stepwise symplectic Gram-Schmidt
-    idx_used = set()
-    U, V = [], []
-    for i in range(0, dS, 2):
-        # Find u such that not in current span and has a nonzero pairing
-        for j in range(dS):
-            if j in idx_used:
-                continue
-            u = S[:, j:j + 1]
-            for k in range(j + 1, dS):
-                if k in idx_used:
+    def try_build(S_perm: np.ndarray) -> np.ndarray | None:
+        idx_used = set()
+        U, V = [], []
+        for _ in range(0, dS, 2):
+            found = False
+            for j in range(dS):
+                if j in idx_used:
                     continue
-                v = S[:, k: k + 1]
-                if _scalar(u.T @ Omega @ v % p) != 0:
-                    idx_used.update([j, k])
+                u = S_perm[:, j:j + 1]
+                for k in range(j + 1, dS):
+                    if k in idx_used:
+                        continue
+                    v = S_perm[:, k: k + 1]
+                    if _scalar(u.T @ Omega @ v % p) != 0:
+                        idx_used.update([j, k])
+                        found = True
+                        break
+                if found:
                     break
-            else:
-                continue
-            break
-        else:
-            raise RuntimeError("Failed to find symplectic pair in span")
+            if not found:
+                return None
 
-        # Make B(u, v) = 1
-        beta = _scalar(u.T @ Omega @ v % p)
-        beta_inv = inv_mod_scalar(beta, p)
-        v = mod_p(v * beta_inv, p)
+            beta = _scalar(u.T @ Omega @ v % p)
+            beta_inv = inv_mod_scalar(beta, p)
+            v = mod_p(v * beta_inv, p)
 
-        # Orthogonalize v against all previous U, V
-        for u_prev, v_prev in zip(U, V):
-            coeff_u = _scalar(v.T @ Omega @ v_prev % p)
-            coeff_v = _scalar(v.T @ Omega @ u_prev % p)
-            if coeff_u:
-                v = mod_p(v - coeff_u * u_prev, p)
-            if coeff_v:
-                v = mod_p(v + coeff_v * v_prev, p)
+            for u_prev, v_prev in zip(U, V):
+                coeff_u = _scalar(v.T @ Omega @ v_prev % p)
+                coeff_v = _scalar(v.T @ Omega @ u_prev % p)
+                if coeff_u:
+                    v = mod_p(v - coeff_u * u_prev, p)
+                if coeff_v:
+                    v = mod_p(v + coeff_v * v_prev, p)
 
-        U.append(u)
-        V.append(v)
+            U.append(u)
+            V.append(v)
 
-    T = np.hstack(U + V)
-    G = mod_p(T.T @ Omega @ T, p)
-    if not np.array_equal(G % p, omega_matrix(len(U), p)):
-        raise RuntimeError("Constructed basis is not symplectic")
-    return T
+        T = np.hstack(U + V)
+        G = mod_p(T.T @ Omega @ T, p)
+        if np.array_equal(G % p, omega_matrix(len(U), p)):
+            return T
+        return None
+
+    # Try deterministic order first, then random permutations to find a symplectic pairing
+    T = try_build(S)
+    if T is not None:
+        return T
+
+    rng = np.random.default_rng(2025)
+    for _ in range(128):
+        perm = rng.permutation(dS)
+        T = try_build(S[:, perm])
+        if T is not None:
+            return T
+
+    raise RuntimeError("Constructed basis is not symplectic")
 
 
 # =========================

@@ -1,22 +1,16 @@
 from __future__ import annotations
-from typing import Dict, List, Tuple, Optional
+from typing import Optional
 import numpy as np
 import galois
 from numba import njit
 from sympleq.core.circuits.target import find_map_to_target_pauli_sum
 from sympleq.core.finite_field_solvers import solve_linear_system_over_gf
 from sympleq.core.paulis import PauliSum
-from sympleq.core.circuits import Gate, Circuit
-from sympleq.core.finite_field_solvers import get_linear_dependencies
-from sympleq.core.graphs.graph_coloring import _wl_colors_from_S, _build_base_partition
-
+from sympleq.core.circuits import Gate
+from sympleq.core.graphs.graph_coloring import _wl_colors_from_S
 
 Label = int
-DepPairs = Dict[Label, List[Tuple[Label, int]]]
-
-
-def _labels_union(independent: List[int], dependencies: DepPairs) -> List[int]:
-    return sorted(set(independent) | set(dependencies.keys()))
+DepPairs = dict[Label, list[tuple[Label, int]]]
 
 
 # =============================================================================
@@ -41,7 +35,7 @@ def _consistent_numba(S_mod: np.ndarray, phi: np.ndarray, mapped_idx: np.ndarray
 
 # ---- Optional p=2 bitset kernel --------------------------------------------
 
-def _build_bitrows_binary(S_mod: np.ndarray) -> Tuple[np.ndarray, int]:
+def _build_bitrows_binary(S_mod: np.ndarray) -> tuple[np.ndarray, int]:
     """
     For p=2 only. Pack each row's 0/1 into chunks of 64 bits.
     Returns (bits[n, C], chunks=C). Column j lives at chunk=j>>6, bit=(j & 63).
@@ -85,8 +79,8 @@ def _consistent_bitset(bits: np.ndarray, phi: np.ndarray, mapped_idx: np.ndarray
 
 def _check_code_automorphism(
     G: galois.FieldArray,
-    basis_order: List[int],
-    labels: List[int],
+    basis_order: list[int],
+    labels: list[int],
     pi: np.ndarray
 ) -> bool:
     """
@@ -112,19 +106,19 @@ def _check_code_automorphism(
 
 def _full_dfs_complete(
     pauli_sum: PauliSum,
-    independent_labels: List[int],
+    independent_labels: list[int],
     S_mod: np.ndarray,
     coeffs: Optional[np.ndarray],
     base_colors: np.ndarray,
-    base_classes: Dict[int, List[int]],
+    base_classes: dict[int, list[int]],
     G: galois.FieldArray,
-    basis_order: List[int],
-    labels: List[int],
+    basis_order: list[int],
+    labels: list[int],
     k_wanted: int,
     p2_bitset: bool,
     dynamic_refine_every: int = 0,
     F_known_debug: Optional[np.ndarray] = None,
-) -> List[Gate]:
+) -> list[Gate]:
     """
     Complete interleaved DFS that maps all labels with feasibility constrained ONLY by base partition.
     Dynamic WL (if enabled) is used only for ordering every `dynamic_refine_every` steps.
@@ -329,7 +323,6 @@ def _full_dfs_complete(
 # =============================================================================
 
 
-
 def _gf_solve_one_solution(A_int: np.ndarray, b_int: np.ndarray, p: int) -> Optional[np.ndarray]:
     """Gauss–Jordan elimination over GF(p). Return one solution (free vars=0) or None if inconsistent."""
     GF = galois.GF(p)
@@ -380,8 +373,7 @@ def _gf_solve_one_solution(A_int: np.ndarray, b_int: np.ndarray, p: int) -> Opti
 def solve_phase_vector_h_from_residual(
     tableau_in: np.ndarray,   # (N, 2n) ints; rows of input Paulis
     delta_2L: np.ndarray,     # (N,) ints mod 2L; desired phase corrections
-    dimensions: np.ndarray | List[int],
-    *,
+    dimensions: np.ndarray | list[int],
     debug: bool = False,
     row_basis_cache: dict[str, np.ndarray] | None = None,
 ) -> Optional[np.ndarray]:
