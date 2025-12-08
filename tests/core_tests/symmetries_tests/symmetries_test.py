@@ -71,7 +71,7 @@ class TestSymmetryFinder:
 
     def test_random_multi_SWAP_symmetry(self):
 
-        n_tests = 3
+        n_tests = 100
         p = 2
         n_qudits = 3
         n_paulis = 7
@@ -107,7 +107,7 @@ class TestSymmetryFinder:
 
     def test_random_multi_SWAP_symmetry_with_block_decomposition(self):
 
-        n_tests = 3
+        n_tests = 100
         p = 2
         n_qudits = 6
         n_paulis = 15
@@ -137,8 +137,8 @@ class TestSymmetryFinder:
             assert S.act(T.inv().act(H)).to_standard_form() == T.inv().act(H).to_standard_form()
             assert qudit_cost(S) == 3
 
-    def random_Hadamard_symmetry(self):
-        pass
+    # def random_Hadamard_symmetry(self):
+        # pass
 
     # def test_random_multi_gate_symmetry(self):
     #     """ Selects a random set of gates and injects that as a symmetry."""

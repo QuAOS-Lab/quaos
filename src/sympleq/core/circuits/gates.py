@@ -3,7 +3,7 @@ from sympleq.core.paulis import PauliString, PauliSum, Pauli
 from typing import overload
 from sympleq.core.circuits.target import find_map_to_target_pauli_sum, get_phase_vector
 from sympleq.core.circuits.utils import (transvection_matrix, symplectic_form, tensor, I_mat, H_mat, S_mat, CX_func,
-                                         SWAP_func, pauli_unitary_from_tableau)
+                                         SWAP_func, pauli_unitary_from_tableau, pauli_unitary_qudit)
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 import scipy.sparse as sp
 from .utils import embed_symplectic
@@ -398,18 +398,37 @@ class PHASE(Gate):
 
 
 class PauliGate(Gate):
-    def __init__(self, pauli: PauliString):
+    def __init__(self, pauli: PauliString, name: str = "Pauli"):
         self.pauli_string = pauli
-        n = pauli.n_qudits()
-        lcm = int(pauli.lcm)
-        symplectic = np.eye(2 * n, dtype=int)
-        phase_vector = (2 * symplectic_form(n, lcm) @ np.concatenate([pauli.x_exp, pauli.z_exp])) % (2 * lcm)
-        super().__init__("Pauli", list(range(n)), symplectic, dimensions=pauli.dimensions, phase_vector=phase_vector)
+        full_n = pauli.n_qudits()
+        indexes = [i for i in range(full_n) if pauli.x_exp[i] != 0 or pauli.z_exp[i] != 0]
+        if len(indexes) == 0:
+            raise ValueError("PauliGate must act non-trivially on at least one qudit.")
+
+        dims_local = pauli.dimensions[indexes]
+        k = len(indexes)
+        lcm = int(np.lcm.reduce(dims_local))
+        symplectic = np.eye(2 * k, dtype=int)
+        x_local = pauli.x_exp[indexes]
+        z_local = pauli.z_exp[indexes]
+        phase_vector = (2 * symplectic_form(k, lcm) @ np.concatenate([x_local, z_local])) % (2 * lcm)
+        dimensions = [int(d) for d in dims_local]
+        super().__init__(name, indexes, symplectic, dimensions=dimensions, phase_vector=phase_vector)
 
     def copy(self) -> 'Gate':
-        return PauliGate(self.pauli_string)
+        return PauliGate(self.pauli_string, name=self.name)
 
     def unitary(self, dims=None):
-        if dims is None:
-            dims = self.dimensions
-        return pauli_unitary_from_tableau(dims[0], self.pauli_string.x_exp, self.pauli_string.z_exp)
+        # Build the full tensor product over all qudits, placing identities on untouched sites.
+        dims_full = self.pauli_string.dimensions if dims is None else np.asarray(dims, dtype=int)
+        if len(dims_full) != self.pauli_string.n_qudits():
+            raise ValueError("dims must match the length of the underlying PauliString.")
+        locals_ = []
+        for i in range(len(dims_full)):
+            if i in self.qudit_indices:
+                locals_.append(pauli_unitary_qudit(int(dims_full[i]),
+                                                   int(self.pauli_string.x_exp[i]),
+                                                   int(self.pauli_string.z_exp[i])))
+            else:
+                locals_.append(I_mat(int(dims_full[i])))
+        return tensor(locals_)

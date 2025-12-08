@@ -1,4 +1,5 @@
 import numpy as np
+import itertools
 from .modular_helpers import (mod_p, rank_mod, _solve_linear, nullspace_mod, rref_mod, omega_matrix, inv_mod_mat,
                               inv_mod_scalar, matmul_mod, is_symplectic)
 from .minimal_block_size import rcf_prepass
@@ -209,11 +210,28 @@ def symplectic_basis_from_span(B: np.ndarray, p: int) -> np.ndarray:
         return T
 
     rng = np.random.default_rng(2025)
-    for _ in range(128):
+    for _ in range(256):
         perm = rng.permutation(dS)
         T = try_build(S[:, perm])
         if T is not None:
             return T
+
+    # Random invertible column mixes to search the span (not just permutations).
+    for _ in range(512):
+        R = rng.integers(0, p, size=(dS, dS), dtype=np.int64)
+        # Ensure invertible over GF(p)
+        if np.linalg.matrix_rank(R % p) != dS:
+            continue
+        T = try_build(mod_p(S @ R, p))
+        if T is not None:
+            return T
+
+    # Exhaustive search for small dimensions to avoid flaky failures in tests (factorial grows fast).
+    if dS <= 8:
+        for perm in itertools.permutations(range(dS)):
+            T = try_build(S[:, perm])
+            if T is not None:
+                return T
 
     raise RuntimeError("Constructed basis is not symplectic")
 

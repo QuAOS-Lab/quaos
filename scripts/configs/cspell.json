@@ -36,6 +36,7 @@
         "DSDS",
         "DSSD",
         "ecolor",
+        "eigenenergies",
         "eigh",
         "eigsh",
         "eigval",

@@ -110,6 +110,52 @@ class TestPaulis:
                 assert p_string1[0] == ps0, 'Error in PauliString indexing (first PauliString)'
                 assert p_string1[1] == ps1, 'Error in PauliString indexing'
 
+    def test_to_hilbert_space_consistency(self):
+        # Single Pauli matches PauliString representation
+        for _ in range(N_tests):
+            d = random.choice(prime_list)
+            r = np.random.randint(0, d)
+            s = np.random.randint(0, d)
+            p = Pauli.from_exponents(r, s, d)
+            h_pauli = p.to_hilbert_space().toarray()
+
+            ps = PauliString.from_pauli(p)
+            h_ps = ps.to_hilbert_space().toarray()
+
+            assert np.allclose(h_pauli, h_ps, atol=1e-10)
+            # Pauli operators should be unitary
+            assert np.allclose(h_ps.conj().T @ h_ps, np.eye(h_ps.shape[0]), atol=1e-10)
+
+        # PauliString and equivalent single-term PauliSum should have identical matrices
+        for _ in range(N_tests):
+            n_qudits = random.randint(1, 3)
+            dims = [random.choice(prime_list) for _ in range(n_qudits)]
+            x_exp = [np.random.randint(0, d) for d in dims]
+            z_exp = [np.random.randint(0, d) for d in dims]
+            ps = PauliString.from_exponents(x_exp, z_exp, dimensions=dims)
+
+            h_ps = ps.to_hilbert_space().toarray()
+            ps_sum = PauliSum.from_pauli_strings(ps)
+            h_ps_sum = ps_sum.to_hilbert_space().toarray()
+
+            D = int(np.prod(dims))
+            assert h_ps.shape == (D, D)
+            assert np.allclose(h_ps, h_ps_sum, atol=1e-10)
+
+    def test_known_single_qubit_paulis_to_hilbert_space(self):
+        # For qubits, to_hilbert_space should recover the standard matrices for X, Y=XZ (bare convention), Z.
+        X = Pauli.Xnd(1, 2).to_hilbert_space().toarray()
+        Z = Pauli.Znd(1, 2).to_hilbert_space().toarray()
+        Y = Pauli.Ynd(1, 2).to_hilbert_space().toarray()  # XZ with no extra phase
+
+        X_expected = np.array([[0, 1], [1, 0]], dtype=complex)
+        Z_expected = np.array([[1, 0], [0, -1]], dtype=complex)
+        Y_expected = X_expected @ Z_expected  # [[0, -1], [1, 0]]
+
+        assert np.allclose(X, X_expected)
+        assert np.allclose(Z, Z_expected)
+        assert np.allclose(Y, Y_expected)
+
     def test_pauli_sum_multiplication(self):
         for dim in PRIME_LIST:
             for _ in range(N_tests):

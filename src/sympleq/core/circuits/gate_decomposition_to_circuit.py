@@ -550,17 +550,19 @@ def pauli_gate_for_phase_fix(h_raw: np.ndarray,
     return PauliGate(pauli)
 
 
-def pauli_correction_gate(F: np.ndarray,
-                          h_body: np.ndarray,
-                          h_target: np.ndarray,
-                          dimensions: list[int]) -> "PauliGate":
+def pauli_correction_circuit(F: np.ndarray,
+                             h_body: np.ndarray,
+                             h_target: np.ndarray,
+                             dimensions: list[int]) -> Circuit:
     """
-    Build a PauliGate that fixes the phase vector under right-multiplication:
+    Build a Circuit of PauliGates that fixes the phase vector under right-multiplication:
         h_out = h_body + F^T * (2 Ω v)  (mod 2*lcm)
     Choose v in (Z_p)^{2n} so that h_out == h_target.
 
     For odd p: exact correction.
     For p=2: corrects the even part (the best Pauli can do).
+
+    TODO: extend to mixed-dimension qudits. Can be done simply as there is no entangling.
     """
     import numpy as np
 
@@ -577,37 +579,52 @@ def pauli_correction_gate(F: np.ndarray,
     lcm = int(np.lcm.reduce(dims))
     MOD = 2 * lcm
 
-    Δ = (h_target.astype(int) - h_body.astype(int)) % MOD  # even if realizable by Pauli
+    Delta = (h_target.astype(int) - h_body.astype(int)) % MOD  # even if realizable by Pauli
+
+    def _pauli_gates_from_vectors(x_vec: np.ndarray, z_vec: np.ndarray) -> list[PauliGate]:
+        """Emit one PauliGate per qudit using full-length PauliStrings so indices line up."""
+        gates: list[PauliGate] = []
+        for site in range(n):
+            if x_vec[site] == 0 and z_vec[site] == 0:
+                continue
+            x_local = np.zeros(n, dtype=int)
+            z_local = np.zeros(n, dtype=int)
+            x_local[site] = x_vec[site]
+            z_local[site] = z_vec[site]
+            pauli = PauliString.from_exponents(x_local.tolist(), z_local.tolist(), dimensions=dims)
+            gates.append(PauliGate(pauli, name=f"Pauli(X^{x_local[site]}Z^{z_local[site]}_{site})"))
+        return gates
+
     if p % 2 == 1:
         # Must be even component-wise; then we can halve in Z and reduce mod p
-        if np.any(Δ % 2 != 0):
+        if np.any(Delta % 2 != 0):
             raise AssertionError("For odd p, Δ must be even for Pauli correction.")
-        Δ_half = ((Δ // 2) % p).astype(int)  # well-defined because Δ is even
+        Delta_half = ((Delta // 2) % p).astype(int)  # well-defined because Δ is even
 
-        # Ω over GF(p): [[0, I], [-I, 0]] (note -I ≡ p-1 mod p)
+        # Omega over GF(p): [[0, I], [-I, 0]] (note -I ≡ p-1 mod p)
         Id = np.eye(n, dtype=int)
         Z = np.zeros((n, n), dtype=int)
         Om = np.block([[Z, Id], [(-Id) % p, Z]]) % p
 
-        # Solve (F^T Ω) v = Δ_half  over GF(p)
+        # Solve (F^T Omega) v = Delta_half  over GF(p)
         M = (F.T % p) @ Om % p
-        v = (inv_gfp(M, p) @ Δ_half.reshape(-1, 1)) % p
+        v = (inv_gfp(M, p) @ Delta_half.reshape(-1, 1)) % p
         v = v.flatten()
 
         x = v[:n]
         z = v[n:]
-        pauli = PauliString.from_exponents(x, z, dimensions=dims)
-        return PauliGate(pauli)
+        return Circuit(dims, _pauli_gates_from_vectors(x, z))
 
     else:
         # p == 2: Ω has -I == +I; only even Δ are reachable (gives Δ/2 in {0,1})
-        if np.any(Δ % 2 != 0):
+        if np.any(Delta % 2 != 0):
             # Can't fix odd residuals with a Pauli; return identity Pauli (no-op)
             x = np.zeros(n, dtype=int)
             z = np.zeros(n, dtype=int)
-            return PauliGate(PauliString.from_exponents(x, z, dimensions=dims))
+            # return PauliGate(PauliString.from_exponents(x, z, dimensions=dims))
+            return Circuit(dims, [])  # identity circuit
 
-        Δ_half = ((Δ // 2) % 2).astype(int)
+        Delta_half = ((Delta // 2) % 2).astype(int)
 
         # Ω over GF(2): [[0, I], [ I, 0]]
         Id = np.eye(n, dtype=int)
@@ -615,13 +632,15 @@ def pauli_correction_gate(F: np.ndarray,
         Om2 = np.block([[Z, Id], [Id, Z]]) % 2
 
         M = (F.T % 2) @ Om2 % 2
-        v = (inv_gfp(M, 2) @ Δ_half.reshape(-1, 1)) % 2
+        v = (inv_gfp(M, 2) @ Delta_half.reshape(-1, 1)) % 2
         v = v.flatten()
 
         x = v[:n]
         z = v[n:]
-        pauli = PauliString.from_exponents(x, z, dimensions=dims)
-        return PauliGate(pauli)
+        if np.all(x == 0) and np.all(z == 0):
+            return Circuit(dims, [])  # nothing to correct
+
+        return Circuit(dims, _pauli_gates_from_vectors(x, z))
 
 
 def gate_to_circuit(big_gate: "Gate") -> "Circuit":
@@ -657,10 +676,10 @@ def gate_to_circuit(big_gate: "Gate") -> "Circuit":
         raise AssertionError("Body symplectic mismatch—decomposition error.")
 
     # 3) Append a Pauli correction so that h_body + F_body^T h_Pauli = h_target  (mod 2ℓ)
-    P_corr = pauli_correction_gate(F_body, h_body, h_target, dims)
+    P_corr = pauli_correction_circuit(F_body, h_body, h_target, dims)
 
     # 4) Return full circuit: body then Pauli correction (right-multiplication order)
     # C = Circuit(dims, [])
     # C.add_gate(decomposition_no_corr.gates)
-    decomposition_no_corr.add_gate(P_corr)
+    decomposition_no_corr += P_corr
     return decomposition_no_corr

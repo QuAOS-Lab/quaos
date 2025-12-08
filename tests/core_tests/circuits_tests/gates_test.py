@@ -1,6 +1,6 @@
 import numpy as np
 import random
-from sympleq.core.circuits import SUM, SWAP, Hadamard, PHASE, Gate, Circuit, PauliGate
+from sympleq.core.circuits import SUM, SWAP, Hadamard, PHASE, Gate, Circuit, PauliGate, gate_to_circuit
 from sympleq.core.circuits.utils import is_symplectic
 from sympleq.core.paulis import PauliSum, PauliString
 from sympleq.core.circuits.random_symplectic import (symplectic_gf2, symplectic_group_size,
@@ -551,9 +551,13 @@ class TestGates():
         for d in dims:
             for _ in range(n_tests):
                 ps = PauliSum.from_random(n_paulis, [d] * n_qudits, False, seed=1)
+
                 ps_m = ps.to_hilbert_space()
 
-                G = PauliGate(PauliString.from_random([d]))
+                gate_pauli = PauliString.from_random([d])
+                if np.all(gate_pauli.tableau == 0):
+                    gate_pauli = PauliString.from_string('x1z0', dimensions=[d])
+                G = PauliGate(gate_pauli)
                 ps_res = G.act(ps)
                 ps_res_m = ps_res.to_hilbert_space().toarray()
 
@@ -563,3 +567,15 @@ class TestGates():
                 diff_m = np.around(ps_res_m - ps_m_res, 10)
                 print(diff_m)
                 assert not np.any(diff_m), 'failed for PauliGate dimension ' + str(d)
+
+    def test_gate_to_circuit(self):
+        n_qudits = 3
+        dim = 2
+        dimensions = [dim] * n_qudits
+        for _ in range(100):
+            g = Gate.from_random(n_qudits, dim)
+            circuit = gate_to_circuit(g)
+            ps = PauliSum.from_random(5, dimensions, False)
+            ps1 = g.act(ps)
+            ps2 = circuit.act(ps)
+            assert ps1 == ps2, 'Error in gate to circuit conversion:\n' + ps1.__str__() + '\n' + ps2.__str__()
