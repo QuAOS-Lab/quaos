@@ -3,7 +3,7 @@ from sympleq.core.paulis import PauliString, PauliSum, Pauli
 from typing import overload
 from sympleq.core.circuits.target import find_map_to_target_pauli_sum, get_phase_vector
 from sympleq.core.circuits.utils import (transvection_matrix, symplectic_form, tensor, I_mat, H_mat, S_mat, CX_func,
-                                         SWAP_func, pauli_unitary_from_tableau, pauli_unitary_qudit)
+                                         SWAP_func, pauli_unitary_qudit)
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 import scipy.sparse as sp
 from .utils import embed_symplectic
