@@ -281,7 +281,7 @@ def pauli_unitary_from_tableau(
     """
     x = np.asarray(x, dtype=int)
     z = np.asarray(z, dtype=int)
-    assert x.shape == z.shape and x.ndim == 1, "x and z must be 1D arrays of same length"
+    assert x.shape == z.shape and x.ndim == 1, f"x len({len(x)}) and z len({len(z)}) must be 1D arrays of same length"
 
     locals_ = [
         pauli_unitary_qudit(d, int(xk), int(zk), convention=convention)

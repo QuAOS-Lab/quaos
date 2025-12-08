@@ -4,7 +4,7 @@ from sympleq.core.paulis import PauliSum
 from sympleq.core.graphs.graph_isomorphism import _full_dfs_complete
 from sympleq.core.graphs.graph_coloring import _build_base_partition
 from sympleq.core.finite_field_solvers import get_linear_dependencies
-from scripts.experiments.symmetries.src.block_decomposition import block_decompose, ordered_block_sizes
+from sympleq.core.symmetries.block_decomposition import block_decompose, ordered_block_sizes
 from typing import Optional
 
 
