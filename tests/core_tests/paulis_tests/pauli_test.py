@@ -690,6 +690,11 @@ class TestPaulis:
             assert np.max(np.abs((pauli_sum.to_hilbert_space().toarray() - H_e))) < tolerance
             assert pauli_sum.is_hermitian() == np.array_equal(H_e, H_e.conjugate().transpose())
 
+    def test_pauli_string_is_hermitian(self):
+        ps = PauliString.from_string('x1z0 x1z1 x0z0', dimensions=2)
+        assert ps.has_equal_tableau(ps.H())
+        assert ps.is_hermitian()
+
     def test_qubit_XZ_phase_is_minus_one(self):
         # Single qubit (dimension 2): X * Z = (-1) Z * X  => scalar exponent r = 1 mod 2
         for _ in range(N_tests):
