@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import pytest
 from sympleq.core.circuits import SUM, SWAP, Hadamard, PHASE, Gate, Circuit, PauliGate, gate_to_circuit
 from sympleq.core.circuits.utils import is_symplectic
 from sympleq.core.paulis import PauliSum, PauliString
