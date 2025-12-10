@@ -113,7 +113,7 @@ class TestPaulis:
     def test_to_hilbert_space_consistency(self):
         # Single Pauli matches PauliString representation
         for _ in range(N_tests):
-            d = random.choice(prime_list)
+            d = random.choice(PRIME_LIST)
             r = np.random.randint(0, d)
             s = np.random.randint(0, d)
             p = Pauli.from_exponents(r, s, d)
@@ -129,7 +129,7 @@ class TestPaulis:
         # PauliString and equivalent single-term PauliSum should have identical matrices
         for _ in range(N_tests):
             n_qudits = random.randint(1, 3)
-            dims = [random.choice(prime_list) for _ in range(n_qudits)]
+            dims = [random.choice(PRIME_LIST) for _ in range(n_qudits)]
             x_exp = [np.random.randint(0, d) for d in dims]
             z_exp = [np.random.randint(0, d) for d in dims]
             ps = PauliString.from_exponents(x_exp, z_exp, dimensions=dims)
