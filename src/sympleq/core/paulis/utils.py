@@ -4,7 +4,8 @@ import re
 from .pauli_sum import PauliSum
 import networkx as nx
 from itertools import product
-import sympy as sp
+import sympy as smp
+import scipy.sparse as sp
 
 
 def ground_state_TMP(P: PauliSum,
@@ -384,8 +385,8 @@ def solve_mod_d(A: np.ndarray,
     [array([3, 4]), array([0, 2]), array([2, 0]), array([4, 3]), array([1, 1])]
     """
 
-    A_sym = sp.Matrix(A.tolist())
-    b_sym = sp.Matrix(b.tolist())
+    A_sym = smp.Matrix(A.tolist())
+    b_sym = smp.Matrix(b.tolist())
     A_aug = A_sym.row_join(b_sym)
     A_mod = A_aug.applyfunc(lambda x: x % d)
 
@@ -504,3 +505,60 @@ def isclose(PauliSum1: PauliSum, PauliSum2: PauliSum, tol=10**-10) -> bool:
     t2 = np.isclose(coef1, coef2, atol=tol)
     t3 = np.all(PauliSum1.dimensions == PauliSum2.dimensions)
     return bool(t1 and t2 and t3)
+
+
+def apply_paulisum_to_state_dense(op: PauliSum, psi: np.ndarray) -> np.ndarray:
+    """
+    Apply a PauliSum to a statevector using the *same* conventions as
+    PauliSum.to_hilbert_space, but without explicitly constructing the
+    full matrix:
+
+        |out> = (sum_i c_i H_i) |psi>,
+
+    where
+        H_i = ⊗_n xz_mat(dim_n, x_exp[i,n], z_exp[i,n])
+        c_i = weights[i] * exp(phase[i] * 2π i / (2 * lcm)).
+
+    This is dense and not optimised, but is guaranteed to match
+    op.to_hilbert_space() @ psi exactly (up to numerical precision).
+    """
+    dims = np.asarray(op.dimensions, dtype=int)
+    D = int(np.prod(dims))
+    psi = np.asarray(psi, dtype=np.complex128).reshape(D)
+
+    out = np.zeros_like(psi)
+
+    x_exp = op.x_exp   # shape (n_paulis, n_qudits)
+    z_exp = op.z_exp
+    phases = np.asarray(op.phases, dtype=int)
+    weights = np.asarray(op.weights, dtype=np.complex128)
+    L = int(op.lcm)
+
+    n_paulis, n_qudits = x_exp.shape
+
+    for i in range(n_paulis):
+        w_i = weights[i]
+        if w_i == 0:
+            continue
+
+        # Build the tensor product H_i = ⊗_n xz_mat(dim_n, X_i,n, Z_i,n)
+        # using the SAME order and routine as to_hilbert_space.
+        X0 = int(x_exp[i, 0])
+        Z0 = int(z_exp[i, 0])
+        dim0 = int(dims[0])
+        h = op.xz_mat(dim0, X0, Z0)  # local operator on qudit 0 (sparse)
+
+        for n in range(1, n_qudits):
+            Xn = int(x_exp[i, n])
+            Zn = int(z_exp[i, n])
+            dimn = int(dims[n])
+            h_next = op.xz_mat(dimn, Xn, Zn)
+            h = sp.csr_matrix(sp.kron(h, h_next, format="csr"))
+
+        # Same global phase and weight factor as to_hilbert_space
+        phase_i = phases[i]
+        coeff = w_i * np.exp(phase_i * 2 * np.pi * 1j / (2 * L))
+
+        out += coeff * (h @ psi)
+
+    return out

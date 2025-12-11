@@ -3,10 +3,13 @@ from sympleq.core.paulis import PauliString, PauliSum, Pauli
 from typing import overload
 from sympleq.core.circuits.target import find_map_to_target_pauli_sum, get_phase_vector
 from sympleq.core.circuits.utils import (transvection_matrix, symplectic_form, tensor, I_mat, H_mat, S_mat, CX_func,
-                                         SWAP_func, pauli_unitary_qudit)
+                                         SWAP_func, pauli_unitary_qudit, _apply_single_qudit_dense,
+                                         _apply_two_qudit_permutation)
 from sympleq.core.finite_field_solvers import get_linear_dependencies
+from sympleq.core.states.state import State
 import scipy.sparse as sp
 from .utils import embed_symplectic
+from warnings import warn
 
 
 class Gate:
@@ -217,6 +220,69 @@ class Gate:
         return np.all(self.qudit_indices == other.qudit_indices) and \
             np.all(self.symplectic == other.symplectic) and np.all(self.dimensions == other.dimensions) and \
             np.all(self.phase_vector == other.phase_vector)
+
+    def act_on_state(self, state: "State") -> "State":
+        """
+        Apply this gate to a State object, returning a new State.
+
+        For known Clifford generators we use efficient local updates and
+        index permutations. For unknown gate types we fall back to
+        building the gate's unitary and multiplying a vector.
+
+        TODO: Incorporate into act method
+        """
+        if not np.array_equal(state.dimensions, state.dimensions):
+            # This check is a bit silly as written; the real check is
+            # consistency with the *global* dims in a Circuit. For a bare
+            # Gate, we just assume state.dimensions is the full register.
+            pass
+
+        dims_full = state.dimensions
+        psi = state.amplitudes
+
+        # Single-qudit gates: Hadamard, PHASE, Pauli factors
+        if isinstance(self, Hadamard):
+            (q,) = map(int, self.qudit_indices)
+            d_q = int(dims_full[q])
+            U_loc = H_mat(d_q)
+            psi = _apply_single_qudit_dense(psi, dims_full, U_loc.toarray(), q)
+
+        elif isinstance(self, PHASE):
+            (q,) = map(int, self.qudit_indices)
+            d_q = int(dims_full[q])
+            U_loc = S_mat(d_q)
+            psi = _apply_single_qudit_dense(psi, dims_full, U_loc.toarray(), q)
+
+        elif isinstance(self, PauliGate):
+            # Product of local Paulis; they commute across sites.
+            ps = self.pauli_string
+            for q in range(ps.n_qudits()):
+                if ps.x_exp[q] != 0 or ps.z_exp[q] != 0:
+                    d_q = int(dims_full[q])
+                    U_loc = pauli_unitary_qudit(
+                        d_q,
+                        int(ps.x_exp[q]),
+                        int(ps.z_exp[q]),
+                    )
+                    psi = _apply_single_qudit_dense(psi, dims_full, U_loc.toarray(), q)
+
+        # Two-qudit permutation-type gates: SUM/CNOT, SWAP
+        elif isinstance(self, (SUM, CNOT)):
+            a0, a1 = map(int, self.qudit_indices)
+            psi = _apply_two_qudit_permutation(psi, dims_full, CX_func, a0, a1)
+
+        elif isinstance(self, SWAP):
+            a0, a1 = map(int, self.qudit_indices)
+            psi = _apply_two_qudit_permutation(psi, dims_full, SWAP_func, a0, a1)
+
+        else:
+            # Generic fallback: build unitary and multiply
+            warn("Falling back to generic unitary multiplication for Gate.act_on_state(). "
+                 "This may be inefficient for large systems.", UserWarning)
+            U = self.unitary(dims=dims_full)  # may raise NotImplementedError
+            psi = U @ psi
+
+        return State(psi, dims_full)
 
 
 def _scalar_dim(dim):

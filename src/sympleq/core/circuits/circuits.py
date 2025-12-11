@@ -3,6 +3,7 @@ import numpy as np
 from qiskit import QuantumCircuit
 from .gates import Gate, Hadamard as H, PHASE as S, SUM as CX, SWAP, CNOT, PauliGate
 from sympleq.core.paulis import PauliSum, PauliString, Pauli, PauliObject
+from sympleq.core.states.state import State
 from .utils import embed_symplectic
 import scipy.sparse as sp
 from collections import defaultdict
@@ -343,3 +344,29 @@ class Circuit:
 
         local_dimensions = [self.dimensions[i] for i in indices]
         return Circuit(local_dimensions, local_gates)
+
+    def act_on_state(self, state: State) -> State:
+        """
+        Apply the entire circuit to a State object, gate by gate.
+        """
+        if not np.array_equal(state.dimensions, np.asarray(self.dimensions, dtype=int)):
+            raise ValueError(
+                "State dimensions do not match Circuit.dimensions: "
+                f"{state.dimensions} vs {self.dimensions}"
+            )
+
+        out = state
+        for gate in self.gates:
+            out = gate.act_on_state(out)
+        return out
+
+    def apply_to_statevector(self, psi: np.ndarray) -> np.ndarray:
+        """
+        Convenience wrapper: apply circuit directly to a bare statevector psi.
+
+        psi must be a 1D array of length prod(self.dimensions).
+        Returns the updated statevector.
+        """
+        state = State(psi, self.dimensions)
+        state_out = self.act_on_state(state)
+        return state_out.as_array()
