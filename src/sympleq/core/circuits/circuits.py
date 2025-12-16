@@ -47,26 +47,30 @@ class Circuit:
             self.indexes = []
 
     @classmethod
-    def from_random(cls, n_gates: int,
-                    dimensions: list[int] | np.ndarray,
-                    two_qudit_gate_ratio: float = 0.3) -> 'Circuit':
+    def from_random(
+        cls,
+        depth: int,
+        dimensions: list[int] | np.ndarray,
+        single_qudit_fill: float = 0.5,
+        two_qudit_fill: float = 0.3,
+    ) -> 'Circuit':
         """
-        Creates a random circuit with the given number of qudits and depth.
+        Creates a random circuit with the given depth.
 
-        NOTE: It may be nice to have depth rather than n_gates, and a filling factor to control the number of gates
-              per layer? Not too important.
+        Each layer independently chooses (probabilistically) to place a 1-qudit gate,
+        a 2-qudit gate, or nothing:
+          - probability of single-qudit gate = single_qudit_fill
+          - probability of two-qudit gate    = two_qudit_fill
+          - probability of no gate           = 1 - (single_qudit_fill + two_qudit_fill)
+        If a two-qudit gate is chosen but the selected dimension set only has one qudit,
+        the layer falls back to a single-qudit gate when possible, otherwise it is skipped.
 
-        Parameters:
-            n_qudits (int): The number of qudits in the circuit.
-            depth (int): The depth of the circuit.
-            dimensions (list[int] | np.ndarray): A list or array of integers representing the dimensions of the qudits.
-            gate_list (list): A list of Gate objects representing the gates in the circuit.
-            two_qudit_gate_ratio (float): The ratio of two-qudit gates to single-qudit gates.
-
-        Returns:
-            Circuit: A new Circuit object.
+        Args:
+            depth: Number of layers.
+            dimensions: List/array of qudit dimensions.
+            single_qudit_fill: Expected fraction of layers with a 1-qudit gate.
+            two_qudit_fill: Expected fraction of layers with a 2-qudit gate.
         """
-
         def index_lists(lst):
             groups = defaultdict(list)
             for i, val in enumerate(lst):
@@ -78,17 +82,28 @@ class Circuit:
         single_qudit_gates = [H, S]
         two_qudit_gates = [CX, SWAP]
         gg = []
-        for _ in range(n_gates):
+        for _ in range(depth):
             set_idx = np.random.randint(n_dims)
             dim = dimensions[index_sets[set_idx][0]]
-            if np.random.rand() < two_qudit_gate_ratio and len(index_sets[set_idx]) > 1:
-                indices = random.sample(index_sets[set_idx], 2)
-                gate_cls = random.choice(two_qudit_gates)
-                gg.append(gate_cls(indices[0], indices[1], dim))
-            else:
+            r = np.random.rand()
+            gate_added = False
+            if r < two_qudit_fill:
+                if len(index_sets[set_idx]) > 1:
+                    i0, i1 = random.sample(index_sets[set_idx], 2)
+                    gate_cls = random.choice(two_qudit_gates)
+                    gg.append(gate_cls(i0, i1, dim))
+                    gate_added = True
+            elif r < two_qudit_fill + single_qudit_fill:
                 index = random.choice(index_sets[set_idx])
-                gate = random.choice(single_qudit_gates)
-                gg.append(gate(index, dim))
+                gate_cls = random.choice(single_qudit_gates)
+                gg.append(gate_cls(index, dim))
+                gate_added = True
+
+            # If a two-qudit gate was requested but impossible, fall back to single if allowed.
+            if not gate_added and len(index_sets[set_idx]) == 1 and single_qudit_fill > 0:
+                index = random.choice(index_sets[set_idx])
+                gate_cls = random.choice(single_qudit_gates)
+                gg.append(gate_cls(index, dim))
 
         return cls(dimensions, gg)
 
@@ -193,21 +208,32 @@ class Circuit:
             yield pauli_sum
 
     def show(self):
+        circuit = self.circuit_image()
+        print(circuit)
+
+    def circuit_image(self):
         if not np.all(np.array(self.dimensions) == 2):
             print("Circuit dimensions are not all 2, using Qiskit QuantumCircuit, some gates may not be supported")
         circuit = QuantumCircuit(len(self.dimensions))
         dict = {'X': circuit.x, 'H': circuit.h, 'S': circuit.s, 'SUM': circuit.cx, 'CNOT': circuit.cx,
-                'Hdag': circuit.h}
+                'H_inv': circuit.h, 'SWAP': circuit.swap}
 
         for gate in self.gates:
             name = gate.name
             if len(gate.qudit_indices) == 2:
                 dict[name](gate.qudit_indices[0], gate.qudit_indices[1])
             else:
-                dict[name](gate.qudit_indices[0])
-
-        print(circuit)
-        # return circuit
+                if name[0:3] == 'Pau':
+                    # pauli gate 'Pauli(X^1Z^0_0)' is circuit.x(0)
+                    x_comp = name[8]  # TODO: everything after X^ and before Z - currently fails for large powers
+                    z_comp = name[11]  # TODO: everything after Z^ and before _ - currently fails for large powers
+                    for i in range(int(x_comp)):
+                        circuit.x(gate.qudit_indices[0])
+                    for i in range(int(z_comp)):
+                        circuit.z(gate.qudit_indices[0])
+                else:
+                    dict[name](gate.qudit_indices[0])
+        return circuit
 
     def copy(self) -> 'Circuit':
         return Circuit(self.dimensions, self.gates.copy())

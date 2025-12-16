@@ -315,116 +315,127 @@ def run_krylov_symmetry_example():
       8) Plot and compare.
     """
     # --- 1) Ising chain Hamiltonian H ---
-    N = 12
-    J = 1.0
-    h = 0.5
-    H = ising_chain_hamiltonian(N, J, h, periodic=True)
+    Ns = [10, 11, 12, 13, 14]  # , 15, 16
+    fig, ax = plt.subplots(figsize=(7, 4))
+    times_symmetry = []
+    times_no_symmetry = []
+    for N in Ns:
+        J = 1.0
+        h = 0.5
+        H = ising_chain_hamiltonian(N, J, h, periodic=True)
 
-    # --- 2) Symmetry via heuristic Clifford F, block decompose into S, T ---
-    F = heuristic_clifford_symmetry(N)
-    S_symp, T_symp = block_decompose_optimal(F.symplectic, 2)
+        # --- 2) Symmetry via heuristic Clifford F, block decompose into S, T ---
+        F = heuristic_clifford_symmetry(N)
+        S_symp, T_symp = block_decompose_optimal(F.symplectic, 2)
 
-    # --- 3) Build Clifford gates S and T with correct phases ---
-    h_S, h_T = clifford_phase_decomposition(
-        F.symplectic, F.phase_vector, S_symp, T_symp, int(H.lcm)
-    )
-
-    S_gate = Gate("S", F.qudit_indices, S_symp, F.dimensions, h_S)
-    T_gate = Gate("T", F.qudit_indices, T_symp, F.dimensions, h_T)
-
-    # --- 4) Observable O_x = X on qubit 0 ---
-    obs_tableau = np.zeros((1, 2 * N), dtype=int)
-    obs_tableau[0, 0] = 1  # X on qudit 0
-    O_x = PauliSum.from_tableau(obs_tableau, weights=[1.0], dimensions=[2] * N)
-
-    # Initial product state |ψ0> = |+...+>
-    psi0, dims = product_state_ising(N, kind="x_plus")
-    dims = np.asarray(dims, dtype=int)
-    D = int(np.prod(dims))
-
-    # Time grid
-    times = np.linspace(0.0, 5.0, 201)
-
-    # -------------------------------------------------------------------------
-    # 5) Reference: project |ψ0> into +1 sector of S and compute exact dynamics
-    # -------------------------------------------------------------------------
-    t0 = time()
-
-    # Build S as a full Hilbert-space unitary
-    C_S = gate_to_circuit(S_gate)
-    U_S = C_S.unitary().toarray()   # dimension 2^N x 2^N (for qubits)
-
-    # Projector onto +1 sector: P_+ = (I + U_S)/2
-    I_full = np.eye(D, dtype=np.complex128)
-    P_plus = 0.5 * (I_full + U_S)
-
-    psi_plus = P_plus @ psi0
-    norm_plus = np.linalg.norm(psi_plus)
-    if norm_plus < 1e-12:
-        raise RuntimeError(
-            "Projection onto +1 sector of S is (numerically) zero. "
-            "Choose a different initial state or symmetry sector."
+        # --- 3) Build Clifford gates S and T with correct phases ---
+        h_S, h_T = clifford_phase_decomposition(
+            F.symplectic, F.phase_vector, S_symp, T_symp, int(H.lcm)
         )
-    psi_plus /= norm_plus
 
-    # Exact sector dynamics using full Hilbert matrices
-    exp_exact_sector = observable_dynamics_full_hilbert(
-        H=H,
-        O=O_x,
-        psi0=psi_plus,
-        times=times,
+        S_gate = Gate("S", F.qudit_indices, S_symp, F.dimensions, h_S)
+        T_gate = Gate("T", F.qudit_indices, T_symp, F.dimensions, h_T)
+
+        # --- 4) Observable O_x = X on qubit 0 ---
+        obs_tableau = np.zeros((1, 2 * N), dtype=int)
+        obs_tableau[0, 0] = 1  # X on qudit 0
+        O_x = PauliSum.from_tableau(obs_tableau, weights=[1.0], dimensions=[2] * N)
+
+        # Initial product state |ψ0> = |+...+>
+        psi0, dims = product_state_ising(N, kind="x_plus")
+        dims = np.asarray(dims, dtype=int)
+        D = int(np.prod(dims))
+
+        # Time grid
+        times = np.linspace(0.0, 5.0, 201)
+
+        # -------------------------------------------------------------------------
+        # 5) Reference: project |ψ0> into +1 sector of S and compute exact dynamics
+        # -------------------------------------------------------------------------
+
+        # Build S as a full Hilbert-space unitary
+        C_S = gate_to_circuit(S_gate)
+        U_S = C_S.unitary().toarray()   # dimension 2^N x 2^N (for qubits)
+
+        # Projector onto +1 sector: P_+ = (I + U_S)/2
+        I_full = np.eye(D, dtype=np.complex128)
+        P_plus = 0.5 * (I_full + U_S)
+
+        psi_plus = P_plus @ psi0
+        norm_plus = np.linalg.norm(psi_plus)
+        if norm_plus < 1e-12:
+            raise RuntimeError(
+                "Projection onto +1 sector of S is (numerically) zero. "
+                "Choose a different initial state or symmetry sector."
+            )
+        psi_plus /= norm_plus
+        t0 = time()
+        # Exact sector dynamics using full Hilbert matrices
+        exp_exact_sector = observable_dynamics_full_hilbert(
+            H=H,
+            O=O_x,
+            psi0=psi_plus,
+            times=times)
+        t1 = time()
+        times_no_symmetry.append(t1 - t0)
+        print(f"Exact +1 sector dynamics computed in {t1 - t0:.3f} seconds.")
+
+        # -------------------------------------------------------------------------
+        # 6) Symmetry-aware Krylov dynamics in the +1 sector
+        # -------------------------------------------------------------------------
+
+        # This will:
+        #   - conjugate H, O by T: H' = T^{-1} H T, O' = T^{-1} O T
+        #   - transform the state to the T-basis
+        #   - project the T-basis state into the chosen symmetry sector of S
+        #   - run Lanczos/Krylov in that sector using PauliSum matvecs only.
+        t0 = time()
+        exp_krylov_sym = krylov_observable_dynamics_symmetry(
+            H=H,
+            O=O_x,
+            T_gate=T_gate,
+            S_gate=S_gate,
+            psi0=psi0,
+            times=times,
+            m_max=128,       # Krylov dimension; 128 is generous for N=10
+            symmetry_eigval=+1.0,
         )
-    t1 = time()
-    print(f"Exact +1 sector dynamics computed in {t1 - t0:.3f} seconds.")
-    # -------------------------------------------------------------------------
-    # 6) Symmetry-aware Krylov dynamics in the +1 sector
-    # -------------------------------------------------------------------------
+        t1 = time()
+        times_symmetry.append(t1 - t0)
+        print(f"Symmetry aware Krylov +1 sector dynamics computed in {t1 - t0:.3f} seconds.")
 
-    # This will:
-    #   - conjugate H, O by T: H' = T^{-1} H T, O' = T^{-1} O T
-    #   - transform the state to the T-basis
-    #   - project the T-basis state into the chosen symmetry sector of S
-    #   - run Lanczos/Krylov in that sector using PauliSum matvecs only.
-    t0 = time()
-    exp_krylov_sym = krylov_observable_dynamics_symmetry(
-        H=H,
-        O=O_x,
-        T_gate=T_gate,
-        S_gate=S_gate,
-        psi0=psi0,
-        times=times,
-        m_max=128,       # Krylov dimension; 128 is generous for N=10
-        symmetry_eigval=+1.0,
-    )
-    t1 = time()
-    print(f"Symmetry aware Krylov +1 sector dynamics computed in {t1 - t0:.3f} seconds.")
+        # -------------------------------------------------------------------------
+        # 7) Plot comparison
+        # -------------------------------------------------------------------------
 
-    # -------------------------------------------------------------------------
-    # 7) Plot comparison
-    # -------------------------------------------------------------------------
+        ax.plot(
+            times,
+            exp_exact_sector.real,
+            label="Exact (+1 sector, full Hilbert)",
+            linestyle="-",
+        )
+        ax.plot(
+            times,
+            exp_krylov_sym.real,
+            label="Krylov (+1 sector, symmetry-exploiting)",
+            linestyle="--",
+        )
+        ax.set_xlabel("$t$")
+        ax.set_ylabel("Re$\\langle X_0(t) \\rangle$")
+        ax.legend()
+        plt.tight_layout()
 
-    plt.figure(figsize=(7, 4))
-    plt.plot(
-        times,
-        exp_exact_sector.real,
-        label="Exact (+1 sector, full Hilbert)",
-        linestyle="-",
-    )
-    plt.plot(
-        times,
-        exp_krylov_sym.real,
-        label="Krylov (+1 sector, symmetry-exploiting)",
-        linestyle="--",
-    )
-    plt.xlabel("t")
-    plt.ylabel("Re ⟨X_0(t)⟩")
-    plt.legend()
-    plt.tight_layout()
+        # Optional: print max difference as a sanity check
+        max_diff = np.max(np.abs(exp_krylov_sym - exp_exact_sector))
+        print(f"Max |Krylov_sym - exact_sector| over times = {max_diff:.3e}")
+
+    fig, ax2 = plt.subplots(figsize=(7, 4))
+    ax2.plot(Ns, times_no_symmetry, marker='o', label='No symmetry')
+    ax2.plot(Ns, times_symmetry, marker='o', label='With symmetry')
+    ax2.set_xlabel('Number of spins N')
+    ax2.set_ylabel('Time (s)')
+
     plt.show()
-
-    # Optional: print max difference as a sanity check
-    max_diff = np.max(np.abs(exp_krylov_sym - exp_exact_sector))
-    print(f"Max |Krylov_sym - exact_sector| over times = {max_diff:.3e}")
 
 
 def symmetry_aware_testing():
@@ -493,5 +504,5 @@ def symmetry_aware_testing():
 if __name__ == "__main__":
     # run_joint_eigen_dynamics_example()
     # run_compare_joint_vs_full()
-    # run_krylov_symmetry_example()
-    symmetry_aware_testing()
+    run_krylov_symmetry_example()
+    # symmetry_aware_testing()

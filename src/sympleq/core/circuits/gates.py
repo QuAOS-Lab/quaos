@@ -181,7 +181,7 @@ class Gate:
 
         h_inv = (term1 + term2 - term3 + term4 - term5) % modulus
 
-        return Gate(self.name + "-inv", self.qudit_indices, C_inv, self.dimensions, h_inv.astype(int))
+        return Gate(self.name + "_inv", self.qudit_indices, C_inv, self.dimensions, h_inv.astype(int))
 
     def transvection(self, transvection_vector: np.ndarray | list, transvection_weight: int = 1) -> 'Gate':
         """

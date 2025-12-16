@@ -100,7 +100,7 @@ class TestDecomposition:
             for _ in range(num_trials):
                 F = self.random_symplectic(n, p, rng)
                 # random circuit (uses only valid gates for dimension p)
-                C = Circuit.from_random(n_gates=depth, dimensions=[p] * n)
+                C = Circuit.from_random(depth=depth, dimensions=[p] * n)
                 F_conj = (C.full_symplectic() @ F) % p
                 assert is_symplectic(F_conj, p), "Conjugated F must remain symplectic"
                 C_pre = ensure_invertible_A_circuit(F_conj, p)
@@ -368,7 +368,7 @@ class TestDecomposition:
 
         for p in [2, 3, 5]:
             for _ in range(num_trials):
-                C_in = Circuit.from_random(n_gates_in_C_in, dimensions=[p] * n)
+                C_in = Circuit.from_random(depth=n_gates_in_C_in, dimensions=[p] * n)
                 big_gate_in = C_in.composite_gate()
 
                 C_out = gate_to_circuit(big_gate_in)
@@ -401,7 +401,7 @@ class TestDecomposition:
         n = 3
         for p in (2, 3, 5):
             for _ in range(num_trials):
-                C_in = Circuit.from_random(12, dimensions=[p] * n)
+                C_in = Circuit.from_random(depth=12, dimensions=[p] * n)
                 G_in = C_in.composite_gate()
 
                 C_out = gate_to_circuit(G_in)

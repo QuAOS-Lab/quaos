@@ -132,7 +132,7 @@ def Hadamard_Symmetric_PauliSum(n_paulis, n_qubits, n_sym_q, q_print=False, rand
     if n_qubits < 2:
         return P, None
 
-    C = Circuit.from_random(n_qubits, n_gates=100, dimensions=[2 for i in range(n_qubits)])
+    C = Circuit.from_random(depth=100, dimensions=[2 for i in range(n_qubits)])
 
     phases = P.phases
     cc = P.weights
@@ -149,7 +149,7 @@ def SWAP_symmetric_PauliSum(n_paulis, n_qubits):
     ps = PauliSum.from_random(n_paulis, n_qubits, dimensions=[2 for i in range(n_qubits)], rand_weights=False)
     ps[:, 1] = ps[:, 0]  # make qudit 2 equal to qudit 1
 
-    C = Circuit.from_random(n_qubits, n_gates=100, dimensions=[2 for i in range(n_qubits)])
+    C = Circuit.from_random(depth=100, dimensions=[2 for i in range(n_qubits)])
 
     return C.act(ps)
 

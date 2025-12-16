@@ -1,6 +1,15 @@
 import numpy as np
 
 
+def independent_columns(B: np.ndarray, p: int) -> np.ndarray:
+    """Return a column-subset of B with independent columns over GF(p) (single RREF pass)."""
+    if B.size == 0:
+        return B
+    _, piv = rref_mod(mod_p(B, p), p)
+    piv = [pc for pc in piv if pc < B.shape[1]]
+    return B[:, piv] if piv else np.zeros((B.shape[0], 0), dtype=np.int64)
+
+
 def omega_matrix(n: int, p: int) -> np.ndarray:
     Id = np.eye(n, dtype=np.int64)
     zeros = np.zeros((n, n), dtype=np.int64)

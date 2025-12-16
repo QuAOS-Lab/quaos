@@ -4,7 +4,7 @@ from sympleq.core.paulis import PauliSum
 from sympleq.core.graphs.graph_isomorphism import _full_dfs_complete
 from sympleq.core.graphs.graph_coloring import _build_base_partition
 from sympleq.core.finite_field_solvers import get_linear_dependencies
-from sympleq.core.symmetries.block_decomposition import block_decompose, ordered_block_sizes
+from sympleq.core.symmetries.block_decomposition import block_decompose_optimal, ordered_block_sizes
 from typing import Optional
 
 
@@ -20,7 +20,7 @@ def min_qudit_clifford_symmetry(pauli_sum: PauliSum,
         rhs = pauli_sum.to_standard_form()
         assert lhs == rhs, f'Symmetry finder failed\n{lhs.__str__()}\n{rhs.__str__()}'
 
-    S, T = block_decompose(g.symplectic, int(pauli_sum.lcm), min_block_size=4)
+    S, T = block_decompose_optimal(g.symplectic, int(pauli_sum.lcm), min_block_size=4)
     h_S, h_T = clifford_phase_decomposition(g.symplectic, g.phase_vector, S, T, int(pauli_sum.lcm))
     S_gate = Gate('S', g.qudit_indices, S, g.dimensions, h_S)
     T_gate = Gate('T', g.qudit_indices, T, g.dimensions, h_T)
@@ -59,7 +59,7 @@ def multiple_clifford_symmetries(pauli_sum: PauliSum,
     Ss = []
     Ts = []
     for i, g in enumerate(G):
-        S, T = block_decompose(g.symplectic, pauli_sum.lcm)
+        S, T = block_decompose_optimal(g.symplectic, pauli_sum.lcm)
         h_S, h_T = clifford_phase_decomposition(g.symplectic, g.phase_vector, S, T, int(pauli_sum.lcm))
         S_gate = Gate(f'S{i}', g.qudit_indices, S, g.dimensions, h_S)
         T_gate = Gate(f'T{i}', g.qudit_indices, T, g.dimensions, h_T)

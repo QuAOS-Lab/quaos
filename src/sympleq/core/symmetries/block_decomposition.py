@@ -1,21 +1,9 @@
 import numpy as np
 import itertools
-from .modular_helpers import (mod_p, rank_mod, _solve_linear, nullspace_mod, rref_mod, omega_matrix, inv_mod_mat,
-                              inv_mod_scalar, matmul_mod, is_symplectic)
+from .modular_helpers import (mod_p, rank_mod, _solve_linear, nullspace_mod, omega_matrix, inv_mod_mat,
+                              inv_mod_scalar, matmul_mod, is_symplectic, independent_columns)
 from .minimal_block_size import rcf_prepass
 from sympleq.core.graphs.utils import qudit_coupling_graph
-# =========================
-# GF(p) linear algebra utils
-# =========================
-
-
-def independent_columns(B: np.ndarray, p: int) -> np.ndarray:
-    """Return a column-subset of B with independent columns over GF(p) (single RREF pass)."""
-    if B.size == 0:
-        return B
-    _, piv = rref_mod(mod_p(B, p), p)
-    piv = [pc for pc in piv if pc < B.shape[1]]
-    return B[:, piv] if piv else np.zeros((B.shape[0], 0), dtype=np.int64)
 
 
 # =========================
@@ -174,29 +162,46 @@ def symplectic_basis_from_span(B: np.ndarray, p: int) -> np.ndarray:
                     if k in idx_used:
                         continue
                     v = S_perm[:, k: k + 1]
-                    if _scalar(u.T @ Omega @ v % p) != 0:
-                        idx_used.update([j, k])
-                        found = True
-                        break
+                    if _scalar(u.T @ Omega @ v % p) == 0:
+                        continue
+
+                    # Project u into the symplectic complement of previously chosen pairs
+                    for u_prev, v_prev in zip(U, V):
+                        alpha = _scalar(u.T @ Omega @ v_prev % p)
+                        gamma = _scalar(u.T @ Omega @ u_prev % p)
+                        if alpha or gamma:
+                            u = mod_p(u - alpha * u_prev + gamma * v_prev, p)
+
+                    if np.all(u % p == 0):
+                        continue
+
+                    # After updating u, ensure the pairing with v is still nonzero
+                    if _scalar(u.T @ Omega @ v % p) == 0:
+                        continue
+
+                    # Orthogonalize v against previous pairs
+                    for u_prev, v_prev in zip(U, V):
+                        coeff_u = _scalar(v.T @ Omega @ v_prev % p)
+                        coeff_v = _scalar(v.T @ Omega @ u_prev % p)
+                        if coeff_u or coeff_v:
+                            v = mod_p(v - coeff_u * u_prev + coeff_v * v_prev, p)
+
+                    beta = _scalar(u.T @ Omega @ v % p)
+                    if beta == 0:
+                        continue
+
+                    beta_inv = inv_mod_scalar(beta, p)
+                    v = mod_p(v * beta_inv, p)
+
+                    idx_used.update([j, k])
+                    found = True
+                    break
                 if found:
+                    U.append(mod_p(u, p))
+                    V.append(mod_p(v, p))
                     break
             if not found:
                 return None
-
-            beta = _scalar(u.T @ Omega @ v % p)
-            beta_inv = inv_mod_scalar(beta, p)
-            v = mod_p(v * beta_inv, p)
-
-            for u_prev, v_prev in zip(U, V):
-                coeff_u = _scalar(v.T @ Omega @ v_prev % p)
-                coeff_v = _scalar(v.T @ Omega @ u_prev % p)
-                if coeff_u:
-                    v = mod_p(v - coeff_u * u_prev, p)
-                if coeff_v:
-                    v = mod_p(v + coeff_v * v_prev, p)
-
-            U.append(u)
-            V.append(v)
 
         T = np.hstack(U + V)
         G = mod_p(T.T @ Omega @ T, p)
@@ -348,8 +353,10 @@ def _minimal_block_from_seeds(
         # Enforce a *lower* size bound if desired
         if min_block_size and size < min_block_size:
             continue
-        # Prefer *larger* minimal blocks; break ties by r_score descending
-        if (best is None) or (size > best[0]) or (size == best[0] and r_score > best[1]):
+        # # Prefer *larger* minimal blocks; break ties by r_score descending
+        # if (best is None) or (size > best[0]) or (size == best[0] and r_score > best[1]):
+        #     best = (size, r_score, T_blk)
+        if (best is None) or (size < best[0]) or (size == best[0] and r_score > best[1]):
             best = (size, r_score, T_blk)
 
     return None if best is None else best[2]
@@ -580,39 +587,29 @@ def block_decompose_optimal(
     # 1. Structural pre-pass: compute sector data and lower bound
     meta = rcf_prepass(F, p)
     Lmin_star: int = meta.get("Lmin_star", 0)
+    print("Lmin_star (theory half-dim):", meta["Lmin_star"])
 
     # 2. Run the existing decomposition
     S, T = block_decompose(F, p, min_block_size=min_block_size, trials=trials)
+    sizes = ordered_block_sizes(S, p)
+    print("Block sizes:", sizes, "Q_alg:", max(sizes)//2)
 
     # 3. Extract actual block sizes (phase-space dims: 2 * n_modes)
     sizes = ordered_block_sizes(S, p)
     Q_alg = max(sizes) // 2 if sizes else 0  # qudit cost = half dimension
 
-    # 4. Optional certification: check optimality against the lower bound
-    if certify:
-        # By theory we have Q(F) >= Lmin_star.
-        # If our algorithm's Q_alg < Lmin_star, something is inconsistent.
-        if Q_alg < Lmin_star:
-            raise RuntimeError(
-                f"Decomposition inconsistent with structural lower bound: "
-                f"Q_alg={Q_alg}, Lmin_star={Lmin_star}"
-            )
-        # If Q_alg > Lmin_star, the decomposition is not qudit-optimal
-        # relative to the theoretical bound.
-        if Q_alg > Lmin_star:
-            raise RuntimeError(
-                f"Decomposition not qudit-optimal: achieved Q_alg={Q_alg}, "
-                f"but structural lower bound is Lmin_star={Lmin_star}."
-            )
-        # If Q_alg == Lmin_star, we have Q(F) = Lmin_star = Q_alg,
-        # so the qudit cost is provably minimal.
+    if certify and Q_alg < Lmin_star:
+        raise RuntimeError(
+            f"Inconsistent: Q_alg={Q_alg} < Lmin_star={Lmin_star}."
+        )
 
-    # info: dict[str, Any] = {
+    # info = {
     #     "Lmin_star": Lmin_star,
     #     "Q_alg": Q_alg,
     #     "block_sizes": sizes,
-    #     "rcf_meta": meta,  # keep full structural info if you want it
+    #     "certified_optimal": (Q_alg == Lmin_star),
     # }
+
     return S, T  # , info
 
 
@@ -621,7 +618,7 @@ def block_decompose_optimal(
 # =========================
 
 def ordered_block_sizes(S: np.ndarray, p: int) -> list[int]:
-    """Return 2*n_modes for connected components, ordered with the same nontrivial-first policy."""
+    """Return 2*n for connected components, ordered with the same nontrivial-first policy."""
     n2 = S.shape[0]
     k = n2 // 2
     adj = _mode_graph_from_S(S, p)
