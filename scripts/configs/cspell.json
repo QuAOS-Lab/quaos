@@ -134,6 +134,7 @@
         "prange",
         "precheck",
         "preconditioner",
+        "prefactor",
         "prepass",
         "printoptions",
         "psum",
