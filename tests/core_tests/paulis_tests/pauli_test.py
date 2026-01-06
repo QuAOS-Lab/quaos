@@ -691,8 +691,18 @@ class TestPaulis:
             assert pauli_sum.is_hermitian() == np.array_equal(H_e, H_e.conjugate().transpose())
 
     def test_pauli_string_is_hermitian(self):
+
+        # ps = PauliSum.from_string(['x1z0 x1z1 x0z0', 'x0z0 x1z0 x1z0'], dimensions=3)
+        # assert ps.has_equal_tableau(ps.H())
+        # print(ps)
+        # print(ps.H())
+        # assert ps.is_hermitian()
+
         ps = PauliString.from_string('x1z0 x1z1 x0z0', dimensions=2)
         assert ps.has_equal_tableau(ps.H())
+        ps.phases[0] = 1
+        print(ps.phases)
+        print(ps.H().phases)
         assert ps.is_hermitian()
 
     def test_qubit_XZ_phase_is_minus_one(self):
