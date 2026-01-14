@@ -306,7 +306,7 @@ def _minimal_block_from_seeds(
     min_block_size: int = 0
 ) -> np.ndarray | None:
     """
-    Unified worker: tries seeds, returns best T_blk or None.
+    tries seeds, returns best T_blk or None.
     Score: smallest size (>= min_block_size if >0), tie-break by rank(S_blk - I) descending.
     """
     n2 = F.shape[0]
@@ -592,7 +592,7 @@ def block_decompose_optimal(
     # 2. Run the existing decomposition
     S, T = block_decompose(F, p, min_block_size=min_block_size, trials=trials)
     sizes = ordered_block_sizes(S, p)
-    print("Block sizes:", sizes, "Q_alg:", max(sizes)//2)
+    print("Block sizes:", sizes, "Q_alg:", max(sizes) // 2)
 
     # 3. Extract actual block sizes (phase-space dims: 2 * n_modes)
     sizes = ordered_block_sizes(S, p)

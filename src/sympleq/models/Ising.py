@@ -3,7 +3,10 @@ from sympleq.core.circuits import Gate
 import numpy as np
 
 
-def ising_chain_hamiltonian(n_spins, J_zz, h_x, periodic=False):
+def ising_chain_hamiltonian(n_spins: int,
+                            J_zz: float | np.ndarray | list,
+                            h_x: float | np.ndarray | list,
+                            periodic: bool = False):
     """
     Constructs the Hamiltonian of the 1D Ising model in a transverse field.
 
@@ -11,9 +14,11 @@ def ising_chain_hamiltonian(n_spins, J_zz, h_x, periodic=False):
     ----------
     n_spins : int
         The number of spins in the chain.
-    J_zz : float
+    J_zz : float or np.ndarray or list
         The Ising interaction strength between nearest-neighbour spins.
-    h_x : float
+        If this is a matrix, it will be used as the interaction strength matrix
+        should only have nearest neighbour terms
+    h_x : float or np.ndarray or list
         The strength of the transverse field.
     periodic : bool, optional
         Whether the chain is periodic (default: False).
@@ -27,13 +32,43 @@ def ising_chain_hamiltonian(n_spins, J_zz, h_x, periodic=False):
     weights = []
     dims = [2 for _ in range(n_spins)]
 
+    if isinstance(J_zz, np.ndarray) or isinstance(J_zz, list):
+        J_zz = np.array(J_zz)  # Convert to numpy array if list
+        if J_zz.shape != (n_spins,) and periodic:
+            raise ValueError("J_zz must be a vector of size n_spins for periodic chain")
+        elif J_zz.shape != (n_spins - 1,) and not periodic:
+            raise ValueError("J_zz must be a vector of size n_spins-1 for closed chain")
+        else:
+            raise ValueError(f"J_zz shape, {J_zz.shape}, not compatible with boundary conditions."
+                             "Should be (n_spins) for periodic chain or (n_spins-1) for closed chain.")
+    elif isinstance(J_zz, float) or isinstance(J_zz, int):
+        J_zz = J_zz * np.ones(n_spins if periodic else n_spins - 1)
+    else:
+        raise ValueError("J_zz must be a float or numpy array")
+
+    if isinstance(h_x, np.ndarray):
+        h_x = np.array(h_x)  # Convert to numpy array if list
+        if h_x.shape != (n_spins,):
+            raise ValueError("h_x must be a vector of size n_spins")
+    elif isinstance(h_x, float) or isinstance(h_x, int):
+        h_x = h_x * np.ones(n_spins)
+    else:
+        raise ValueError("h_x must be a float or numpy array")
+
+    # this bit is just for typing
+    if not isinstance(J_zz, np.ndarray):
+        raise Exception("J_zz must be a numpy array")
+
+    if not isinstance(h_x, np.ndarray):
+        raise Exception("h_x must be a numpy array")
+
     # ZZ terms
     for i in range(n_spins - 1):
         zz = np.zeros(n_spins, dtype=int)
         zz[i] = 1
         zz[i + 1] = 1
         paulis.append(PauliString.from_exponents(np.zeros(n_spins, dtype=int), zz, dims))
-        weights.append(J_zz)
+        weights.append(J_zz[i])
 
     # Periodic ZZ term (last ↔ first spin)
     if periodic and n_spins > 2:
@@ -41,14 +76,14 @@ def ising_chain_hamiltonian(n_spins, J_zz, h_x, periodic=False):
         zz[0] = 1
         zz[-1] = 1
         paulis.append(PauliString.from_exponents(np.zeros(n_spins, dtype=int), zz, dims))
-        weights.append(J_zz)
+        weights.append(J_zz[n_spins])
 
     # X terms (transverse field)
     for i in range(n_spins):
         x = np.zeros(n_spins, dtype=int)
         x[i] = 1
         paulis.append(PauliString.from_exponents(x, np.zeros(n_spins, dtype=int), dims))
-        weights.append(h_x)
+        weights.append(h_x[i])
 
     return PauliSum.from_pauli_strings(paulis, weights=weights, phases=None)
 
