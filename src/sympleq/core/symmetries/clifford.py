@@ -21,6 +21,8 @@ def min_qudit_clifford_symmetry(pauli_sum: PauliSum,
         rhs = pauli_sum.to_standard_form()
         assert lhs == rhs, f'Symmetry finder failed\n{lhs.__str__()}\n{rhs.__str__()}'
 
+    print('Got symmetry - decomposing')
+
     S, T = block_decompose_optimal(g.symplectic, int(pauli_sum.lcm), min_block_size=4, trials=decomposition_trials)
     h_S, h_T = clifford_phase_decomposition(g.symplectic, g.phase_vector, S, T, int(pauli_sum.lcm))
     S_gate = Gate('S', g.qudit_indices, S, g.dimensions, h_S)

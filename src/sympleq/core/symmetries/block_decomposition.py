@@ -5,6 +5,88 @@ from .modular_helpers import (mod_p, rank_mod, _solve_linear, nullspace_mod, ome
 from .minimal_block_size import rcf_prepass
 from sympleq.core.graphs.utils import qudit_coupling_graph
 
+# Atomic seeds
+
+
+def _restrict_operator(F: np.ndarray, B: np.ndarray, p: int) -> np.ndarray:
+    """
+    Return the matrix of F restricted to span(B), in coordinates of B.
+    Requires span(B) invariant (true for primary bases).
+    """
+    B = independent_columns(mod_p(B, p), p)
+    FB = mod_p(F @ B, p)
+    return mod_p(solve_linear_many(B, FB, p), p)
+
+
+def _poly_eval_matrix(F: np.ndarray, poly: np.ndarray, p: int) -> np.ndarray:
+    """
+    Evaluate poly(F) with coeffs low->high, column-action convention.
+    """
+    F = mod_p(F, p)
+    poly = mod_p(poly, p).reshape(-1)
+    d = F.shape[0]
+    out = np.zeros((d, d), dtype=np.int64)
+    P = np.eye(d, dtype=np.int64)
+    for a in poly:
+        a = int(a) % p
+        if a:
+            out = mod_p(out + a * P, p)
+        P = mod_p(P @ F, p)
+    return out
+
+
+def atomic_seeds(F: np.ndarray, p: int) -> list[np.ndarray]:
+    """
+    Return 'atomic' seed vectors v (columns) = Jordan-chain tops of N=phi(F)
+    on each primary component V_phi, lifted back to ambient coordinates.
+    """
+    meta = rcf_prepass(F, p)
+
+    # rcf_prepass must expose primaries with at least:
+    #   prim[key]["poly"]      irreducible phi(x) coefficients low->high
+    #   prim[key]["exponent"]  k_phi
+    #   prim[key]["V_basis"]   basis columns for V_phi
+    prim = meta["primaries"]
+
+    seeds: list[np.ndarray] = []
+    for data in prim.values():
+        q = data["poly"]
+        exp = int(data["exponent"])
+        V = independent_columns(mod_p(data["V_basis"], p), p)
+        if V.shape[1] == 0:
+            continue
+
+        # Restrict F to V_phi
+        Fp = _restrict_operator(F, V, p)
+
+        # Nilpotent on primary: N = q(F) (restricted)
+        Np = _poly_eval_matrix(Fp, q, p)
+
+        # Chain tops for exact lengths L=1..exp (in primary coordinates)
+        tops = jordan_chain_tops_nilpotent(Np, exp, p)  # dict[int, (dimV x mult_L)]
+
+        for L, T in tops.items():
+            # Each column of T is a 'top' (primary coords); lift to ambient
+            for j in range(T.shape[1]):
+                v = mod_p(V @ T[:, j:j + 1], p)
+                if not np.all(v % p == 0):
+                    seeds.append(v)
+
+    return seeds
+
+
+def _augment_seeds(seeds: list[np.ndarray], p: int, n_extra: int, rng: np.random.Generator) -> list[np.ndarray]:
+    """
+    Add random linear combinations of atomic seeds (helps in self-reciprocal sectors).
+    """
+    if not seeds or n_extra <= 0:
+        return seeds
+    M = np.concatenate(seeds, axis=1)  # n2 x m
+    for _ in range(n_extra):
+        coeff = rng.integers(0, p, size=(M.shape[1], 1), dtype=np.int64)
+        seeds.append(mod_p(M @ coeff, p))
+    return seeds
+
 
 # =========================
 # Mode graph helpers
@@ -127,7 +209,6 @@ def _split_uv(T: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     assert k2 % 2 == 0
     k = k2 // 2
     return T[:, :k], T[:, k:]
-
 
 
 def nilpotent_kernel_basis(N: np.ndarray, j: int, p: int) -> np.ndarray:
@@ -504,15 +585,17 @@ def complete_symplectic_local(T_blk: np.ndarray, p: int) -> np.ndarray:
 def minimal_symplectic_block_full(
     F: np.ndarray, p: int, trials: int = 64, min_block_size: int = 2
 ) -> np.ndarray:
-    """
-    Find a smallest-dimension invariant, non-degenerate, and nontrivial symplectic block W for F.
-    min_block_size is even (2,4,6,...)
-    Returns T_blk (n2 x 2k) canonical: T_blk^T Omega T_blk = Omega_k.
-    """
     n2 = F.shape[0]
     rng = np.random.default_rng(2025)
-    seeds: list[np.ndarray] = [np.eye(n2, dtype=np.int64)[:, i: i + 1] for i in range(n2)]
-    seeds += [rng.integers(0, p, size=(n2, 1), dtype=np.int64) for _ in range(trials)]
+
+    seeds = atomic_seeds(F, p)
+
+    # Good fallback if factorization / prepass returns nothing (should be rare)
+    if not seeds:
+        seeds = [np.eye(n2, dtype=np.int64)[:, i:i + 1] for i in range(n2)]
+
+    # Optional: add random combos of atomic seeds (use trials as “augmentation budget”)
+    seeds = _augment_seeds(seeds, p, n_extra=trials, rng=rng)
 
     T_blk = _minimal_block_from_seeds(F, p, seeds, min_block_size=min_block_size)
     if T_blk is None:
@@ -561,9 +644,7 @@ def block_decompose(
 
         # Try to find a nontrivial minimal symplectic block in F_sub
         try:
-            T_blk_sub = minimal_symplectic_block_full(
-                F_sub, p, trials=trials, min_block_size=min_block_size
-            )
+            T_blk_sub = minimal_symplectic_block_full(F_sub, p, trials=trials, min_block_size=min_block_size)
         except RuntimeError:
             # No suitable block found in the remaining subspace
             break

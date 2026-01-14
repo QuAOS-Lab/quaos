@@ -81,6 +81,38 @@ def _solve_linear(A: np.ndarray, b: np.ndarray, p: int) -> np.ndarray:
     return x
 
 
+def solve_linear_many(A: np.ndarray, B: np.ndarray, p: int) -> np.ndarray:
+    """
+    Solve A X = B over GF(p) for multiple RHS (columns of B) in ONE RREF.
+    Returns one particular solution (free vars = 0).
+    """
+    A = mod_p(A, p)
+    B = mod_p(B, p)
+    if B.ndim == 1:
+        B = B.reshape(-1, 1)
+    m, n = A.shape
+    if B.shape[0] != m:
+        raise ValueError("solve_linear_many: incompatible shapes")
+
+    aug = np.concatenate([A, B], axis=1)
+    R, piv_cols = rref_mod(aug, p)
+
+    # Consistency: rows with 0...0 | nonzero RHS
+    left = R[:, :n]
+    right = R[:, n:]
+    bad = np.where(np.all(left % p == 0, axis=1) & np.any(right % p != 0, axis=1))[0]
+    if bad.size:
+        raise RuntimeError("No solution to linear system over GF(p)")
+
+    X = np.zeros((n, B.shape[1]), dtype=np.int64)
+    row = 0
+    for pc in piv_cols:
+        if pc < n:
+            X[pc, :] = right[row, :] % p
+            row += 1
+    return mod_p(X, p)
+
+
 def rref_mod(aug: np.ndarray, p: int) -> tuple[np.ndarray, list[int]]:
     """RREF over GF(p). Returns (RREF_augmented, pivot_cols)."""
     A = mod_p(aug.copy(), p)
