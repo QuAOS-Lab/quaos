@@ -1,7 +1,7 @@
 import numpy as np
 import itertools
 from .modular_helpers import (mod_p, rank_mod, _solve_linear, nullspace_mod, omega_matrix, inv_mod_mat,
-                              inv_mod_scalar, matmul_mod, is_symplectic, independent_columns)
+                              inv_mod_scalar, matmul_mod, is_symplectic, independent_columns, solve_linear_many)
 from .minimal_block_size import rcf_prepass
 from sympleq.core.graphs.utils import qudit_coupling_graph
 
@@ -127,6 +127,65 @@ def _split_uv(T: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     assert k2 % 2 == 0
     k = k2 // 2
     return T[:, :k], T[:, k:]
+
+
+
+def nilpotent_kernel_basis(N: np.ndarray, j: int, p: int) -> np.ndarray:
+    d = N.shape[0]
+    Nj = np.eye(d, dtype=np.int64)
+    for _ in range(j):
+        Nj = mod_p(Nj @ N, p)
+    return nullspace_mod(Nj, p)
+
+
+def _basis_extend(base: np.ndarray, candidates: np.ndarray, want: int, p: int) -> np.ndarray:
+    base = independent_columns(base, p) if base.size else base
+    picked = np.zeros((candidates.shape[0], 0), dtype=np.int64)
+    r_base = rank_mod(base, p) if base.size else 0
+
+    for j in range(candidates.shape[1]):
+        c = candidates[:, j:j+1]
+        r_try = rank_mod(np.concatenate([base, picked, c], axis=1), p)
+        if r_try > r_base + picked.shape[1]:
+            picked = np.concatenate([picked, c], axis=1)
+            if picked.shape[1] == want:
+                return picked
+
+    raise RuntimeError("_basis_extend: could not extend by required amount.")
+
+
+def jordan_chain_tops_nilpotent(N: np.ndarray, max_exp: int, p: int) -> dict[int, np.ndarray]:
+    """
+    tops[L] columns are representatives of K_L / (K_{L-1} + N K_{L+1}),
+    giving chain tops of exact length L.
+    """
+    d = N.shape[0]
+    K: list[np.ndarray] = [np.zeros((d, 0), dtype=np.int64)]
+    for j in range(1, max_exp + 1):
+        K.append(independent_columns(nilpotent_kernel_basis(N, j, p), p))
+    K.append(K[max_exp])  # K_{max+1} := K_max
+
+    tops: dict[int, np.ndarray] = {}
+    for L in range(1, max_exp + 1):
+        KL = K[L]
+        if KL.shape[1] == 0:
+            continue
+
+        S = K[L - 1]
+        NKLp1 = mod_p(N @ K[L+1], p) if K[L+1].shape[1] else np.zeros((d, 0), dtype=np.int64)
+        if NKLp1.shape[1]:
+            S = np.concatenate([S, NKLp1], axis=1) if S.shape[1] else NKLp1
+        S = independent_columns(S, p) if S.shape[1] else S
+
+        rS = rank_mod(S, p) if S.shape[1] else 0
+        need = KL.shape[1] - rS
+        if need <= 0:
+            continue
+
+        chosen = _basis_extend(S, KL, need, p)
+        tops[L] = chosen
+
+    return tops
 
 
 # =========================
