@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Generator, overload, TypeVar
 import numpy as np
 from qiskit import QuantumCircuit
@@ -16,7 +17,7 @@ P = TypeVar("P", bound="PauliObject")
 
 class Circuit:
     def __init__(self, dimensions: list[int] | np.ndarray,
-                 gates: list[Gate] | None = None):
+                 gates: list[Gate] = []):
         """
         Initialize the Circuit with gates, indexes, and targets.
 
@@ -115,12 +116,16 @@ class Circuit:
         """
         return len(self.dimensions)
 
-    def __add__(self, other: "Circuit | Gate") -> "Circuit":
+    def __add__(self, other: Circuit | Gate) -> Circuit:
         """
         Adds two circuits together by concatenating their gates and indexes.
         """
         if not isinstance(other, Circuit) and not isinstance(other, Gate):
             raise TypeError("Can only add another Circuit or Gate object.")
+
+        if not np.array_equal(self.dimensions, other.dimensions):
+            raise ValueError("Cannot add circuits with different dimensions.")
+
         if isinstance(other, Gate):
             new_gates = self.gates + [other]
         else:
