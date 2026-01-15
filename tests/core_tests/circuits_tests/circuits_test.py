@@ -401,6 +401,19 @@ class TestCircuits():
                 U_g = g.unitary(dims=dimensions).toarray()
                 assert np.allclose(U_c, U_g)
 
+    def test_circuit_inverse(self):
+        n_gates = np.random.randint(10, 20)
+        n_paulis = np.random.randint(4, 8)
+        dimensions = [2, 3, 5, 7]
+
+        circuit = Circuit.from_random(n_gates, dimensions)
+        ps = PauliSum.from_random(n_paulis, dimensions)
+
+        intermediate = circuit.act(ps)
+        result = circuit.inv().act(intermediate)
+
+        assert ps == result
+
 
 if __name__ == '__main__':
     TestCircuits().test_circuit_unitary()

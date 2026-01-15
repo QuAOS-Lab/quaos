@@ -286,7 +286,7 @@ class Circuit:
         return m
 
     def inv(self):
-        C_inv = Circuit(self.dimensions, [g.inv() for g in self.gates])
+        C_inv = Circuit(self.dimensions, [g.inv() for g in self.gates[::-1]])
         return C_inv
 
     def full_symplectic(self):
