@@ -24,16 +24,20 @@ class Gate:
         elif len(qudit_indices) != len(dimensions):
             raise ValueError("Dimensions and qudit_indices must have the same length.")
 
-        self.dimensions = dimensions
+        self.dimensions = np.asarray(dimensions, int)
+        self.dimensions.setflags(write=False)
         self.name = name
 
         if isinstance(qudit_indices, list):
             qudit_indices = np.asarray(qudit_indices, dtype=int)
 
         self.qudit_indices = qudit_indices
+        self.qudit_indices.setflags(write=False)
         self.n_qudits = len(qudit_indices)
         self.symplectic: np.ndarray = symplectic
+        self.symplectic.setflags(write=False)
         self.phase_vector = np.asarray(phase_vector, dtype=int)
+        self.phase_vector.setflags(write=False)
         self.lcm = np.lcm.reduce(self.dimensions)
 
         # U = [[0_n, 0_n],
@@ -196,9 +200,8 @@ class Gate:
             transvection_vector = np.array(transvection_vector)
 
         T = transvection_matrix(transvection_vector, multiplier=transvection_weight, p=dimension)
-        if self.name[0] != "T":
-            self.name = "T-" + self.name
-        return Gate(self.name, self.qudit_indices, self.symplectic @ T, self.dimensions, self.phase_vector)
+        name = self.name if self.name.startswith("T-") else "T-" + self.name
+        return Gate(name, self.qudit_indices, self.symplectic @ T, self.dimensions, self.phase_vector)
 
     def unitary(self, dims=None):
         if dims is None:
@@ -210,6 +213,15 @@ class Gate:
             raise ValueError("n_qudits must be greater than or equal to the maximum qudit index.")
         full_symplectic, _ = embed_symplectic(self.symplectic, self.phase_vector, self.qudit_indices, n_qudits)
         return full_symplectic
+
+    def __hash__(self):
+        return hash((
+            self.name,
+            tuple(self.qudit_indices.tolist()),
+            tuple(self.dimensions),
+            tuple(self.symplectic.flatten().tolist()),
+            tuple(self.phase_vector.tolist()),
+        ))
 
     def __eq__(self, other):
         if not isinstance(other, Gate):
