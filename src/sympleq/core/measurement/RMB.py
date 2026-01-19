@@ -16,19 +16,16 @@ class RMB:
                  random_initial_state: bool,
                  with_random_elimination: float,
                  with_random_insertion: float,
-                 noise_model: NoiseModel,
-                 rng: Generator | None
+                 noise_models: list[NoiseModel],
+                 rng: Generator
                  ) -> None:
 
         self.dimensions = dimensions
-        circuit = Circuit.from_random(n_gates, dimensions)
-
-        if rng is None:
-            rng = default_rng()
+        circuit = Circuit.from_random(n_gates, dimensions, rng=rng)
         self.rng = rng
 
         self.circuit = circuit + circuit.inv()
-        self.noise_model = noise_model
+        self.noise_models = noise_models
 
         n_qudits = len(dimensions)
         pauli_strings = []
@@ -80,7 +77,7 @@ class RMB:
                     random_initial_state: bool = True,
                     with_random_elimination: float = 0.0,
                     with_random_insertion: float = 0.0,
-                    noise_model: NoiseModel = Noiseless(),
+                    noise_models: NoiseModel | list[NoiseModel] = Noiseless(),
                     rng: Generator | None = None
                     ) -> RMB:
         """
@@ -111,11 +108,17 @@ class RMB:
         if isinstance(dimensions, int):
             dimensions = [dimensions]
 
+        if rng is None:
+            rng = default_rng()
+
         if n_gates is None:
-            n_gates = np.random.randint(10, 20)
+            n_gates = rng.integers(10, 20)
+
+        if not isinstance(noise_models, list):
+            noise_models = [noise_models]
 
         return cls(dimensions, n_gates, random_initial_state,
-                   with_random_elimination, with_random_insertion, noise_model, rng)
+                   with_random_elimination, with_random_insertion, noise_models, rng)
 
     @property
     def gates(self) -> list[Gate]:
@@ -237,13 +240,13 @@ Circuit:
 
     def act(self, pauli: PauliSum) -> PauliSum:
         for gate in self.circuit.gates:
-            kraus_operators = self.noise_model.kraus_operators(
-                self.dimensions, gate.qudit_indices)
+            kraus_operators = [k for model in self.noise_models for k in model.kraus_operators(
+                self.dimensions, gate.qudit_indices)]
             correct_pauli = gate.act(pauli)
 
             # Note: we do not need cross-terms, as we will pick only terms from the diagonal.
             options = [k[1] * correct_pauli * k[1].H() for k in kraus_operators]
-            probability_distribution = [np.abs(k[0])**2 for k in kraus_operators]
+            probability_distribution = [np.abs(k[0])**2 / len(self.noise_models) for k in kraus_operators]
 
             # Pick one possible output with weight given by the Kraus operator weight.
             pauli = self.rng.choice(np.asarray(options), p=probability_distribution)
@@ -253,7 +256,7 @@ Circuit:
 
 def luca_check():
     rmb = RMB.from_random(dimensions, n_gates,
-                          noise_model=DephasingNoise(0.0))
+                          noise_models=DephasingNoise(0.0))
     output = rmb.get_output()
     output.phase_to_weight()
     print(output)
@@ -263,7 +266,7 @@ def luca_check():
     N = 10
     for _ in range(N - 1):
         rmb = RMB.from_random(dimensions, n_gates,
-                              noise_model=DephasingNoise(0.0))
+                              noise_models=DephasingNoise(0.0))
         output = rmb.get_output()
         _, gs = ground_state_TMP(output)
         n_rho = np.kron(gs.conj(), gs)
@@ -273,7 +276,7 @@ def luca_check():
     print(np.around(rho, decimals=4))
 
     rmb_exact = RMB.from_random(dimensions, n_gates,
-                                noise_model=Noiseless(), rng=default_rng(0))
+                                noise_models=Noiseless(), rng=default_rng(0))
 
     ouput_exact = rmb_exact.get_output()
     _, gs = ground_state_TMP(ouput_exact)
@@ -293,9 +296,10 @@ def luca_check():
 
 
 if __name__ == "__main__":
-    n_gates = 6
-    dimensions = [2] * 5
+    n_gates = 8
+    dimensions = [2] * 4
 
     rmb = RMB.from_random(dimensions, n_gates,
-                          noise_model=DepolarizingNoise(0.1))
+                          noise_models=[DephasingNoise(0.05), DepolarizingNoise(0.05)],
+                          rng=default_rng(10))
     print(rmb.fancy_str())

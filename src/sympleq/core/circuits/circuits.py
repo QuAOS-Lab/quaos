@@ -1,13 +1,14 @@
 from __future__ import annotations
 from typing import Generator, overload, TypeVar
 import numpy as np
+from numpy.random import Generator as RNGGenerator, default_rng
 from qiskit import QuantumCircuit
 from .gates import Gate, Hadamard as H, PHASE as S, SUM as CX, SWAP, CNOT, PauliGate
-from sympleq.core.paulis import PauliSum, PauliString, Pauli, PauliObject
 from .utils import embed_symplectic
 import scipy.sparse as sp
 from collections import defaultdict
-import random
+
+from sympleq.core.paulis import PauliSum, PauliString, Pauli, PauliObject
 
 
 # We define a type using TypeVar to let the type checker know that
@@ -46,7 +47,8 @@ class Circuit:
     @classmethod
     def from_random(cls, n_gates: int,
                     dimensions: list[int] | np.ndarray,
-                    two_qudit_gate_ratio: float = 0.3) -> 'Circuit':
+                    two_qudit_gate_ratio: float = 0.3,
+                    rng: RNGGenerator | None = None) -> Circuit:
         """
         Creates a random circuit with the given number of qudits and depth.
 
@@ -69,6 +71,10 @@ class Circuit:
             for i, val in enumerate(lst):
                 groups[val].append(i)
             return list(groups.values())
+
+        if rng is None:
+            rng = default_rng()
+
         index_sets = index_lists(dimensions)  # list of lists of indexes for each dimension
         n_dims = len(index_sets)  # number of different dimensions
 
@@ -76,15 +82,15 @@ class Circuit:
         two_qudit_gates = [CX, SWAP]
         gg = []
         for _ in range(n_gates):
-            set_idx = np.random.randint(n_dims)
+            set_idx = rng.integers(0, n_dims)
             dim = dimensions[index_sets[set_idx][0]]
-            if np.random.rand() < two_qudit_gate_ratio and len(index_sets[set_idx]) > 1:
-                indices = random.sample(index_sets[set_idx], 2)
-                gate_cls = random.choice(two_qudit_gates)
+            if rng.random() < two_qudit_gate_ratio and len(index_sets[set_idx]) > 1:
+                indices = rng.choice(index_sets[set_idx], 2)
+                gate_cls = rng.choice(two_qudit_gates)
                 gg.append(gate_cls(indices[0], indices[1], dim))
             else:
-                index = random.choice(index_sets[set_idx])
-                gate = random.choice(single_qudit_gates)
+                index = rng.choice(index_sets[set_idx])
+                gate = rng.choice(single_qudit_gates)
                 gg.append(gate(index, dim))
 
         return cls(dimensions, gg)
