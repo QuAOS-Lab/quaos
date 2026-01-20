@@ -2,7 +2,7 @@ import numpy as np
 import itertools
 from .modular_helpers import (mod_p, rank_mod, _solve_linear, nullspace_mod, omega_matrix, inv_mod_mat,
                               inv_mod_scalar, matmul_mod, is_symplectic, independent_columns, solve_linear_many)
-from .minimal_block_size import rcf_prepass
+from .rcf_prepass import rcf_prepass
 from sympleq.core.graphs.utils import qudit_coupling_graph
 
 # Atomic seeds
@@ -726,8 +726,10 @@ def block_decompose_optimal(
     """
     # 1. Structural pre-pass: compute sector data and lower bound
     meta = rcf_prepass(F, p)
-    Lmin_star: int = meta.get("Lmin_star", 0)
-    print("Lmin_star (theory half-dim):", meta["Lmin_star"])
+    # print("rcf_prepass keys:", list(meta.keys()))
+    Lmin_star = max(sec.get("half_dim_floor", 0) for sec in meta["sectors"])
+    Lmin_star = max(1, min(Lmin_star, F.shape[0] // 2))
+    print("Lmin_star (theory half-dim):", Lmin_star)
 
     # 2. Run the existing decomposition
     S, T = block_decompose(F, p, min_block_size=min_block_size, trials=trials)

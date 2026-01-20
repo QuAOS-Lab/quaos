@@ -26,13 +26,74 @@ def is_symplectic(F: np.ndarray, p: int) -> bool:
 
 
 def mod_p(A: np.ndarray, p: int) -> np.ndarray:
+    A = np.asarray(A)
+    if p == 2:
+        return (A.astype(np.int64, copy=False) & 1)
     return np.asarray(A % p, dtype=np.int64)
 
 
+def rref_mod(aug: np.ndarray, p: int) -> tuple[np.ndarray, list[int]]:
+    if p == 2:
+        return rref_mod2(aug)
+    return rref_modp(aug, p)
+
+
+def rref_mod2(aug: np.ndarray) -> tuple[np.ndarray, list[int]]:
+    A = mod_p(aug.copy(), 2).astype(np.int64, copy=False)
+    m, n = A.shape
+    r = 0
+    piv_cols: list[int] = []
+    for c in range(n):
+        if r >= m:
+            break
+        nz = np.flatnonzero(A[r:, c] & 1)
+        if nz.size == 0:
+            continue
+        piv = r + int(nz[0])
+        if piv != r:
+            A[[r, piv]] = A[[piv, r]]
+        mask = (A[:, c] & 1).astype(bool)
+        mask[r] = False
+        if np.any(mask):
+            A[mask, :] ^= A[r, :]
+        piv_cols.append(c)
+        r += 1
+    return A, piv_cols
+
+
+def rref_modp(aug: np.ndarray, p: int) -> tuple[np.ndarray, list[int]]:
+    A = mod_p(aug.copy(), p)
+    m, n = A.shape
+    r = 0
+    c = 0
+    piv_cols: list[int] = []
+    while r < m and c < n:
+        piv = None
+        for i in range(r, m):
+            if A[i, c] % p != 0:
+                piv = i
+                break
+        if piv is None:
+            c += 1
+            continue
+        if piv != r:
+            A[[r, piv]] = A[[piv, r]]
+        inv = inv_mod_scalar(A[r, c], p)
+        A[r, :] = mod_p(A[r, :] * inv, p)
+        for i in range(m):
+            if i != r and A[i, c] % p != 0:
+                fac = A[i, c] % p
+                A[i, :] = mod_p(A[i, :] - fac * A[r, :], p)
+        piv_cols.append(c)
+        r += 1
+        c += 1
+    return A, piv_cols
+
+
 def rank_mod(A: np.ndarray, p: int) -> int:
-    R, _ = rref_mod(mod_p(A, p), p)
-    # Count nonzero rows
-    return int(np.sum(np.any(R % p != 0, axis=1)))
+    _, piv = rref_mod(mod_p(A, p), p)
+    # safer than “count nonzero rows” when you start passing augmented matrices around
+    return len([pc for pc in piv if pc < A.shape[1]])
 
 
 def nullspace_mod(A: np.ndarray, p: int) -> np.ndarray:
@@ -111,36 +172,6 @@ def solve_linear_many(A: np.ndarray, B: np.ndarray, p: int) -> np.ndarray:
             X[pc, :] = right[row, :] % p
             row += 1
     return mod_p(X, p)
-
-
-def rref_mod(aug: np.ndarray, p: int) -> tuple[np.ndarray, list[int]]:
-    """RREF over GF(p). Returns (RREF_augmented, pivot_cols)."""
-    A = mod_p(aug.copy(), p)
-    m, n = A.shape
-    r = 0
-    c = 0
-    piv_cols: list[int] = []
-    while r < m and c < n:
-        piv = None
-        for i in range(r, m):
-            if A[i, c] % p != 0:
-                piv = i
-                break
-        if piv is None:
-            c += 1
-            continue
-        if piv != r:
-            A[[r, piv]] = A[[piv, r]]
-        inv = inv_mod_scalar(A[r, c], p)
-        A[r, :] = mod_p(A[r, :] * inv, p)
-        for i in range(m):
-            if i != r and A[i, c] % p != 0:
-                fac = A[i, c] % p
-                A[i, :] = mod_p(A[i, :] - fac * A[r, :], p)
-        piv_cols.append(c)
-        r += 1
-        c += 1
-    return A, piv_cols
 
 
 def matmul_mod(A: np.ndarray, B: np.ndarray, p: int) -> np.ndarray:

@@ -5,9 +5,48 @@ from typing import Dict, List, Tuple
 
 from sympleq.core.symmetries.modular_helpers import mod_p, independent_columns, rank_mod
 from sympleq.core.symmetries.polynomials_fp import (
-    poly_monic, poly_pow, poly_divmod, poly_xgcd, poly_is_zero, poly_reciprocal, poly_is_zero, poly_mul
+    poly_monic, poly_pow, poly_divmod, poly_xgcd, poly_is_zero, poly_reciprocal, poly_mul
 )
 from sympleq.core.symmetries.minpoly import minimal_polynomial, factor_poly_over_fp
+
+
+def _half_dim_floor_from_minpoly_factor(q: np.ndarray, e: int, p: int) -> int:
+    """
+    A *safe* (possibly loose) lower bound on the half-dimension of any
+    nontrivial symplectic invariant block that can live inside this primary.
+
+    IMPORTANT:
+      - For p=2 and q=x+1 (unipotent), minimal polynomial data alone is NOT
+        sufficient to certify the true minimum block size. We therefore return 1
+        (meaning: no certified >1 lower bound from this prepass alone).
+      - For paired sectors (q != q*), the usual e*deg bound is safe.
+      - For self-reciprocal q != x±1, e*deg is a reasonable bound.
+      - For x±1 in odd p, ceil(e/2)*deg appears; for p=2, treat as uncertified.
+    """
+    q = poly_monic(q, p)
+    deg = len(q) - 1
+
+    if p == 2 and _is_x_pm_1(q, p):
+        # This is the hard unipotent/self-reciprocal corner; do not "certify" from minpoly.
+        return 1
+
+    if _is_x_pm_1(q, p):
+        # classical floor for ±1 sectors when p is odd (or when you accept this as heuristic)
+        return ((int(e) + 1) // 2) * deg
+
+    return int(e) * deg
+
+
+def _compute_Lmin_star(sectors: list[dict], n: int) -> int:
+    """
+    Global lower bound on the optimal qudit cost.
+    We deliberately keep this *certified* given the information rcf_prepass computes.
+    """
+    if not sectors:
+        return 1
+    L = max(int(sec.get("half_dim_floor", 1)) for sec in sectors)
+    # Always at least 1 (identity cost convention), at most n.
+    return max(1, min(int(L), int(n)))
 
 
 def _is_x_pm_1(q: np.ndarray, p: int) -> bool:
@@ -46,7 +85,6 @@ def _normalize_factorization_output(factors, p: int) -> List[Tuple[np.ndarray, i
             mult[key] = mult.get(key, 0) + 1
 
     return [(reps[k], mult[k]) for k in reps.keys()]
-
 
 
 def poly_eval_matrix(F: np.ndarray, poly: np.ndarray, p: int) -> np.ndarray:
@@ -129,14 +167,18 @@ def primary_components_crt(F: np.ndarray, p: int) -> Dict:
         if key in used:
             continue
         if data["self_reciprocal"]:
-            deg = int(data["deg"])
             e = int(data["exponent"])
-            if _is_x_pm_1(data["poly"], p):
-                half_floor = ((e + 1) // 2) * deg
-            else:
-                half_floor = e * deg
+            half_floor = _half_dim_floor_from_minpoly_factor(data["poly"], e, p)
             W = independent_columns(data["V_basis"], p)
-            sectors.append({"type": "self", "key": key, "W_basis": W, "half_dim_floor": int(half_floor)})
+            sectors.append({
+                "type": "self",
+                "key": key,
+                "W_basis": W,
+                "half_dim_floor": int(half_floor),
+                "floor_certified": bool(not (p == 2 and _is_x_pm_1(data["poly"], p))),
+                "note": ("p=2, q=x±1: minpoly does not certify block size"
+                        if (p == 2 and _is_x_pm_1(data["poly"], p)) else "")
+            })
             used.add(key)
         else:
             k_star = data["reciprocal_key"]
@@ -148,12 +190,17 @@ def primary_components_crt(F: np.ndarray, p: int) -> Dict:
             else:
                 W = np.concatenate([data["V_basis"], primaries[k_star]["V_basis"]], axis=1)
                 W = independent_columns(W, p)
-                deg = int(data["deg"])
                 e = int(data["exponent"])
-                half_floor = e * deg
-
-                sectors.append({"type": "paired", "key": key, "key_star": k_star, "W_basis": W,
-                                "half_dim_floor": int(half_floor)})
+                half_floor = _half_dim_floor_from_minpoly_factor(data["poly"], e, p)  # for paired: returns e*deg
+                sectors.append({
+                    "type": "paired",
+                    "key": key,
+                    "key_star": k_star,
+                    "W_basis": W,
+                    "half_dim_floor": int(half_floor),
+                    "floor_certified": True,
+                    "note": ""
+                })
                 used.add(key)
                 used.add(k_star)
 
@@ -163,7 +210,16 @@ def primary_components_crt(F: np.ndarray, p: int) -> Dict:
     if rank_mod(all_cols, p) != n2:
         raise RuntimeError("Primary sectorization failed: sectors do not span V.")
 
-    return {"mF": mF, "primaries": primaries, "sectors": sectors, "factors": factors}
+    n = n2 // 2
+    Lmin_star = _compute_Lmin_star(sectors, n)
+
+    return {
+            "mF": mF,
+            "primaries": primaries,
+            "sectors": sectors,
+            "factors": factors,
+            "Lmin_star": int(Lmin_star),
+        }
 
 
 def rcf_prepass(F: np.ndarray, p: int) -> Dict:
