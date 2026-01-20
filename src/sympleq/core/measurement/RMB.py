@@ -1,6 +1,7 @@
 from __future__ import annotations
+from typing import Generator
 import numpy as np
-from numpy.random import Generator, default_rng
+from numpy.random import Generator as RNGGenerator, default_rng
 
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.circuits.gates import Gate
@@ -17,7 +18,7 @@ class RMB:
                  with_random_elimination: float,
                  with_random_insertion: float,
                  noise_models: list[NoiseModel],
-                 rng: Generator
+                 rng: RNGGenerator
                  ) -> None:
 
         self.dimensions = dimensions
@@ -41,7 +42,7 @@ class RMB:
         self.initial_state = PauliSum.from_string(pauli_strings, dimensions)
 
         if random_initial_state:
-            random_phases = self.rng.choice(a=[0, 1], size=self.initial_state.n_paulis())
+            random_phases = self.rng.choice(a=[0, 2], size=self.initial_state.n_paulis())
             self.initial_state.set_phases(random_phases)
 
         # Eliminate and insert identity gates from and to the circuit to make it asymmetric.
@@ -58,17 +59,13 @@ class RMB:
 
             for idx in gate_to_eliminate_indices:
                 if self.rng.random() <= with_random_elimination:
-                    if self.rng.choice(a=[0, 1]) == 0:
+                    if self.rng.choice(a=[False, True]):
                         # Remove gate from mirrored circuit (right part)
                         # idx can have max value len(circuit.gates) - 1 == len(self.circuit.gates) / 2 - 1
                         self.circuit.remove_gate(len(self.circuit) - 1 - idx)
                     else:
                         # Remove gate from base circuit (left part)
                         self.circuit.remove_gate(idx)
-
-    def get_output(self):
-        # Calculate final output state, including random errors.
-        return self.act(self.initial_state)
 
     @classmethod
     def from_random(cls,
@@ -78,7 +75,7 @@ class RMB:
                     with_random_elimination: float = 0.0,
                     with_random_insertion: float = 0.0,
                     noise_models: NoiseModel | list[NoiseModel] = Noiseless(),
-                    rng: Generator | None = None
+                    rng: RNGGenerator | None = None
                     ) -> RMB:
         """
         Create a random RMB object.
@@ -127,6 +124,42 @@ class RMB:
     @property
     def n_qudits(self) -> int:
         return self.initial_state.n_qudits()
+
+    def get_output(self) -> PauliSum:
+        # Calculate final output state, including random errors.
+        return self.act(self.initial_state)
+
+    def get_output_iter(self) -> Generator[PauliSum, None, None]:
+        yield from self.act_iter(self.initial_state)
+
+    def act(self, pauli: PauliSum) -> PauliSum:
+        for gate in self.circuit.gates:
+            kraus_operators = [k for model in self.noise_models for k in model.kraus_operators(
+                self.dimensions, gate.qudit_indices)]
+            correct_pauli = gate.act(pauli)
+
+            # Note: we do not need cross-terms, as we will pick only terms from the diagonal.
+            options = [k[1] * correct_pauli * k[1].H() for k in kraus_operators]
+            probability_distribution = [np.abs(k[0])**2 / len(self.noise_models) for k in kraus_operators]
+
+            # Pick one possible output with weight given by the Kraus operator weight.
+            pauli = self.rng.choice(np.asarray(options), p=probability_distribution)
+
+        return pauli
+
+    def act_iter(self, pauli: PauliSum) -> Generator[PauliSum, None, None]:
+        for gate in self.circuit.gates:
+            kraus_operators = [k for model in self.noise_models for k in model.kraus_operators(
+                self.dimensions, gate.qudit_indices)]
+            correct_pauli = gate.act(pauli)
+
+            # Note: we do not need cross-terms, as we will pick only terms from the diagonal.
+            options = [k[1] * correct_pauli * k[1].H() for k in kraus_operators]
+            probability_distribution = [np.abs(k[0])**2 / len(self.noise_models) for k in kraus_operators]
+
+            # Pick one possible output with weight given by the Kraus operator weight.
+            pauli = self.rng.choice(np.asarray(options), p=probability_distribution)
+            yield pauli
 
     def __str__(self) -> str:
         """
@@ -238,43 +271,25 @@ Circuit:
 
         return "\n".join(lines)
 
-    def act(self, pauli: PauliSum) -> PauliSum:
-        for gate in self.circuit.gates:
-            kraus_operators = [k for model in self.noise_models for k in model.kraus_operators(
-                self.dimensions, gate.qudit_indices)]
-            correct_pauli = gate.act(pauli)
-
-            # Note: we do not need cross-terms, as we will pick only terms from the diagonal.
-            options = [k[1] * correct_pauli * k[1].H() for k in kraus_operators]
-            probability_distribution = [np.abs(k[0])**2 / len(self.noise_models) for k in kraus_operators]
-
-            # Pick one possible output with weight given by the Kraus operator weight.
-            pauli = self.rng.choice(np.asarray(options), p=probability_distribution)
-
-        return pauli
-
 
 def luca_check():
     rmb = RMB.from_random(dimensions, n_gates,
-                          noise_models=DephasingNoise(0.0))
+                          noise_models=Noiseless())
+
     output = rmb.get_output()
-    output.phase_to_weight()
-    print(output)
     _, gs = ground_state_TMP(output)
     rho = np.kron(gs.conj(), gs)
 
-    N = 10
+    N = 1_000
     for _ in range(N - 1):
         rmb = RMB.from_random(dimensions, n_gates,
-                              noise_models=DephasingNoise(0.0))
+                              noise_models=Noiseless())
         output = rmb.get_output()
         _, gs = ground_state_TMP(output)
         n_rho = np.kron(gs.conj(), gs)
         rho += n_rho
 
     rho = rho / N
-    print(np.around(rho, decimals=4))
-
     rmb_exact = RMB.from_random(dimensions, n_gates,
                                 noise_models=Noiseless(), rng=default_rng(0))
 
@@ -283,7 +298,7 @@ def luca_check():
     rho_exact = np.kron(gs.conj(), gs)
 
     print()
-    print(np.around(rho_exact, decimals=4))
+    print(np.around(rho - rho_exact, decimals=4))
 
     print(rmb_exact.fancy_str())
 
@@ -296,10 +311,12 @@ def luca_check():
 
 
 if __name__ == "__main__":
-    n_gates = 8
-    dimensions = [2] * 4
+    n_gates = 4
+    dimensions = [2] * 2
 
-    rmb = RMB.from_random(dimensions, n_gates,
-                          noise_models=[DephasingNoise(0.05), DepolarizingNoise(0.05)],
-                          rng=default_rng(10))
-    print(rmb.fancy_str())
+    # rmb = RMB.from_random(dimensions, n_gates,
+    #                       noise_models=[DephasingNoise(0.05), DepolarizingNoise(0.05)],
+    #                       rng=default_rng(10))
+    # print(rmb.fancy_str())
+
+    luca_check()
