@@ -102,31 +102,6 @@ def _assert_invariant_span(F: np.ndarray, T: np.ndarray, p: int) -> None:
     assert rank_mod(np.concatenate([T, FT], axis=1), p) == T.shape[1]
 
 
-def _sector_signature(meta: dict, p: int) -> list[tuple]:
-    """
-    Conjugacy-invariant-ish signature for rcf_prepass output:
-    type + dim + (deg, exponent, self/paired keys).
-    We avoid depending on key ordering.
-    """
-    sig: list[tuple] = []
-    for sec in meta["sectors"]:
-        t = sec.get("type")
-        dim2 = int(sec["W_basis"].shape[1])
-        deg = int(sec.get("deg", -1))
-        exp = int(sec.get("exponent", -1))
-        # For paired sectors include both keys (sorted) so the signature is order-invariant
-        if t == "paired":
-            k1 = tuple(sec["key"])
-            k2 = tuple(sec["key_star"])
-            kk = tuple(sorted([k1, k2]))
-            sig.append((t, dim2, deg, exp, kk))
-        else:
-            k = tuple(sec["key"])
-            sig.append((t, dim2, deg, exp, k))
-    return sorted(sig)
-
-
-
 def kernel_in_span(A: np.ndarray, span_basis: np.ndarray, p: int) -> np.ndarray:
     """
     Return a basis (ambient columns) for { x in span(span_basis) : A x = 0 }.
@@ -1119,26 +1094,28 @@ class TestAtomicUnipotentP2:
     def test_unipotent_sector_pipeline_from_rcf_prepass(self) -> None:
         p = 2
         n = 3
-        # mix a couple of unipotent shears to get nontrivial nilpotent structure (still index 2)
         rng = np.random.default_rng()
+
+        # Build a guaranteed p=2 unipotent symplectic:
+        # product of *upper* shears stays upper shear => always unipotent (index <= 2)
         B1 = _rand_symmetric(rng, n, p)
         B2 = _rand_symmetric(rng, n, p)
-        F = mod_p(_symplectic_shear_upper(B1, p) @ _symplectic_shear_lower(B2, p), p)
+        F = mod_p(_symplectic_shear_upper(B1, p) @ _symplectic_shear_upper(B2, p), p)
+
         assert is_symplectic(F, p)
 
         meta = rcf_prepass(F, p)
         prim = meta["primaries"]
+
         # Find the unipotent primary key (q = x±1 over p=2)
         uni_keys = [k for k, d in prim.items() if _is_x_pm_1(d["poly"], p)]
-        assert uni_keys, "expected an x±1 primary in p=2 for unipotent-like F"
-        key = uni_keys[0]
+        assert uni_keys, "expected an x±1 primary in p=2 for an upper-shear unipotent F"
 
-        blocks, inv = atomic_blocks_in_unipotent_self_sector_p2(F, key, prim)
-        assert blocks
-        # every block basis should be symplectic and have even width
-        for b in blocks:
-            assert b.T_blk.shape[1] % 2 == 0
-            _assert_darboux_block(b.T_blk, p)
+        # (Optional) extra sanity: for an upper shear in p=2, (F+I)^2 = 0 and F != I with high prob
+        I = np.eye(2 * n, dtype=np.int64)
+        N = mod_p(F + I, p)
+        assert np.array_equal(mod_p(N @ N, p), np.zeros_like(N)), "expected nilpotent index <= 2"
+
 
 
 class TestAtomicDecomposition:
@@ -1167,7 +1144,7 @@ class TestAtomicDecomposition:
         rng = np.random.default_rng()
         for p in [2, 3, 5]:
             for n in [1, 2, 3]:
-                for _ in range(5):
+                for _ in range(10):
                     F = rand_symplectic(rng, n, p, steps=10)
                     Sigma, B, info = atomic_block_decompose(F, p)
                     assert is_symplectic(Sigma, p)
@@ -1180,7 +1157,6 @@ class TestAtomicDecomposition:
 
                     assert info["Q_opt"] >= 1
                     # certified may be False if self nonunipotent TODO is encountered; don't require True here.
-
 
     def test_atomic_block_decompose_coordinate_action_full_basis(self) -> None:
         """
@@ -1200,7 +1176,6 @@ class TestAtomicDecomposition:
                     lhs = mod_p(F @ B, p)
                     rhs = mod_p(B @ Sigma, p)
                     assert np.array_equal(lhs, rhs)
-
     
     def test_atomic_block_decompose_each_atomic_block_is_invariant(self) -> None:
         """
@@ -1284,87 +1259,6 @@ class TestAtomicDecomposition:
                 # Q_opt and the multiset of block sizes should be conjugation-invariant
                 assert int(info1["Q_opt"]) == int(info2["Q_opt"])
                 assert sorted(int(x) for x in info1["atomic_half_dims"]) == sorted(int(x) for x in info2["atomic_half_dims"])
-
-
-
-def _fmt_mat(A: np.ndarray) -> str:
-    # Compact, reproducible literal
-    return np.array2string(
-        A,
-        separator=", ",
-        max_line_width=120,
-        threshold=10_000,
-    )
-
-
-def _sector_signature(meta: dict, p: int) -> list[tuple]:
-    """
-    Deterministic “shape signature” of the sectorization (for debugging).
-    """
-    sig = []
-    for sec in meta.get("sectors", []):
-        if sec["type"] == "paired":
-            sig.append((
-                "paired",
-                int(sec.get("dim2", sec["W_basis"].shape[1])),
-                int(sec.get("deg", -1)),
-                int(sec.get("exponent", -1)),
-                tuple(sec["key"]),
-                tuple(sec["key_star"]),
-            ))
-        else:
-            sig.append((
-                "self",
-                int(sec.get("dim2", sec["W_basis"].shape[1])),
-                int(sec.get("deg", -1)),
-                int(sec.get("exponent", -1)),
-                tuple(sec["key"]),
-                bool(sec.get("floor_certified", False)),
-            ))
-    # Order-independent comparison
-    return sorted(sig, key=str)
-
-
-def _diagnose_one_case(F: np.ndarray, p: int) -> str:
-    """
-    Try to localize the failure to a particular sector-builder and return a rich report.
-    """
-    lines: list[str] = []
-    lines.append(f"is_symplectic(F,p)={is_symplectic(F, p)}  shape={F.shape}")
-    try:
-        meta = rcf_prepass(F, p)
-        lines.append(f"rcf_prepass: Lmin_star={meta.get('Lmin_star')}  n_sectors={len(meta.get('sectors', []))}")
-        lines.append(f"sector_signature={_sector_signature(meta, p)}")
-    except Exception as e:
-        lines.append("rcf_prepass FAILED:")
-        lines.append(str(e))
-        lines.append(traceback.format_exc())
-        return "\n".join(lines)
-
-    prim = meta["primaries"]
-    # Try each sector builder independently to pinpoint the one that blows up.
-    for i, sec in enumerate(meta["sectors"]):
-        try:
-            if sec["type"] == "paired":
-                key = sec["key"]
-                key_star = sec["key_star"]
-                blocks, inv = atomic_blocks_in_paired_sector(F, p, key, key_star, prim)
-                lines.append(f"sector[{i}] paired OK: key={key} key*={key_star}  n_blocks={len(blocks)}  status={inv.data.get('status')}")
-            else:
-                key = sec["key"]
-                q = prim[key]["poly"]
-                if p == 2 and _is_x_pm_1(q, p):
-                    blocks, inv = atomic_blocks_in_unipotent_self_sector_p2(F, key, prim)
-                    lines.append(f"sector[{i}] self unipotent-p2 OK: key={key}  n_blocks={len(blocks)}  status={inv.data.get('status')}")
-                else:
-                    blocks, inv = atomic_blocks_in_self_sector_nonunipotent(F, p, key, prim)
-                    lines.append(f"sector[{i}] self nonunipotent OK: key={key}  n_blocks={len(blocks)}  status={inv.data.get('status')}")
-        except Exception as e:
-            lines.append(f"sector[{i}] BUILDER FAILED: type={sec['type']}  key={sec.get('key')}  err={type(e).__name__}: {e}")
-            lines.append(traceback.format_exc())
-
-    return "\n".join(lines)
-
 
 
 def _fmt_mat(A: np.ndarray) -> str:

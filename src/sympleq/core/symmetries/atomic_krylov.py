@@ -1,5 +1,6 @@
 import numpy as np
 from .modular_helpers import mod_p, _solve_linear, independent_columns, rank_mod
+from .module_invariants import cyclic_submodule_basis
 
 
 def _col(v: np.ndarray) -> np.ndarray:
@@ -147,7 +148,7 @@ def _select_module_generators_from_top_space(
         return top_candidates
 
     target = int(deg_q) * int(L)
-    gens: List[np.ndarray] = []
+    gens: list[np.ndarray] = []
     span = np.zeros((Fp.shape[0], 0), dtype=np.int64)
 
     for j in range(top_candidates.shape[1]):

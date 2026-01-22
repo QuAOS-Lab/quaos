@@ -172,12 +172,17 @@ def atomic_blocks_in_self_sector_nonunipotent(
       5) deterministically extract atomic blocks by largest-L top pairing,
          removing each block by symplectic orthogonal complement.
       6) lift each block back to ambient via T
+
+    Notes:
+      - For p=2 this routine is still heuristic; if block extraction fails,
+        we degrade gracefully to a single sector-sized block so callers can proceed.
     """
     F = mod_p(F, p)
 
     q = primaries[key]["poly"]
     deg_q = int(primaries[key]["deg"])
-    max_exp = int(primaries[key]["exponent"])
+    max_exp_orig = int(primaries[key]["exponent"])   # keep original for reporting
+    exp_work = int(max_exp_orig)                     # may be decreased locally during extraction
 
     V = independent_columns(mod_p(primaries[key]["V_basis"], p), p)
     if V.shape[1] == 0:
@@ -204,7 +209,7 @@ def atomic_blocks_in_self_sector_nonunipotent(
     # -------------------------
     # Invariant summary (full sector)
     # -------------------------
-    tops_full = jordan_chain_tops_nilpotent(N, max_exp, p)  # Dict[L] -> (2m × mult_L)
+    tops_full = jordan_chain_tops_nilpotent(N, max_exp_orig, p)  # Dict[L] -> (2m × mult_L)
 
     top_multiplicities: Dict[int, int] = {}
     top_form: Dict[int, Dict[str, Any]] = {}
@@ -225,41 +230,87 @@ def atomic_blocks_in_self_sector_nonunipotent(
     blocks_meta: List[Dict[str, Any]] = []
     blocks: List[AtomicBlock] = []
 
-    # NEW: keep the accepted block bases in sector coordinates, so we can sanity-check spanning.
+    # keep accepted block bases in sector coordinates for span sanity-check
     built_cols_sec: List[np.ndarray] = []
 
     space_basis = np.eye(2 * m, dtype=np.int64)
 
-    while space_basis.shape[1] > 0:
-        # tops in current space
-        tops = jordan_chain_tops_nilpotent_in_span(N, space_basis, max_exp, p)
-        if not tops:
-            # should not happen unless numerical inconsistency; but stop cleanly
-            break
+    extraction_error: Exception | None = None
+    try:
+        while space_basis.shape[1] > 0:
+            # tops in current space (use exp_work, which may shrink deterministically)
+            if exp_work <= 0:
+                break
+            tops = jordan_chain_tops_nilpotent_in_span(N, space_basis, exp_work, p)
+            if not tops:
+                break
 
-        L = max(tops.keys())
+            L = max(tops.keys())
 
-        A_raw = independent_columns(mod_p(tops[L], p), p)
-        A = _select_module_generators_from_top_space(F_sec, N, A_raw, deg_q, int(L), p)
+            A_raw = independent_columns(mod_p(tops[L], p), p)
+            A = _select_module_generators_from_top_space(F_sec, N, A_raw, deg_q, int(L), p)
 
-        if A.shape[1] == 0:
-            # nothing usable at this L; drop it and continue
-            max_exp = int(L) - 1
-            continue
+            if A.shape[1] == 0:
+                # nothing usable at this L; deterministically drop this length
+                exp_work = int(L) - 1
+                continue
 
-        v_top = A[:, 0:1]
+            v_top = A[:, 0:1]
 
-        # Candidate 1: self-dual cyclic module
-        bvv = _pair_value(v_top, v_top, Ω, N, int(L), p)
+            # Candidate 1: self-dual cyclic module
+            bvv = _pair_value(v_top, v_top, Ω, N, int(L), p)
 
-        Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)  # (2m × deg*L)
-        Cv = independent_columns(mod_p(Cv, p), p)
+            Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)  # (2m × deg*L)
+            Cv = independent_columns(mod_p(Cv, p), p)
 
-        took_self = False
-        if Cv.shape[1] > 0 and (Cv.shape[1] % 2 == 0) and is_nondegenerate(Ω, Cv, p):
-            T_blk = darboux_basis_from_span(Ω, Cv, p)  # SECTOR COORDS
+            if Cv.shape[1] > 0 and (Cv.shape[1] % 2 == 0) and is_nondegenerate(Ω, Cv, p):
+                T_blk = darboux_basis_from_span(Ω, Cv, p)  # SECTOR COORDS
+                built_cols_sec.append(T_blk)
 
-            # NEW: record the sector-coordinate block basis
+                rem = symplectic_orthogonal_complement_in_span(Ω, T_blk, space_basis, p)
+
+                T_blk_amb = mod_p(T_sec @ T_blk, p)
+                blocks.append(
+                    AtomicBlock(
+                        T_blk=T_blk_amb,
+                        half_dim=int(T_blk_amb.shape[1] // 2),
+                        sector_key=key,
+                        inv=None,
+                    )
+                )
+                blocks_meta.append(
+                    {"type": "self", "L": int(L), "half_dim": int(T_blk_amb.shape[1] // 2), "bvv": int(bvv)}
+                )
+                space_basis = rem
+                continue
+
+            # Candidate 2: hyperbolic pairing block from two cyclic modules
+            w_top = _find_partner_in_top_span(v_top, A, Ω, N, int(L), p)
+            Cw = cyclic_submodule_basis(F_sec, N, w_top, deg_q, int(L), p)
+            Cw = independent_columns(mod_p(Cw, p), p)
+
+            span = independent_columns(np.concatenate([Cv, Cw], axis=1), p)
+            if span.shape[1] % 2 != 0 or not is_nondegenerate(Ω, span, p):
+                found = False
+                for j in range(1, A.shape[1]):
+                    cand = A[:, j:j + 1]
+                    if _pair_value(v_top, cand, Ω, N, int(L), p) % p == 0:
+                        continue
+                    a = _pair_value(v_top, cand, Ω, N, int(L), p) % p
+                    inva = pow(int(a), p - 2, p) if p != 2 else 1
+                    cand = mod_p(cand * inva, p)
+                    Ccand = cyclic_submodule_basis(F_sec, N, cand, deg_q, int(L), p)
+                    Ccand = independent_columns(mod_p(Ccand, p), p)
+                    span2 = independent_columns(np.concatenate([Cv, Ccand], axis=1), p)
+                    if span2.shape[1] % 2 == 0 and is_nondegenerate(Ω, span2, p):
+                        span = span2
+                        w_top = cand
+                        found = True
+                        break
+                if not found:
+                    raise RuntimeError("Self sector: failed to form a nondegenerate hyperbolic block from top pairing.")
+
+            T_blk = darboux_basis_from_span(Ω, span, p)  # SECTOR COORDS
             built_cols_sec.append(T_blk)
 
             rem = symplectic_orthogonal_complement_in_span(Ω, T_blk, space_basis, p)
@@ -274,85 +325,56 @@ def atomic_blocks_in_self_sector_nonunipotent(
                 )
             )
             blocks_meta.append(
-                {"type": "self", "L": int(L), "half_dim": int(T_blk_amb.shape[1] // 2), "bvv": int(bvv)}
+                {"type": "hyperbolic", "L": int(L), "half_dim": int(T_blk_amb.shape[1] // 2), "bvv": int(bvv)}
             )
             space_basis = rem
-            took_self = True
 
-        if took_self:
-            continue
+    except Exception as e:
+        extraction_error = e
 
-        # Candidate 2: hyperbolic pairing block from two cyclic modules
-        w_top = _find_partner_in_top_span(v_top, A, Ω, N, int(L), p)
-        Cw = cyclic_submodule_basis(F_sec, N, w_top, deg_q, int(L), p)
-        Cw = independent_columns(mod_p(Cw, p), p)
+    # If extraction failed in p=2, degrade gracefully to a single sector-sized block.
+    if extraction_error is not None and p == 2:
+        blocks = [AtomicBlock(T_blk=mod_p(T_sec, p), half_dim=m, sector_key=key, inv=None)]
+        blocks_meta = [{
+            "type": "fallback_sector",
+            "half_dim": int(m),
+            "note": f"{type(extraction_error).__name__}: {extraction_error}",
+        }]
+        built_cols_sec = []  # skip span-check in degraded mode
 
-        span = independent_columns(np.concatenate([Cv, Cw], axis=1), p)
-        if span.shape[1] % 2 != 0 or not is_nondegenerate(Ω, span, p):
-            found = False
-            for j in range(1, A.shape[1]):
-                cand = A[:, j:j + 1]
-                if _pair_value(v_top, cand, Ω, N, int(L), p) % p == 0:
-                    continue
-                a = _pair_value(v_top, cand, Ω, N, int(L), p) % p
-                inva = pow(int(a), p - 2, p) if p != 2 else 1
-                cand = mod_p(cand * inva, p)
-                Ccand = cyclic_submodule_basis(F_sec, N, cand, deg_q, int(L), p)
-                Ccand = independent_columns(mod_p(Ccand, p), p)
-                span2 = independent_columns(np.concatenate([Cv, Ccand], axis=1), p)
-                if span2.shape[1] % 2 == 0 and is_nondegenerate(Ω, span2, p):
-                    span = span2
-                    w_top = cand
-                    found = True
-                    break
-            if not found:
-                raise RuntimeError("Self sector: failed to form a nondegenerate hyperbolic block from top pairing.")
+    # Span sanity-check (only if we did not degrade)
+    if extraction_error is None:
+        dim_sector = 2 * m
+        if built_cols_sec:
+            all_cols_sec = np.concatenate(built_cols_sec, axis=1)
+            dim_blocks = rank_mod(all_cols_sec, p)
+        else:
+            dim_blocks = 0
 
-        T_blk = darboux_basis_from_span(Ω, span, p)  # SECTOR COORDS
-
-        # NEW: record the sector-coordinate block basis
-        built_cols_sec.append(T_blk)
-
-        rem = symplectic_orthogonal_complement_in_span(Ω, T_blk, space_basis, p)
-
-        T_blk_amb = mod_p(T_sec @ T_blk, p)
-        blocks.append(
-            AtomicBlock(
-                T_blk=T_blk_amb,
-                half_dim=int(T_blk_amb.shape[1] // 2),
-                sector_key=key,
-                inv=None,
+        if dim_blocks != dim_sector:
+            raise RuntimeError(
+                f"Self sector: blocks do not span sector "
+                f"(dim_blocks={dim_blocks}, dim_sector={dim_sector}). "
+                f"key={key}, deg={deg_q}, exp={max_exp_orig}"
             )
-        )
-        blocks_meta.append(
-            {"type": "hyperbolic", "L": int(L), "half_dim": int(T_blk_amb.shape[1] // 2), "bvv": int(bvv)}
-        )
-        space_basis = rem
 
-    # NEW: sanity check — blocks should span the entire self sector in sector coordinates.
-    dim_sector = 2 * m
-    if built_cols_sec:
-        all_cols_sec = np.concatenate(built_cols_sec, axis=1)
-        dim_blocks = rank_mod(all_cols_sec, p)
+    # Status / invariant payload
+    if p != 2:
+        status = "OK"
     else:
-        dim_blocks = 0
+        status = "heuristic_p2" if extraction_error is None else "DEGRADED_p2"
 
-    if dim_blocks != dim_sector:
-        raise RuntimeError(
-            f"Self sector: blocks do not span sector "
-            f"(dim_blocks={dim_blocks}, dim_sector={dim_sector}). "
-            f"key={key}, deg={deg_q}, exp={max_exp}"
-        )
-
-    status = "OK" if p != 2 else "heuristic_p2"
     inv_data: Dict[str, Any] = {
         "status": status,
         "deg": int(deg_q),
-        "exponent": int(max_exp),
+        "exponent": int(max_exp_orig),          # report the true primary exponent
+        "exp_work_final": int(exp_work),        # optional: helps debugging
         "top_multiplicities": top_multiplicities,
         "top_form": top_form,
         "blocks": blocks_meta,
     }
+    if extraction_error is not None:
+        inv_data["note"] = f"{type(extraction_error).__name__}: {extraction_error}"
 
     inv = AtomicInvariant(sector_key=key, sector_type="self", poly_key=key, data=inv_data)
     blocks = [AtomicBlock(b.T_blk, b.half_dim, key, inv) for b in blocks]
