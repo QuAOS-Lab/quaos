@@ -64,7 +64,7 @@ def poly_mul(a, b, p: int) -> np.ndarray:
         ai = int(ai) % p
         if ai == 0:
             continue
-        c[i : i + len(b)] += ai * b
+        c[i:i + len(b)] += ai * b
     return mod_p(poly_trim(c), p)
 
 
@@ -83,11 +83,14 @@ def poly_divmod(a, b, p: int) -> tuple[np.ndarray, np.ndarray]:
     while len(r) >= len(b) and not poly_is_zero(r):
         k = len(r) - len(b)
         c = (int(r[-1]) * inv_lead) % p
-        q[k] = c
-        r[k : k + len(b)] -= c * b
-        r = mod_p(poly_trim(r), p)
+        if c:
+            q[k] = c
+            r[k:k + len(b)] -= c * b
+        r = poly_trim(mod_p(r, p))
 
-    return mod_p(poly_trim(q), p), mod_p(poly_trim(r), p)
+    q = poly_trim(mod_p(q, p))
+    r = poly_trim(mod_p(r, p))
+    return q, r
 
 
 def poly_gcd(a, b, p: int) -> np.ndarray:
@@ -153,6 +156,23 @@ def poly_pow(a, e: int, p: int) -> np.ndarray:
 def poly_reciprocal(q, p: int) -> np.ndarray:
     q = poly_monic(q, p)
     return poly_monic(q[::-1].copy(), p)
+
+
+def poly_eval_matrix(F: np.ndarray, poly: np.ndarray, p: int) -> np.ndarray:
+    """
+    Evaluate poly(F) for column-action convention, coeffs low->high.
+    """
+    F = mod_p(F, p)
+    poly = mod_p(poly, p)
+    n2 = F.shape[0]
+    M = np.zeros((n2, n2), dtype=np.int64)
+    P = np.eye(n2, dtype=np.int64)
+    for a in poly:
+        aa = int(a) % p
+        if aa:
+            M = mod_p(M + aa * P, p)
+        P = mod_p(P @ F, p)
+    return M
 
 
 if __name__ == "__main__":

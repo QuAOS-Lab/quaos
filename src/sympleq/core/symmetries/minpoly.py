@@ -77,7 +77,6 @@ class _SpanBasisSimple:
         return True
 
 
-
 class _SpanBasisWithCombo:
     """
     Span basis over GF(p) with *fixed-length* combo vectors.
@@ -240,19 +239,25 @@ def _poly_deg(f: np.ndarray) -> int:
         return -1
     return len(f) - 1
 
+
 def _poly_is_one(f: np.ndarray, p: int) -> bool:
     f = poly_monic(f, p)
     return (len(f) == 1 and int(f[0]) % p == 1)
 
+
 def _poly_mod(a: np.ndarray, m: np.ndarray, p: int) -> np.ndarray:
+    a = mod_p(poly_trim(a), p)
+    m = poly_monic(m, p)  # modulus should be monic
     _, r = poly_divmod(a, m, p)
-    return r
+    return mod_p(poly_trim(r), p)
+
 
 def _poly_pow_mod(a: np.ndarray, e: int, m: np.ndarray, p: int) -> np.ndarray:
     """
-    Compute a(x)^e mod m(x) over GF(p).
+    Compute a(x)^e mod m(x) over GF(p) in the quotient ring.
+    Does not normalize to monic here.
     """
-    a = _poly_mod(poly_monic(a, p), m, p)
+    a = _poly_mod(a, m, p)
     res = np.array([1], dtype=np.int64)
     base = a.copy()
     ee = int(e)
@@ -261,7 +266,8 @@ def _poly_pow_mod(a: np.ndarray, e: int, m: np.ndarray, p: int) -> np.ndarray:
             res = _poly_mod(poly_mul(res, base, p), m, p)
         base = _poly_mod(poly_mul(base, base, p), m, p)
         ee >>= 1
-    return poly_monic(res, p)
+    return mod_p(poly_trim(res), p)
+
 
 def _derivative_poly(f: np.ndarray, p: int) -> np.ndarray:
     f = mod_p(poly_trim(f), p)
@@ -269,6 +275,7 @@ def _derivative_poly(f: np.ndarray, p: int) -> np.ndarray:
         return np.array([0], dtype=np.int64)
     df = np.array([(i * int(f[i])) % p for i in range(1, len(f))], dtype=np.int64)
     return poly_trim(df)
+
 
 def _pth_root(f: np.ndarray, p: int) -> np.ndarray:
     """
@@ -280,6 +287,7 @@ def _pth_root(f: np.ndarray, p: int) -> np.ndarray:
     for i in range(0, len(f), p):
         out[i // p] = int(f[i])
     return poly_trim(out)
+
 
 def _squarefree_decomposition(f: np.ndarray, p: int) -> List[Tuple[np.ndarray, int]]:
     """
@@ -329,6 +337,7 @@ def _squarefree_decomposition(f: np.ndarray, p: int) -> List[Tuple[np.ndarray, i
         out = [(f, 1)]
     return out
 
+
 def _distinct_degree_factorization(f: np.ndarray, p: int) -> List[Tuple[np.ndarray, int]]:
     """
     Factor squarefree monic f into products of irreducibles of each degree.
@@ -361,6 +370,7 @@ def _distinct_degree_factorization(f: np.ndarray, p: int) -> List[Tuple[np.ndarr
         res.append((poly_monic(f, p), _poly_deg(f)))
     return res
 
+
 def _random_poly(deg_bound: int, p: int, rng: np.random.Generator) -> np.ndarray:
     """
     Random polynomial of degree < deg_bound (coeffs in 0..p-1), not identically zero.
@@ -371,6 +381,7 @@ def _random_poly(deg_bound: int, p: int, rng: np.random.Generator) -> np.ndarray
     if np.all(a % p == 0):
         a[0] = 1
     return poly_trim(a)
+
 
 def _equal_degree_factorization(f: np.ndarray, d: int, p: int, rng: np.random.Generator) -> List[np.ndarray]:
     """
@@ -458,28 +469,51 @@ def _equal_degree_factorization_char2(f: np.ndarray, d: int, rng: np.random.Gene
             continue
 
         return _equal_degree_factorization_char2(poly_monic(g, p), d, rng) + \
-               _equal_degree_factorization_char2(poly_monic(q, p), d, rng)
+            _equal_degree_factorization_char2(poly_monic(q, p), d, rng)
 
     raise RuntimeError("equal_degree_factorization_char2: exceeded max_tries (p=2 trace splitter)")
 
 
 def factor_poly_over_fp(f: np.ndarray, p: int, rng: Optional[np.random.Generator] = None) -> List[np.ndarray]:
     """
-    Factor monic polynomial f over GF(p) (p prime) into monic irreducibles.
+    Factor monic polynomial f over GF(p) into monic irreducibles.
     Returns a list of irreducible factors, repeated by multiplicity.
-
-    Example:
-      (x+1)^3 (x^2+x+1) -> [x+1, x+1, x+1, x^2+x+1]
     """
     if rng is None:
-        rng = np.random.default_rng(2025)
+        rng = np.random.default_rng()
 
-    f = poly_monic(f, p)
+    f0 = poly_monic(f, p)          # keep original for sanity check
+    f = f0.copy()
+
+    lin_factors: List[np.ndarray] = []
+
+    # Optional linear-root peeling in odd characteristic
+    if p > 2 and _poly_deg(f) >= 1:
+        for r in range(p):
+            while _poly_deg(f) >= 1 and _poly_eval_at(f, r, p) == 0:
+                lin = np.array([(-r) % p, 1], dtype=np.int64)  # (x - r)
+                q, rem = poly_divmod(f, lin, p)
+                if not poly_is_zero(rem):
+                    break
+                lin_factors.append(poly_monic(lin, p))
+                f = poly_monic(q, p)
+
     n = _poly_deg(f)
     if n <= 0:
-        return [f]
+        # f is constant (for monic inputs, typically 1). Return the peeled linear factors.
+        out = lin_factors if lin_factors else [f]
+        return out
+
     if n == 1:
-        return [f]
+        out = lin_factors + [poly_monic(f, p)]
+        # sanity
+        prod = np.array([1], dtype=np.int64)
+        for h in out:
+            prod = poly_mul(prod, h, p)
+        prod = poly_monic(prod, p)
+        if not np.array_equal(prod, f0):
+            raise RuntimeError("factor_poly_over_fp sanity check failed: product(factors) != f0")
+        return out
 
     # Squarefree decomposition
     sq = _squarefree_decomposition(f, p)
@@ -497,25 +531,34 @@ def factor_poly_over_fp(f: np.ndarray, p: int, rng: Optional[np.random.Generator
             if _poly_deg(g) <= 0:
                 continue
             if _poly_deg(g) == d:
-                # already irreducible of degree d
                 factors_d = [g]
             else:
                 factors_d = _equal_degree_factorization(g, d, p, rng)
 
-            # multiplicity e from squarefree stage
             for _ in range(e):
                 out.extend([poly_monic(h, p) for h in factors_d])
 
-    # Final sanity: multiply factors = f (up to monic scaling)
-    # (optional; you can comment out for speed)
+    out = lin_factors + out
+
+    # Final sanity: multiply all factors = original f0
     prod = np.array([1], dtype=np.int64)
     for h in out:
         prod = poly_mul(prod, h, p)
     prod = poly_monic(prod, p)
-    if not np.array_equal(prod, poly_monic(f, p)):
-        raise RuntimeError("factor_poly_over_fp sanity check failed: product(factors) != f")
+    if not np.array_equal(prod, f0):
+        raise RuntimeError("factor_poly_over_fp sanity check failed: product(factors) != f0")
 
     return out
+
+
+
+def _poly_eval_at(f: np.ndarray, x: int, p: int) -> int:
+    """Evaluate f(x) mod p, coeffs low->high."""
+    x = int(x) % p
+    acc = 0
+    for a in reversed(poly_trim(f)):
+        acc = (acc * x + int(a)) % p
+    return acc
 
 
 if __name__ == "__main__":

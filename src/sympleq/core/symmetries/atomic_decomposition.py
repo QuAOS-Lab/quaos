@@ -6,7 +6,7 @@ from typing import Dict, List, Tuple
 from .rcf_prepass import rcf_prepass, _is_x_pm_1
 from .modular_helpers import mod_p, omega_matrix, inv_mod_mat, is_symplectic
 from .atomic_types import AtomicBlock
-from .atomic_linear import symplectic_left_inverse, restrict_operator
+from .atomic_linear import split_uv
 from .atomic_paired import atomic_blocks_in_paired_sector
 from .atomic_self import atomic_blocks_in_self_sector_nonunipotent
 from .atomic_unipotent_p2 import atomic_blocks_in_unipotent_self_sector_p2
@@ -14,12 +14,20 @@ from .atomic_unipotent_p2 import atomic_blocks_in_unipotent_self_sector_p2
 
 def _concat_blocks_to_basis(blocks: List[AtomicBlock], n2: int, p: int) -> np.ndarray:
     """
-    Concatenate block hyperbolic bases to one global symplectic basis.
-    Assumes blocks are mutually symplectically orthogonal and span full space.
+    Build global symplectic basis B = [U_all | V_all] from block hyperbolic bases.
+    Requires each block basis is canonical [U_blk | V_blk].
     """
     if not blocks:
         return np.eye(n2, dtype=np.int64)
-    B = np.concatenate([b.T_blk for b in blocks], axis=1)
+
+    U_list = []
+    V_list = []
+    for b in blocks:
+        U_blk, V_blk = split_uv(b.T_blk)
+        U_list.append(U_blk)
+        V_list.append(V_blk)
+
+    B = np.concatenate(U_list + V_list, axis=1)
     return mod_p(B, p)
 
 
@@ -49,8 +57,6 @@ def atomic_block_decompose(F: np.ndarray, p: int) -> Tuple[np.ndarray, np.ndarra
             key = sec["key"]
             key_star = sec["key_star"]
             b, inv = atomic_blocks_in_paired_sector(F, p, key, key_star, prim)
-            blocks += b
-            sector_invariants.append(inv)
         else:
             key = sec["key"]
             q = prim[key]["poly"]
@@ -58,19 +64,24 @@ def atomic_block_decompose(F: np.ndarray, p: int) -> Tuple[np.ndarray, np.ndarra
                 b, inv = atomic_blocks_in_unipotent_self_sector_p2(F, key, prim)
             else:
                 b, inv = atomic_blocks_in_self_sector_nonunipotent(F, p, key, prim)
-            blocks += b
-            sector_invariants.append(inv)
+
+        blocks += b
+        sector_invariants.append(inv)
 
     B = _concat_blocks_to_basis(blocks, n2, p)
+    if B.shape != (n2, n2):
+        raise RuntimeError(f"Global basis has wrong shape {B.shape}; blocks do not span full space.")
 
-    # Compute Sigma = B^{-1} F B using symplectic left inverse (more stable than inv_mod_mat)
-    Linv = symplectic_left_inverse(B, p)
-    Sigma = mod_p(Linv @ F @ B, p)
+    Ω = omega_matrix(n, p)
+    if not np.array_equal(mod_p(B.T @ Ω @ B, p), Ω % p):
+        raise RuntimeError("Global basis B is not symplectic.")
+
+    Sigma = mod_p(inv_mod_mat(B, p) @ F @ B, p)
 
     info = {
         "sector_invariants": sector_invariants,
         "atomic_half_dims": [b.half_dim for b in blocks],
-        "Q_opt": max([b.half_dim for b in blocks], default=1),
-        "certified": all(inv.data.get("status", "") != "TODO" for inv in sector_invariants),
+        "Q_opt": max([b.half_dim for b in blocks], default=0),
+        "certified": all(inv.data.get("status") == "OK" for inv in sector_invariants),
     }
     return Sigma, B, info

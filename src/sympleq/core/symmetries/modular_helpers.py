@@ -179,7 +179,12 @@ def matmul_mod(A: np.ndarray, B: np.ndarray, p: int) -> np.ndarray:
 
 
 def inv_mod_scalar(a: int | np.integer, p: int) -> int:
-    return pow(int(a) % p, p - 2, p)
+    a = int(a) % p
+    if a == 0:
+        raise ZeroDivisionError("inv_mod_scalar: cannot invert 0 mod p")
+    if p == 2:
+        return 1  # only 1 is invertible
+    return pow(a, p - 2, p)
 
 
 def inv_mod_mat(A: np.ndarray, p: int) -> np.ndarray:
@@ -192,3 +197,47 @@ def inv_mod_mat(A: np.ndarray, p: int) -> np.ndarray:
     if not np.array_equal(left % p, np.eye(n, dtype=np.int64)):
         raise ValueError("Matrix not invertible mod p")
     return mod_p(right, p)
+
+
+def solve_in_span(S: np.ndarray, A: np.ndarray, b: np.ndarray, p: int) -> np.ndarray:
+    """
+    Find x in span(S) such that A x = b over GF(p).
+    Inputs:
+      S: (n x k) basis columns spanning the allowed subspace
+      A: (m x n) constraint matrix
+      b: (m,) or (m x 1)
+    Returns:
+      x: (n x 1) one solution in span(S)
+    Raises if no solution exists.
+    """
+    S = mod_p(S, p)
+    A = mod_p(A, p)
+    b = mod_p(np.asarray(b).reshape(-1, 1), p)
+
+    AS = matmul_mod(A, S, p)          # m × k
+    y = _solve_linear(AS, b, p)       # k × 1
+    x = matmul_mod(S, y, p)           # n × 1
+    return x
+
+
+def mat_pow_mod(A: np.ndarray, e: int, p: int) -> np.ndarray:
+    """Compute A^e mod p by fast exponentiation."""
+    if e < 0:
+        raise ValueError("mat_pow_mod: e must be >= 0")
+    A = mod_p(A, p)
+    n = A.shape[0]
+    R = np.eye(n, dtype=np.int64)
+    B = A
+    ee = int(e)
+    while ee:
+        if ee & 1:
+            R = matmul_mod(R, B, p)
+        ee >>= 1
+        if ee:
+            B = matmul_mod(B, B, p)
+    return R
+
+
+def column_rank_mod(B: np.ndarray, p: int) -> int:
+    """Rank of the column span of B over GF(p)."""
+    return rank_mod(B, p)

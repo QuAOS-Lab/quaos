@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple
 
 from sympleq.core.symmetries.modular_helpers import mod_p, independent_columns, rank_mod
 from sympleq.core.symmetries.polynomials_fp import (
-    poly_monic, poly_pow, poly_divmod, poly_xgcd, poly_is_zero, poly_reciprocal, poly_mul
+    poly_monic, poly_pow, poly_divmod, poly_xgcd, poly_is_zero, poly_reciprocal, poly_mul, poly_eval_matrix
 )
 from sympleq.core.symmetries.minpoly import minimal_polynomial, factor_poly_over_fp
 
@@ -87,22 +87,6 @@ def _normalize_factorization_output(factors, p: int) -> List[Tuple[np.ndarray, i
     return [(reps[k], mult[k]) for k in reps.keys()]
 
 
-def poly_eval_matrix(F: np.ndarray, poly: np.ndarray, p: int) -> np.ndarray:
-    """
-    Evaluate poly(F) for column-action convention, coeffs low->high.
-    """
-    n2 = F.shape[0]
-    poly = mod_p(poly, p)
-    M = np.zeros((n2, n2), dtype=np.int64)
-    P = np.eye(n2, dtype=np.int64)
-    for a in poly:
-        a = int(a) % p
-        if a:
-            M = mod_p(M + a * P, p)
-        P = mod_p(P @ F, p)
-    return M
-
-
 def primary_components_crt(F: np.ndarray, p: int) -> Dict:
     """
     Provably-correct primary decomposition via CRT projectors.
@@ -152,6 +136,7 @@ def primary_components_crt(F: np.ndarray, p: int) -> Dict:
             "deg": len(q) - 1,
             "exponent": int(e),
             "V_basis": V_basis,
+            "dim": int(V_basis.shape[1]),
         }
 
     # Group into symplectic sectors by reciprocity
@@ -174,10 +159,14 @@ def primary_components_crt(F: np.ndarray, p: int) -> Dict:
                 "type": "self",
                 "key": key,
                 "W_basis": W,
+                "deg": int(data["deg"]),
+                "exponent": int(e),
+                "dim2": int(W.shape[1]),
+                "half_dim": int(W.shape[1] // 2),
                 "half_dim_floor": int(half_floor),
                 "floor_certified": bool(not (p == 2 and _is_x_pm_1(data["poly"], p))),
                 "note": ("p=2, q=x±1: minpoly does not certify block size"
-                        if (p == 2 and _is_x_pm_1(data["poly"], p)) else "")
+                         if (p == 2 and _is_x_pm_1(data["poly"], p)) else "")
             })
             used.add(key)
         else:
@@ -197,6 +186,10 @@ def primary_components_crt(F: np.ndarray, p: int) -> Dict:
                     "key": key,
                     "key_star": k_star,
                     "W_basis": W,
+                    "deg": int(data["deg"]),
+                    "exponent": int(e),
+                    "dim2": int(W.shape[1]),
+                    "half_dim": int(W.shape[1] // 2),
                     "half_dim_floor": int(half_floor),
                     "floor_certified": True,
                     "note": ""
@@ -214,12 +207,14 @@ def primary_components_crt(F: np.ndarray, p: int) -> Dict:
     Lmin_star = _compute_Lmin_star(sectors, n)
 
     return {
-            "mF": mF,
-            "primaries": primaries,
-            "sectors": sectors,
-            "factors": factors,
-            "Lmin_star": int(Lmin_star),
-        }
+        "p": int(p),
+        "n": int(n),
+        "mF": mF,
+        "primaries": primaries,
+        "sectors": sectors,
+        "factors": factors,
+        "Lmin_star": int(Lmin_star),
+    }
 
 
 def rcf_prepass(F: np.ndarray, p: int) -> Dict:
