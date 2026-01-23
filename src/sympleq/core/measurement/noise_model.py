@@ -1,6 +1,7 @@
 import numpy as np
 from abc import ABC, abstractmethod
 from itertools import product
+import math
 
 from sympleq.core.paulis.pauli_sum import PauliSum
 
@@ -18,18 +19,6 @@ class NoiseModel(ABC):
         pass
 
     @abstractmethod
-    def kraus_operator_probabilities(self, n_qudits: int) -> list[float]:
-        pass
-
-    @classmethod
-    @abstractmethod
-    def kraus_operator(cls,
-                       dimensions: list[int] | np.ndarray,
-                       qudit_indices: list[int] | np.ndarray,
-                       index: int) -> PauliSum:
-        pass
-
-    @abstractmethod
     def apply_kraus_operator(self, pauli: PauliSum, qudit_indices: list[int] | np.ndarray,
                              index: int) -> PauliSum:
         pass
@@ -39,6 +28,18 @@ class NoiseModel(ABC):
     def kraus_operators(cls,
                         dimensions: list[int] | np.ndarray,
                         qudit_indices: list[int] | np.ndarray) -> list[PauliSum]:
+        """"
+        K_i = sum_{j} alpha_{ij} sigma_j
+        """
+        pass
+
+    @abstractmethod
+    def process_matrix(self, pauli_i: list[int], pauli_j: list[int]) -> complex:
+        """"
+        lambda_{ij} in Eq.(3), where i, j are multi-indices.
+        The inout pauli_indices is a list of pauli operators indices, one per qudit,
+        which are mapped to multi-index to calculate the process matrix.
+        """
         pass
 
 
@@ -47,30 +48,26 @@ class Noiseless(NoiseModel):
     def n_kraus_operators(cls) -> int:
         return 1
 
-    def kraus_operator_probabilities(self, n_qudits: int) -> list[float]:
-        return [1.0]
-
     def apply_kraus_operator(self, pauli: PauliSum, qudit_indices: list[int] | np.ndarray,
                              index: int) -> PauliSum:
 
         return pauli
 
-    @classmethod
-    def kraus_operator(cls,
-                       dimensions: list[int] | np.ndarray,
-                       qudit_indices: list[int] | np.ndarray,
-                       index: int) -> PauliSum:
-
-        tableau = np.zeros(2 * len(dimensions), dtype=int)
-        return PauliSum.from_tableau(tableau, dimensions)
-
     def kraus_operators(self,
                         dimensions: list[int] | np.ndarray,
-                        qudit_indices: list[int] | np.ndarray) -> list[tuple[complex, PauliSum]]:
+                        qudit_indices: list[int] | np.ndarray) -> list[PauliSum]:
 
         # The noiseless channel has a single Klaus operator (the identity), wuth probability 1.
         tableau = np.zeros(2 * len(dimensions), dtype=int)
-        return [(1.0, PauliSum.from_tableau(tableau, dimensions))]
+        sigma_0 = PauliSum.from_tableau(tableau, dimensions)
+        return [sigma_0]
+
+    def process_matrix(self, pauli_i: list[int], pauli_j: list[int]) -> complex:
+        # The only entry in the process matrix is lambda_{00} (all qudit indices are zero).
+        if sum(pauli_i) == 0 and sum(pauli_j) == 0:
+            return 1.0
+
+        return 0.0
 
 
 class DephasingNoise(NoiseModel):
@@ -79,8 +76,8 @@ class DephasingNoise(NoiseModel):
         # A single parameter p0 models the noise probability,
         # representing the probability of having no error.
         # Kraus operators:
-        # K0 = sqrt(p0) 1 ⊗ 1
-        # K1 = sqrt(1 − p0) Z ⊗ Z
+        # K0 = sqrt(p0) 1
+        # K1 = sqrt(1 − p0) Z
         if error_rate > 1.0 or error_rate < 0.0:
             raise ValueError(f"Error rate should be between 0.0 and 1.0 (got {error_rate}).")
         self.p0 = 1.0 - error_rate
@@ -89,23 +86,6 @@ class DephasingNoise(NoiseModel):
     @classmethod
     def n_kraus_operators(cls) -> int:
         return 2
-
-    def kraus_operator_probabilities(self, n_qudits: int) -> list[float]:
-        sqrt_p0 = self.p0
-        sqrt_p1 = (1.0 - self.p0)
-
-        p0_pows = [sqrt_p0 ** i for i in range(n_qudits + 1)]
-        p1_pows = [sqrt_p1 ** i for i in range(n_qudits + 1)]
-
-        output = []
-
-        for comb in product((0, 1), repeat=n_qudits):
-            m = sum(exp != 0 for exp in comb)
-            output.append(p0_pows[n_qudits - m] * p1_pows[m])
-
-        assert sum(output) == 1
-
-        return output
 
     def apply_kraus_operator(self, pauli: PauliSum, qudit_indices: list[int] | np.ndarray,
                              index: int) -> PauliSum:
@@ -146,23 +126,6 @@ class DephasingNoise(NoiseModel):
 
         return PauliSum(new_tableau, pauli.dimensions, pauli.weights, new_phases)
 
-    @classmethod
-    def kraus_operator(cls,
-                       dimensions: list[int] | np.ndarray,
-                       qudit_indices: list[int] | np.ndarray,
-                       index: int) -> PauliSum:
-
-        n_qudits = len(dimensions)
-        k = len(qudit_indices)
-        tableau = np.zeros(2 * n_qudits, dtype=int)
-
-        # Interpret index as binary digits for each qudit, 0 = I, 1 = Z
-        for qudit_pos, qudit_idx in enumerate(qudit_indices):
-            bit = (index >> (k - qudit_pos - 1)) & 1
-            tableau[n_qudits + qudit_idx] = bit
-
-        return PauliSum.from_tableau(tableau, dimensions)
-
     def kraus_operators(self,
                         dimensions: list[int] | np.ndarray,
                         qudit_indices: list[int] | np.ndarray) -> list[PauliSum]:
@@ -172,16 +135,34 @@ class DephasingNoise(NoiseModel):
         tableau = np.zeros(2 * n_qudits, dtype=int)
         output = []
 
+        # Build all combinations of the two kraus operators for each qudit in qudit_indices
         combinations = list(product([0, 1], repeat=len(qudit_indices)))
         for comb in combinations:
             p_tableau = tableau.copy()
             coefficient = 1
             for idx, exp in zip(qudit_indices, comb):
                 p_tableau[n_qudits + idx] = exp
-                coefficient *= np.sqrt(self.p0) if exp == 0 else np.sqrt(1.0 - self.p0)
-            output.append((coefficient, PauliSum.from_tableau(p_tableau, dimensions)))
+                coefficient *= self.p0 if exp == 0 else (1.0 - self.p0)
+                sigma = PauliSum.from_tableau(p_tableau, dimensions)
+            output.append(math.sqrt(coefficient) * sigma)
 
         return output
+
+    def process_matrix(self, pauli_i: list[int], pauli_j: list[int]) -> complex:
+        lambda_0 = math.sqrt(self.p0)
+        lambda_1 = math.sqrt(1.0 - self.p0)
+
+        def map_pauli_index_to_coefficient(idx: int) -> float:
+            if idx == 0:
+                return lambda_0
+
+            if idx == 3:
+                return lambda_1
+
+            return 0.0
+
+        return math.prod(list(map(map_pauli_index_to_coefficient, pauli_i))) * \
+            math.prod(list(map(map_pauli_index_to_coefficient, pauli_j)))
 
 
 class DepolarizingNoise(NoiseModel):
@@ -200,23 +181,6 @@ class DepolarizingNoise(NoiseModel):
     @classmethod
     def n_kraus_operators(cls) -> int:
         return 4
-
-    def kraus_operator_probabilities(self, n_qudits: int) -> list[float]:
-        sqrt_p0 = self.p0
-        sqrt_p1 = (1.0 - self.p0) / 3.0
-
-        p0_pows = [sqrt_p0 ** i for i in range(n_qudits + 1)]
-        p1_pows = [sqrt_p1 ** i for i in range(n_qudits + 1)]
-
-        output = []
-
-        for comb in product((0, 1, 2, 3), repeat=n_qudits):
-            m = sum(exp != 0 for exp in comb)
-            output.append(p0_pows[n_qudits - m] * p1_pows[m])
-
-        assert sum(output) == 1
-
-        return output
 
     def apply_kraus_operator(self, pauli: PauliSum, qudit_indices: list[int] | np.ndarray,
                              index: int) -> PauliSum:
@@ -266,39 +230,6 @@ class DepolarizingNoise(NoiseModel):
 
         return PauliSum(new_tableau, pauli.dimensions, pauli.weights, new_phases)
 
-    @classmethod
-    def kraus_operator(cls,
-                       dimensions: list[int] | np.ndarray,
-                       qudit_indices: list[int] | np.ndarray,
-                       index: int) -> PauliSum:
-
-        n_qudits = len(dimensions)
-        k = len(qudit_indices)
-        tableau = np.zeros(2 * n_qudits, dtype=int)
-        phases = np.zeros(1, dtype=int)
-
-        # Convert index to base-4 digits
-        for qudit_pos, qudit_idx in enumerate(qudit_indices):
-            # Extract base-4 digit
-            digit = (index // (4 ** (k - qudit_pos - 1))) % 4
-
-            # identity
-            if digit == 0:
-                pass
-            # sigma-x
-            elif digit == 1:
-                tableau[qudit_idx] = 1
-            # sigma-y
-            elif digit == 2:
-                tableau[qudit_idx] = 1
-                tableau[n_qudits + qudit_idx] = 1
-                phases[0] = 1
-            # sigma-z
-            elif digit == 3:
-                tableau[n_qudits + qudit_idx] = 1
-
-        return PauliSum.from_tableau(tableau, dimensions, phases=phases)
-
     def kraus_operators(self,
                         dimensions: list[int] | np.ndarray,
                         qudit_indices: list[int] | np.ndarray) -> list[PauliSum]:
@@ -329,7 +260,24 @@ class DepolarizingNoise(NoiseModel):
                 elif exp == 3:
                     p_tableau[n_qudits + idx] = 1
 
-                coefficient *= np.sqrt(self.p0) if exp == 0 else np.sqrt((1.0 - self.p0) / 3.0)
-            output.append((coefficient, PauliSum.from_tableau(p_tableau, dimensions, phases=phases)))
+                coefficient *= self.p0 if exp == 0 else (1.0 - self.p0) / 3.0
+                sigma = PauliSum.from_tableau(p_tableau, dimensions, phases=phases)
+            output.append(math.sqrt(coefficient) * sigma)
 
         return output
+
+    def process_matrix(self, pauli_i: list[int], pauli_j: list[int]) -> complex:
+        lambda_0 = math.sqrt(self.p0)
+        lambda_j = math.sqrt((1.0 - self.p0) / 3)
+
+        def map_pauli_index_to_coefficient(idx: int) -> float:
+            if idx == 0:
+                return lambda_0
+
+            if idx in [1, 2, 3]:
+                return lambda_j
+
+            raise ValueError(f"Invalid pauli index {idx}")
+
+        return math.prod(list(map(map_pauli_index_to_coefficient, pauli_i))) * \
+            math.prod(list(map(map_pauli_index_to_coefficient, pauli_j)))

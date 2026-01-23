@@ -203,7 +203,7 @@ class Gate:
         name = self.name if self.name.startswith("T-") else "T-" + self.name
         return Gate(name, self.qudit_indices, self.symplectic @ T, self.dimensions, self.phase_vector)
 
-    def unitary(self, dims=None):
+    def unitary(self, dims=None) -> sp.csr_matrix:
         if dims is None:
             dims = self.dimensions
         raise NotImplementedError("Unitary not implemented for generic Gate. Use specific gate subclasses.")
@@ -217,10 +217,10 @@ class Gate:
     def __hash__(self):
         return hash((
             self.name,
-            tuple(self.qudit_indices.tolist()),
-            tuple(self.dimensions),
-            tuple(self.symplectic.flatten().tolist()),
-            tuple(self.phase_vector.tolist()),
+            tuple(self.qudit_indices.tobytes()),
+            tuple(self.dimensions.tobytes()),
+            tuple(self.symplectic.flatten().tobytes()),
+            tuple(self.phase_vector.tobytes()),
         ))
 
     def __eq__(self, other):
@@ -296,7 +296,7 @@ class SWAP(Gate):
 
         super().__init__("SWAP", [index1, index2], symplectic, dimensions=dimension, phase_vector=phase_vector)
 
-    def unitary(self, dims=None):
+    def unitary(self, dims=None) -> sp.csr_matrix:
         """
         SWAP on two qudits at positions self.qudit_indices = [a0, a1]
         for an arbitrary mixed-radix register with local dims.
@@ -421,7 +421,7 @@ class PauliGate(Gate):
     def copy(self) -> 'Gate':
         return PauliGate(self.pauli_string)
 
-    def unitary(self, dims=None):
+    def unitary(self, dims=None) -> sp.csr_matrix:
         if dims is None:
             dims = self.dimensions
         return pauli_unitary_from_tableau(dims[0], self.pauli_string.x_exp, self.pauli_string.z_exp)

@@ -40,6 +40,8 @@ class Circuit:
         """
         if gates is None:
             gates = []
+
+        dimensions = np.asarray(dimensions, dtype=int)
         self.dimensions = dimensions
         self.gates = gates
         self.indexes = [gate.qudit_indices for gate in gates]  # indexes accessible at the Circuit level
@@ -85,8 +87,9 @@ class Circuit:
             set_idx = rng.integers(0, n_dims)
             dim = dimensions[index_sets[set_idx][0]]
             if rng.random() < two_qudit_gate_ratio and len(index_sets[set_idx]) > 1:
-                indices = rng.choice(index_sets[set_idx], 2)
+                indices = rng.choice(index_sets[set_idx], 2, replace=False)
                 gate_cls = rng.choice(two_qudit_gates)
+                assert indices[0] != indices[1]
                 gg.append(gate_cls(indices[0], indices[1], dim))
             else:
                 index = rng.choice(index_sets[set_idx])
