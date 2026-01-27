@@ -199,6 +199,7 @@ def inv_mod_mat(A: np.ndarray, p: int) -> np.ndarray:
     return mod_p(right, p)
 
 
+
 def solve_in_span(S: np.ndarray, A: np.ndarray, b: np.ndarray, p: int) -> np.ndarray:
     """
     Find x in span(S) such that A x = b over GF(p).
@@ -241,3 +242,37 @@ def mat_pow_mod(A: np.ndarray, e: int, p: int) -> np.ndarray:
 def column_rank_mod(B: np.ndarray, p: int) -> int:
     """Rank of the column span of B over GF(p)."""
     return rank_mod(B, p)
+
+ 
+def solve_mod(mat: np.ndarray, vec: np.ndarray, modulus: int) -> np.ndarray:
+    """Gaussian elimination over Z_mod, requiring unit pivots (gcd=1).
+    Not necessarily prime_modulus"""
+    mat = mat.copy().astype(int)
+    vec = vec.copy().astype(int)
+    m, ncols = mat.shape
+    aug = np.concatenate([mat, vec.reshape(-1, 1)], axis=1) % modulus
+    row = 0
+    for col in range(ncols):
+        if row >= m:
+            break
+        pivot = None
+        for r in range(row, m):
+            if np.gcd(int(aug[r, col]), modulus) == 1:
+                pivot = r
+                break
+        if pivot is None:
+            continue
+        if pivot != row:
+            aug[[row, pivot]] = aug[[pivot, row]]
+        inv = pow(int(aug[row, col]) % modulus, -1, modulus)
+        aug[row] = (aug[row] * inv) % modulus
+        for r in range(m):
+            if r == row:
+                continue
+            factor = aug[r, col]
+            aug[r] = (aug[r] - factor * aug[row]) % modulus
+        row += 1
+    if row < ncols:
+        # Under-determined or singular; fall back to least filled solution if possible
+        pass
+    return aug[:ncols, -1] % modulus

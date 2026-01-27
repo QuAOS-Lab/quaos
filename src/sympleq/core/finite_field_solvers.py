@@ -427,6 +427,64 @@ def gf_lu(A, p: int = 2):
     return L % p, U % p, P
 
 
+def _select_row_basis_indices(A_int: np.ndarray, p: int, max_rows: int) -> np.ndarray:
+    """
+    Return indices of a greedily chosen row basis of `A_int` over GF(p).
+
+    The routine performs a light Gauss-Jordan sweep, moving left-to-right across
+    columns and picking the first unused row with a non-zero entry as the pivot.
+    Each pivot row is normalized and used to eliminate the pivot column from the
+    other unused rows. Collection stops once either all columns are processed or
+    `max_rows` independent rows have been gathered.
+
+    Parameters
+    ----------
+    A_int : np.ndarray
+        Integer matrix whose rows are candidate equations.
+    p : int
+        Prime for the finite field GF(p).
+        max_rows : int
+        Maximum number of independent rows to return (often the number of columns).
+
+    Returns
+    -------
+    np.ndarray
+        1-D array of row indices that are linearly independent over GF(p).
+    """
+    GF = galois.GF(p)
+    A = GF(A_int % p).copy()
+    N, M = A.shape
+    used = np.zeros(N, dtype=bool)
+    basis = []
+    col = 0
+    for _ in range(N):
+        if col >= M:
+            break
+        pick = None
+        for r in range(N):
+            if used[r]:
+                continue
+            if A[r, col] != GF(0):
+                pick = r
+                break
+        if pick is None:
+            col += 1
+            continue
+        basis.append(pick)
+        used[pick] = True
+        inv = GF(1) / A[pick, col]
+        A[pick, :] = A[pick, :] * inv
+        for r in range(N):
+            if r == pick or used[r]:
+                continue
+            if A[r, col] != GF(0):
+                A[r, :] = A[r, :] - A[r, col] * A[pick, :]
+        col += 1
+        if len(basis) >= max_rows:
+            break
+    return np.array(basis, dtype=int)
+
+
 def _random_invertible_matrix(p: int, size: int, rng: np.random.Generator) -> np.ndarray:
     """Generate a random invertible matrix over GF(p) with the given dimension."""
     GFp = galois.GF(p)

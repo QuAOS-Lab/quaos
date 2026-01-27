@@ -59,7 +59,7 @@ class TestSymmetryFinder:
             assert H.to_standard_form() == scrambled_sym.act(H).to_standard_form(
             ), f"\n{H.to_standard_form().__str__()}\n{sym.act(H).to_standard_form().__str__()}"
 
-            F, S, T = min_qudit_clifford_symmetry(H, check_symmetry=False)
+            F, S, T = min_qudit_clifford_symmetry(H)
 
             assert np.all(F.symplectic == scrambled_sym.symplectic)
             assert np.all(F.phase_vector == scrambled_sym.phase_vector)
@@ -125,7 +125,7 @@ class TestSymmetryFinder:
             assert H.to_standard_form() == scrambled_sym.act(H).to_standard_form(
             ), f"\n{H.to_standard_form().__str__()}\n{sym.act(H).to_standard_form().__str__()}"
 
-            F, S, T = min_qudit_clifford_symmetry(H, check_symmetry=False)
+            F, S, T = min_qudit_clifford_symmetry(H)
 
             # there may be multiple expressions of the symmetry so these are too harsh
             # assert np.all(F.symplectic == scrambled_sym.symplectic)
@@ -139,9 +139,3 @@ class TestSymmetryFinder:
             assert S.act(T.inv().act(H)).to_standard_form() == T.inv().act(H).to_standard_form()
             assert qudit_cost(S) <= 3
 
-    # def random_Hadamard_symmetry(self):
-        # pass
-
-    # def test_random_multi_gate_symmetry(self):
-    #     """ Selects a random set of gates and injects that as a symmetry."""
-    #     pass
