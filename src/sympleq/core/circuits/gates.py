@@ -206,7 +206,8 @@ class Gate:
     def unitary(self, dims=None):
         if dims is None:
             dims = self.dimensions
-        raise NotImplementedError("Unitary not implemented for generic Gate. Use specific gate subclasses.")
+        raise NotImplementedError(("Unitary not implemented for generic Gate."
+                                   " Use gate_decomposition_to_circuit and the specific gate subclasses."))
 
     def full_symplectic(self, n_qudits):
         if n_qudits < max(self.qudit_indices):

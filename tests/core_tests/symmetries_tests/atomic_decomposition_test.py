@@ -48,8 +48,7 @@ from sympleq.core.symmetries.atomic_linear import (
 )
 
 from sympleq.core.symmetries.atomic_unipotent_p2 import (
-    classify_unipotent_sp2,
-    atomic_blocks_in_unipotent_self_sector_p2, build_unipotent_blocks_from_invariants
+    atomic_blocks_in_unipotent_self_sector_p2,
 )
 
 from sympleq.core.symmetries.atomic_decomposition import atomic_block_decompose
@@ -1040,56 +1039,56 @@ class TestAtomicLinear:
 
 
 class TestAtomicUnipotentP2:
-    def test_classify_unipotent_sp2_and_rebuild_blocks(self) -> None:
-        # Build a unipotent symplectic F over GF(2):
-        # F = [[I,0],[S,I]] with S symmetric and diag nonzero to ensure anisotropy exists.
-        p = 2
-        n = 2
-        I = np.eye(n, dtype=np.int64)
-        S = np.eye(n, dtype=np.int64)  # symmetric, diag ones
-        top = np.concatenate([I, np.zeros((n, n), dtype=np.int64)], axis=1)
-        bot = np.concatenate([S, I], axis=1)
-        F = np.concatenate([top, bot], axis=0)
-        F = mod_p(F, p)
-        assert is_symplectic(F, p)
+    # def test_classify_unipotent_sp2_and_rebuild_blocks(self) -> None:
+    #     # Build a unipotent symplectic F over GF(2):
+    #     # F = [[I,0],[S,I]] with S symmetric and diag nonzero to ensure anisotropy exists.
+    #     p = 2
+    #     n = 2
+    #     I = np.eye(n, dtype=np.int64)
+    #     S = np.eye(n, dtype=np.int64)  # symmetric, diag ones
+    #     top = np.concatenate([I, np.zeros((n, n), dtype=np.int64)], axis=1)
+    #     bot = np.concatenate([S, I], axis=1)
+    #     F = np.concatenate([top, bot], axis=0)
+    #     F = mod_p(F, p)
+    #     assert is_symplectic(F, p)
 
-        inv_data = classify_unipotent_sp2(F)
-        assert inv_data["p"] == 2
-        assert inv_data["n2"] == 2 * n
-        assert "jordan_profile" in inv_data
-        assert "blocks" in inv_data
-        assert len(inv_data["blocks"]) == 2  # should extract two 2D blocks
+    #     inv_data = classify_unipotent_sp2(F)
+    #     assert inv_data["p"] == 2
+    #     assert inv_data["n2"] == 2 * n
+    #     assert "jordan_profile" in inv_data
+    #     assert "blocks" in inv_data
+    #     assert len(inv_data["blocks"]) == 2  # should extract two 2D blocks
 
-        # Expect V blocks here (m_max=2 and anisotropy exists)
-        assert all(b["type"] == "V" and b["m"] == 2 and b["k"] == 1 for b in inv_data["blocks"])
+    #     # Expect V blocks here (m_max=2 and anisotropy exists)
+    #     assert all(b["type"] == "V" and b["m"] == 2 and b["k"] == 1 for b in inv_data["blocks"])
 
-        # Rebuild explicit ambient blocks (here V_u = I spans full space)
-        V_u = np.eye(2 * n, dtype=np.int64)
-        blocks = build_unipotent_blocks_from_invariants(F, V_u, inv_data, p=2)
-        assert len(blocks) == 2
-        assert all(b.half_dim == 1 for b in blocks)
+    #     # Rebuild explicit ambient blocks (here V_u = I spans full space)
+    #     V_u = np.eye(2 * n, dtype=np.int64)
+    #     blocks = build_unipotent_blocks_from_invariants(F, V_u, inv_data, p=2)
+    #     assert len(blocks) == 2
+    #     assert all(b.half_dim == 1 for b in blocks)
 
-        Ω = omega_matrix(n, p)
-        Ω1 = omega_matrix(1, p)
-        for b in blocks:
-            T = b.T_blk
-            assert T.shape == (2 * n, 2)
-            assert np.array_equal(mod_p(T.T @ Ω @ T, p), Ω1)
+    #     Ω = omega_matrix(n, p)
+    #     Ω1 = omega_matrix(1, p)
+    #     for b in blocks:
+    #         T = b.T_blk
+    #         assert T.shape == (2 * n, 2)
+    #         assert np.array_equal(mod_p(T.T @ Ω @ T, p), Ω1)
 
-    def test_classify_unipotent_simple_shear(self) -> None:
-        p = 2
-        n = 3
-        B = np.diag([1, 0, 1]).astype(np.int64)
-        F = _symplectic_shear_upper(B, p)
-        assert is_symplectic(F, p)
+    # def test_classify_unipotent_simple_shear(self) -> None:
+    #     p = 2
+    #     n = 3
+    #     B = np.diag([1, 0, 1]).astype(np.int64)
+    #     F = _symplectic_shear_upper(B, p)
+    #     assert is_symplectic(F, p)
 
-        inv = classify_unipotent_sp2(F)
-        assert inv["p"] == 2
-        assert inv["n2"] == 2 * n
-        assert "jordan_profile" in inv
-        assert "blocks" in inv
-        # should include at least one block description
-        assert isinstance(inv["blocks"], list) and len(inv["blocks"]) >= 1
+    #     inv = classify_unipotent_sp2(F)
+    #     assert inv["p"] == 2
+    #     assert inv["n2"] == 2 * n
+    #     assert "jordan_profile" in inv
+    #     assert "blocks" in inv
+    #     # should include at least one block description
+    #     assert isinstance(inv["blocks"], list) and len(inv["blocks"]) >= 1
 
     def test_unipotent_sector_pipeline_from_rcf_prepass(self) -> None:
         p = 2

@@ -92,6 +92,7 @@ def ensure_invertible_A_circuit(F: np.ndarray, p: int, max_depth: int | None = N
     for i in range(n):
         candidates.append(Hadamard(i, p))
         candidates.append(PHASE(i, p))
+        # TODO: actual phase_inv gate type, this is a bit hacky
         candidates.append(("PHASE_INV", i))  # expand to (p-1) PHASEs when applying
     for i in range(n):
         for j in range(i + 1, n):
