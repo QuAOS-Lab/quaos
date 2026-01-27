@@ -1,9 +1,9 @@
 import numpy as np
-from sympleq.core.circuits import Gate, Circuit
+from sympleq.core.circuits import Gate  # , Circuit
 from sympleq.core.paulis import PauliSum
 from sympleq.core.graphs.graph_automorphism import clifford_graph_automorphism_search
 from sympleq.core.symmetries.phase_correction import clifford_phase_decomposition
-from sympleq.core.symmetries.block_decomposition import block_decompose, ordered_block_sizes
+from sympleq.core.symmetries.block_decomposition import block_decompose_optimal, ordered_block_sizes
 
 
 def min_qudit_clifford_symmetry(pauli_sum: PauliSum,
@@ -24,7 +24,7 @@ def min_qudit_clifford_symmetry(pauli_sum: PauliSum,
 
     print('Got symmetry - decomposing')
 
-    S, T = block_decompose_optimal(g.symplectic, int(pauli_sum.lcm), min_block_size=4, trials=decomposition_trials)
+    S, T = block_decompose_optimal(g.symplectic, int(pauli_sum.lcm), min_block_size=4)
     h_S, h_T = clifford_phase_decomposition(g.symplectic, g.phase_vector, S, T, int(pauli_sum.lcm))
     S_gate = Gate('S', g.qudit_indices, S, g.dimensions, h_S)
     T_gate = Gate('T', g.qudit_indices, T, g.dimensions, h_T)

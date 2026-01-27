@@ -139,3 +139,38 @@ class TestSymmetryFinder:
             assert S.act(T.inv().act(H)).to_standard_form() == T.inv().act(H).to_standard_form()
             assert qudit_cost(S) <= 3
 
+    def test_random_arbitrary_symmetry(self):
+
+        n_tests = 100
+        p = 2
+        n_qudits = 3
+        n_paulis = 7
+        for _ in range(n_tests):
+            sym = Circuit.from_random(10, [p] * n_qudits)  #
+            sym = sym.composite_gate()
+            # unscrambled H
+            H = random_gate_symmetric_hamiltonian(sym, n_qudits, n_paulis, scrambled=False)
+            C = Circuit.from_random(100, H.dimensions).composite_gate()  # scrambling circuit
+            H = C.act(H)
+            H.weight_to_phase()
+            scrambled_sym = Circuit(H.dimensions, [C.inv(), sym, C]).composite_gate()
+            assert H.to_standard_form() == scrambled_sym.act(H).to_standard_form(
+            ), f"\n{H.to_standard_form().__str__()}\n{sym.act(H).to_standard_form().__str__()}"
+
+            known_F = scrambled_sym.symplectic
+            circ = find_clifford_symmetries(H)
+
+            assert len(circ) != 0, f"No symmetries found for run {_}"
+
+            for c in circ:
+                print(np.all(c.symplectic == known_F) and np.all(
+                    c.phase_vector == scrambled_sym.phase_vector))
+                H_s = H.to_standard_form()
+                H_out = c.act(H).to_standard_form()
+                H_s.weight_to_phase()
+                H_out.weight_to_phase()
+                assert np.all(H_s.tableau == H_out.tableau)
+                assert np.all(H_s.phases == H_out.phases)
+                assert np.all(H_s.weights == H_out.weights)
+
+                assert c.act(H).to_standard_form() == H.to_standard_form()
