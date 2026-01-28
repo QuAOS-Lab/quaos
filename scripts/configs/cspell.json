@@ -153,7 +153,6 @@
         "pyzmq",
         "QAOS",
         "qcore",
-        "qiskit",
         "qubit",
         "qubits",
         "qudits",

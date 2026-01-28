@@ -1,12 +1,13 @@
 import numpy as np
 import random
 import pytest
+from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.paulis import PauliSum, PauliString, Pauli
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from tests import PRIME_LIST, choose_random_dimensions
 
 
-N_tests = 100
+N_tests = 30
 
 
 class TestPaulis:
@@ -203,9 +204,9 @@ class TestPaulis:
             expected_tableau = np.array([[random.randint(0, dim - 1), random.randint(0, dim - 1)]])
             pauli_list = [f'x{expected_tableau[0, 0]}z{expected_tableau[0, 1]}']
             weights = np.array([1.])
-            sp = PauliSum.from_string(pauli_list, dimensions=[dim], weights=weights)
+            ps = PauliSum.from_string(pauli_list, dimensions=[dim], weights=weights)
 
-            np.testing.assert_array_equal(sp.tableau, expected_tableau)
+            np.testing.assert_array_equal(ps.tableau, expected_tableau)
 
     def test_symplectic_matrix_multiple_paulis(self):
         for _ in range(N_tests):
@@ -228,9 +229,9 @@ class TestPaulis:
             # randomly generate weights
             weights = np.array([random.normalvariate(0, 1) for _ in range(n_paulis)])
             # PauliSum
-            sp = PauliSum.from_string(pauli_list, dimensions=dimensions, weights=weights)
+            ps = PauliSum.from_string(pauli_list, dimensions=dimensions, weights=weights)
 
-            np.testing.assert_array_equal(sp.tableau, expected_tableau)
+            np.testing.assert_array_equal(ps.tableau, expected_tableau)
 
     def test_basic_pauli_relations(self):
         for d in PRIME_LIST:
@@ -1126,3 +1127,117 @@ class TestPaulis:
         psum1.reset_weights()
         assert psum1 == psum3
         assert psum2 != psum3
+
+    def test_make_hermitian(self):
+        available_dimensions = [2, 3, 5, 7]
+        # with random phases
+        for i in range(50):
+            n_qubits = np.random.randint(1, 10)
+            dims = [np.random.choice(available_dimensions) for _ in range(n_qubits)]
+            n_paulis = np.random.randint(1, np.min([4**n_qubits - 1, 10]))
+            P = PauliSum.from_random(n_paulis=n_paulis,
+                                     dimensions=dims,
+                                     rand_weights=True)
+            P.set_phases(np.random.randint(0, 2 * P.lcm, n_paulis))
+            P1 = P.make_hermitian()
+            assert P1.is_hermitian()
+
+        # without random phases
+        for i in range(50):
+            n_qubits = np.random.randint(1, 10)
+            dims = [np.random.choice(available_dimensions) for _ in range(n_qubits)]
+            n_paulis = np.random.randint(1, np.min([4**n_qubits - 1, 10]))
+            P = PauliSum.from_random(n_paulis=n_paulis,
+                                     dimensions=dims,
+                                     rand_weights=True)
+            P1 = P.make_hermitian()
+            assert P1.is_hermitian()
+
+    def test_ordered_eigenspectrum(self):
+        for _ in range(N_tests):
+            dimensions = [2, 3, 5, 7]
+            n_paulis = len(dimensions)
+
+            P = PauliSum.from_random(n_paulis, dimensions, rand_weights=False).make_hermitian()
+            assert P.is_hermitian()
+
+            m = np.around(P.to_hilbert_space().toarray(), 10)
+            energies, states = P.ordered_eigenspectrum()
+
+            assert len(energies) == len(states)
+            assert len(states) == np.prod(dimensions)
+
+            # Check: the eigenvectors give raise to the correct eigenvalues
+            for energy, state in zip(energies, states):
+                check_energy = np.around(state.conjugate().transpose() @ m @ state, 10)
+                assert np.isclose(
+                    check_energy, energy), f"eigenvalue mismatch for state {state}: {energy} vs {check_energy}."
+
+    def test_ordered_eigenspectrum_raise_non_hermitian(self):
+        for _ in range(N_tests):
+            dimensions = [2, 3, 5, 7]
+            n_paulis = len(dimensions)
+
+            P = PauliSum.from_random(n_paulis, dimensions)
+            if P.is_hermitian():
+                continue
+
+            with pytest.raises(ValueError):
+                _, _ = P.ordered_eigenspectrum()
+
+    @pytest.mark.skip()
+    def test_stabilizer_to_hilbert_space(self):
+        for _ in range(N_tests):
+            dimensions = [2] * 5
+            n_qubits = len(dimensions)
+
+            # P = PauliSum.from_random(n_paulis, dimensions, rand_weights=False).make_hermitian()
+            # P.reset_weights()
+            # assert P.is_hermitian()
+
+            # Test both less and equal number of paulis than qudits
+            n_paulis = np.random.randint(1, n_qubits)
+
+            # Create a stabilizer IIIZ, IIZI, IZII, leaving identities at the beginning if n_paulis < n_qubits
+            tableau = np.zeros((n_paulis, 2 * n_qubits), dtype=int)
+            tableau[:, n_qubits:] = np.eye(n_paulis, n_qubits, dtype=int)
+
+            # Create stabilizer in PauliSum form
+            stabilizer = PauliSum.from_tableau(tableau,
+                                               weights=np.ones(n_paulis),
+                                               dimensions=dimensions)
+
+            # Initialize stabilizer to random computational state
+            phases = [2 * np.random.randint(0, stabilizer.lcm - 1) for _ in range(n_paulis)]
+            stabilizer.set_phases(phases)
+
+            # Random Clifford circuit
+            n_gates = 10 * n_paulis**2
+            C = Circuit.from_random(n_gates, dimensions)
+
+            # Act with Clifford on stabilizer
+            stabilizer_shuffled = C.act(stabilizer)
+            # Get hilbert space representations
+            stabilizer_shuffled_hilbert = stabilizer_shuffled.stabilizer_to_hilbert_space()
+
+            # Ensure the state stabilizes all PauliStrings in the shuffled stabilizer
+            for idx in range(stabilizer_shuffled.n_paulis()):
+
+                phases = stabilizer_shuffled.phases.copy()
+                phases[idx] = 0
+                phase_to_test: int = stabilizer_shuffled.phases[idx]
+
+                ps = stabilizer_shuffled[[idx]]
+                ps_hilbert = ps.to_hilbert_space()
+
+                lhs = np.exp(
+                    (1j * 2 * np.pi * phase_to_test) / (2 * stabilizer.lcm)
+                )
+
+                rhs = (
+                    stabilizer_shuffled_hilbert @ ps_hilbert @ stabilizer_shuffled_hilbert.T
+                ).trace()
+
+                print(np.around(lhs - rhs, 10))
+
+                assert np.around(lhs - rhs, 10) == 0

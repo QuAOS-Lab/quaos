@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Generator, overload, TypeVar
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
-from qiskit import QuantumCircuit
+
 from .gates import Gate, Hadamard as H, PHASE as S, SUM as CX, SWAP, CNOT, PauliGate
 from .utils import embed_symplectic
 import scipy.sparse as sp
@@ -201,23 +201,6 @@ class Circuit:
         for gate in self.gates:
             pauli_sum = gate.act(pauli)
             yield pauli_sum
-
-    def show(self):
-        if not np.all(np.array(self.dimensions) == 2):
-            print("Circuit dimensions are not all 2, using Qiskit QuantumCircuit, some gates may not be supported")
-        circuit = QuantumCircuit(len(self.dimensions))
-        dict = {'X': circuit.x, 'H': circuit.h, 'S': circuit.s, 'SUM': circuit.cx, 'CNOT': circuit.cx,
-                'Hdag': circuit.h}
-
-        for gate in self.gates:
-            name = gate.name
-            if len(gate.qudit_indices) == 2:
-                dict[name](gate.qudit_indices[0], gate.qudit_indices[1])
-            else:
-                dict[name](gate.qudit_indices[0])
-
-        print(circuit)
-        # return circuit
 
     def copy(self) -> 'Circuit':
         return Circuit(self.dimensions, self.gates.copy())

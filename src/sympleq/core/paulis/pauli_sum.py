@@ -9,7 +9,6 @@ from pathlib import Path
 
 from sympleq.utils import int_to_bases
 from sympleq.core.finite_field_solvers import get_linear_dependencies
-
 from .pauli_object import PauliObject
 from .pauli_string import PauliString
 from .pauli import Pauli
@@ -770,13 +769,14 @@ class PauliSum(PauliObject):
         Combines equivalent Pauli operators in the sum by summing their coefficients and deleting duplicates.
         """
         # self.standardise()  # makes sure all phases are 0
+        self.phase_to_weight()
         # combine equivalent Paulis
         to_delete = []
         for i in reversed(range(self.n_paulis())):
             ps1 = self.select_pauli_string(i)
             for j in range(i + 1, self.n_paulis()):
                 ps2 = self.select_pauli_string(j)
-                if ps1 == ps2:
+                if ps1.has_equal_tableau(ps2):
                     # FIXME: can overflow for very large n_paulis.
                     #        One solution could be to normalize it by dividing by the smallest weight.
                     self._weights[i] = self.weights[i] + self.weights[j]
@@ -1122,7 +1122,7 @@ class PauliSum(PauliObject):
             Matrix representation of input Pauli.
         """
         if pauli_string_index is not None:
-            ps = self.select_pauli_string(pauli_string_index)
+            ps = self.select_pauli_string(pauli_string_index).as_pauli_sum()
             return ps.to_hilbert_space()
 
         list_of_pauli_matrices = []
@@ -1182,6 +1182,141 @@ class PauliSum(PauliObject):
                     f"Number of phases ({len(phases)}) must be equal to number of Paulis ({self.n_paulis()})")
             new_phases = (self.phases + np.array(phases)) % (2 * self.lcm)
             self._phases = new_phases
+
+    def ordered_eigenspectrum(self) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Compute eigenvalues/eigenvectors of the PauliSum and (by default) pick
+        the ground-state energy (`only_gs` = `True`).
+
+        Returns
+        -------
+        en : float or numpy.ndarray
+            A 1D array of all eigenvalues sorted ascending.
+        gs : numpy.ndarray
+            Eigenvectors sorted to match ``en``.
+        """
+
+        if not self.is_hermitian():
+            raise ValueError("Cannot find ground state for non-Hermitian PauliSum.")
+
+        # Convert PauliSum to matrix form
+        m = self.to_hilbert_space().toarray()
+
+        # Get eigenvalues and eigenvectors
+        val, vec = np.linalg.eigh(m)
+        vec = np.transpose(vec)
+
+        # Ordering
+        tmp_index = np.argsort(val)
+        energies = val[tmp_index]
+        states = vec[tmp_index]
+        normalized_states = (states / np.linalg.norm(states, axis=1, keepdims=True))
+
+        # Check normalization
+        assert np.allclose(np.linalg.norm(normalized_states, axis=0), 1.0)
+
+        return (energies, normalized_states)
+
+    def stabilizer_to_hilbert_space(self) -> sp.csr_matrix:
+        """
+        Yield a sparse vector in the Hilbert space representation of the given stabilizer state written as a PauliSum.
+
+        Returns
+        -------
+        sparse csr vector representing the stabilizer state.
+
+        Raises
+        ------
+        AssertionError
+            If all weights of the PauliSum are not one.
+
+        AssertionError
+            If the PauliStrings in the PauliSum are not all-to-all commuting.
+
+        Warning
+            If the number of PauliStrings is not equal to the number of qudits.
+        """
+
+        # Sanity check 1: weights must be one
+        if not np.allclose(self.weights, np.ones_like(self.weights), atol=1e-10):
+            raise AssertionError("Not all weights of the stabilizer state are one.")
+
+        # Sanity check 2: PauliStrings must be all-to-all commuting
+        if not self.is_commuting():
+            raise AssertionError("The PauliStrings in the PauliSum are not all-to-all commuting.")
+
+        # Sanity check 3: number of PauliStrings may be equal to number of qudits
+        if self.n_paulis() != self.n_qudits():
+            Warning("The number of PauliStrings is not equal to the number of qudits.")
+            if self.n_paulis() < self.n_qudits():
+                Warning("The stabilizer state is not uniquely defined, " +
+                        f"as the number of PauliStrings {self.n_paulis()} is less than the number " +
+                        f"of qudits {self.n_qudits()}.")
+
+        _, states = self.ordered_eigenspectrum()
+        ground_state = states[0]
+        d = ground_state.size
+
+        return sp.csr_matrix(np.kron(ground_state.conj(), ground_state).reshape(d, d))
+
+    def make_hermitian(self, in_place: bool = False) -> PauliSum:
+        """
+        Makes a hermitian PauliSum from a given PauliSum.
+
+        A hermitian PauliSum is a PauliSum that is equal to its own hermitian conjugate.
+
+        Returns
+        -------
+        PauliSum
+            The hermitian PauliSum
+
+        Notes
+        -----
+        This function first makes a copy of the given PauliSum, then combines equivalent paulis and finally iterates
+        over the paulis to find their hermitian conjugates. If it finds a symplectic that matches the hermitian
+        conjugate it will make sure that the weights and phases are correct, if not it will add phases to make
+        everything hermitian. Finally, if no hermitian conjugate is found it will be added to the PauliSum.
+
+        Examples
+        --------
+        >>> H = PauliSum(['x1z1'], weights=[1], dimensions=[2])
+        >>> H.make_hermitian()
+        PauliSum(['x1z1'], weights=[1], dimensions=[2], phases=[1])
+        """
+
+        if in_place:
+            P = self
+        else:
+            P = self.copy()
+
+        if P.is_hermitian():
+            return P
+
+        # Try simple strategy to make it Hermitian of convertig XZs to Ys.
+        if not np.any(self.phases):
+            P.XZ_to_Y(in_place=True)
+
+        if not P.is_hermitian():
+            P = 0.5 * (P + P.hermitian_conjugate())
+            P.combine_equivalent_paulis()
+            P.remove_zero_weight_paulis()
+
+        return P
+
+    def XZ_to_Y(self, in_place: bool = False) -> PauliSum:
+        if in_place:
+            P = self
+        else:
+            P = self.copy()
+
+        if DEFAULT_QUDIT_DIMENSION in self.dimensions:
+            two_ind = [i for i in range(self.n_qudits()) if self.dimensions[i] == DEFAULT_QUDIT_DIMENSION]
+            for i in range(self.n_paulis()):
+                for j in two_ind:
+                    if self[i].x_exp[j] != 0 and self[i].z_exp[j] != 0:
+                        P._phases[i] += int(self.lcm / DEFAULT_QUDIT_DIMENSION)
+
+        return P
 
     def reorder(self,
                 order: list[int]):
