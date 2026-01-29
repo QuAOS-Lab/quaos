@@ -4,7 +4,8 @@ import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.circuits.gates import PHASE, SUM, SWAP, Gate, Hadamard
-from .noise_model import DephasingNoise, DepolarizingNoise, NoiseModel, Noiseless
+from sympleq.applications.randomized_benchmarking.noise_model import DephasingNoise, \
+    DepolarizingNoise, NoiseModel, Noiseless
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis.pauli_sum import PauliSum
 
