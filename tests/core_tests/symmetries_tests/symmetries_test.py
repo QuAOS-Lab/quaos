@@ -174,3 +174,26 @@ class TestSymmetryFinder:
                 assert np.all(H_s.weights == H_out.weights)
 
                 assert c.act(H).to_standard_form() == H.to_standard_form()
+
+    def test_generate_symmetric_hamiltonian(self):
+        n_qudits = 5
+        n_paulis = 12
+        p = 2
+        n_tests = 100
+        for _ in range(n_tests):
+            sym = Circuit.from_random(10, [p] * n_qudits)  #
+            sym = sym.composite_gate()
+            # sym = SWAP(0, 1, p)
+            # unscrambled H
+            H = random_gate_symmetric_hamiltonian(sym, n_qudits, n_paulis, scrambled=False)
+            # print(H.tableau)
+            # H = H.to_standard_form()
+            # print(H.to_standard_form().tableau)
+            assert H.is_close(sym.act(H), literal=False), "Hamiltonian not symmetric. \n H: \n" + \
+                str(H.to_standard_form().tableau) + "\n sym: \n" + str(sym.act(H).to_standard_form().tableau)
+            C = Circuit.from_random(100, H.dimensions).composite_gate()  # scrambling circuit
+            H = C.act(H)
+            H.weight_to_phase()
+            H.weights = np.round(H.weights, 2)
+            scrambled_sym = Circuit(H.dimensions, [C.inv(), sym, C]).composite_gate()
+            assert H.is_close(scrambled_sym.act(H), literal=False), "Scrambled Hamiltonian not symmetric."
