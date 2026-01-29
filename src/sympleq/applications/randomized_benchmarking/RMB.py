@@ -2,17 +2,14 @@ from __future__ import annotations
 from typing import Generator
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
-import scipy.sparse as sp
-
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.circuits.gates import PHASE, SUM, SWAP, Gate, Hadamard
-from sympleq.core.measurement.noise_model import DephasingNoise, DepolarizingNoise, NoiseModel, Noiseless
+from .noise_model import DephasingNoise, DepolarizingNoise, NoiseModel, Noiseless
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis.pauli_sum import PauliSum
-from sympleq.core.paulis.utils import ground_state_TMP
 
 
-class RMB:
+class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move pretty print to circuit class.
     def __init__(self,
                  circuit: Circuit,
                  random_initial_state: bool,
@@ -26,6 +23,9 @@ class RMB:
 
         self.circuit = circuit + circuit.inv()
         self.noise_models = noise_models
+
+        dimensions = circuit.dimensions
+        n_qudits = len(dimensions)
 
         pauli_strings = []
         for p_idx in range(n_qudits):
@@ -66,15 +66,20 @@ class RMB:
                         self.circuit.remove_gate(idx)
 
         # Initialize noise models probabilities.
-        # In principle, we don't know if there are gates with n_quidits larger than 2,
+        # In principle, we don't know if there are gates with n_qudits larger than 2,
         # good enough for now.
         self.noise_models_kraus_probabilities = {}
+
         for gate_n_qudits in (1, 2, 3):
             probs = np.concatenate([
-                np.array(model.kraus_operator_probabilities(gate_n_qudits))
+                model.kraus_probabilities(gate_n_qudits)
                 for model in self.noise_models
             ])
+            # Normalize probabilities when combining multiple noise models
             probs /= probs.sum()
+            # Given probabilities [p0, p1, p2, p3], cumsum gives [p0, p0+p1, p0+p1+p2, 1.0].
+            # This allows O(log n) sampling via searchsorted with a uniform random number
+            # in _apply_gate_to_pauli_with_error.
             self.noise_models_kraus_probabilities[gate_n_qudits] = np.cumsum(probs)
 
     @classmethod
@@ -228,8 +233,9 @@ class RMB:
                 # FIXME: way faster just to act with the kraus operator on the PauliSum directly
                 # without even initializing the Kraus PauliSum.
                 # pauli = model.apply_kraus_operator(correct_pauli, gate.qudit_indices, i)
-                k = model.kraus_pauli(self.dimensions, gate.qudit_indices, i)
-                pauli = k * correct_pauli * k.H()
+                k = model.kraus_operators(self.dimensions, gate.qudit_indices)[i]
+                prob = model.kraus_probabilities(gate.n_qudits)[i]
+                pauli = (k * correct_pauli * k.H()) / prob
 
                 break
             i -= nk
@@ -237,6 +243,7 @@ class RMB:
         return pauli
 
     def _apply_gate_to_rho_with_error(self, gate: Gate, rho: np.ndarray) -> np.ndarray:
+        # FIXME: after merging #106, clean this up
         if gate.name.endswith("-inv"):
             match gate.name:
                 case "H-inv":
@@ -257,21 +264,22 @@ class RMB:
 
         correct_rho = unitary @ rho @ unitary.transpose().conjugate()
 
-        all_sigmas: list[sp.csr_matrix] = []
-        for model in self.noise_models:
-            # Build sigma list
-            for K in model.kraus_operators(self.dimensions, gate.qudit_indices):
-                all_sigmas.append(K / len(self.noise_models))
-
+        # Apply noise using Kraus form: ρ_out = Σ_i K_i ρ K†_i
         output_rho: np.ndarray | None = None
-
-        for lambda_ij, sigma_i, sigma_j in all_sigmas:
-            if output_rho is None:
-                output_rho = lambda_ij * sigma_i @ correct_rho @ sigma_j.transpose().conjugate()
-            else:
-                output_rho += lambda_ij * sigma_i @ correct_rho @ sigma_j.transpose().conjugate()
+        for model in self.noise_models:
+            for K in model.kraus_operators(self.dimensions, gate.qudit_indices):
+                K_matrix = K.to_hilbert_space()
+                term = K_matrix @ correct_rho @ K_matrix.conj().T
+                if output_rho is None:
+                    output_rho = term
+                else:
+                    output_rho += term
 
         assert output_rho is not None
+
+        # Normalize when combining multiple noise models
+        output_rho /= len(self.noise_models)
+
         return output_rho
 
     def act(self, pauli: PauliSum) -> PauliSum:
@@ -397,30 +405,10 @@ Circuit:
 
 
 def pauli_to_rho(pauli: PauliSum) -> np.ndarray:
-    _, gs = ground_state_TMP(pauli)
-    d = gs.size
-    return np.kron(gs.conj(), gs).reshape(d, d)
-
-
-def print_noise_models():
-    models: list[NoiseModel] = [Noiseless(), DephasingNoise(0.001)]
-    for model in models:
-        print(model.__class__.__name__)
-        print(model.kraus_operator_probabilities(1))
-        print(model.kraus_operator_probabilities(2))
-        print(model.kraus_pauli(dimensions, [0], 0))
-
-
-def test_simple_cases():
-    dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qudits
-    dimension = dimensions[0]
-    circuit = Circuit(dimensions, [Hadamard(0, dimension), PHASE(0, dimension)])
-    rmb = RMB(circuit, False, False, False, [DephasingNoise(0.1)], default_rng())
-
-    print(rmb.fancy_str())
-
-    print(f"Initial state:")
-    print(pauli_to_rho(rmb.initial_state))
+    _, states = pauli.ordered_eigenspectrum()
+    ground_state = states[0]
+    d = ground_state.size
+    return np.kron(ground_state.conj(), ground_state).reshape(d, d)
 
 
 if __name__ == "__main__":
@@ -429,22 +417,9 @@ if __name__ == "__main__":
     dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qudits
     dimension = dimensions[0]
     circuit = Circuit(dimensions, [PHASE(0, dimension)])
-    # rmb = RMB(circuit, False, False, False, [DepolarizingNoise(0.1)], default_rng())
-    # print(f"Average error: {rmb.average_error(n_runs=1000)}")
     rmb = RMB.from_random(dimensions, gate_density,
                           noise_models=[DephasingNoise(0.25), DepolarizingNoise(0.15)],
                           with_random_elimination=False,
                           rng=default_rng())
 
     print(rmb.fancy_str())
-
-    rho_exact = rmb.rho_exact()
-    print(f"\nTotal rho_exact probability check: {sum(rho_exact.diagonal())}\n")
-
-    d = 5
-    n_runs = 10**d
-    rho_average = rmb.rho_average(n_runs)
-    print(f"\nTotal rho_average probability check: {sum(rho_average.diagonal())}\n")
-
-    print("Error measure:", np.sum(np.abs(rho_exact - rho_average)))
-    # luca_check()
