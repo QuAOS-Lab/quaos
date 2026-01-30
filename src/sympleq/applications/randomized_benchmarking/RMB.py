@@ -4,8 +4,7 @@ import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.circuits.gates import PHASE, SUM, SWAP, Gate, Hadamard
-from sympleq.applications.randomized_benchmarking.noise_model import DephasingNoise, \
-    DepolarizingNoise, NoiseModel, Noiseless
+from sympleq.applications.randomized_benchmarking.noise_model import DephasingNoise, NoiseModel, Noiseless
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis.pauli_sum import PauliSum
 
@@ -16,14 +15,14 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
                  random_initial_state: bool,
                  with_random_elimination: float,
                  with_random_insertion: float,
-                 noise_models: list[NoiseModel],
+                 noise_model: NoiseModel,
                  rng: RNGGenerator
                  ) -> None:
 
         self.rng = rng
 
         self.circuit = circuit + circuit.inv()
-        self.noise_models = noise_models
+        self.noise_model = noise_model
 
         dimensions = circuit.dimensions
         n_qudits = len(dimensions)
@@ -66,22 +65,38 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
                         # Remove gate from base circuit (left part)
                         self.circuit.remove_gate(idx)
 
-        # Initialize noise models probabilities.
-        # In principle, we don't know if there are gates with n_qudits larger than 2,
-        # good enough for now.
-        self.noise_models_kraus_probabilities = {}
+    @classmethod
+    def from_circuit(cls,
+                     circuit: Circuit,
+                     random_initial_state: bool = True,
+                     noise_model: NoiseModel = Noiseless(),
+                     rng: RNGGenerator | None = None
+                     ) -> RMB:
+        """
+        Create a random RMB object.
 
-        for gate_n_qudits in (1, 2, 3):
-            probs = np.concatenate([
-                model.kraus_probabilities(gate_n_qudits)
-                for model in self.noise_models
-            ])
-            # Normalize probabilities when combining multiple noise models
-            probs /= probs.sum()
-            # Given probabilities [p0, p1, p2, p3], cumsum gives [p0, p0+p1, p0+p1+p2, 1.0].
-            # This allows O(log n) sampling via searchsorted with a uniform random number
-            # in _apply_gate_to_pauli_with_error.
-            self.noise_models_kraus_probabilities[gate_n_qudits] = np.cumsum(probs)
+        Parameters
+        ----------
+        circuit: Circuit
+            The base circuit to construct the RMB. The circuit will be mirrored, so in a sense this input
+            is half the final circuit.
+        random_initial_state: bool = True
+            Whether the initial state should be set randomly.
+        noise_model: NoiseModel
+            The noise model to use to get the Kraus operators...
+        rng : numpy.random.Generator | None = None
+            The random number generator. Passing a value can be used to obtain deterministic randomness.
+
+        Returns
+        -------
+        RMB
+            A RMB object.
+        """
+
+        if rng is None:
+            rng = default_rng()
+
+        return cls(circuit, random_initial_state, False, False, noise_model, rng)
 
     @classmethod
     def from_random(cls,
@@ -90,7 +105,7 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
                     random_initial_state: bool = True,
                     with_random_elimination: float = 0.0,
                     with_random_insertion: float = 0.0,
-                    noise_models: NoiseModel | list[NoiseModel] = Noiseless(),
+                    noise_model: NoiseModel = Noiseless(),
                     rng: RNGGenerator | None = None
                     ) -> RMB:
         """
@@ -130,15 +145,12 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
         if rng is None:
             rng = default_rng()
 
-        if not isinstance(noise_models, list):
-            noise_models = [noise_models]
-
         n_qudits = len(dimensions)
         n_gates = int(gate_density * n_qudits)
         circuit = Circuit.from_random(n_gates, dimensions, rng=rng)
 
         return cls(circuit, random_initial_state,
-                   with_random_elimination, with_random_insertion, noise_models, rng)
+                   with_random_elimination, with_random_insertion, noise_model, rng)
 
     @property
     def dimensions(self) -> np.ndarray:
@@ -156,26 +168,19 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
     def n_qudits(self) -> int:
         return self.initial_state.n_qudits()
 
-    def average_error(self, n_runs: int = 10) -> float:
-        error_runs = 0
-        for _ in range(n_runs):
-            if self.initial_state != self.get_output():
-                error_runs += 1
-        return error_runs / n_runs
-
-    def get_output_probabilities(self, n_runs: int = 1000) -> dict[PauliSum, int]:
-        output_probabilities: dict[PauliSum, int] = {}
-        for _ in range(n_runs):
-            output = self.get_output()
-            if output not in output_probabilities:
-                output_probabilities[output] = 1
-            else:
-                output_probabilities[output] += 1
-
-        return output_probabilities
-
     def rho_average(self, n_runs: int = 1000) -> np.ndarray:
-        output = self.get_output_probabilities(n_runs)
+        def _get_output_probabilities(n_runs: int = 1000) -> dict[PauliSum, int]:
+            output_probabilities: dict[PauliSum, int] = {}
+            for _ in range(n_runs):
+                output = self.get_output()
+                if output not in output_probabilities:
+                    output_probabilities[output] = 1
+                else:
+                    output_probabilities[output] += 1
+
+            return output_probabilities
+
+        output = _get_output_probabilities(n_runs)
         rho: np.ndarray | None = None
         for output_pauli, count in output.items():
             if rho is None:
@@ -220,26 +225,11 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
         return output
 
     def _apply_gate_to_pauli_with_error(self, gate: Gate, pauli: PauliSum) -> PauliSum:
-        correct_pauli = gate.act(pauli)
+        # Get the 'correct' pauli
+        pauli = gate.act(pauli)
 
-        # Get probabilities to select one possible quantum trajectory
-        probs = self.noise_models_kraus_probabilities[gate.n_qudits]
-        idx = np.searchsorted(probs, self.rng.random())
-
-        # locate the corresponding model and apply Kraus operator
-        i = int(idx)
-        for model in self.noise_models:
-            nk = model.n_kraus_operators() ** gate.n_qudits
-            if i < nk:
-                # FIXME: way faster just to act with the kraus operator on the PauliSum directly
-                # without even initializing the Kraus PauliSum.
-                # pauli = model.apply_kraus_operator(correct_pauli, gate.qudit_indices, i)
-                k = model.kraus_operators(self.dimensions, gate.qudit_indices)[i]
-                prob = model.kraus_probabilities(gate.n_qudits)[i]
-                pauli = (k * correct_pauli * k.H()) / prob
-
-                break
-            i -= nk
+        # Apply noise model
+        pauli = self.noise_model.act(pauli, gate.qudit_indices)
 
         return pauli
 
@@ -263,24 +253,19 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
         else:
             unitary = gate.unitary(self.dimensions)
 
-        correct_rho = unitary @ rho @ unitary.transpose().conjugate()
+        rho = unitary @ rho @ unitary.transpose().conjugate()
 
         # Apply noise using Kraus form: ρ_out = Σ_i K_i ρ K†_i
         output_rho: np.ndarray | None = None
-        for model in self.noise_models:
-            for K in model.kraus_operators(self.dimensions, gate.qudit_indices):
-                K_matrix = K.to_hilbert_space()
-                term = K_matrix @ correct_rho @ K_matrix.conj().T
-                if output_rho is None:
-                    output_rho = term
-                else:
-                    output_rho += term
+        for K in self.noise_model.kraus_operators(self.dimensions, gate.qudit_indices):
+            K_matrix = K.to_hilbert_space()
+            term = K_matrix @ rho @ K_matrix.conj().T
+            if output_rho is None:
+                output_rho = term
+            else:
+                output_rho += term
 
         assert output_rho is not None
-
-        # Normalize when combining multiple noise models
-        output_rho /= len(self.noise_models)
-
         return output_rho
 
     def act(self, pauli: PauliSum) -> PauliSum:
@@ -419,7 +404,7 @@ if __name__ == "__main__":
     dimension = dimensions[0]
     circuit = Circuit(dimensions, [PHASE(0, dimension)])
     rmb = RMB.from_random(dimensions, gate_density,
-                          noise_models=[DephasingNoise(0.25), DepolarizingNoise(0.15)],
+                          noise_model=DephasingNoise(0.25),
                           with_random_elimination=False,
                           rng=default_rng())
 
