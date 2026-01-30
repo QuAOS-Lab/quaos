@@ -1,16 +1,14 @@
 import numpy as np
 import pytest
-from numpy.random import default_rng
 
 from sympleq.applications.randomized_benchmarking.noise_model import (
     NoiseModel,
     Noiseless,
     DephasingNoise,
     DepolarizingNoise,
+    CompositeNoise,
 )
-from sympleq.applications.randomized_benchmarking.RMB import RMB, pauli_to_rho
-from sympleq.core.circuits.circuits import Circuit
-from sympleq.core.circuits.gates import PHASE, Hadamard
+from sympleq.applications.randomized_benchmarking.RMB import RMB
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 
 
@@ -19,6 +17,7 @@ NOISE_MODELS = [
     Noiseless(),
     DephasingNoise(error_rate=0.1),
     DepolarizingNoise(error_rate=0.1),
+    CompositeNoise.from_noise_models([DephasingNoise(0.1), DepolarizingNoise(0.1)]),
 ]
 
 
@@ -148,63 +147,96 @@ class TestNoiseModelEdgeCases:
 class TestRMB:
     """Tests for RMB class, moved from RMB.py."""
 
-    def test_simple_circuit_with_dephasing(self):
-        """Test RMB with a simple circuit and dephasing noise."""
-        n_qudits = 2
-        dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qudits
-        dimension = dimensions[0]
-
-        circuit = Circuit(dimensions, [Hadamard(0, dimension), PHASE(0, dimension)])
-        rmb = RMB(circuit, False, 0.0, 0.0, [DephasingNoise(0.1)], default_rng(42))
-
-        # Basic sanity checks
-        assert rmb.n_qudits == n_qudits
-        assert rmb.initial_state is not None
-
-        # Check that rho has trace 1
-        rho = pauli_to_rho(rmb.initial_state)
-        assert np.isclose(np.trace(rho), 1.0)
-
-    def test_random_rmb_with_multiple_noise_models(self):
-        """Test RMB.from_random with multiple noise models."""
-        n_qudits = 3
-        gate_density = 2.5
-        dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qudits
-
-        rmb = RMB.from_random(
-            dimensions,
-            gate_density,
-            noise_models=[DephasingNoise(0.25), DepolarizingNoise(0.15)],
-            with_random_elimination=0.0,
-            rng=default_rng(42)
-        )
-
-        assert rmb.n_qudits == n_qudits
-
-        # Test rho_exact returns valid density matrix
-        rho_exact = rmb.rho_exact()
-        assert np.isclose(np.trace(rho_exact), 1.0), \
-            f"rho_exact trace = {np.trace(rho_exact)}, expected 1.0"
-
-    def test_rho_exact_vs_rho_average_convergence(self):
+    @pytest.mark.parametrize("n_qudits", [2, 4, 6])
+    def test_rho_exact_vs_rho_average_convergence(self, n_qudits: int):
         """Test that rho_average converges to rho_exact with enough samples."""
-        n_qudits = 2
         dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qudits
+        noise_model = CompositeNoise.from_noise_models([DephasingNoise(0.2), DepolarizingNoise(0.0)])
 
         rmb = RMB.from_random(
             dimensions,
-            gate_density=1.0,
-            noise_models=[DephasingNoise(0.1)],
-            rng=default_rng(42)
+            gate_density=1.5,
+            noise_model=noise_model
         )
 
+        n_runs = 1000
+        rho_average = rmb.rho_average(n_runs=n_runs)
         rho_exact = rmb.rho_exact()
-        rho_average = rmb.rho_average(n_runs=1000)
 
         # Check traces are both 1
         assert np.isclose(np.trace(rho_exact), 1.0)
         assert np.isclose(np.trace(rho_average), 1.0)
 
-        # Check convergence (with some tolerance for stochastic sampling)
-        error = np.sum(np.abs(rho_exact - rho_average))
-        assert error < 0.5, f"Error between rho_exact and rho_average: {error}"
+        # Check convergence: error scales with state space size
+        max_error = np.max(np.abs(rho_exact - rho_average))
+        tolerance = 30 * n_qudits / n_runs
+        assert max_error < tolerance, f"Max error {max_error} exceeds tolerance {tolerance}"
+
+
+class TestCompositeNoise:
+    """Tests specific to CompositeNoise class."""
+
+    def test_from_noise_models_empty_list_raises(self):
+        """Empty noise_models list should raise ValueError."""
+        with pytest.raises(ValueError, match="cannot be empty"):
+            CompositeNoise.from_noise_models([])
+
+    def test_from_noise_models_single_model(self):
+        """CompositeNoise with single model should work."""
+        model = CompositeNoise.from_noise_models([DephasingNoise(0.1)])
+        assert model.n_kraus_operators() == 2  # I and Z
+
+    def test_n_kraus_operators_combines_unique(self):
+        """n_kraus_operators should return count of unique Paulis."""
+        # Dephasing has I, Z (2 operators)
+        # Depolarizing has I, X, Y, Z (4 operators)
+        # Combined should have I, X, Y, Z (4 unique operators)
+        composite = CompositeNoise.from_noise_models([
+            DephasingNoise(0.1),
+            DepolarizingNoise(0.1)
+        ])
+        assert composite.n_kraus_operators() == 4
+
+    def test_kraus_operators_length_matches_n_kraus(self):
+        """kraus_operators should return n_kraus_operators() operators."""
+        composite = CompositeNoise.from_noise_models([
+            DephasingNoise(0.1),
+            DepolarizingNoise(0.1)
+        ])
+        operators = composite.kraus_operators([2], [0])
+        assert len(operators) == composite.n_kraus_operators()
+
+    def test_probabilities_sum_to_one(self):
+        """Combined probabilities should be normalized to sum to 1."""
+        composite = CompositeNoise.from_noise_models([
+            DephasingNoise(0.1),
+            DepolarizingNoise(0.1)
+        ])
+        probs = composite.kraus_probabilities(1)
+        assert np.isclose(probs.sum(), 1.0)
+
+    def test_probabilities_non_negative(self):
+        """All probabilities should be non-negative."""
+        composite = CompositeNoise.from_noise_models([
+            DephasingNoise(0.5),
+            DepolarizingNoise(0.5)
+        ])
+        probs = composite.kraus_probabilities(1)
+        assert np.all(probs >= 0)
+
+    def test_weights_are_averaged(self):
+        """Weights for same Pauli should be averaged across models."""
+        # Two identical models should give same result as one
+        single = DephasingNoise(0.1)
+        composite = CompositeNoise.from_noise_models([
+            DephasingNoise(0.1),
+            DephasingNoise(0.1)
+        ])
+
+        single_ops = single.kraus_operators([2], [0], weighted=True)
+        composite_ops = composite.kraus_operators([2], [0], weighted=True)
+
+        # Same operators, same weights (since averaging identical models)
+        assert len(single_ops) == len(composite_ops)
+        for s_op, c_op in zip(single_ops, composite_ops):
+            assert np.isclose(s_op.weights[0], c_op.weights[0])
