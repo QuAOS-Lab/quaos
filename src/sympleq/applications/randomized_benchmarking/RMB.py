@@ -21,33 +21,15 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
 
         self.rng = rng
 
-        self.circuit = circuit + circuit.inv()
+        self._circuit = circuit + circuit.inv()
         self.noise_model = noise_model
-
-        dimensions = circuit.dimensions
-        n_qudits = len(dimensions)
-
-        pauli_strings = []
-        for p_idx in range(n_qudits):
-            pauli_string = ""
-            for q_idx in range(n_qudits):
-                if p_idx == q_idx:
-                    pauli_string += "x0z1"
-                else:
-                    pauli_string += "x0z0"
-            pauli_strings.append(pauli_string)
-
-        self.initial_state = PauliSum.from_string(pauli_strings, dimensions)
-
-        if random_initial_state:
-            random_phases = self.rng.choice(a=[0, 2], size=self.initial_state.n_paulis())
-            self.initial_state.set_phases(random_phases)
+        self._initial_state = RMB.initial_state(circuit.dimensions, random_initial_state, self.rng)
 
         # Eliminate and insert identity gates from and to the circuit to make it asymmetric.
         # This step is performed without applying errors.
         if with_random_elimination > 0.0:
-            pauli = self.initial_state
             gate_to_eliminate_indices = []
+            pauli = self._initial_state.copy()
             for idx, gate in enumerate(circuit.gates):
                 intermediate = gate.act(pauli)
                 if pauli == intermediate:
@@ -60,10 +42,34 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
                     if self.rng.choice(a=[False, True]):
                         # Remove gate from mirrored circuit (right part)
                         # idx can have max value len(circuit.gates) - 1 == len(self.circuit.gates) / 2 - 1
-                        self.circuit.remove_gate(len(self.circuit) - 1 - idx)
+                        self._circuit.remove_gate(len(self._circuit) - 1 - idx)
                     else:
                         # Remove gate from base circuit (left part)
-                        self.circuit.remove_gate(idx)
+                        self._circuit.remove_gate(idx)
+
+    @classmethod
+    def initial_state(cls,
+                      dimensions: list[int] | np.ndarray,
+                      random_phases: bool = False,
+                      rng: RNGGenerator | None = None) -> PauliSum:
+        if rng is None:
+            rng = default_rng()
+
+        pauli_strings = []
+        for p_idx in range(n_qudits):
+            pauli_string = ""
+            for q_idx in range(n_qudits):
+                if p_idx == q_idx:
+                    pauli_string += "x0z1"
+                else:
+                    pauli_string += "x0z0"
+            pauli_strings.append(pauli_string)
+
+        ps = PauliSum.from_string(pauli_strings, dimensions)
+        if random_phases:
+            ps.set_phases(rng.choice(a=[0, 2], size=ps.n_paulis()))
+
+        return ps
 
     @classmethod
     def from_circuit(cls,
@@ -154,25 +160,23 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
 
     @property
     def dimensions(self) -> np.ndarray:
-        return self.circuit.dimensions
+        return self._circuit.dimensions
 
     @property
     def gates(self) -> list[Gate]:
-        return self.circuit.gates
+        return self._circuit.gates
 
-    @property
     def n_gates(self) -> int:
-        return len(self.circuit.gates)
+        return len(self._circuit.gates)
 
-    @property
     def n_qudits(self) -> int:
-        return self.initial_state.n_qudits()
+        return len(self._circuit.dimensions)
 
-    def rho_average(self, n_runs: int = 1000) -> np.ndarray:
-        def _get_output_probabilities(n_runs: int = 1000) -> dict[PauliSum, int]:
+    def rho_average(self, pauli_sum: PauliSum, n_runs: int = 1000) -> np.ndarray:
+        def _get_output_probabilities(pauli_sum: PauliSum, n_runs: int = 1000) -> dict[PauliSum, int]:
             output_probabilities: dict[PauliSum, int] = {}
             for _ in range(n_runs):
-                output = self.get_output()
+                output = self.average_act(pauli_sum)
                 if output not in output_probabilities:
                     output_probabilities[output] = 1
                 else:
@@ -180,7 +184,7 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
 
             return output_probabilities
 
-        output = _get_output_probabilities(n_runs)
+        output = _get_output_probabilities(pauli_sum, n_runs)
         rho: np.ndarray | None = None
         for output_pauli, count in output.items():
             if rho is None:
@@ -191,15 +195,15 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
         assert rho is not None
         return rho
 
-    def rho_exact(self) -> np.ndarray:
-        rho = pauli_to_rho(self.initial_state)
+    def rho_exact(self, pauli_sum: PauliSum) -> np.ndarray:
+        rho = pauli_to_rho(pauli_sum)
 
         for gate in self.gates:
             rho = self._apply_gate_to_rho_with_error(gate, rho)
 
         return np.around(rho, 10)
 
-    def get_output(self, n_runs: int = 1) -> PauliSum:
+    def average_act(self, pauli_sum: PauliSum, n_runs: int = 1) -> PauliSum:
         """
         Calculate final output state, including random errors.
         Parameters
@@ -216,9 +220,9 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
         if n_runs < 1:
             raise ValueError(f"Number of runs must be greater equal to 1 (got {n_runs}).")
 
-        output = self.act(self.initial_state)
+        output = self.act(pauli_sum)
         for _ in range(n_runs - 1):
-            output += self.act(self.initial_state)
+            output += self.act(pauli_sum)
 
         output = output / n_runs
 
@@ -268,16 +272,16 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
         assert output_rho is not None
         return output_rho
 
-    def act(self, pauli: PauliSum) -> PauliSum:
+    def act(self, pauli_sum: PauliSum) -> PauliSum:
         for gate in self.gates:
-            pauli = self._apply_gate_to_pauli_with_error(gate, pauli)
+            pauli_sum = self._apply_gate_to_pauli_with_error(gate, pauli_sum)
 
-        return pauli
+        return pauli_sum
 
-    def act_iter(self, pauli: PauliSum) -> Generator[PauliSum, None, None]:
+    def act_iter(self, pauli_sum: PauliSum) -> Generator[PauliSum, None, None]:
         for gate in self.gates:
-            pauli = self._apply_gate_to_pauli_with_error(gate, pauli)
-            yield pauli
+            pauli_sum = self._apply_gate_to_pauli_with_error(gate, pauli_sum)
+            yield pauli_sum
 
     def __str__(self) -> str:
         """
@@ -291,103 +295,12 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
 
         p_string = f"""
 Initial state:
-  {self.initial_state}
+  {self._initial_state}
 
 Circuit:
-  {self.circuit}
+  {self._circuit}
 """
         return p_string
-
-    def fancy_str(self) -> str:
-        """
-        Returns a fancy string representation of the RMB.
-
-        Returns
-        -------
-        str
-            A string representation of the RMB.
-        """
-
-        def green(s):
-            return f"\033[92m{s}\033[0m"
-
-        def red(s):
-            return f"\033[91m{s}\033[0m"
-
-        def gate_name(gate: Gate) -> str:
-            return gate.name.replace("-inv", "*")[:gate_name_len].center(gate_name_len)
-
-        output_state = self.get_output()
-
-        lines: list[str] = ["" for _ in range(3 * self.n_qudits)]
-        gate_num: list[int] = [0 for _ in range(self.n_qudits)]
-        wires = [green("=") if self.initial_state.phases[l_idx] == output_state.phases[l_idx]
-                 else red("=") for l_idx in range(self.n_qudits)]
-
-        gate_name_len = 5
-        gate_len = gate_name_len + 4
-
-        # Put initial state phase on the left
-        for l_idx in range(self.n_qudits):
-            lines[3 * l_idx + 0] = " " * 4
-            lines[3 * l_idx + 1] = f"{self.initial_state.phases[l_idx]} " + wires[l_idx] * 2
-            lines[3 * l_idx + 2] = " " * 4
-
-        for gate in self.gates:
-            if gate.n_qudits == 1:
-                l_idx = gate.qudit_indices[0]
-
-                gate_num[l_idx] += 1
-
-                lines[3 * l_idx + 0] += " ┌" + "─" * gate_name_len + "┐ "
-                lines[3 * l_idx + 1] += wires[l_idx] + "│" + f"{gate_name(gate)}" + "│" + wires[l_idx]
-                lines[3 * l_idx + 2] += " └" + "─" * gate_name_len + "┘ "
-            # 2-qudit gate
-            else:
-                # Get max line length of affected qudits
-                max_num_gate_affected_qudits = max(
-                    [gate_num[idx] for idx in gate.qudit_indices])
-
-                for l_idx in gate.qudit_indices:
-                    while gate_num[l_idx] < max_num_gate_affected_qudits:
-                        gate_num[l_idx] += 1
-                        lines[3 * l_idx + 0] += " " * gate_len
-                        lines[3 * l_idx + 1] += wires[l_idx] * gate_len
-                        lines[3 * l_idx + 2] += " " * gate_len
-
-                    gate_num[l_idx] += 1
-
-                    is_top_qudit = l_idx == min(gate.qudit_indices)
-                    is_btm_qudit = l_idx == max(gate.qudit_indices)
-
-                    if is_top_qudit:
-                        lines[3 * l_idx + 0] += " ┌" + "─" * gate_name_len + "┐ "
-                    else:
-                        lines[3 * l_idx + 0] += " ┌" + "─" * (gate_name_len // 2) + \
-                            "┴" + "─" * (gate_name_len // 2) + "┐ "
-
-                    lines[3 * l_idx + 1] += wires[l_idx] + "│" + f"{gate_name(gate)}" + "│" + wires[l_idx]
-                    if is_btm_qudit:
-                        lines[3 * l_idx + 2] += " └" + "─" * gate_name_len + "┘ "
-                    else:
-                        lines[3 * l_idx + 2] += " └" + "─" * (gate_name_len // 2) + \
-                            "┬" + "─" * (gate_name_len // 2) + "┘ "
-
-        max_num_gate = max(gate_num)
-        for l_idx in range(self.n_qudits):
-            while gate_num[l_idx] < max_num_gate:
-                gate_num[l_idx] += 1
-                lines[3 * l_idx + 0] += " " * gate_len
-                lines[3 * l_idx + 1] += wires[l_idx] * gate_len
-                lines[3 * l_idx + 2] += " " * gate_len
-
-        # Put final state phase on the right
-        for l_idx in range(self.n_qudits):
-            lines[3 * l_idx + 0] += " " * 4
-            lines[3 * l_idx + 1] += wires[l_idx] * 2 + " " + f"{output_state.phases[l_idx]}"
-            lines[3 * l_idx + 2] += " " * 4
-
-        return "\n".join(lines)
 
 
 def pauli_to_rho(pauli: PauliSum) -> np.ndarray:
@@ -398,8 +311,8 @@ def pauli_to_rho(pauli: PauliSum) -> np.ndarray:
 
 
 if __name__ == "__main__":
-    n_qudits = 3
-    gate_density = 2.5
+    n_qudits = 4
+    gate_density = 4.5
     dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qudits
     dimension = dimensions[0]
     circuit = Circuit(dimensions, [PHASE(0, dimension)])
@@ -408,4 +321,5 @@ if __name__ == "__main__":
                           with_random_elimination=False,
                           rng=default_rng())
 
-    print(rmb.fancy_str())
+    print(rmb._circuit.fancy_str(with_qudit_indices=True, with_input=rmb._initial_state,
+          with_output=rmb.average_act(rmb._initial_state)))
