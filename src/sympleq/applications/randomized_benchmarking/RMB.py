@@ -302,6 +302,43 @@ Circuit:
 """
         return p_string
 
+    def gates_layout(self, with_qudit_indices: bool = False, wrap: bool = True) -> str:
+        """
+        Returns a visual circuit diagram of the RMB.
+
+        Renders the circuit as ASCII art with gates displayed as boxes
+        connected by wires.
+
+        Parameters
+        ----------
+        with_qudit_indices : bool, default False
+            If True, display qudit indices on the left of each wire.
+        wrap : bool, default True
+            If True, wrap the output to fit the terminal width by splitting
+            at gate boundaries.
+
+        Returns
+        -------
+        str
+            A string representation of the circuit diagram.
+        """
+
+        def green(s):
+            return f"\033[92m{s}\033[0m"
+
+        def red(s):
+            return f"\033[91m{s}\033[0m"
+
+        n_qudits = self.n_qudits()
+        wires = [green("=") if with_input.phases[l_idx] == with_output.phases[l_idx]
+                 else red("=") for l_idx in range(n_qudits)]
+        return self._circuit.gates_layout(
+            with_qudit_indices=with_qudit_indices,
+            with_input=self._initial_state,
+            with_output=self.act(self._initial_state),
+            wires=wires,
+            wrap=wrap)
+
 
 def pauli_to_rho(pauli: PauliSum) -> np.ndarray:
     _, states = pauli.ordered_eigenspectrum()
@@ -321,5 +358,4 @@ if __name__ == "__main__":
                           with_random_elimination=False,
                           rng=default_rng())
 
-    print(rmb._circuit.fancy_str(with_qudit_indices=True, with_input=rmb._initial_state,
-          with_output=rmb.average_act(rmb._initial_state)))
+    print(rmb.gates_layout(with_qudit_indices=True))
