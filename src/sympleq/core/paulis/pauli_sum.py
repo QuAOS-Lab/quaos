@@ -764,6 +764,19 @@ class PauliSum(PauliObject):
         """
         return self._tableau[:, self.n_qudits():]
 
+    def is_identity(self) -> bool:
+        """
+        Check if the PauliSum represents the identity operator.
+
+        Returns
+        -------
+        bool
+            True if the PauliSum is the identity operator, False otherwise.
+        """
+        P = self.copy()
+        P.combine_equivalent_paulis()
+        return bool(np.all(P._tableau == 0)) and bool(np.all(P._phases == 0)) and bool(np.all(P._weights == 1))
+
     def combine_equivalent_paulis(self):
         """
         Combines equivalent Pauli operators in the sum by summing their coefficients and deleting duplicates.
