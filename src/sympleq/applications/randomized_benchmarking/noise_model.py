@@ -95,7 +95,7 @@ class NoiseModel(ABC):
         Output is an array of length n^M where n = n_kraus_operators and M = n_qudits.
         The probabilities sum to 1.
         """
-        pass
+        return np.sum(self.process_matrix(n_qudits), axis=1)
 
     @abstractmethod
     def process_matrix(self, n_qudits: int) -> np.ndarray:
@@ -137,13 +137,6 @@ class Noiseless(NoiseModel):
     def n_kraus_operators(self) -> int:
         return 1
 
-    def kraus_probabilities(self, n_qudits: int) -> np.ndarray:
-        """
-        Returns the Kraus probabilities for the noiseless channel.
-        Always [1.0] since there's only one Kraus operator (identity).
-        """
-        return np.array([1.0], dtype=float)
-
     def kraus_operators(self,
                         dimensions: list[int] | np.ndarray,
                         qudit_indices: list[int] | np.ndarray,
@@ -183,22 +176,6 @@ class DephasingNoise(NoiseModel):
 
     def n_kraus_operators(self) -> int:
         return 2
-
-    def kraus_probabilities(self, n_qudits: int) -> np.ndarray:
-        """
-        Returns the Kraus probabilities for the dephasing channel.
-        Each probability is the product of single-qudit probabilities.
-        """
-        single_qudit_probs = np.array([
-            np.abs(self.alpha_00)**2,
-            np.abs(self.alpha_11)**2
-        ], dtype=float)
-
-        result = single_qudit_probs
-        for _ in range(n_qudits - 1):
-            result = np.kron(result, single_qudit_probs)
-
-        return result
 
     def kraus_operators(self,
                         dimensions: list[int] | np.ndarray,
@@ -274,24 +251,6 @@ class DepolarizingNoise(NoiseModel):
 
     def n_kraus_operators(self) -> int:
         return 4
-
-    def kraus_probabilities(self, n_qudits: int) -> np.ndarray:
-        """
-        Returns the Kraus probabilities for the depolarizing channel.
-        Each probability is the product of single-qudit probabilities.
-        """
-        single_qudit_probs = np.array([
-            np.abs(self.alpha_00)**2,
-            np.abs(self.alpha_ii)**2,
-            np.abs(self.alpha_ii)**2,
-            np.abs(self.alpha_ii)**2
-        ], dtype=float)
-
-        result = single_qudit_probs
-        for _ in range(n_qudits - 1):
-            result = np.kron(result, single_qudit_probs)
-
-        return result
 
     def kraus_operators(self,
                         dimensions: list[int] | np.ndarray,
@@ -379,6 +338,15 @@ class CompositeNoise(NoiseModel):
             rng = default_rng()
         return cls(noise_models, rng)
 
+    @classmethod
+    def from_process_matrix(cls, noise_models: list[NoiseModel],
+                            rng: RNGGenerator | None = None) -> CompositeNoise:
+        if not noise_models:
+            raise ValueError("noise_models list cannot be empty")
+        if rng is None:
+            rng = default_rng()
+        return cls(noise_models, rng)
+
     def n_kraus_operators(self) -> int:
         # Return the number of unique Pauli operators across all models
         # Use dummy dimensions to count unique operators
@@ -406,7 +374,12 @@ class CompositeNoise(NoiseModel):
             probs = model.kraus_probabilities(n_qudits)
             weights = np.sqrt(probs)
             for idx, op in enumerate(operators):
+                if op.is_identity:
+                    continue
                 weight = weights[idx]
+
+                # If operator is unity, don't add to the weight.
+                # The noiseless channel will have a weight equal to 1 - Sum toher_channels
 
                 if op in operator_weights:
                     operator_weights[op] += weight
@@ -438,24 +411,6 @@ class CompositeNoise(NoiseModel):
                 operators.append(op)
 
         return operators
-
-    def kraus_probabilities(self, n_qudits: int) -> np.ndarray:
-        """
-        Returns combined Kraus probabilities.
-
-        For each unique Pauli operator, sum the weights from all models,
-        normalize by number of models, then compute probability as |weight|^2.
-        """
-        # We need actual dimensions to get operators, use a dummy
-        dimensions = [2] * n_qudits  # Assume qubit for probability calculation
-        qudit_indices = list(range(n_qudits))
-
-        # Get weighted operators to extract combined weights
-        combined = self._combine_operators(dimensions, qudit_indices)
-
-        # Probability is |weight|^2, weight is stored in the PauliSum
-        probs = np.asarray([np.abs(weight) ** 2 for weight in combined.values()], dtype=float)
-        return probs
 
     def process_matrix(self, n_qudits: int) -> np.ndarray:
         """
