@@ -330,12 +330,14 @@ Circuit:
             return f"\033[91m{s}\033[0m"
 
         n_qudits = self.n_qudits()
+        with_input = self._initial_state
+        with_output = self.act(self._initial_state)
         wires = [green("=") if with_input.phases[l_idx] == with_output.phases[l_idx]
                  else red("=") for l_idx in range(n_qudits)]
         return self._circuit.gates_layout(
             with_qudit_indices=with_qudit_indices,
-            with_input=self._initial_state,
-            with_output=self.act(self._initial_state),
+            with_input=with_input,
+            with_output=with_output,
             wires=wires,
             wrap=wrap)
 
