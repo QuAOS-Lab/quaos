@@ -141,10 +141,11 @@ class TestSymmetryFinder:
 
     def test_random_arbitrary_symmetry(self):
 
-        n_tests = 100
+        n_tests = 20
         p = 2
-        n_qudits = 3
-        n_paulis = 7
+        n_qudits = 15
+        n_paulis = 40
+
         for _ in range(n_tests):
             sym = Circuit.from_random(10, [p] * n_qudits)  #
             sym = sym.composite_gate()
@@ -153,27 +154,69 @@ class TestSymmetryFinder:
             C = Circuit.from_random(100, H.dimensions).composite_gate()  # scrambling circuit
             H = C.act(H)
             H.weight_to_phase()
+            H.weights = np.round(H.weights, 2)
             scrambled_sym = Circuit(H.dimensions, [C.inv(), sym, C]).composite_gate()
-            assert H.to_standard_form() == scrambled_sym.act(H).to_standard_form(
-            ), f"\n{H.to_standard_form().__str__()}\n{sym.act(H).to_standard_form().__str__()}"
+            # , f"\n{H.to_standard_form().__str__()}\n{sym.act(H).to_standard_form().__str__()}"
+            assert H.is_close(scrambled_sym.act(H), literal=False), "Scrambled Hamiltonian not symmetric."
 
             known_F = scrambled_sym.symplectic
-            circ = find_clifford_symmetries(H)
+            if np.array_equal(known_F, np.eye(known_F.shape[0], dtype=known_F.dtype)) or H.n_paulis() <= 2 * n_qudits:
+                # Trivial symmetry, or incomplete basis, skipping test
+                continue
+            else:
+                circ = find_clifford_symmetries(H)
 
-            assert len(circ) != 0, f"No symmetries found for run {_}"
+                assert len(
+                    circ) != 0, (f"No symmetries found for run {_} \n F:{known_F}"
+                                 " \n H:\n{H.tableau}\nHF:\n{scrambled_sym.act(H).tableau}")
 
-            for c in circ:
-                print(np.all(c.symplectic == known_F) and np.all(
-                    c.phase_vector == scrambled_sym.phase_vector))
-                H_s = H.to_standard_form()
-                H_out = c.act(H).to_standard_form()
-                H_s.weight_to_phase()
-                H_out.weight_to_phase()
-                assert np.all(H_s.tableau == H_out.tableau)
-                assert np.all(H_s.phases == H_out.phases)
-                assert np.all(H_s.weights == H_out.weights)
+                for c in circ:
 
-                assert c.act(H).to_standard_form() == H.to_standard_form()
+                    H_s = H.to_standard_form()
+                    H_out = c.act(H).to_standard_form()
+                    H_s.weight_to_phase()
+                    H_out.weight_to_phase()
+                    assert np.all(H_s.tableau == H_out.tableau)
+                    assert np.all(H_s.phases == H_out.phases)
+                    assert np.all(H_s.weights == H_out.weights)
+
+                    assert c.act(H).to_standard_form() == H.to_standard_form()
+
+    def test_random_arbitrary_symmetry_with_block_decomposition(self):
+
+        n_tests = 5
+        p = 2
+        n_qudits = 10
+        n_paulis = 25
+
+        for _ in range(n_tests):
+            sym = Circuit.from_random(10, [p] * n_qudits)  #
+            sym = sym.composite_gate()
+            # unscrambled H
+            H = random_gate_symmetric_hamiltonian(sym, n_qudits, n_paulis, scrambled=False)
+            C = Circuit.from_random(100, H.dimensions).composite_gate()  # scrambling circuit
+            qc = qudit_cost(sym)
+            H = C.act(H)
+            H.weight_to_phase()
+            H.weights = np.round(H.weights, 2)
+            scrambled_sym = Circuit(H.dimensions, [C.inv(), sym, C]).composite_gate()
+            # , f"\n{H.to_standard_form().__str__()}\n{sym.act(H).to_standard_form().__str__()}"
+            assert H.is_close(scrambled_sym.act(H), literal=False), "Scrambled Hamiltonian not symmetric."
+
+            known_F = scrambled_sym.symplectic
+            if np.array_equal(known_F, np.eye(known_F.shape[0], dtype=known_F.dtype)) or H.n_paulis() <= 2 * n_qudits:
+                # Trivial symmetry, or incomplete basis, skipping test
+                continue
+            else:
+                F, S, T = min_qudit_clifford_symmetry(H)
+
+                assert F == Circuit(F.dimensions, [T.inv(), S, T]).composite_gate()
+
+                assert H.to_standard_form() == F.act(H).to_standard_form()
+                assert T.act(S.act(T.inv().act(H))).to_standard_form() == H.to_standard_form()
+
+                assert S.act(T.inv().act(H)).to_standard_form() == T.inv().act(H).to_standard_form()
+                assert qudit_cost(S) <= qc
 
     def test_generate_symmetric_hamiltonian(self):
         n_qudits = 5

@@ -768,17 +768,15 @@ class PauliSum(PauliObject):
         """
         Combines equivalent Pauli operators in the sum by summing their coefficients and deleting duplicates.
         """
-        # self.standardise()  # makes sure all phases are 0
+        # Match the graphs branch: absorb phases into weights, then merge by tableau equality.
         self.phase_to_weight()
-        # combine equivalent Paulis
+
         to_delete = []
         for i in reversed(range(self.n_paulis())):
             ps1 = self.select_pauli_string(i)
             for j in range(i + 1, self.n_paulis()):
                 ps2 = self.select_pauli_string(j)
                 if ps1.has_equal_tableau(ps2):
-                    # FIXME: can overflow for very large n_paulis.
-                    #        One solution could be to normalize it by dividing by the smallest weight.
                     self._weights[i] = self.weights[i] + self.weights[j]
                     to_delete.append(j)
         self._delete_paulis(to_delete)
