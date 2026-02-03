@@ -86,7 +86,7 @@ def solve_phase_vector_h_from_residual(
 
         # ODD PRIME
         else:
-            raise NotImplementedError("Odd-prime uniform dimensions not yet implemented for phase correction.")
+            # raise NotImplementedError("Odd-prime uniform dimensions not yet implemented for phase correction.")
             A_p_full = (A % p_uni).astype(int, copy=False)
             b_p_full = (b % p_uni).astype(int, copy=False)
 

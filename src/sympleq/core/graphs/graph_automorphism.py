@@ -114,10 +114,11 @@ def _gf2_inv(M: np.ndarray) -> np.ndarray:
 
 
 def _check_code_automorphism(
-    G: galois.FieldArray | np.ndarray,
+    G: galois.FieldArray,
     basis_order: list[int],
     labels: list[int],
-    pi: np.ndarray
+    pi: np.ndarray,
+    G_mod2: np.ndarray | None = None,
 ) -> bool:
     """
     Linear-code test over GF(p): there exists U with U G P = G ?
@@ -126,22 +127,23 @@ def _check_code_automorphism(
     lab_to_idx = {lab: i for i, lab in enumerate(labels)}
     B_cols = np.array([lab_to_idx[b] for b in basis_order], dtype=int)
     PBcols = pi[B_cols]
-    C = G[:, PBcols]
-
-    if isinstance(G, np.ndarray):
+    if G_mod2 is not None:
+        C = G_mod2[:, PBcols]
         try:
             Cinv = _gf2_inv(C)
         except np.linalg.LinAlgError:
             return False
+        Gp = G_mod2[:, pi]
+        return np.array_equal((Cinv @ Gp) & 1, G_mod2)
+    else:
+        C = G[:, PBcols]
+        # fall back to galois / numpy inverse; accept LinAlgError as failure
+        try:
+            U = np.linalg.inv(C)  # works on galois.FieldArray
+        except np.linalg.LinAlgError:
+            return False
         Gp = G[:, pi]
-        return np.array_equal((Cinv @ Gp) & 1, G)
-
-    try:
-        U = np.linalg.inv(C)  # works on galois.FieldArray
-    except np.linalg.LinAlgError:
-        return False
-    Gp = G[:, pi]
-    return np.array_equal(U @ Gp, G)
+        return np.array_equal(U @ Gp, G)
 
 
 @dataclass
@@ -151,7 +153,7 @@ class _LeafContext:
     n_qudits: int
     identity_perm: np.ndarray
     S_mod: np.ndarray
-    G: galois.FieldArray | np.ndarray
+    G: galois.FieldArray
     G_mod2: np.ndarray | None
     basis_order: list[int]
     labels: list[int]
@@ -177,7 +179,7 @@ def _check_leaf(pi: np.ndarray, ctx: _LeafContext) -> Gate | None:
         return None
     if not np.array_equal(ctx.S_mod[np.ix_(pi, pi)], ctx.S_mod):
         return None
-    if not _check_code_automorphism(ctx.G, ctx.basis_order, ctx.labels, pi):
+    if not _check_code_automorphism(ctx.G, ctx.basis_order, ctx.labels, pi, ctx.G_mod2):
         return None
 
     H_basis_src = ctx.basis_source_ps
@@ -211,7 +213,7 @@ def _check_leaf(pi: np.ndarray, ctx: _LeafContext) -> Gate | None:
             h0, SG_F, H_full_F, delta = h0_alt, SG_F_alt, H_full_Fa, delta_alt
 
     h_lin = solve_phase_vector_h_from_residual(ctx.base_tableau, delta, ctx.pauli_sum.dimensions,
-                                               debug=True, row_basis_cache=ctx.row_basis_cache)
+                                               debug=False, row_basis_cache=ctx.row_basis_cache)
     if h_lin is None:
         return None
 
@@ -378,7 +380,7 @@ def clifford_graph_automorphism_search(
         n_qudits=pauli_sum.n_qudits(),
         identity_perm=identity_perm,
         S_mod=S_mod,
-        G=G_mod2 if G_mod2 is not None else G,
+        G=G,
         G_mod2=G_mod2,
         basis_order=basis_order,
         labels=labels,

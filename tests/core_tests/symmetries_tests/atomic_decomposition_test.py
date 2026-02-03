@@ -1116,7 +1116,6 @@ class TestAtomicUnipotentP2:
         assert np.array_equal(mod_p(N @ N, p), np.zeros_like(N)), "expected nilpotent index <= 2"
 
 
-
 class TestAtomicDecomposition:
     def test_atomic_block_decompose_paired_only_certified(self) -> None:
         # Choose F so all sectors are paired (odd p, eigenvalues a and a^{-1} with a!=a^{-1})
@@ -1354,59 +1353,26 @@ class TestAtomicDecompositionFuzz:
         """
         trials = 500
         max_n = 5
-        steps = 16
+        steps = 86
 
         if trials <= 0:
             pytest.skip("SYMPLEQ_FUZZ_TRIALS<=0")
 
         rng = np.random.default_rng()
-        trial_seed = int(rng.integers(0, 2**63 - 1))
-        rng_trial = np.random.default_rng(trial_seed)
         p = 2
 
         for t in range(trials):
             n = int(rng.integers(1, max_n + 1))
             F = rand_symplectic(rng, n, p, steps=steps)
+            Sigma, B, info = atomic_block_decompose(F, p)
 
-            try:
-                Sigma, B, info = atomic_block_decompose(F, p)
+            assert is_symplectic(Sigma, p)
+            assert rank_mod(B, p) == 2 * n
+            _assert_symplectic_basis_full(B, p)
 
-                assert is_symplectic(Sigma, p)
-                assert rank_mod(B, p) == 2 * n
-                _assert_symplectic_basis_full(B, p)
-
-                Linv = symplectic_left_inverse(B, p)
-                recon = mod_p(B @ Sigma @ Linv, p)
-                assert np.array_equal(recon, mod_p(F, p))
-
-            except Exception as e:
-                Fm = mod_p(F, p)
-                report = _diagnose_one_case(Fm, p)
-                repro = textwrap.dedent(f"""
-                ======= REPRO (copy/paste) =======
-                import numpy as np
-                from sympleq.core.symmetries.atomic_decomposition import atomic_block_decompose
-                from sympleq.core.symmetries.modular_helpers import mod_p
-                p = {p}
-                F = np.array({_fmt_mat(Fm)}, dtype=np.int64)
-                Sigma, B, info = atomic_block_decompose(F, p)
-                print("info:", info)
-                ==================================
-                """).strip()
-
-                pytest.fail(
-                    "\n".join([
-                        f"[FUZZ FAIL] p={p} trial={t}/{trials} n={n} steps={steps},trial_seed={trial_seed}",
-                        f"Top-level error: {type(e).__name__}: {e}",
-                        "",
-                        "F =",
-                        _fmt_mat(Fm),
-                        "",
-                        report,
-                        "",
-                        repro,
-                    ])
-                )
+            Linv = symplectic_left_inverse(B, p)
+            recon = mod_p(B @ Sigma @ Linv, p)
+            assert np.array_equal(recon, mod_p(F, p))
 
     def test_fuzz_atomic_block_decompose_p2_unipotent_shears(self) -> None:
         """
@@ -1419,7 +1385,7 @@ class TestAtomicDecompositionFuzz:
           SYMPLEQ_FUZZ_SHEARLEN=8
         """
 
-        trials = 5
+        trials = 50
         max_n = 5
         shear_len = 8
 
@@ -1439,43 +1405,12 @@ class TestAtomicDecompositionFuzz:
                 F = mod_p(_symplectic_shear_lower(C, p) @ F, p)
 
             assert is_symplectic(F, p)
+            Sigma, B, info = atomic_block_decompose(F, p)
 
-            try:
-                Sigma, B, info = atomic_block_decompose(F, p)
+            assert is_symplectic(Sigma, p)
+            assert rank_mod(B, p) == 2 * n
+            _assert_symplectic_basis_full(B, p)
 
-                assert is_symplectic(Sigma, p)
-                assert rank_mod(B, p) == 2 * n
-                _assert_symplectic_basis_full(B, p)
-
-                Linv = symplectic_left_inverse(B, p)
-                recon = mod_p(B @ Sigma @ Linv, p)
-                assert np.array_equal(recon, mod_p(F, p))
-
-            except Exception as e:
-                Fm = mod_p(F, p)
-                report = _diagnose_one_case(Fm, p)
-                repro = textwrap.dedent(f"""
-                ======= REPRO (copy/paste) =======
-                import numpy as np
-                from sympleq.core.symmetries.atomic_decomposition import atomic_block_decompose
-                from sympleq.core.symmetries.modular_helpers import mod_p
-                p = {p}
-                F = np.array({_fmt_mat(Fm)}, dtype=np.int64)
-                Sigma, B, info = atomic_block_decompose(F, p)
-                print("info:", info)
-                ==================================
-                """).strip()
-
-                pytest.fail(
-                    "\n".join([
-                        f"[FUZZ FAIL - UNIPOTENT BIAS] p={p} trial={t}/{trials} n={n} shear_len={shear_len}",
-                        f"Top-level error: {type(e).__name__}: {e}",
-                        "",
-                        "F =",
-                        _fmt_mat(Fm),
-                        "",
-                        report,
-                        "",
-                        repro,
-                    ])
-                )
+            Linv = symplectic_left_inverse(B, p)
+            recon = mod_p(B @ Sigma @ Linv, p)
+            assert np.array_equal(recon, mod_p(F, p))

@@ -141,7 +141,7 @@ class TestSymmetryFinder:
 
     def test_random_arbitrary_symmetry(self):
 
-        n_tests = 20
+        n_tests = 200
         p = 2
         n_qudits = 15
         n_paulis = 40
@@ -184,7 +184,7 @@ class TestSymmetryFinder:
 
     def test_random_arbitrary_symmetry_with_block_decomposition(self):
 
-        n_tests = 5
+        n_tests = 50
         p = 2
         n_qudits = 10
         n_paulis = 25
@@ -240,4 +240,3 @@ class TestSymmetryFinder:
             H.weights = np.round(H.weights, 2)
             scrambled_sym = Circuit(H.dimensions, [C.inv(), sym, C]).composite_gate()
             assert H.is_close(scrambled_sym.act(H), literal=False), "Scrambled Hamiltonian not symmetric."
-

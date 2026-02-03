@@ -20,6 +20,8 @@ def min_qudit_clifford_symmetry(pauli_sum: PauliSum,
 
     G = find_clifford_symmetries(pauli_sum, num_symmetries=1,
                                  dynamic_refine_every=0)
+    if len(G) == 0:
+        raise RuntimeError("No non-trivial Clifford symmetry found for the given PauliSum.")
     g = G[0]
 
     print('Got symmetry - decomposing')
