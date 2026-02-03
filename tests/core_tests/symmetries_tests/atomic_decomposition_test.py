@@ -1414,3 +1414,4 @@ class TestAtomicDecompositionFuzz:
             Linv = symplectic_left_inverse(B, p)
             recon = mod_p(B @ Sigma @ Linv, p)
             assert np.array_equal(recon, mod_p(F, p))
+
