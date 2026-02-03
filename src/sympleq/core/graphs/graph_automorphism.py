@@ -86,8 +86,35 @@ class _ConsistencyChecker:
         return _consistent_numba(self.S_mod, phi, mapped_idx, i, y)
 
 
+def _gf2_inv(M: np.ndarray) -> np.ndarray:
+    """Invert a square GF(2) matrix using XOR elimination; raises LinAlgError if singular."""
+    A = (M.copy().astype(np.uint8) & 1)
+    n = A.shape[0]
+    if A.shape[0] != A.shape[1]:
+        raise np.linalg.LinAlgError("GF2 inverse requires square matrix")
+    I = np.eye(n, dtype=np.uint8)
+    aug = np.hstack((A, I))
+    row = 0
+    for col in range(n):
+        if row >= n:
+            break
+        nz = np.flatnonzero(aug[row:, col])
+        if nz.size == 0:
+            continue
+        piv = row + nz[0]
+        if piv != row:
+            aug[[row, piv]] = aug[[piv, row]]
+        mask = aug[:, col].astype(bool)
+        mask[row] = False
+        aug[mask] ^= aug[row]
+        row += 1
+    if not np.array_equal(aug[:, :n] & 1, np.eye(n, dtype=np.uint8)):
+        raise np.linalg.LinAlgError("matrix is singular over GF(2)")
+    return aug[:, n:] & 1
+
+
 def _check_code_automorphism(
-    G: galois.FieldArray,
+    G: galois.FieldArray | np.ndarray,
     basis_order: list[int],
     labels: list[int],
     pi: np.ndarray
@@ -100,6 +127,15 @@ def _check_code_automorphism(
     B_cols = np.array([lab_to_idx[b] for b in basis_order], dtype=int)
     PBcols = pi[B_cols]
     C = G[:, PBcols]
+
+    if isinstance(G, np.ndarray):
+        try:
+            Cinv = _gf2_inv(C)
+        except np.linalg.LinAlgError:
+            return False
+        Gp = G[:, pi]
+        return np.array_equal((Cinv @ Gp) & 1, G)
+
     try:
         U = np.linalg.inv(C)  # works on galois.FieldArray
     except np.linalg.LinAlgError:
@@ -115,7 +151,8 @@ class _LeafContext:
     n_qudits: int
     identity_perm: np.ndarray
     S_mod: np.ndarray
-    G: galois.FieldArray
+    G: galois.FieldArray | np.ndarray
+    G_mod2: np.ndarray | None
     basis_order: list[int]
     labels: list[int]
     pauli_sum: PauliSum
@@ -330,13 +367,19 @@ def clifford_graph_automorphism_search(
                     break
         return best_i
 
+    # For GF(2), carry an int copy to avoid FieldArray overhead in the code-automorphism test
+    G_mod2 = None
+    if p == 2:
+        G_mod2 = (np.asarray(G, dtype=np.uint8) & 1)
+
     leaf_ctx = _LeafContext(
         p=p,
         two_lcm=2 * int(pauli_sum.lcm),
         n_qudits=pauli_sum.n_qudits(),
         identity_perm=identity_perm,
         S_mod=S_mod,
-        G=G,
+        G=G_mod2 if G_mod2 is not None else G,
+        G_mod2=G_mod2,
         basis_order=basis_order,
         labels=labels,
         pauli_sum=pauli_sum,
