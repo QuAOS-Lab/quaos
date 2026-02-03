@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import numpy as np
 import galois
 from numba import njit
+from typing import Any
 from sympleq.core.graphs.graph_coloring import _build_base_partition
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 from sympleq.core.circuits.target import find_map_to_target_pauli_sum
@@ -260,6 +261,15 @@ def clifford_graph_automorphism_search(
     base_order = sorted(base_classes.keys(), key=lambda c: -len(base_classes[c]))
     domain_order = [i for c in base_order for i in base_classes[c]]
 
+    # Track remaining candidates per color (and coeff if present) to avoid repeated scans in select_next
+    rem_counts: dict[Any, int] = {}
+    if coeffs is None:
+        rem_counts.update({c: len(base_classes[c]) for c in base_classes})
+    else:
+        for idx in range(n):
+            key = (int(base_colors[idx]), coeffs[idx])
+            rem_counts[key] = rem_counts.get(key, 0) + 1
+
     # Prepare references for the leaf checks so they dont have to be computed every time
     pauli_weighted = pauli_sum.copy()
     pauli_weighted.weight_to_phase()
@@ -290,14 +300,30 @@ def clifford_graph_automorphism_search(
     steps = 0
     cur_colors = base_colors.copy()
 
+    def _dec_count(y_idx: int):
+        if coeffs is None:
+            rem_counts[int(base_colors[y_idx])] -= 1
+        else:
+            key = (int(base_colors[y_idx]), coeffs[y_idx])
+            rem_counts[key] -= 1
+
+    def _inc_count(y_idx: int):
+        if coeffs is None:
+            rem_counts[int(base_colors[y_idx])] += 1
+        else:
+            key = (int(base_colors[y_idx]), coeffs[y_idx])
+            rem_counts[key] += 1
+
     def select_next() -> int:
-        # MRV measured against base feasibility
+        # MRV measured against remaining count in the relevant color/coeff bucket
         best_i, best_rem = -1, 10**9
         for i in domain_order:
             if phi[i] >= 0:
                 continue
-            bi = int(base_colors[i])
-            rem = sum((not used[y] and (coeffs is None or coeffs[i] == coeffs[y])) for y in base_classes[bi])
+            if coeffs is None:
+                rem = rem_counts[int(base_colors[i])]
+            else:
+                rem = rem_counts.get((int(base_colors[i]), coeffs[i]), 0)
             if rem < best_rem:
                 best_i, best_rem = i, rem
                 if rem <= 1:
@@ -364,10 +390,12 @@ def clifford_graph_automorphism_search(
                 continue
             phi[i] = y
             used[y] = True
+            _dec_count(y)
             if dfs():
                 return True
             phi[i] = -1
             used[y] = False
+            _inc_count(y)
         return False
 
     dfs()
