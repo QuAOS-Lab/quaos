@@ -414,6 +414,30 @@ class TestCircuits():
 
         assert ps == result
 
+    def test_gates_layout(self):
+        dimensions = [3] * 4
+        circuit = Circuit.from_random(np.random.randint(4, 12), dimensions)
+
+        # Just check that it doesn't crash
+        _ = circuit.gates_layout()
+        _ = circuit.gates_layout(with_qudit_indices=True)
+        ps_in = PauliSum.from_random(len(dimensions), dimensions)
+        _ = circuit.gates_layout(with_qudit_indices=True, with_input=ps_in)
+        ps_out = PauliSum.from_random(len(dimensions), dimensions)
+        _ = circuit.gates_layout(with_qudit_indices=True, with_input=ps_in, with_output=ps_out)
+        _ = circuit.gates_layout(with_qudit_indices=True, with_input=ps_in, with_output=ps_out, wrap=False)
+
+    def test_gates_layout_exception(self):
+        dimensions = [3] * 4
+        circuit = Circuit.from_random(np.random.randint(4, 12), dimensions)
+
+        # Just check that it doesn't crash
+        _ = circuit.gates_layout(wires="-")
+        _ = circuit.gates_layout(wires=["x"] * circuit.n_qudits())
+
+        with pytest.raises(ValueError):
+            _ = circuit.gates_layout(wires=["x"] * (circuit.n_qudits() + 1))
+
 
 if __name__ == '__main__':
     TestCircuits().test_circuit_unitary()

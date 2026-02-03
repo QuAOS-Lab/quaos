@@ -1,6 +1,5 @@
-# pip install openfermion openfermionpyscf pyscf pandas
+# pip install openfermion openfermionpyscf pyscf
 import numpy as np
-import pandas as pd
 
 from openfermion.chem.molecular_data import MolecularData
 from openfermion.transforms.opconversions.jordan_wigner import jordan_wigner
@@ -62,17 +61,6 @@ def qubit_pauli_tableau(qubit_op, n_qubits=None):
         coeffs.append(coeff)
 
     return np.vstack(rows), np.array(coeffs, dtype=complex)
-
-
-def tableau_dataframe(tableau, coeffs):
-    n_qubits = tableau.shape[1] // 2
-    cols = [f"X{j}" for j in range(n_qubits)] + [f"Z{j}" for j in range(n_qubits)] + ["coeff_re", "coeff_im"]
-    df = pd.DataFrame(
-        np.hstack([tableau, np.column_stack([coeffs.real, coeffs.imag])]),
-        columns=cols
-    )
-    df[cols] = df[cols].astype(object)  # keep ints where possible
-    return df
 
 
 def chemistry_hamiltonian(geometry, basis="sto-3g", multiplicity=1, charge=0,

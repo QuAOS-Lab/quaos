@@ -119,6 +119,12 @@ class Circuit:
         self.gates.pop(index)
         self.indexes.pop(index)
 
+    def n_gates(self) -> int:
+        """
+        Returns the number of gates in the circuit.
+        """
+        return len(self.gates)
+
     def n_qudits(self) -> int:
         """
         Returns the number of qudits in the circuit.
@@ -293,3 +299,190 @@ class Circuit:
         # TODO If two gates are the inverse of each other and next to each other, remove them both. This happens
         # in a few algorithms
         raise NotImplementedError
+
+    def gates_layout(self,
+                     with_qudit_indices: bool = False,
+                     with_input: PauliSum | None = None,
+                     with_output: PauliSum | None = None,
+                     wires: str | list[str] | None = None,
+                     wrap: bool = True) -> str:
+        """
+        Returns a visual circuit diagram of the RMB.
+
+        Renders the circuit as ASCII art with gates displayed as boxes
+        connected by wires.
+
+        Parameters
+        ----------
+        with_qudit_indices : bool, default False
+            If True, display qudit indices on the left of each wire.
+        with_input : PauliSum | None, default None
+            If provided, display input phases on the left.
+        with_output : PauliSum | None, default None
+            If provided, display output phases on the right.
+        wires : str | list[str] | None, default None
+            If provided, overrides default wires strin. If a list is provided, its length must match circuit n_qudits.
+        wrap : bool, default True
+            If True, wrap the output to fit the terminal width by splitting
+            at gate boundaries.
+
+        Returns
+        -------
+        str
+            A string representation of the circuit diagram.
+        """
+
+        def gate_name(gate: Gate) -> str:
+            return gate.name.replace("-inv", "*")[:gate_name_len].center(gate_name_len)
+
+        n_qudits = self.n_qudits()
+        lines: list[str] = ["" for _ in range(3 * n_qudits)]
+        gate_num: list[int] = [0 for _ in range(n_qudits)]
+
+        if wires is None:
+            wires = ["="] * n_qudits
+        elif isinstance(wires, str):
+            wires = wires * n_qudits
+        elif len(wires) != n_qudits:
+            raise ValueError("Wires list length must match the circuit number of qudits.")
+
+        gate_name_len = 5
+        gate_len = gate_name_len + 4
+
+        if with_qudit_indices:
+            for l_idx in range(n_qudits):
+                lines[3 * l_idx + 0] = " " * 4
+                lines[3 * l_idx + 1] = f"{l_idx:>2}: "
+                lines[3 * l_idx + 2] = " " * 4
+        else:
+            for l_idx in range(n_qudits):
+                lines[3 * l_idx + 0] = ""
+                lines[3 * l_idx + 1] = ""
+                lines[3 * l_idx + 2] = ""
+
+        if with_input is None:
+            for l_idx in range(n_qudits):
+                lines[3 * l_idx + 0] += " " * 4
+                lines[3 * l_idx + 1] += " " * 2 + wires[l_idx] * 2
+                lines[3 * l_idx + 2] += " " * 4
+        else:
+            # Put initial state phase on the left
+            for l_idx in range(n_qudits):
+                lines[3 * l_idx + 0] += " " * 4
+                lines[3 * l_idx + 1] += f"{with_input.phases[l_idx]} " + wires[l_idx] * 2
+                lines[3 * l_idx + 2] += " " * 4
+
+        for gate in self.gates:
+            if gate.n_qudits == 1:
+                l_idx = gate.qudit_indices[0]
+                gate_num[l_idx] += 1
+
+                lines[3 * l_idx + 0] += " ┌" + "─" * gate_name_len + "┐ "
+                lines[3 * l_idx + 1] += wires[l_idx] + "│" + f"{gate_name(gate)}" + "│" + wires[l_idx]
+                lines[3 * l_idx + 2] += " └" + "─" * gate_name_len + "┘ "
+            # 2-qudit gate
+            else:
+                # Get max line length of affected qudits
+                max_num_gate_affected_qudits = max(
+                    [gate_num[idx] for idx in gate.qudit_indices])
+
+                for l_idx in gate.qudit_indices:
+                    while gate_num[l_idx] < max_num_gate_affected_qudits:
+                        gate_num[l_idx] += 1
+                        lines[3 * l_idx + 0] += " " * gate_len
+                        lines[3 * l_idx + 1] += wires[l_idx] * gate_len
+                        lines[3 * l_idx + 2] += " " * gate_len
+
+                    gate_num[l_idx] += 1
+
+                    is_top_qudit = l_idx == min(gate.qudit_indices)
+                    is_btm_qudit = l_idx == max(gate.qudit_indices)
+
+                    if is_top_qudit:
+                        lines[3 * l_idx + 0] += " ┌" + "─" * gate_name_len + "┐ "
+                    else:
+                        lines[3 * l_idx + 0] += " ┌" + "─" * (gate_name_len // 2) + \
+                            "┴" + "─" * (gate_name_len // 2) + "┐ "
+
+                    lines[3 * l_idx + 1] += wires[l_idx] + "│" + f"{gate_name(gate)}" + "│" + wires[l_idx]
+                    if is_btm_qudit:
+                        lines[3 * l_idx + 2] += " └" + "─" * gate_name_len + "┘ "
+                    else:
+                        lines[3 * l_idx + 2] += " └" + "─" * (gate_name_len // 2) + \
+                            "┬" + "─" * (gate_name_len // 2) + "┘ "
+
+        max_num_gate = max(gate_num)
+        for l_idx in range(n_qudits):
+            while gate_num[l_idx] < max_num_gate:
+                gate_num[l_idx] += 1
+                lines[3 * l_idx + 0] += " " * gate_len
+                lines[3 * l_idx + 1] += wires[l_idx] * gate_len
+                lines[3 * l_idx + 2] += " " * gate_len
+
+        if with_output is None:
+            for l_idx in range(n_qudits):
+                lines[3 * l_idx + 0] += " " * 4
+                lines[3 * l_idx + 1] += wires[l_idx] * 2 + " " * 2
+                lines[3 * l_idx + 2] += " " * 4
+        else:
+            # Put final state phase on the right
+            for l_idx in range(n_qudits):
+                lines[3 * l_idx + 0] += " " * 4
+                lines[3 * l_idx + 1] += wires[l_idx] * 2 + " " + f"{with_output.phases[l_idx]}"
+                lines[3 * l_idx + 2] += " " * 4
+
+        if not wrap:
+            return "\n".join(lines)
+
+        # Wrap output to fit terminal width
+        import shutil
+        import re
+        term_width = shutil.get_terminal_size().columns
+        line_len = len(lines[0])  # Top border has no ANSI codes
+
+        if line_len <= term_width:
+            return "\n".join(lines)
+
+        # Strip ANSI codes from wire lines for correct slicing
+        ansi_pattern = re.compile(r'\033\[[0-9;]*m')
+        plain_wire_lines = {
+            l_idx: ansi_pattern.sub('', lines[3 * l_idx + 1])
+            for l_idx in range(n_qudits)
+        }
+
+        sections = []
+        pos = 0
+
+        while pos < line_len:
+            if pos == 0:
+                # First section includes prefix from input state
+                prefix_len = 8 if with_qudit_indices else 4
+                gates_per_section = max(1, (term_width - prefix_len - 2) // gate_len)
+                end = min(prefix_len + gates_per_section * gate_len, line_len)
+                section_lines = []
+                for l_idx in range(n_qudits):
+                    section_lines.append(lines[3 * l_idx + 0][pos:end])
+                    wire_slice = plain_wire_lines[l_idx][pos:end]
+                    wire_slice = wire_slice.replace("=", wires[l_idx])
+                    section_lines.append(wire_slice)
+                    section_lines.append(lines[3 * l_idx + 2][pos:end])
+            else:
+                # Continuation sections: add wire prefix for visual continuity
+                extra_prefix_side = " " * 4 if with_qudit_indices else ""
+                prefix_len = len(extra_prefix_side)
+                gates_per_section = max(1, (term_width - prefix_len - 2) // gate_len)
+                end = min(pos + gates_per_section * gate_len, line_len)
+                section_lines = []
+
+                for l_idx in range(n_qudits):
+                    extra_prefix_central = f"{l_idx:>2}: " if with_qudit_indices else ""
+                    section_lines.append(extra_prefix_side + "  " + lines[3 * l_idx + 0][pos:end])
+                    wire_slice = plain_wire_lines[l_idx][pos:end]
+                    wire_slice = wire_slice.replace("=", wires[l_idx])
+                    section_lines.append(extra_prefix_central + wires[l_idx] * 2 + wire_slice)
+                    section_lines.append(extra_prefix_side + "  " + lines[3 * l_idx + 2][pos:end])
+
+            sections.append("\n".join(section_lines))
+            pos = end
+
+        return "\n\n\n".join(sections)
