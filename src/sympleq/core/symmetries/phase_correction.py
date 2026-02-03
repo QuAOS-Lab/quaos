@@ -24,13 +24,15 @@ def solve_phase_vector_h_from_residual(
     row_basis_cache: dict[str, np.ndarray] | None = None,
 ) -> Optional[np.ndarray]:
     """
-    Solve tableau_in @ h ≡ delta_2L (mod 2L), where h is the additional phase vector.
+    Solve A @ h ≡ delta (mod 2L) for the *linear* phase correction h.
 
-    Returns h or None if inconsistent.
+    For qubits (p=2): h must be even mod 4, so solve over GF(2) for t where h = 2 t (mod 4):
+        (A mod 2) t = (delta/2 mod 2)
     """
     A = np.asarray(tableau_in, dtype=int)
     b = np.asarray(delta_2L, dtype=int)
     dims = np.asarray(dimensions, dtype=int)
+
     if A.ndim != 2:
         raise ValueError("tableau_in must be a 2D array")
     N, M = A.shape
@@ -40,55 +42,174 @@ def solve_phase_vector_h_from_residual(
     L = int(np.lcm.reduce(dims))
     modulus = 2 * L
 
+    # Uniform dimension fast paths
     if dims.size and np.all(dims == dims[0]):
         p_uni = int(dims[0])
+
+        # -------------------------
+        # QUBITS: modulus=4, solve in GF(2) on delta/2
+        # -------------------------
         if p_uni == 2:
-            if np.any(b % 2 != 0):
+            # delta must be even for a Pauli-frame correction to exist
+            if np.any(b & 1):
                 if debug:
-                    print("[phase] qubit fallback: residual has odd entries, cannot fix")
+                    print("[phase] qubit: residual has odd entries -> no linear correction")
                 return None
+
+            A2_full = (A & 1).astype(int, copy=False)
+            b2_full = ((b // 2) & 1).astype(int, copy=False)
+
+            # Try cached/basis rows first
             rows = None
             if row_basis_cache is not None:
                 rows = row_basis_cache.get("gf2")
             if rows is None or rows.size == 0:
-                rows = _select_row_basis_indices(A % 2, 2, A.shape[1])
+                rows = _select_row_basis_indices(A2_full, 2, A2_full.shape[1])
                 if row_basis_cache is not None:
                     row_basis_cache["gf2"] = rows
-            if rows.size == 0:
+
+            # If we got a small row set, solve it; else fall back to full
+            if rows is not None and rows.size > 0:
+                sol2 = solve_linear_system_mod_prime(A2_full[rows], b2_full[rows], 2)
+                if sol2 is not None:
+                    # verify
+                    if np.all((A2_full @ sol2) % 2 == b2_full):
+                        return (2 * sol2.astype(int)) % modulus
+                    # Otherwise redo with full system
+                    if debug:
+                        print("[phase] qubit: basis-row solution failed full verification; retry full")
+
+            sol2 = solve_linear_system_mod_prime(A2_full, b2_full, 2)
+            if sol2 is None:
                 return None
-            A2 = (A[rows] % 2).astype(int, copy=False)
-            b2 = ((b[rows] // 2) % 2).astype(int, copy=False)
-            sol2 = _gf_solve_one_solution(A2, b2, 2)
-            if sol2 is not None:
-                return (2 * sol2.astype(int)) % modulus
+            return (2 * sol2.astype(int)) % modulus
+
+        # ODD PRIME
         else:
+            raise NotImplementedError("Odd-prime uniform dimensions not yet implemented for phase correction.")
+            A_p_full = (A % p_uni).astype(int, copy=False)
+            b_p_full = (b % p_uni).astype(int, copy=False)
+
             rows = None
             if row_basis_cache is not None:
                 rows = row_basis_cache.get("gfp")
             if rows is None or rows.size == 0:
-                rows = _select_row_basis_indices(A % p_uni, p_uni, A.shape[1])
+                rows = _select_row_basis_indices(A_p_full, p_uni, A_p_full.shape[1])
                 if row_basis_cache is not None:
                     row_basis_cache["gfp"] = rows
-            if rows.size == 0:
+
+            if rows is not None and rows.size > 0:
+                sol_p = _gf_solve_one_solution(A_p_full[rows], b_p_full[rows], p_uni)
+                if sol_p is not None:
+                    if np.all((A_p_full @ sol_p) % p_uni == b_p_full):
+                        return sol_p.astype(int) % modulus
+                    if debug:
+                        print("[phase] GF(p): basis-row solution failed full verification; retry full")
+
+            sol_p = _gf_solve_one_solution(A_p_full, b_p_full, p_uni)
+            if sol_p is None:
                 return None
-            A_p = (A[rows] % p_uni).astype(int, copy=False)
-            b_p = (b[rows] % p_uni).astype(int, copy=False)
-            sol_p = _gf_solve_one_solution(A_p, b_p, p_uni)
-            if sol_p is not None:
-                if debug:
-                    print(f"[phase] GF({p_uni}) fallback succeeded")
-                return sol_p.astype(int) % modulus
+            return sol_p.astype(int) % modulus
 
-    sol = solve_linear_system_over_gf(A % modulus, b % modulus, modulus)
-    if sol is not None:
-        if debug:
-            print("[phase] direct solve mod", modulus, "succeeded")
-        return sol % modulus
-
+    # -------------------------
+    # General composite/mixed dims: DO NOT call GF(modulus) here.
+    # If you need this branch, you should implement a Z_(2L) solver (CRT / prime-power).
+    # For now: return None (or raise) rather than silently doing the wrong thing.
+    # -------------------------
     if debug:
-        print("[phase] direct mod", modulus, "solve failed")
-
+        print("[phase] mixed/composite dimensions: no safe solver implemented for Z_(2L)")
     return None
+
+
+def solve_linear_system_mod_prime(A: np.ndarray, b: np.ndarray, p: int) -> Optional[np.ndarray]:
+    """
+    Solve A x = b over Z_p where p is prime.
+    Returns one particular solution (free vars = 0) or None if inconsistent.
+    """
+    A = np.asarray(A, dtype=np.int64) % p
+    b = np.asarray(b, dtype=np.int64).reshape(-1) % p
+    m, n = A.shape
+    if b.shape[0] != m:
+        raise ValueError("Incompatible shapes for A and b.")
+
+    row = 0
+    piv_cols = []
+
+    if p == 2:
+        # GF(2) fast path using XOR
+        A2 = (A & 1).astype(np.uint8, copy=True)
+        b2 = (b & 1).astype(np.uint8, copy=True)
+
+        for col in range(n):
+            if row >= m:
+                break
+            # find pivot
+            piv = row + np.argmax(A2[row:, col])
+            if piv >= m or A2[piv, col] == 0:
+                continue
+            if piv != row:
+                A2[[row, piv]] = A2[[piv, row]]
+                b2[[row, piv]] = b2[[piv, row]]
+
+            # eliminate
+            for r in range(m):
+                if r != row and A2[r, col]:
+                    A2[r, :] ^= A2[row, :]
+                    b2[r] ^= b2[row]
+
+            piv_cols.append(col)
+            row += 1
+
+        # inconsistency check
+        for r in range(m):
+            if not A2[r].any() and b2[r]:
+                return None
+
+        x = np.zeros(n, dtype=np.uint8)
+        # in RREF, pivot variable equals RHS
+        for r, c in enumerate(piv_cols):
+            x[c] = b2[r]
+        return x.astype(np.int64)
+
+    # odd prime p
+    for col in range(n):
+        if row >= m:
+            break
+        piv = None
+        for r in range(row, m):
+            if A[r, col] % p != 0:
+                piv = r
+                break
+        if piv is None:
+            continue
+        if piv != row:
+            A[[row, piv]] = A[[piv, row]]
+            b[[row, piv]] = b[[piv, row]]
+
+        inv = pow(int(A[row, col]), -1, p)
+        A[row, :] = (A[row, :] * inv) % p
+        b[row] = (b[row] * inv) % p
+
+        for r in range(m):
+            if r == row:
+                continue
+            factor = A[r, col] % p
+            if factor:
+                A[r, :] = (A[r, :] - factor * A[row, :]) % p
+                b[r] = (b[r] - factor * b[row]) % p
+
+        piv_cols.append(col)
+        row += 1
+
+    # inconsistency
+    for r in range(m):
+        if np.all(A[r, :] == 0) and (b[r] % p) != 0:
+            return None
+
+    x = np.zeros(n, dtype=np.int64)
+    for r, c in enumerate(piv_cols):
+        x[c] = b[r]
+    return x
 
 
 def clifford_phase_decomposition(F: np.ndarray, h_F: np.ndarray,

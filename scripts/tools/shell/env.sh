@@ -31,3 +31,6 @@ export PYTEST_INI=$PROJECT_ROOT/scripts/configs/pytest.ini
 export COVERAGE_REPORT_XML=$PROJECT_ROOT/scripts/personal/coverage_report.xml
 export COVERAGE_REPORT_HTML=$PROJECT_ROOT/scripts/personal/coverage_html_report
 export COVERAGE_REPORT_JUNIT=$PROJECT_ROOT/scripts/personal/junit.xml
+
+# Profiling
+export PROFILING_OUTPUT_PATH=$PROJECT_ROOT/scripts/personal/profiling

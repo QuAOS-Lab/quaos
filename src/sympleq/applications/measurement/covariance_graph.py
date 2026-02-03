@@ -49,7 +49,7 @@ class graph:
         self.adj[a1, a0] = c
 
     # returns a set of the neighbors of a given vertex
-    def neighbors(self, a):
+    def neighbors(self, a) -> set[int]:
         # Inputs:
         #     a - (int) - vertex for which neighbors should be returned
         # Outputs:
@@ -61,7 +61,7 @@ class graph:
         return aa1
 
     # returns list of all edges in self
-    def edges(self):
+    def edges(self) -> list[list[int]]:
         # Outputs:
         #     (list{list{int}}) - list of edges in self
         aaa = []
@@ -71,7 +71,7 @@ class graph:
         return aaa
 
     # check whether a collection of vertices is a clique in self
-    def clique(self, aa):
+    def clique(self, aa) -> bool:
         # Inputs:
         #     aa - (list{int}) - list of vertices to be checked for clique
         # Outputs:
@@ -82,7 +82,7 @@ class graph:
         return True
 
     # returns the degree of a given vertex
-    def degree(self, a):
+    def degree(self, a) -> int:
         # Inputs:
         #     a - (int) - vertex for which degree should be returned
         # Outputs:
@@ -90,7 +90,7 @@ class graph:
         return np.count_nonzero(self.adj[a, :])
 
     # returns the number of vertices in self
-    def ord(self):
+    def ord(self) -> int:
         # Outputs:
         #     (int) - number of vertices in self
         return self.adj.shape[0]
@@ -122,7 +122,7 @@ class graph:
         return graph(np.array([[self.adj[i0, i1] for i1 in range(self.ord())] for i0 in range(self.ord())]))
 
 
-def nonempty_cliques(A):
+def nonempty_cliques(A) -> list[list[int]]:
     # Inputs:
     #     A - (graph) - graph for which all cliques should be found
     # Outputs:
@@ -152,7 +152,7 @@ def all_maximal_cliques(A):
     return nx.algorithms.clique.find_cliques(nxG)
 
 
-def weighted_vertex_covering_maximal_cliques(A, A1: graph | None = None, cc=None, k=1):
+def weighted_vertex_covering_maximal_cliques(A, A1: graph | None = None, cc=None, k=1) -> list[list[int]]:
     # Inputs:
     #     A  - (graph)     - commutation graph for which covering should be found
     #     A1 - (graph)     - variance graph for which covering should be found
@@ -211,7 +211,7 @@ def weighted_vertex_covering_maximal_cliques(A, A1: graph | None = None, cc=None
         raise NotImplementedError
 
 
-def vertex_covering_maximal_cliques(A, k=1):
+def vertex_covering_maximal_cliques(A, k=1) -> list[list[int]]:
     # Inputs:
     #     A - (graph) - commutation graph for which covering should be found
     #     k - (int)   - number of times each vertex must be covered
@@ -237,7 +237,7 @@ def vertex_covering_maximal_cliques(A, k=1):
     return [sorted(list(aa1)) for aa1 in set([frozenset(aa) for aa in aaa])]
 
 
-def post_process_cliques(A, aaa, k=1):
+def post_process_cliques(A, aaa, k=1) -> list[list[int]]:
     # Inputs:
     #     A   - (graph)           - variance graph from which weights of cliques can be obtained
     #     aaa - (list{list{int}}) - a clique covering of the Hamiltonian
@@ -261,31 +261,7 @@ def post_process_cliques(A, aaa, k=1):
     return aaa
 
 
-def LDF(A):
-    # Inputs:
-    #     A - (graph) - graph for which partition should be found
-    # Outputs:
-    #     (list{list{int}}) - a list containing cliques which partition A
-    p = A.ord()
-    remaining = set(range(p))
-    N = {}
-    for i in range(p):
-        N[i] = A.neighbors(i)
-    aaa = []
-    while remaining:
-        a = max(remaining, key=lambda x: len(N[x] & remaining))
-        aa0 = set([a])
-        aa1 = N[a] & remaining
-        while aa1:
-            a2 = max(aa1, key=lambda x: len(N[x] & aa1))
-            aa0.add(a2)
-            aa1 &= N[a2]
-        aaa.append(aa0)
-        remaining -= aa0
-    return [sorted(list(aa)) for aa in aaa]
-
-
-def commutation_graph(P: PauliSum):
+def commutation_graph(P: PauliSum) -> graph:
     # TODO Update with real symplectic product matrix, once mixed species supported
     spm = np.zeros([P.n_paulis(), P.n_paulis()], dtype=int)
     for i in range(P.n_paulis()):
@@ -301,8 +277,8 @@ def commutation_graph(P: PauliSum):
     return G
 
 
-def quditwise_inner_product(PS1, PS2):
-    if PS1.dimensions != PS2.dimensions:
+def quditwise_inner_product(PS1, PS2) -> np.bool_:
+    if any(PS1.dimensions != PS2.dimensions):
         raise ValueError("Pauli strings must have the same dimensions for quditwise inner product.")
     X_1 = PS1.x_exp[:]
     X_2 = PS2.x_exp[:]
@@ -313,7 +289,7 @@ def quditwise_inner_product(PS1, PS2):
     return np.any(q_products)
 
 
-def quditwise_commutation_graph(P):
+def quditwise_commutation_graph(P) -> graph:
     p = P.n_paulis()
     adj_mat = np.array([[1 - quditwise_inner_product(P[i0, :], P[i1, :]) for i1 in range(p)] for i0 in range(p)])
     return graph(adj_mat)

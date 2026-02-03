@@ -36,14 +36,3 @@ If your work is related to a specific issue, please reference it in your pull re
    `Visual Studio Code Extensions <development/extensions.html>`_), automatically
    detect PEP 8 violations highlighting them in the editor as warnings
    and providing suggestions to fix them.
-
-
-Coding Style
-------------
-
-The coding style adopted for this project is **PEP 8**. PEP 8 is the style guide
-for Python code, which helps to maintain readability and consistency across the
-codebase. While not mandatory, it is recommended to follow the this coding
-standard.
-
-In `this page <https://www.python.org/dev/peps/pep-0008/>`_ it is possible to browse the full PEP 8 style guide.

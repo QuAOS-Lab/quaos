@@ -33,8 +33,48 @@ command from the command prompt:
 Linux
 ^^^^^
 
-.. warning::
-   Not documented yet!!!
+Python 3.11.9 can be installed on most Linux distributions using the package manager or by building from source.
+
+**Ubuntu/Debian:**
+
+.. code-block:: bash
+
+    $ sudo apt update
+    $ sudo apt install software-properties-common
+    $ sudo add-apt-repository ppa:deadsnakes/ppa
+    $ sudo apt update
+    $ sudo apt install python3.11 python3.11-venv python3.11-dev
+
+**Fedora/RHEL/CentOS:**
+
+.. code-block:: bash
+
+    $ sudo dnf install python3.11 python3.11-devel
+
+**Arch Linux:**
+
+.. code-block:: bash
+
+    $ sudo pacman -S python
+
+**Building from Source:**
+
+If Python 3.11.9 is not available in your distribution's repository:
+
+.. code-block:: bash
+
+    $ wget https://www.python.org/ftp/python/3.11.9/Python-3.11.9.tgz
+    $ tar -xf Python-3.11.9.tgz
+    $ cd Python-3.11.9
+    $ ./configure --enable-optimizations
+    $ make -j$(nproc)
+    $ sudo make altinstall
+
+Verify the installation:
+
+.. code-block:: bash
+
+    $ python3.11 --version
 
 
 .. Git:
@@ -65,8 +105,40 @@ command from the command prompt:
 Linux
 ^^^^^
 
-.. warning::
-   Not documented yet!!!
+Git is typically available in most Linux distribution repositories and can be installed using the package manager.
+
+**Ubuntu/Debian:**
+
+.. code-block:: bash
+
+    $ sudo apt update
+    $ sudo apt install git
+
+**Fedora/RHEL/CentOS:**
+
+.. code-block:: bash
+
+    $ sudo dnf install git
+
+**Arch Linux:**
+
+.. code-block:: bash
+
+    $ sudo pacman -S git
+
+Verify the installation:
+
+.. code-block:: bash
+
+    $ git --version
+
+For the latest version, you can also install from the official Git PPA (Ubuntu/Debian):
+
+.. code-block:: bash
+
+    $ sudo add-apt-repository ppa:git-core/ppa
+    $ sudo apt update
+    $ sudo apt install git
 
 
 .. Visual Studio Code:
@@ -105,14 +177,50 @@ command from the command prompt:
 Linux
 ^^^^^
 
-.. warning::
-   Not documented yet!!!
+Visual Studio Code can be installed on Linux through various methods depending on your distribution.
 
+**Ubuntu/Debian (.deb package):**
 
-.. Cuda:
+Download and install the .deb package from the `VS Code website <https://code.visualstudio.com/download>`_:
 
-Cuda
-____
+.. code-block:: bash
 
-.. warning::
-   Not documented yet!!!
+    $ sudo apt install ./<file>.deb
+
+Or install via the official Microsoft repository:
+
+.. code-block:: bash
+
+    $ wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > packages.microsoft.gpg
+    $ sudo install -D -o root -g root -m 644 packages.microsoft.gpg /etc/apt/keyrings/packages.microsoft.gpg
+    $ sudo sh -c 'echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list'
+    $ sudo apt update
+    $ sudo apt install code
+
+**Fedora/RHEL/CentOS (.rpm package):**
+
+.. code-block:: bash
+
+    $ sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc
+    $ sudo sh -c 'echo -e "[code]\nname=Visual Studio Code\nbaseurl=https://packages.microsoft.com/yumrepos/vscode\nenabled=1\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc" > /etc/yum.repos.d/vscode.repo'
+    $ sudo dnf check-update
+    $ sudo dnf install code
+
+**Arch Linux (AUR):**
+
+.. code-block:: bash
+
+    $ yay -S visual-studio-code-bin
+
+Or using the snap package (works on most distributions):
+
+.. code-block:: bash
+
+    $ sudo snap install --classic code
+
+Verify the installation:
+
+.. code-block:: bash
+
+    $ code --version
+

@@ -65,22 +65,3 @@ The following extensions are optional:
       Provides C/C++ language support for Visual Studio Code.
     - `Task Runner <https://marketplace.visualstudio.com/items?itemName=SanaAjani.taskrunnercode>`_:
       Provides a task runner for Visual Studio Code.
-
-1. **Configure Settings**:
-   - Open the settings file located at [`.vscode/settings.json`](.vscode/settings.json) and ensure it contains the following configuration:
-
-.. code-block:: json
-
-    {
-        "jupyter.notebookFileRoot": "${workspaceFolder}",
-        
-        "flake8.severity": 
-        { 
-            "C": "Information", 
-            "E": "Warning", 
-            "F": "Warning", 
-            "R": "Hint", 
-            "W": "Warning", 
-            "I": "Information" 
-        },
-    }

@@ -332,7 +332,6 @@ class TestGates():
     #                 F_found = map_pauli_sum_to_target_tableau(X, Y)
     #                 assert np.array_equal((X @ F_found) % 2, Y)
 
-    @pytest.mark.skip()
     def test_gate_from_target(self):
         n_qudits = 4
         n_paulis = 2

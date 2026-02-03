@@ -7,7 +7,5 @@ numba-cuda==0.4.0
 ipywidgets==8.1.5
 tqdm==4.67.1
 python-dotenv==1.0.1
-requests==2.32.4
 pandas==2.2.3
-qiskit==2.0.0
 galois==0.4.6

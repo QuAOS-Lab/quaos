@@ -1,6 +1,5 @@
 from typing import Generator, overload, TypeVar, Sequence
 import numpy as np
-from qiskit import QuantumCircuit
 from .gates import Gate, Hadamard as H, PHASE as S, SUM as CX, SWAP, CNOT, PauliGate
 from sympleq.core.paulis import PauliSum, PauliString, Pauli, PauliObject
 from sympleq.core.states.state import State
@@ -207,34 +206,6 @@ class Circuit:
             pauli_sum = gate.act(pauli)
             yield pauli_sum
 
-    def show(self):
-        circuit = self.circuit_image()
-        print(circuit)
-
-    def circuit_image(self):
-        if not np.all(np.array(self.dimensions) == 2):
-            print("Circuit dimensions are not all 2, using Qiskit QuantumCircuit, some gates may not be supported")
-        circuit = QuantumCircuit(len(self.dimensions))
-        dict = {'X': circuit.x, 'H': circuit.h, 'S': circuit.s, 'SUM': circuit.cx, 'CNOT': circuit.cx,
-                'H_inv': circuit.h, 'SWAP': circuit.swap}
-
-        for gate in self.gates:
-            name = gate.name
-            if len(gate.qudit_indices) == 2:
-                dict[name](gate.qudit_indices[0], gate.qudit_indices[1])
-            else:
-                if name[0:3] == 'Pau':
-                    # pauli gate 'Pauli(X^1Z^0_0)' is circuit.x(0)
-                    x_comp = name[8]  # TODO: everything after X^ and before Z - currently fails for large powers
-                    z_comp = name[11]  # TODO: everything after Z^ and before _ - currently fails for large powers
-                    for i in range(int(x_comp)):
-                        circuit.x(gate.qudit_indices[0])
-                    for i in range(int(z_comp)):
-                        circuit.z(gate.qudit_indices[0])
-                else:
-                    dict[name](gate.qudit_indices[0])
-        return circuit
-
     def copy(self) -> 'Circuit':
         return Circuit(self.dimensions, self.gates.copy())
 
@@ -254,26 +225,81 @@ class Circuit:
                 new_gate.qudit_indices = np.ndarray(new_indexes)
             self.add_gate(new_gate)
 
+    # def _composite_phase_vector(self, F_1: np.ndarray, F_2: np.ndarray, h_2: np.ndarray, lcm: int) -> np.ndarray:
+    #     """
+    #     Returns the vector to add to h_1 to obtain h'' in PHYSICAL REVIEW A 71, 042315 (2005) - Eq. (8)
+
+    #     New phase vector is h_1 + h_c
+
+    #     """
+    #     U = np.zeros((2 * self.n_qudits(), 2 * self.n_qudits()), dtype=int)
+    #     U[self.n_qudits():, :self.n_qudits()] = np.eye(self.n_qudits(), dtype=int)
+
+    #     U_conjugated = F_2.T @ U @ F_2
+
+    #     p1 = np.dot(F_1, h_2)
+    #     # negative sign in below as definition in paper is strictly upper diagonal, not including diagonal part
+    #     p2 = np.diag(np.dot(F_1, np.dot((2 * np.triu(U_conjugated) - np.diag(np.diag(U_conjugated))), F_1.T)))
+    #     p3 = np.dot(F_1, np.diag(U_conjugated))
+
+    #     h_c = (p1 + p2 - p3) % (2 * lcm)
+
+        # return h_c
+
     def _composite_phase_vector(self, F_1: np.ndarray, F_2: np.ndarray, h_2: np.ndarray, lcm: int) -> np.ndarray:
         """
-        Returns the vector to add to h_1 to obtain h'' in PHYSICAL REVIEW A 71, 042315 (2005) - Eq. (8)
-
-        New phase vector is h_1 + h_c
-
+        Faster equivalent of:
+            U = [[0,0],[I,0]]
+            Uc = F2.T @ U @ F2
+            p2 = diag(F1 @ ( (2*triu(Uc)-diag(diag(Uc))) @ F1.T ))
+        Uses:
+            p2 = sum( (F1 @ Q) * F1, axis=1 )   (one matmul)
+        and block construction of Uc.
         """
-        U = np.zeros((2 * self.n_qudits(), 2 * self.n_qudits()), dtype=int)
-        U[self.n_qudits():, :self.n_qudits()] = np.eye(self.n_qudits(), dtype=int)
+        F1 = np.ascontiguousarray(F_1, dtype=np.int64)
+        F2 = np.ascontiguousarray(F_2, dtype=np.int64)
+        h2 = np.asarray(h_2, dtype=np.int64)
 
-        U_conjugated = F_2.T @ U @ F_2
+        n2 = F1.shape[0]
+        assert n2 % 2 == 0 and F1.shape == (n2, n2) and F2.shape == (n2, n2)
+        n = n2 // 2
+        mod = 2 * int(lcm)
 
-        p1 = np.dot(F_1, h_2)
-        # negative sign in below as definition in paper is strictly upper diagonal, not including diagonal part
-        p2 = np.diag(np.dot(F_1, np.dot((2 * np.triu(U_conjugated) - np.diag(np.diag(U_conjugated))), F_1.T)))
-        p3 = np.dot(F_1, np.diag(U_conjugated))
+        # ---- Build U_conjugated = F2^T U F2 using blocks (A,B,C,D) ----
+        A = F2[:n, :n]
+        B = F2[:n, n:]
+        C = F2[n:, :n]
+        D = F2[n:, n:]
 
-        h_c = (p1 + p2 - p3) % (2 * lcm)
+        # Uc = [[C^T A, C^T B],
+        #       [D^T A, D^T B]]
+        Uc = np.empty((n2, n2), dtype=np.int64)
+        Uc[:n, :n] = C.T @ A
+        Uc[:n, n:] = C.T @ B
+        Uc[n:, :n] = D.T @ A
+        Uc[n:, n:] = D.T @ B
 
-        return h_c
+        # diag(Uc) without forming np.diag(Uc)
+        diag_uc = np.empty(n2, dtype=np.int64)
+        diag_uc[:n] = np.sum(C * A, axis=0)
+        diag_uc[n:] = np.sum(D * B, axis=0)
+
+        # ---- p1 and p3 ----
+        p1 = F1 @ h2
+        p3 = F1 @ diag_uc
+
+        # ---- Build Q = 2*triu(Uc) - diag(diag(Uc)) ----
+        # After this, Uc == Q
+        tril_i, tril_j = np.tril_indices(n2, -1)
+        Uc[tril_i, tril_j] = 0          # keep only upper triangle + diag
+        Uc *= 2                         # doubles diag too (we will restore)
+        np.fill_diagonal(Uc, diag_uc)   # restore diagonal to original (not doubled)
+
+        # ---- p2 with ONE matmul ----
+        F1Q = F1 @ Uc                   # only one matmul
+        p2 = np.sum(F1Q * F1, axis=1)   # diag(F1 Q F1^T)
+
+        return (p1 + p2 - p3) % mod
 
     def composite_gate(self) -> Gate:
         """Composes the list of symplectics acting on all qudits to a single symplectic"""

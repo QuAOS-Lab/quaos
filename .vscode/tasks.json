@@ -75,5 +75,25 @@
             },
             "problemMatcher": []
         },
+        {
+            "label": "Profile Code",
+            "type": "shell",
+            "windows": {
+                "command": "${workspaceFolder}/scripts/tools/shell/run_profiler.bat",
+                "args": [""]
+            },
+            "linux": {
+                "command": "bash ${workspaceFolder}/scripts/tools/shell/run_profiler.sh",
+                "args": [""]
+            },
+            "osx": {
+                "command": "echo Profiling not supported on macOS."
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
     ]
 }

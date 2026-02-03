@@ -63,11 +63,12 @@ autosummary_default_options = {
 html_theme = "furo"
 html_static_path = ['_static']
 html_css_files = ["custom.css"]
+html_favicon = "sympleq_logo_light.ico"
 html_title = ""
 html_short_title = "QuAOS"
 html_theme_options = {
-    "light_logo": "quaos_name_light.svg",
-    "dark_logo": "quaos_name_dark.svg",
+    "light_logo": "sympleq_name_light.svg",
+    "dark_logo": "sympleq_name_dark.svg",
 }
 html_show_sourcelink = False
 

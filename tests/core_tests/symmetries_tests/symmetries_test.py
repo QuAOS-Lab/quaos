@@ -197,3 +197,4 @@ class TestSymmetryFinder:
             H.weights = np.round(H.weights, 2)
             scrambled_sym = Circuit(H.dimensions, [C.inv(), sym, C]).composite_gate()
             assert H.is_close(scrambled_sym.act(H), literal=False), "Scrambled Hamiltonian not symmetric."
+
