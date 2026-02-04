@@ -65,6 +65,7 @@
         "figsize",
         "filterwarnings",
         "flask",
+        "flatnonzero",
         "fontsize",
         "Frobenius",
         "Gelman",

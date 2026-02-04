@@ -92,8 +92,8 @@ def _gf2_inv(M: np.ndarray) -> np.ndarray:
     n = A.shape[0]
     if A.shape[0] != A.shape[1]:
         raise np.linalg.LinAlgError("GF2 inverse requires square matrix")
-    I = np.eye(n, dtype=np.uint8)
-    aug = np.hstack((A, I))
+    Id = np.eye(n, dtype=np.uint8)
+    aug = np.hstack((A, Id))
     row = 0
     for col in range(n):
         if row >= n:
@@ -130,11 +130,11 @@ def _check_code_automorphism(
     if G_mod2 is not None:
         C = G_mod2[:, PBcols]
         try:
-            Cinv = _gf2_inv(C)
+            C_inv = _gf2_inv(C)
         except np.linalg.LinAlgError:
             return False
         Gp = G_mod2[:, pi]
-        return np.array_equal((Cinv @ Gp) & 1, G_mod2)
+        return np.array_equal((C_inv @ Gp) & 1, G_mod2)
     else:
         C = G[:, PBcols]
         # fall back to galois / numpy inverse; accept LinAlgError as failure
@@ -170,7 +170,7 @@ class _LeafContext:
     row_basis_cache: dict[str, np.ndarray]
 
 
-def _check_leaf(pi: np.ndarray, ctx: _LeafContext) -> Gate | None:
+def _check_leaf(pi: np.ndarray, ctx: _LeafContext, known_F: np.ndarray | None = None) -> Gate | None:
     """
     Run all structural and phase-correction checks for a candidate permutation.
     Returns a symmetry Gate or None.
@@ -188,6 +188,9 @@ def _check_leaf(pi: np.ndarray, ctx: _LeafContext) -> Gate | None:
                                         weights=ctx.base_weights[tgt_idx])
     H_basis_tgt.set_phases(np.array(ctx.base_phases[tgt_idx], dtype=int, copy=True))
     F, h0, _, _ = find_map_to_target_pauli_sum(H_basis_src, H_basis_tgt)
+
+    if known_F is not None and np.array_equal(F.T, known_F):
+        print('[DEBUG] Found known symmetry.')
 
     nq = ctx.n_qudits
     pauli_weighted = ctx.pauli_weighted
@@ -248,6 +251,7 @@ def clifford_graph_automorphism_search(
     p2_bitset: str | bool = "auto",
     color_mode: str = "wl",   # "wl" | "coeffs_only" | "none"
     max_wl_rounds: int = 10,
+    known_F: np.ndarray | None = None,
 ) -> list[Gate]:
     """
     Find up to k automorphisms preserving S and the vector set.
@@ -410,7 +414,7 @@ def clifford_graph_automorphism_search(
             return True
         if np.all(phi >= 0):
             pi = phi.copy()
-            leaf = _check_leaf(pi, leaf_ctx)
+            leaf = _check_leaf(pi, leaf_ctx, known_F=known_F)
             if leaf is not None:
                 results.append(leaf)
                 return True

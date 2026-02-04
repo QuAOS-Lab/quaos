@@ -1,7 +1,7 @@
 import random
 import numpy as np
 from sympleq.core.paulis import PauliSum, PauliString
-from sympleq.core.circuits import Gate, Circuit
+from sympleq.core.circuits import Gate
 from sympleq.utils import int_to_bases, bases_to_int
 
 

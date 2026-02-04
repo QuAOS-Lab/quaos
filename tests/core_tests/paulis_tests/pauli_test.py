@@ -9,6 +9,7 @@ from tests import PRIME_LIST, choose_random_dimensions
 
 N_tests = 30
 
+
 class TestPaulis:
 
     def test_pauli_multiplication(self):
