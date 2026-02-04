@@ -339,31 +339,20 @@ class PauliObject(ABC):
         if not literal:
             ps1 = ps1.to_standard_form()
             ps2 = ps2.to_standard_form()
-        
-        pass_test = True
 
         if not np.all(np.isclose(ps1.weights, ps2.weights, 10**(-threshold))):
-            print('Weights differ')
-            # return False
-            pass_test = False
+            return False
 
         if not np.array_equal(ps1.phases, ps2.phases):
-            print('Phases differ')
-            # return False
-            pass_test = False
+            return False
 
         if not np.array_equal(ps1.dimensions, ps2.dimensions):
-            print('Dimensions differ')
-            # return False
-            pass_test = False
+            return False
 
         if not np.array_equal(ps1.tableau, ps2.tableau):
-            print('Tableaus differ')
-            # return False
-            pass_test = False
+            return False
 
-        # return True
-        return pass_test
+        return True
 
     def hermitian_conjugate(self) -> Self:
         """
