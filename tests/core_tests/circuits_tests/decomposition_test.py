@@ -1,6 +1,8 @@
-from sympleq.core.circuits import Gate, Circuit, SUM
 import numpy as np
+
+from sympleq.core.circuits import Circuit, GATES
 from sympleq.core.circuits.utils import is_symplectic
+from sympleq.core.circuits.circuits import GateSpec
 from sympleq.core.circuits.gate_decomposition_to_circuit import (inv_gfp, mod_p, ensure_invertible_A_circuit, blocks,
                                                                  zeros, identity, _is_invertible_mod,
                                                                  synth_linear_A_to_gates, _emit_local_ops_for_D,
@@ -9,8 +11,11 @@ from sympleq.core.circuits.gate_decomposition_to_circuit import (inv_gfp, mod_p,
                                                                  decompose_symplectic_to_circuit,
                                                                  _compose_symp, _full_from_lower, gate_to_circuit)
 
-from typing import cast
 from sympleq.core.paulis import PauliSum
+
+# Convenience aliases for singleton gates
+CX = GATES.CX
+S = GATES.S
 
 
 class TestDecomposition:
@@ -84,7 +89,7 @@ class TestDecomposition:
         C1 = ensure_invertible_A_circuit(F, p)
         C2 = ensure_invertible_A_circuit(F, p)
         assert [g.name for g in C1.gates] == [g.name for g in C2.gates]
-        assert [tuple(g.qudit_indices) for g in C1.gates] == [tuple(g.qudit_indices) for g in C2.gates]
+        assert C1.qudit_indices == C2.qudit_indices
 
     def preconditioner_respects_depth(self, F: np.ndarray, p: int):
         C_pre = ensure_invertible_A_circuit(F, p, max_depth=4)
@@ -150,8 +155,11 @@ class TestDecomposition:
                 self.preconditioner_respects_depth(F, p)
 
     # M block tests
-    def symp_of_gates(self, n, p, gates):
-        return Circuit([p] * n, list(gates)).composite_gate().symplectic % p
+    def symp_of_gates(self, n, p, ops: list[GateSpec]):
+        """Compose a list[GateSpec] into full symplectic matrix."""
+        gates = [op[0] for op in ops]
+        qudits = [op[1:] for op in ops]
+        return Circuit.from_gates_and_qudits([p] * n, gates, qudits).composite_gate().symplectic % p
 
     def check_linear_from_A(self, n, p, A):
         A = mod_p(A, p)
@@ -169,12 +177,14 @@ class TestDecomposition:
     def local_Du_synthesis(self, p):
         for u in range(1, p):
             ops = _emit_local_ops_for_D(0, u, p)
-            F = Circuit([p], ops).composite_gate().symplectic % p
+            gates = [op[0] for op in ops]
+            qudits = [op[1:] for op in ops]
+            F = Circuit.from_gates_and_qudits([p], gates, qudits).composite_gate().symplectic % p
             target = np.array([[u, 0],
                                [0, pow(int(u), -1, p)]], dtype=int) % p
             assert np.array_equal(F, target), f"Failed D({u}) over GF({p})"
 
-    def SUM_direction_in_M(self, n: int, p: int, rng: np.random.Generator = np.random.default_rng(42)):
+    def CX_direction_in_M(self, n: int, p: int, rng: np.random.Generator = np.random.default_rng(42)):
         # Try a few random (i, c, f) with i != c
         for _ in range(20):
             i = int(rng.integers(0, n))
@@ -185,26 +195,29 @@ class TestDecomposition:
 
             A_exp = np.eye(n, dtype=int) % p
             A_exp[c, i] = (A_exp[c, i] + (-f) % p) % p  # NOTE: (c, i), not (i, c)
-            ops = cast(list[Gate], synth_linear_A_to_gates(n, A_exp, p))
+            ops = synth_linear_A_to_gates(n, A_exp, p)
             FM = self.symp_of_gates(n, p, ops)
-            FM_exp = self.check_linear_from_A(n, p, A_exp)
             FM_exp = self.check_linear_from_A(n, p, A_exp)
 
             assert np.array_equal(FM, FM_exp), (
-                f"Wrong SUM mapping for (i={i}, c={c}, f={f}) over GF({p})\n"
+                f"Wrong CX mapping for (i={i}, c={c}, f={f}) over GF({p})\n"
                 f"A_exp=\n{A_exp}\nGot=\n{FM}\nExp=\n{FM_exp}"
             )
 
     def local_Du_includes_identity_and_nontrivial(self, p):
         # identity case
         ops = _emit_local_ops_for_D(0, 1, p)
-        M = Circuit([p], ops).composite_gate().symplectic % p
+        gates = [op[0] for op in ops]
+        qudits = [op[1:] for op in ops]
+        M = Circuit.from_gates_and_qudits([p], gates, qudits).composite_gate().symplectic % p
         assert np.array_equal(M, np.eye(2, dtype=int) % p)
 
         # all nontrivial u
         for u in range(2, p):
             ops = _emit_local_ops_for_D(0, u, p)
-            M = Circuit([p], ops).composite_gate().symplectic % p
+            gates = [op[0] for op in ops]
+            qudits = [op[1:] for op in ops]
+            M = Circuit.from_gates_and_qudits([p], gates, qudits).composite_gate().symplectic % p
             inv_u = pow(u, -1, p)
             target = np.array([[u, 0], [0, inv_u]], dtype=int) % p
             assert np.array_equal(M, target), f"Failed D({u}) over GF({p})"
@@ -219,8 +232,9 @@ class TestDecomposition:
             FM_exp = self.check_linear_from_A(n, p, A)
             assert np.array_equal(FM, FM_exp), f"Failed D({u}) on wire 1 over GF({p})"
 
-    def A_block_of(self, gate, p):
-        F = Circuit([p, p], [gate]).composite_gate().symplectic % p
+    def A_block_of(self, gate, qudits, p):
+        """Get the A block of the symplectic matrix for a gate acting on qudits."""
+        F = Circuit.from_gates_and_qudits([p, p], [gate], [qudits]).composite_gate().symplectic % p
         return F[:2, :2]
 
     def one_col_add_in_M(self, n=3, p=5, c=0, i=2, f=1):
@@ -229,8 +243,10 @@ class TestDecomposition:
         A_exp[:, i] = (A_exp[:, i] + f * A_exp[:, c]) % p  # col_i += f col_c
 
         # Build M ops for just that step:
-        ops = [SUM(i, c, p)] * (f % p)
-        FM = Circuit([p] * n, cast(list[Gate], ops)).composite_gate().symplectic % p
+        ops: list[GateSpec] = [(CX, i, c)] * (f % p)
+        gates = [op[0] for op in ops]
+        qudits = [op[1:] for op in ops]
+        FM = Circuit.from_gates_and_qudits([p] * n, gates, qudits).composite_gate().symplectic % p
         assert np.array_equal(FM[:n, :n], A_exp)
 
     def test_m_block(self, rng=np.random.default_rng()):
@@ -242,12 +258,12 @@ class TestDecomposition:
             self.local_Du_synthesis(p)
             # test_SUM_direction_and_sign(n, p)
 
-            # Expect A = [[1,1],[0,1]] for SUM(0,1,p)
-            A = self.A_block_of(SUM(0, 1, p), p)
+            # Expect A = [[1,1],[0,1]] for CX acting on (0, 1)
+            A = self.A_block_of(CX, (0, 1), p)
             assert np.array_equal(A, np.array([[1, 0], [1, 1]])), A
 
             for _ in range(num_trials):
-                self.SUM_direction_in_M(n, p, rng)
+                self.CX_direction_in_M(n, p, rng)
                 self.M_block_only(n, p, rng)
                 self.one_col_add_in_M(n, p)
 
@@ -371,7 +387,7 @@ class TestDecomposition:
                 C_in = Circuit.from_random(n_gates_in_C_in, dimensions=[p] * n)
                 big_gate_in = C_in.composite_gate()
 
-                C_out = gate_to_circuit(big_gate_in)
+                C_out = gate_to_circuit(big_gate_in, dimensions=[p] * n)
                 big_gate_out = C_out.composite_gate()
 
                 assert np.array_equal(big_gate_in.symplectic % p, big_gate_out.symplectic % p)
@@ -379,8 +395,8 @@ class TestDecomposition:
                 lcm = int(np.lcm.reduce([p] * n))
                 mod_phase = 2 * lcm
 
-                h_in = big_gate_in.phase_vector % mod_phase
-                h_out = big_gate_out.phase_vector % mod_phase
+                h_in = big_gate_in.phase_vector(p) % mod_phase
+                h_out = big_gate_out.phase_vector(p) % mod_phase
 
                 # If p is odd, Pauli can fix any even delta exactly
                 if p % 2 == 1:
@@ -391,8 +407,9 @@ class TestDecomposition:
 
                 for _ in range(num_trials):
                     ps = PauliSum.from_random(2 * n, [p] * n)
-                    ps1 = big_gate_in.act(ps)
-                    ps2 = big_gate_out.act(ps)
+                    all_qudits = tuple(range(n))
+                    ps1 = big_gate_in.act(ps, all_qudits)
+                    ps2 = big_gate_out.act(ps, all_qudits)
                     assert ps1.to_standard_form() == ps2.to_standard_form(), (f"Fail \n{ps1.to_standard_form()}"
                                                                               f"\n{ps2.to_standard_form()}")
 
@@ -404,7 +421,7 @@ class TestDecomposition:
                 C_in = Circuit.from_random(12, dimensions=[p] * n)
                 G_in = C_in.composite_gate()
 
-                C_out = gate_to_circuit(G_in)
+                C_out = gate_to_circuit(G_in, dimensions=[p] * n)
                 G_out = C_out.composite_gate()
 
                 # Symplectic must match exactly mod p
@@ -413,8 +430,8 @@ class TestDecomposition:
                 # Phase behavior: exact for odd p, even-part match for p=2
                 lcm = int(np.lcm.reduce([p] * n))
                 MOD = 2 * lcm
-                h_in = G_in.phase_vector % MOD
-                h_out = G_out.phase_vector % MOD
+                h_in = G_in.phase_vector(p) % MOD
+                h_out = G_out.phase_vector(p) % MOD
 
                 if p % 2 == 1:
                     assert np.array_equal(h_in, h_out)

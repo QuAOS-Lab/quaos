@@ -141,9 +141,9 @@ def _multi_index_to_linear(index: list[int] | np.ndarray, dims: list[int] | np.n
     return idx
 
 
-def embed_unitary(U_local: np.ndarray,
+def embed_unitary(U_local: sp.csr_matrix,
                   qudit_indices: list[int] | np.ndarray,
-                  total_dimensions: list[int] | np.ndarray) -> np.ndarray:
+                  total_dimensions: list[int] | np.ndarray) -> sp.csr_matrix:
     """
     Embed a local unitary acting on a subset of qudits into the full Hilbert space.
 
@@ -178,7 +178,7 @@ def embed_unitary(U_local: np.ndarray,
 
     # Build permutation matrix P that reorders tensor factors to [sel..., rest...]
     dims_perm = [dims[k] for k in sel + rest]
-    P = np.zeros((D_loc_expected * D_rest, D_total), dtype=complex)
+    P = sp.csr_matrix(np.zeros((D_loc_expected * D_rest, D_total), dtype=complex))
 
     # Iterate over all basis states
     for q in np.ndindex(*dims):
@@ -189,7 +189,7 @@ def embed_unitary(U_local: np.ndarray,
         P[new_idx, old_idx] = 1.0
 
     # Construct full operator: P^T (U_local ⊗ I_rest) P
-    U_kron = np.kron(U_local, np.eye(D_rest, dtype=complex))
+    U_kron = sp.kron(U_local, sp.eye(D_rest))
     return P.conj().T @ U_kron @ P
 
 

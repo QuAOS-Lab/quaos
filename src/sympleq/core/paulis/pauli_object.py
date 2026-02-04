@@ -17,7 +17,7 @@ PauliOrScalarType = Union['PauliObject', ScalarType]
 @functools.total_ordering
 class PauliObject(ABC):
     def __init__(self, tableau: np.ndarray, dimensions: int | list[int] | np.ndarray | None = None,
-                 weights: int | float | complex | list[int | float | complex] | np.ndarray | None = None,
+                 weights: int | float | complex | list[int] | list[float] | list[complex] | np.ndarray | None = None,
                  phases: int | list[int] | np.ndarray | None = None):
         """
         Initialize a PauliObject represented in symplectic tableau form.

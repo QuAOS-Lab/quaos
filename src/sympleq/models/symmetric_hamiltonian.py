@@ -124,32 +124,28 @@ def Hadamard_Symmetric_PauliSum(n_paulis, n_qubits, n_sym_q, q_print=False, rand
             pauli_strings[i] += f"x{r}z{s} "
         pauli_strings[i].strip()
 
-    P = PauliSum(pauli_strings, weights=coefficients, dimensions=[2 for i in range(n_qubits)], phases=None,
-                 standardise=False)
+    P = PauliSum.from_string(pauli_strings, weights=coefficients, dimensions=[2] * n_qubits)
 
     # construct random Clifford circuit
     n_qubits = P.n_qudits()
     if n_qubits < 2:
         return P, None
 
-    C = Circuit.from_random(n_qubits, n_gates=100, dimensions=[2 for i in range(n_qubits)])
+    C = Circuit.from_random(n_gates=100, dimensions=P.dimensions)
 
     phases = P.phases
-    cc = P.weights
-    ss = P.pauli_strings
-    dims = P.dimensions
-
-    cc *= np.array([-1] * n_paulis) ** phases
-    P = PauliSum(ss, weights=cc, dimensions=dims, phases=None, standardise=False)
+    weights = P.weights
+    weights *= np.array([-1] * n_paulis) ** phases
+    P = PauliSum.from_string(pauli_strings, weights=weights, dimensions=P.dimensions)
 
     return P, C
 
 
 def SWAP_symmetric_PauliSum(n_paulis, n_qubits):
-    ps = PauliSum.from_random(n_paulis, n_qubits, dimensions=[2 for i in range(n_qubits)], rand_weights=False)
+    ps = PauliSum.from_random(n_paulis, dimensions=[2] * n_qubits, rand_weights=False)
     ps[:, 1] = ps[:, 0]  # make qudit 2 equal to qudit 1
 
-    C = Circuit.from_random(n_qubits, n_gates=100, dimensions=[2 for i in range(n_qubits)])
+    C = Circuit.from_random(n_gates=100, dimensions=ps.dimensions)
 
     return C.act(ps)
 

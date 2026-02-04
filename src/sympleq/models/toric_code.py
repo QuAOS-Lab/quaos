@@ -191,8 +191,8 @@ class ToricCode:
         return terms, coeffs
 
     def hamiltonian(self) -> PauliSum:
-        ps, cc = self.build_toric_code_hamiltonian()
-        return PauliSum(ps, weights=cc, dimensions=[2 for _ in range(self.n_qubits)])
+        ps, weights = self.build_toric_code_hamiltonian()
+        return PauliSum.from_string(ps, weights=weights, dimensions=[2] * self.n_qubits)
 
 
 if __name__ == "__main__":

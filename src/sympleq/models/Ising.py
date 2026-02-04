@@ -127,6 +127,6 @@ def heuristic_clifford_symmetry(n_spins: int):
         A[-1 - i, 2 + i] = 1
 
     F = np.block([[A, B], [C, A]])
-    F_G = Gate('F', list(range(n_spins)), F, [2] * n_spins, np.concatenate([np.zeros(n_spins, dtype=int),
-                                                                            np.ones(n_spins, dtype=int)]))
+    F_G = Gate('F', F,
+               np.concatenate([np.zeros(n_spins, dtype=int), np.ones(n_spins, dtype=int)]))
     return F_G

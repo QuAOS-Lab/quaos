@@ -1,9 +1,18 @@
 import numpy as np
 from sympleq.core.circuits import Circuit
+from sympleq.core.circuits.circuits import GateSpec
 from sympleq.core.circuits.utils import symplectic_form, is_symplectic
-from sympleq.core.circuits.gates import Hadamard, PHASE, SUM, SWAP, Gate, PauliGate
+from sympleq.core.circuits.gates import GATES, Gate, PauliGate
 from sympleq.core.paulis import PauliString
 from collections import deque
+
+# Convenience aliases for singleton gates
+H = GATES.H
+H_inv = GATES.H_inv
+S = GATES.S
+S_inv = GATES.S_inv
+CX = GATES.CX
+SWAP = GATES.SWAP
 
 # ---------- GF(p) helpers - should remove most and put in better place ----------
 
@@ -71,6 +80,7 @@ def _is_invertible_mod(A: np.ndarray, p: int) -> bool:
 
 # ---------- preconditioner (BFS over Gate objects) ----------
 
+
 def ensure_invertible_A_circuit(F: np.ndarray, p: int, max_depth: int | None = None) -> Circuit:
     """
     Find a Circuit C_pre such that the A-block of (C_pre.full_symplectic(n) @ F) is invertible mod p.
@@ -82,36 +92,31 @@ def ensure_invertible_A_circuit(F: np.ndarray, p: int, max_depth: int | None = N
 
     A, _, _, _ = blocks(F, p)
     if _is_invertible_mod(A, p):
-        return Circuit([p] * n, [])
+        return Circuit.empty([p] * n)
 
     if max_depth is None:
         max_depth = max(1, 3 * n)
 
-    # Candidate generators (Gate objects). Include PHASE^{-1} via repeating PHASE (p-1) times.
-    candidates: list[Gate | tuple[str, int]] = []
+    # Candidate generators as (gate, qudits...) tuples
+    candidates: list[GateSpec] = []
     for i in range(n):
-        candidates.append(Hadamard(i, p))
-        candidates.append(PHASE(i, p))
-        candidates.append(("PHASE_INV", i))  # expand to (p-1) PHASEs when applying
+        candidates.append((H, i))
+        candidates.append((S, i))
+        candidates.append((S_inv, i))
     for i in range(n):
         for j in range(i + 1, n):
-            candidates.append(SWAP(i, j, p))
-            # Both directions of SUM are useful during search
-            candidates.append(SUM(i, j, p))
-            candidates.append(SUM(j, i, p))
+            candidates.append((SWAP, i, j))
+            # Both directions of CX are useful during search
+            candidates.append((CX, i, j))
+            candidates.append((CX, j, i))
 
-    def apply_left_once(F_mat: np.ndarray, g: Gate | tuple[str, int]) -> np.ndarray:
-        if isinstance(g, tuple):
-            assert g[0] == "PHASE_INV"
-            i = g[1]
-            for _ in range((p - 1) % p):
-                F_mat = (PHASE(i, p).full_symplectic(n) @ F_mat) % p
-            return F_mat
-        return (g.full_symplectic(n) @ F_mat) % p
+    def apply_left_once(F_mat: np.ndarray, op: GateSpec) -> np.ndarray:
+        gate, *qudits = op
+        return (gate.full_symplectic(tuple(qudits), n, p) @ F_mat) % p
 
     # BFS with an index (no deque) for clarity and determinism
     seen = {tuple(F.flatten())}
-    queue: list[tuple[np.ndarray, list[Gate | tuple[str, int]]]] = [(F, [])]
+    queue: list[tuple[np.ndarray, list[GateSpec]]] = [(F, [])]
     head = 0
 
     while head < len(queue):
@@ -120,7 +125,7 @@ def ensure_invertible_A_circuit(F: np.ndarray, p: int, max_depth: int | None = N
         if len(ops) >= max_depth:
             continue
         for g in candidates:
-            F_new = apply_left_once(F_cur.copy(), g)
+            F_new = apply_left_once(F_cur, g)
             key = tuple(F_new.flatten())
             if key in seen:
                 continue
@@ -128,16 +133,10 @@ def ensure_invertible_A_circuit(F: np.ndarray, p: int, max_depth: int | None = N
 
             Anew, _, _, _ = blocks(F_new, p)
             if _is_invertible_mod(Anew, p):
-                # Build the concrete Circuit with expanded PHASE_INV
-                C_pre = Circuit([p] * n, [])
-                for op in new_ops:
-                    if isinstance(op, tuple):
-                        assert op[0] == "PHASE_INV"
-                        i = op[1]
-                        for _ in range((p - 1) % p):
-                            C_pre.add_gate(PHASE(i, p))
-                    else:
-                        C_pre.add_gate(op)
+                # Build the concrete Circuit
+                C_pre = Circuit.empty([p] * n)
+                for gate, *qudits in new_ops:
+                    C_pre.add_gate(gate, *qudits)
                 return C_pre
 
             seen.add(key)
@@ -145,18 +144,22 @@ def ensure_invertible_A_circuit(F: np.ndarray, p: int, max_depth: int | None = N
 
     raise RuntimeError("Unable to make A invertible within the depth limit.")
 
+
 #  ############################################################################  #
 #                                  M - Block                                     #
 #  ############################################################################  #
 
-
 # ---- synthesize local diagonal D(u) = [[u,0],[0,u^{-1}]] on wire `index` ----
-_DU_CACHE: dict[int, dict[int, list]] = {}   # per p: u -> word (list[Gate] on wire 0)
+# Cache stores gate names ('S', 'H', 'H_inv') rather than gate instances
+_DU_CACHE: dict[int, dict[int, list[str]]] = {}   # per p: u -> word (list of gate names on wire 0)
 
 
-def _compose_1q_word_as_matrix(p: int, word0: list[Gate]) -> np.ndarray:
+def _compose_1q_word_as_matrix(p: int, word0: list[str]) -> np.ndarray:
     """Compose a 1-qudit word (on qudit index 0) into its 2x2 symplectic over GF(p)."""
-    return Circuit([p], list(word0)).composite_gate().symplectic % p
+    gate_map = {'S': S, 'H': H, 'H_inv': H_inv}
+    gates = [gate_map[name] for name in word0]
+    qudits = [(0,)] * len(gates)
+    return Circuit.from_gates_and_qudits([p], gates, qudits).composite_gate().symplectic % p
 
 
 def _all_Du_targets_1q(p: int) -> dict[int, np.ndarray]:
@@ -171,17 +174,14 @@ def _build_Du_cache_for_p(p: int, bfs_depth: int = 12) -> None:
     if p in _DU_CACHE:
         return
 
-    gens = [
-        [PHASE(0, p)],
-        [Hadamard(0, p)],
-        [Hadamard(0, p, inverse=True)],
-    ]
+    # Generators as gate name lists
+    gens = [['S'], ['H'], ['H_inv']]
 
     I2 = np.eye(2, dtype=int) % p
     targets = _all_Du_targets_1q(p)  # now excludes u==1
     remaining = set(targets.keys())
 
-    solutions: dict[int, list] = {}
+    solutions: dict[int, list[str]] = {}
     # Pre-seed identity: D(1) = I has empty word
     solutions[1] = []
     _DU_CACHE[p] = solutions  # write early so recursion-safe
@@ -209,13 +209,13 @@ def _build_Du_cache_for_p(p: int, bfs_depth: int = 12) -> None:
             Q.append((w2, M2))
 
     if remaining:
-        raise RuntimeError(f"1q BFS couldn’t reach D(u) for u={sorted(remaining)} over GF({p}) "
+        raise RuntimeError(f"1q BFS couldn't reach D(u) for u={sorted(remaining)} over GF({p}) "
                            f"with depth={bfs_depth}; increase depth or add generators.")
 
     _DU_CACHE[p] = solutions  # finalize
 
 
-def _emit_local_ops_for_D(index: int, u: int, p: int) -> list[Gate]:
+def _emit_local_ops_for_D(index: int, u: int, p: int) -> list[GateSpec]:
     """
     Emit a minimal word for D(u) on the given wire `index`, using a cached BFS word on wire 0.
     """
@@ -223,22 +223,17 @@ def _emit_local_ops_for_D(index: int, u: int, p: int) -> list[Gate]:
     if u == 1 % p:
         return []
     _build_Du_cache_for_p(p, bfs_depth=12)  # build once per p
-    word0 = _DU_CACHE[p][u]                 # gates on wire 0
+    word0 = _DU_CACHE[p][u]                 # gate names on wire 0
     # remap the cached wire-0 gates to the requested wire `index`
-    remapped: list[Gate] = []
-    for g in word0:
-        if isinstance(g, PHASE):
-            remapped.append(PHASE(index, p))
-        elif isinstance(g, Hadamard):
-            inv = getattr(g, "is_inverse", (g.name == "H_inv"))
-            remapped.append(Hadamard(index, p, inverse=bool(inv)))
-        else:
-            raise ValueError(f"Unexpected 1q gate in D(u) cache: {type(g)}")
+    gate_map = {'S': S, 'H': H, 'H_inv': H_inv}
+    remapped: list[GateSpec] = []
+    for name in word0:
+        remapped.append((gate_map[name], index))
     return remapped
 
 
 # ---- MAIN: synthesize M = diag(A, (A^T)^{-1}) as a gate list (right-multiplication) ----
-def synth_linear_A_to_gates(n: int, A: np.ndarray, p: int):
+def synth_linear_A_to_gates(n: int, A: np.ndarray, p: int) -> list[GateSpec]:
     """
     RIGHT-multiplication consistent synthesis of [[A,0],[0,(A^T)^{-1}]].
 
@@ -247,11 +242,11 @@ def synth_linear_A_to_gates(n: int, A: np.ndarray, p: int):
       • Scale row c by λ on A^T           -> scale column c by λ^{-1} on the RIGHT
                                             BUT since we normalized A^T by inv(λ), we must apply D(λ) on A.  # see below
       • Row add: row i ← row i − f*row c  -> col i ← col i − f*col c (RIGHT)
-                                            -> use SUM(src=c, dst=i) repeated (-f) mod p times.
+                                            -> use CX(src=c, dst=i) repeated (-f) mod p times.
     """
     A = (A % p).copy()
     At = A.T.copy()
-    ops: list[Gate] = []
+    ops: list[GateSpec] = []
 
     for c in range(n):
         # --- pivot selection (prefer 1 to avoid scaling) ---
@@ -276,7 +271,7 @@ def synth_linear_A_to_gates(n: int, A: np.ndarray, p: int):
         # Row swap on A^T -> column swap on A
         if pivot_row != c:
             At[[c, pivot_row], :] = At[[pivot_row, c], :]
-            ops.append(SWAP(pivot_row, c, p))
+            ops.append((SWAP, pivot_row, c))
 
         # Scale row c of A^T to 1: multiply row c by inv(pv)
         # RIGHT effect: scale column c of A by pv (not inv_pv)  # <<< FIX
@@ -296,7 +291,7 @@ def synth_linear_A_to_gates(n: int, A: np.ndarray, p: int):
                 At[i, :] = (At[i, :] - f * At[c, :]) % p
                 reps = (f) % p
                 for _ in range(reps):
-                    ops.append(SUM(i, c, p))
+                    ops.append((CX, i, c))
 
     return ops
 
@@ -333,28 +328,31 @@ def _full_from_lower(n, C, p):
     return _as_int_mod(F, p)
 
 
-def _compose_symp(n, p, gates):
-    F = Circuit([p] * n, list(gates)).composite_gate().symplectic
+def _compose_symp(n: int, p: int, ops: list[GateSpec]) -> np.ndarray:
+    """Compose a list of (gate, qudits...) tuples into full symplectic matrix."""
+    gates = [op[0] for op in ops]
+    qudits = [op[1:] for op in ops]
+    F = Circuit.from_gates_and_qudits([p] * n, gates, qudits).composite_gate().symplectic
     return _as_int_mod(F, p)
 
 
-def _gens_2q(i, j, p):
+def _gens_2q(i: int, j: int) -> list[list[GateSpec]]:
     """Small generating set on two wires i,j (right-multiplication consistent)."""
     return [
-        [PHASE(i, p)], [PHASE(j, p)],
-        [Hadamard(i, p)], [Hadamard(i, p, inverse=True)],
-        [Hadamard(j, p)], [Hadamard(j, p, inverse=True)],
-        [SUM(i, j, p)], [SUM(j, i, p)],
-        [SWAP(i, j, p)],
+        [(S, i)], [(S, j)],
+        [(H, i)], [(H_inv, i)],
+        [(H, j)], [(H_inv, j)],
+        [(CX, i, j)], [(CX, j, i)],
+        [(SWAP, i, j)],
     ]
 
 
-def _bfs_2q_to_target(n, p, target_full, i, j, max_depth=7):
-    """Breadth-first synth on the two wires i,j; returns a word (list[Gate])."""
+def _bfs_2q_to_target(n: int, p: int, target_full: np.ndarray, i: int, j: int, max_depth: int = 7) -> list[GateSpec]:
+    """Breadth-first synth on the two wires i,j; returns a word (list of (gate, qudits) tuples)."""
     Id = np.eye(2 * n, dtype=int) % p
     if np.array_equal(target_full % p, Id):
         return []
-    gens = _gens_2q(i, j, p)
+    gens = _gens_2q(i, j)
     Q = deque([([], Id)])
     seen = {tuple(Id.flatten())}
     while Q:
@@ -374,7 +372,7 @@ def _bfs_2q_to_target(n, p, target_full, i, j, max_depth=7):
     raise RuntimeError("2q BFS failed (increase depth or check generators).")
 
 
-def synth_lower_from_symmetric(n: int, C_sym: np.ndarray, p: int) -> list[Gate]:
+def synth_lower_from_symmetric(n: int, C_sym: np.ndarray, p: int) -> list[GateSpec]:
     """
     Build L(C) = [[I,0],[C,I]] with right-multiplication convention.
     - Diagonals: C_ii * PHASE(i)
@@ -384,14 +382,14 @@ def synth_lower_from_symmetric(n: int, C_sym: np.ndarray, p: int) -> list[Gate]:
     C_sym = mod_p(C_sym, p)
     assert np.array_equal(C_sym, C_sym.T % p), "C_sym must be symmetric mod p."
 
-    ops: list[Gate] = []
+    ops: list[GateSpec] = []
 
     # Diagonal entries via local PHASE
     for i in range(n):
         t = int(C_sym[i, i] % p)
         if t:
             # PHASE acts like adding to the lower-left block on wire i
-            ops += [PHASE(i, p)] * t
+            ops += [(S, i)] * t
 
     # Off-diagonals via tiny BFS on the 2-wire subspace
     for i in range(n):
@@ -409,15 +407,15 @@ def synth_lower_from_symmetric(n: int, C_sym: np.ndarray, p: int) -> list[Gate]:
     return ops
 
 
-def synth_upper_from_symmetric_via_H(n: int, S_sym: np.ndarray, p: int) -> list[Gate]:
+def synth_upper_from_symmetric_via_H(n: int, S_sym: np.ndarray, p: int) -> list[GateSpec]:
     """
     Build R(S) = [[I,S],[0,I]] using the H-sandwich:
       R(S) = (H_all) · L(-S) · (H_all)^(-1)   (right-multiplication)
     """
     S_sym = mod_p(S_sym, p)
     assert np.array_equal(S_sym, S_sym.T % p), "S_sym must be symmetric mod p."
-    H_all = [Hadamard(q, p) for q in range(n)]
-    H_all_inv = [Hadamard(q, p, inverse=True) for q in range(n)]
+    H_all: list[GateSpec] = [(H, q) for q in range(n)]
+    H_all_inv: list[GateSpec] = [(H_inv, q) for q in range(n)]
     ops_L = synth_lower_from_symmetric(n, (-S_sym) % p, p)
     return H_all + ops_L + H_all_inv
 
@@ -425,6 +423,12 @@ def synth_upper_from_symmetric_via_H(n: int, S_sym: np.ndarray, p: int) -> list[
 # =========================
 #  FINAL DECOMPOSITION
 # =========================
+
+def _add_ops_to_circuit(circuit: Circuit, ops: list[GateSpec]) -> None:
+    """Helper to add a list of (gate, qudits...) tuples to a circuit."""
+    for gate, *qudits in ops:
+        circuit.add_gate(gate, *qudits)
+
 
 def decompose_symplectic_to_circuit(F: np.ndarray, p: int, *, check: bool = True) -> Circuit:
     """
@@ -472,11 +476,15 @@ def decompose_symplectic_to_circuit(F: np.ndarray, p: int, *, check: bool = True
 
     # 4) Assemble with your circuit accumulation rule (left-multiply stack),
     #    but aiming for F = C_pre^{-1} · L · M · R  => append [R, M, L, C_pre^{-1}]
-    C_tot = Circuit([p] * n, [])
-    C_tot.add_gate(ops_R)
-    C_tot.add_gate(ops_M)
-    C_tot.add_gate(ops_L)
-    C_tot.add_gate(C_pre.inv().gates)
+    C_tot = Circuit.empty([p] * n)
+    _add_ops_to_circuit(C_tot, ops_R)
+    _add_ops_to_circuit(C_tot, ops_M)
+    _add_ops_to_circuit(C_tot, ops_L)
+
+    # Add inverse of preconditioner
+    C_pre_inv = C_pre.inverse()
+    for gate, qudits in zip(C_pre_inv.gates, C_pre_inv.qudit_indices):
+        C_tot.add_gate(gate, *qudits)
 
     if check:
         F_rec = C_tot.composite_gate().symplectic % p
@@ -624,25 +632,34 @@ def pauli_correction_gate(F: np.ndarray,
         return PauliGate(pauli)
 
 
-def gate_to_circuit(big_gate: "Gate") -> "Circuit":
+def gate_to_circuit(big_gate: "Gate", dimensions: list[int] | np.ndarray) -> "Circuit":
     """
     Decompose a single Gate (F, h) into a Circuit of Clifford generators
-    (Hadamard/PHASE/SUM/SWAP/…) followed by a final PauliGate that fixes the
+    (Hadamard/PHASE/CX/SWAP/…) followed by a final PauliGate that fixes the
     phase vector under the right-multiplication convention p' = p @ F^T.
 
     For odd p, the resulting circuit reproduces both F and h exactly.
     For p=2, the Pauli correction matches the even part of h; this is the
     known limitation of pure Pauli phase correction in qubit systems.
+
+    Parameters
+    ----------
+    big_gate : Gate
+        The gate to decompose. Can be a _GenericGate from composite_gate() or any other Gate.
+    dimensions : list[int] | np.ndarray
+        The dimensions of each qudit. Must be uniform (all equal).
     """
     # Pull target data
     F_target = big_gate.symplectic
-    h_target = big_gate.phase_vector
-    dims = list(map(int, big_gate.dimensions))
+    dims = list(map(int, dimensions))
     assert len(set(dims)) == 1, "gate_to_circuit assumes a uniform local dimension."
     p = dims[0]
+    h_target = big_gate.phase_vector(p)
 
     n2 = F_target.shape[0]
     assert n2 % 2 == 0
+    n = n2 // 2
+    assert len(dims) == n, f"dimensions length {len(dims)} must match gate's n_qudits {n}"
 
     # 1) Build the Clifford "body" that realizes F_target (no Pauli yet)
     decomposition_no_corr = decompose_symplectic_to_circuit(F_target % p, p)
@@ -650,7 +667,7 @@ def gate_to_circuit(big_gate: "Gate") -> "Circuit":
     # 2) Compute the *current* (F_body, h_body) after the body only
     body_gate = decomposition_no_corr.composite_gate()
     F_body = body_gate.symplectic % p
-    h_body = body_gate.phase_vector  # lives mod 2*lcm(dims)
+    h_body = body_gate.phase_vector(p)  # lives mod 2*lcm(dims)
 
     # Sanity: symplectic must already match
     if not np.array_equal(F_body % p, F_target % p):
@@ -660,7 +677,7 @@ def gate_to_circuit(big_gate: "Gate") -> "Circuit":
     P_corr = pauli_correction_gate(F_body, h_body, h_target, dims)
 
     # 4) Return full circuit: body then Pauli correction (right-multiplication order)
-    # C = Circuit(dims, [])
-    # C.add_gate(decomposition_no_corr.gates)
-    decomposition_no_corr.add_gate(P_corr)
+    # PauliGate acts on all qudits by default
+    qudits = tuple(range(n))
+    decomposition_no_corr.add_gate(P_corr, *qudits)
     return decomposition_no_corr

@@ -1,139 +1,222 @@
+from __future__ import annotations
+from abc import ABC
 import numpy as np
-from sympleq.core.paulis import PauliString, PauliSum, Pauli
-from typing import overload
-from sympleq.core.circuits.target import find_map_to_target_pauli_sum, get_phase_vector
-from sympleq.core.circuits.utils import (transvection_matrix, symplectic_form, tensor, I_mat, H_mat, S_mat, CX_func,
-                                         SWAP_func, pauli_unitary_from_tableau)
-from sympleq.core.finite_field_solvers import get_linear_dependencies
+from typing import TypeVar, Self
 import scipy.sparse as sp
-from .utils import embed_symplectic
+
+from sympleq.core.paulis import PauliObject
+from sympleq.core.circuits.utils import embed_symplectic, transvection_matrix
+from sympleq.core.circuits.random_symplectic import symplectic_random_transvection
+from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
+from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 
 
-class Gate:
-    def __init__(self, name: str,
-                 qudit_indices: list[int] | np.ndarray,
-                 symplectic: np.ndarray,
-                 dimensions: int | list[int] | np.ndarray,
-                 phase_vector: np.ndarray | list[int]):
+# We define a type using TypeVar to let the type checker know that
+# the input and output of the `act` function share the same type.
+P = TypeVar("P", bound="PauliObject")
 
-        if len(qudit_indices) == 0:
-            raise ValueError("Gate must act on at least one qudit_indices.")
 
-        if isinstance(dimensions, int) or isinstance(dimensions, np.signedinteger):
-            dimensions = dimensions * np.ones(len(qudit_indices), dtype=int)
-        elif len(qudit_indices) != len(dimensions):
-            raise ValueError("Dimensions and qudit_indices must have the same length.")
+class Gate(ABC):
+    """
+    Abstract base class for dimension-independent Clifford gates.
 
-        self.dimensions = np.asarray(dimensions, int)
-        self.dimensions.setflags(write=False)
-        self.name = name
+    Gates are defined purely by their symplectic matrix and phase vector(s).
+    They do not store qudit indices or dimensions - these are passed at act-time.
 
-        if isinstance(qudit_indices, list):
-            qudit_indices = np.asarray(qudit_indices, dtype=int)
+    The symplectic matrix defines how Pauli operators transform under conjugation.
+    The phase vector handles the phase acquired during the transformation.
+    Some gates (like PHASE) have dimension-dependent phase vectors, which are
+    stored in `_exceptional_phase_vectors`.
+    """
 
-        self.qudit_indices = qudit_indices
-        self.qudit_indices.setflags(write=False)
-        self.n_qudits = len(qudit_indices)
-        self.symplectic: np.ndarray = symplectic
-        self.symplectic.setflags(write=False)
-        self.phase_vector = np.asarray(phase_vector, dtype=int)
-        self.phase_vector.setflags(write=False)
-        self.lcm = np.lcm.reduce(self.dimensions)
+    def __init__(self, name: str, symplectic: np.ndarray,
+                 phase_vector: np.ndarray | None = None,
+                 exceptional_phase_vectors: dict[int, np.ndarray] | None = None):
+        self._name = name
+        self._n_qudits = symplectic.shape[0] // 2
+        self._symplectic = symplectic.astype(int)
+        self._symplectic.setflags(write=False)
 
+        if phase_vector is None:
+            phase_vector = np.zeros(2 * self._n_qudits, dtype=int)
+        self._phase_vector = np.asarray(phase_vector, dtype=int)
+        self._phase_vector.setflags(write=False)
+
+        # Store dimension-specific phase vectors (e.g., qubits are special for PHASE gate)
+        self._exceptional_phase_vectors: dict[int, np.ndarray] = {}
+        if exceptional_phase_vectors is not None:
+            for dim, pv in exceptional_phase_vectors.items():
+                pv_arr = np.asarray(pv, dtype=int)
+                pv_arr.setflags(write=False)
+                self._exceptional_phase_vectors[dim] = pv_arr
+
+        # Precompute matrices for phase calculation (see Eq.[7] in PHYSICAL REVIEW A 71, 042315 (2005))
         # U = [[0_n, 0_n],
         #      [I_n, 0_n]]
-        U = np.zeros((2 * self.n_qudits, 2 * self.n_qudits), dtype=int)
-        U[self.n_qudits:, :self.n_qudits] = np.eye(self.n_qudits, dtype=int)
-        self.U_symplectic_conjugated = self.symplectic.T @ U @ self.symplectic
+        U = np.zeros((2 * self._n_qudits, 2 * self._n_qudits), dtype=int)
+        U[self._n_qudits:, :self._n_qudits] = np.eye(self._n_qudits, dtype=int)
+        self._U_symplectic_conjugated = self._symplectic.T @ U @ self._symplectic
 
-        self.V_diag = np.diag(self.U_symplectic_conjugated)
-        # This is the part associated with the linear form.
-        self.modified_phase_vector = self.phase_vector - self.V_diag  # h - V_diag
-        # Remove diagonal part to match definition in Eq.[7] in PHYSICAL REVIEW A 71, 042315 (2005).
+        self._V_diag = np.diag(self._U_symplectic_conjugated)
         # This is the part associated with the quadratic form.
-        self.p_part = 2 * np.triu(self.U_symplectic_conjugated) - np.diag(self.V_diag)
+        # Remove diagonal part to match definition in Eq.[7].
+        self._p_part = 2 * np.triu(self._U_symplectic_conjugated) - np.diag(self._V_diag)
+
+        # Will be set by _Gates to link to inverse gate
+        self._inverse: Self | None = None
 
     @classmethod
-    def solve_from_target(cls, name: str, input_pauli_sum: PauliSum, target_pauli_sum: PauliSum,
-                          dimensions: int | list[int] | np.ndarray):
+    def from_random(cls, n_qudits: int, dimension: int, num_transvections: int | None = None) -> "Gate":
         """
-        Create a gate that maps input_pauli_sum to target_pauli_sum.
+        Generate a random Clifford gate by composing random transvections.
+
+        Parameters
+        ----------
+        n_qudits : int
+            Number of qudits the gate acts on.
+        dimension : int
+            Local Hilbert space dimension (e.g., 2 for qubits).
+        num_transvections : int | None
+            Number of transvections to compose. If None, defaults to 4*n_qudits.
+
+        Returns
+        -------
+        Gate
+            A random Clifford gate with the generated symplectic matrix.
         """
 
-        independent_set, dependent_set = get_linear_dependencies(input_pauli_sum.tableau, dimensions)
+        symplectic = symplectic_random_transvection(n_qudits, dimension, num_transvections)
+        # For random gates, we use zero phase vector (phases depend on specific gate sequence)
+        phase_vector = np.zeros(2 * n_qudits, dtype=int)
 
-        if len(dependent_set) != 0:
-            raise NotImplementedError("Input PauliSum is not linearly independent. Will be implemented dreckly.")
-
-        symplectic, phase_vector, qudit_indices, dimension = find_map_to_target_pauli_sum(input_pauli_sum,
-                                                                                          target_pauli_sum)
-        return cls(name, qudit_indices, symplectic.T, dimension, phase_vector)
+        return _GenericGate("random", symplectic, phase_vector)
 
     @classmethod
-    def from_random(cls, n_qudits: int, dimension: int, n_transvection: int = 10, seed: int | None = None):
-        if seed is not None:
-            np.random.seed(seed)
-        seed_vec = np.random.randint(0, 100000, size=n_transvection)
-        # if n_qudits < 4 and dimension == 2:
-        #     symp_int = np.random.randint(symplectic_group_size(n_qudits))
-        #     symplectic = symplectic_gf2(symp_int, n_qudits)
-        #     phase_vector = get_phase_vector(symplectic, dimension)
-        #     return cls(f"R{symp_int}", list(range(n_qudits)), symplectic.T, dimension, phase_vector)
-        # else:
-        symplectic = np.eye(2 * n_qudits, dtype=int)
-
-        for i in range(n_transvection):
-            np.random.seed(seed_vec[i])
-            Tv = transvection_matrix(np.random.randint(0, dimension, size=2 * n_qudits), dimension) % dimension
-            symplectic = symplectic @ Tv % dimension
-
-        phase_vector = get_phase_vector(symplectic, dimension)
-        return cls(f"R{n_transvection}", list(range(n_qudits)), symplectic, dimension, phase_vector)
-
-    def __repr__(self):
-        return f"Gate(name={self.name}, qudit_indices={self.qudit_indices}, " \
-            f"dimensions={self.dimensions}, phase_vector={self.phase_vector})"
-
-    @overload
-    def act(self, pauli: Pauli) -> Pauli:
-        ...
-
-    @overload
-    def act(self, pauli: PauliString) -> PauliString:
-        ...
-
-    @overload
-    def act(self, pauli: PauliSum) -> PauliSum:
-        ...
-
-    def act(self, pauli):
+    def solve_from_target(cls, input_tableau: np.ndarray, target_tableau: np.ndarray) -> "Gate":
         """
-        Returns the updated tableau and phases acquired by the PauliSum when acted upon by this gate.
+        Find a Clifford gate that maps the input Pauli tableau to the target tableau.
 
-        See Eq.[7] in PHYSICAL REVIEW A 71, 042315 (2005)
+        Uses symplectic transvections to find a symplectic matrix F such that
+        input_tableau @ F = target_tableau (mod 2).
 
+        Parameters
+        ----------
+        input_tableau : np.ndarray
+            Input Pauli tableau of shape (m, 2n) where m is the number of Paulis
+            and n is the number of qudits.
+        target_tableau : np.ndarray
+            Target Pauli tableau of the same shape.
+
+        Returns
+        -------
+        Gate
+            A Clifford gate whose symplectic matrix performs the mapping.
+
+        Raises
+        ------
+        ValueError
+            If the tableaus have different shapes or are not mappable via Clifford.
+
+        Notes
+        -----
+        Currently only works for GF(2) (qubits). The input and target must have
+        matching symplectic product matrices for a Clifford mapping to exist.
         """
-        if not np.array_equal(self.dimensions, pauli.dimensions[self.qudit_indices]):
-            raise ValueError("Gate and Pauli object have different dimensions.")
+
+        input_tableau = np.asarray(input_tableau, dtype=int)
+        target_tableau = np.asarray(target_tableau, dtype=int)
+
+        if input_tableau.shape != target_tableau.shape:
+            raise ValueError(
+                f"Tableau shapes must match: {input_tableau.shape} vs {target_tableau.shape}"
+            )
+
+        if input_tableau.ndim == 1:
+            input_tableau = input_tableau.reshape(1, -1)
+            target_tableau = target_tableau.reshape(1, -1)
+
+        n_qudits = input_tableau.shape[1] // 2
+
+        symplectic = map_pauli_sum_to_target_tableau(input_tableau, target_tableau)
+        phase_vector = np.zeros(2 * n_qudits, dtype=int)
+
+        return _GenericGate("target", symplectic, phase_vector)
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def n_qudits(self) -> int:
+        return self._n_qudits
+
+    @property
+    def symplectic(self) -> np.ndarray:
+        return self._symplectic
+
+    def phase_vector(self, dimension: int = 0) -> np.ndarray:
+        """
+        Get the phase vector for a given dimension.
+
+        Some gates have dimension-specific phase vectors (e.g., PHASE gate for qubits).
+        If no exceptional phase vector exists for the given dimension, returns the default.
+        """
+        if dimension in self._exceptional_phase_vectors:
+            return self._exceptional_phase_vectors[dimension]
+        return self._phase_vector
+
+    def __repr__(self) -> str:
+        return f"Gate(name={self._name}, n_qudits={self._n_qudits})"
+
+    def act(self, pauli: P, qudits: int | tuple[int, ...]) -> P:
+        """
+        Apply this gate to a Pauli object at the specified qudit indices.
+
+        Returns the updated Pauli with transformed tableau and phases.
+        See Eq.[7] in PHYSICAL REVIEW A 71, 042315 (2005).
+
+        Parameters
+        ----------
+        pauli : Pauli | PauliString | PauliSum
+            The Pauli object to transform.
+        qudits : int | tuple[int, ...]
+            The qudit index (for single-qudit gates) or tuple of indices
+            (for multi-qudit gates) on which the gate acts.
+
+        Returns
+        -------
+        The transformed Pauli object of the same type as the input.
+        """
+        if isinstance(qudits, int):
+            qudits = (qudits,)
+
+        affected_qudits = np.asarray(qudits, dtype=int)
+
+        if len(affected_qudits) != self._n_qudits:
+            raise ValueError(f"Gate acts on {self._n_qudits} qudits, but {len(affected_qudits)} indices provided.")
 
         T = pauli.tableau
 
-        # Precompute tableau mask. This will be applied to the PauliSum tableau to get
-        # the subset of affected columns.
-        tableau_mask = np.concatenate([self.qudit_indices, self.qudit_indices + pauli.n_qudits()])
-
+        # Precompute tableau mask to select affected columns
+        tableau_mask = np.concatenate([affected_qudits, affected_qudits + pauli.n_qudits()])
         T_affected = T[:, tableau_mask]
-        relevant_dimensions = np.tile(pauli.dimensions[self.qudit_indices], 2)
-        updated_tableau = np.mod(T_affected @ self.symplectic.T, relevant_dimensions)
+
+        pauli_dimensions = pauli.dimensions[affected_qudits]
+        relevant_dimensions = np.tile(pauli_dimensions, 2)
+        relevant_lcm = int(np.lcm.reduce(pauli_dimensions))
+
+        # Apply symplectic transformation with modulo reduction
+        updated_tableau = np.mod(T_affected @ self._symplectic.T, relevant_dimensions)
         new_tableau = T.copy()
         new_tableau[:, tableau_mask] = updated_tableau
 
-        # FIXME: should we move this to a separate function?
-        linear_terms = T_affected @ self.modified_phase_vector
-        quadratic_terms = np.sum(T_affected * (T_affected @ self.p_part), axis=1)
+        # Compute phase contribution
+        phase_vec = self.phase_vector(relevant_lcm)
+        modified_phase_vector = phase_vec - self._V_diag
+        linear_terms = T_affected @ modified_phase_vector
+        quadratic_terms = np.sum(T_affected * (T_affected @ self._p_part), axis=1)
 
-        # FIXME: this is a but of a hack
-        dimensional_factor = pauli.lcm // np.lcm.reduce(pauli.dimensions[self.qudit_indices])
+        dimensional_factor = pauli.lcm // relevant_lcm
         acquired_phases = (linear_terms + quadratic_terms) * dimensional_factor
 
         new_phases = (pauli.phases + acquired_phases) % (2 * pauli.lcm)
@@ -141,150 +224,240 @@ class Gate:
         return pauli.__class__(tableau=new_tableau, dimensions=pauli.dimensions,
                                weights=pauli.weights, phases=new_phases)
 
-    def copy(self) -> 'Gate':
+    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
         """
-        Returns a copy of the gate.
+        Compute the unitary matrix representation of this gate.
+
+        Parameters
+        ----------
+        dimension : int
+            The local Hilbert space dimension (e.g., 2 for qubits, 3 for qutrits).
+
+        Returns
+        -------
+        np.ndarray
+            The d^n x d^n unitary matrix, where n is the number of qudits the gate acts on.
         """
-        return Gate(self.name, self.qudit_indices.copy(), self.symplectic.copy(), self.dimensions,
-                    self.phase_vector.copy())
+        # Default implementation for generic gates - subclasses should override
+        raise NotImplementedError(
+            f"unitary() not implemented for {self.__class__.__name__}. "
+            "Override in subclass or use a specific gate class."
+        )
 
-    def inv(self) -> 'Gate':
-        n = self.n_qudits
-        dims = np.asarray(self.dimensions, dtype=int)
-        L = int(np.lcm.reduce(dims))
-        modulus = 2 * L
+    def inverse(self) -> Self:
+        """Return the inverse of this gate.
 
-        C = self.symplectic % L
+        For singleton gates (from GATES), returns the pre-linked inverse.
+        Otherwise computes the inverse symplectic matrix.
+        """
+        if self._inverse is not None:
+            return self._inverse
 
+        # Compute inverse symplectic: C^{-1} = -Omega^T @ C^T @ Omega
+        n = self._n_qudits
         zero_block = np.zeros((n, n), dtype=int)
         identity_block = np.eye(n, dtype=int)
         Omega = np.block([[zero_block, identity_block], [-identity_block, zero_block]])
 
-        C_inv = (Omega.T @ C.T @ Omega) % L
-        C_inv = C_inv.astype(int)
+        C_inv = -Omega.T @ self._symplectic.T @ Omega
 
-        U = np.zeros((2 * n, 2 * n), dtype=int)
-        U[n:, :n] = np.eye(n, dtype=int)
+        # TODO: Compute inverse phase vector properly
+        import warnings
+        warnings.warn("Inverse phase vector computation not fully implemented for generic gates.")
+        phase_vector_inv = np.zeros(2 * n, dtype=int)
 
-        U_C = (C.T @ U @ C) % modulus
-        U_C_inv = (C_inv.T @ U @ C_inv) % modulus
+        inv_name = self._name + "_inv" if not self._name.endswith("_inv") else self._name[:-4]
+        return self.__class__(inv_name, C_inv, phase_vector_inv)
 
-        P_C = (2 * np.triu(U_C) - np.diag(np.diag(U_C))) % modulus
-        P_C_inv = (2 * np.triu(U_C_inv) - np.diag(np.diag(U_C_inv))) % modulus
-
-        h = (self.phase_vector % modulus).astype(int)
-
-        term1 = (-h @ C_inv) % modulus
-        term2 = (np.diag(U_C.T) % modulus) @ C_inv % modulus
-        term3 = np.diag((C_inv.T @ P_C @ C_inv) % modulus) % modulus
-        term4 = np.diag(U_C_inv) % modulus
-        term5 = np.diag(P_C_inv) % modulus
-
-        h_inv = (term1 + term2 - term3 + term4 - term5) % modulus
-
-        return Gate(self.name + "-inv", self.qudit_indices, C_inv, self.dimensions, h_inv.astype(int))
-
-    def transvection(self, transvection_vector: np.ndarray | list, transvection_weight: int = 1) -> 'Gate':
+    def transvection(self, transvection_vector: np.ndarray | list, transvection_weight: int = 1) -> Gate:
         """
         Returns a new gate that is the transvection of this gate by the given vector.
+
         The transvection vector should be a 2n-dimensional vector where n is the number of qudits.
+        Note: This returns a generic Gate, not a subclass instance.
         """
-        if not np.all(self.dimensions == self.dimensions[0]):
-            raise ValueError("Transvections only implemented for gates with equal dimensions.")
-        dimension = self.dimensions[0]
-        if transvection_weight >= dimension:
-            raise ValueError("Transvection weight must be less than the gate dimension.")
         if not isinstance(transvection_weight, int) and not isinstance(transvection_weight, np.int64):
             raise TypeError("Transvection weight must be an integer.")
+
         if isinstance(transvection_vector, list):
-            transvection_vector = np.array(transvection_vector)
+            transvection_vector = np.asarray(transvection_vector)
 
-        T = transvection_matrix(transvection_vector, multiplier=transvection_weight, p=dimension)
-        name = self.name if self.name.startswith("T-") else "T-" + self.name
-        return Gate(name, self.qudit_indices, self.symplectic @ T, self.dimensions, self.phase_vector)
+        T = transvection_matrix(transvection_vector, multiplier=transvection_weight)
+        new_name = self._name if self._name.startswith("T-") else "T-" + self._name
 
-    def unitary(self, dims=None) -> sp.csr_matrix:
-        if dims is None:
-            dims = self.dimensions
-        raise NotImplementedError("Unitary not implemented for generic Gate. Use specific gate subclasses.")
+        return _GenericGate(new_name, self._symplectic @ T, self._phase_vector.copy())
 
-    def full_symplectic(self, n_qudits):
-        if n_qudits < max(self.qudit_indices):
-            raise ValueError("n_qudits must be greater than or equal to the maximum qudit index.")
-        full_symplectic, _ = embed_symplectic(self.symplectic, self.phase_vector, self.qudit_indices, n_qudits)
-        return full_symplectic
+    def full_symplectic(self, qudits: tuple[int, ...] | int, n_qudits: int, p: int) -> np.ndarray:
+        """
+        Get the full 2n x 2n symplectic matrix for a gate acting on specific qudits.
+
+        Parameters
+        ----------
+        qudits : tuple[int, ...] | int
+            The qudit index(es) the gate acts on
+        n_qudits : int
+            Total number of qudits in the system
+        p : int
+            The prime dimension for modular arithmetic
+
+        Returns
+        -------
+        np.ndarray
+            The full 2n x 2n symplectic matrix mod p
+        """
+        if isinstance(qudits, int):
+            qudits = (qudits,)
+        F, _ = embed_symplectic(self.symplectic, self.phase_vector(p), qudits, n_qudits)
+        return F % p
 
     def __hash__(self):
         return hash((
             self.name,
-            tuple(self.qudit_indices.tobytes()),
-            tuple(self.dimensions.tobytes()),
             tuple(self.symplectic.flatten().tobytes()),
-            tuple(self.phase_vector.tobytes()),
+            tuple(self._phase_vector.tobytes()),
         ))
 
     def __eq__(self, other):
         if not isinstance(other, Gate):
             return False
-        return np.all(self.qudit_indices == other.qudit_indices) and \
-            np.all(self.symplectic == other.symplectic) and np.all(self.dimensions == other.dimensions) and \
-            np.all(self.phase_vector == other.phase_vector)
+        return np.all(self.symplectic == other.symplectic) and \
+            np.all(self._phase_vector == other._phase_vector) and \
+            np.all(self._exceptional_phase_vectors == other._exceptional_phase_vectors)
 
 
-def _scalar_dim(dim):
-    return int(np.asarray(dim).reshape(-1)[0])
+class _GenericGate(Gate):
+    """
+    A generic gate for computed gates (e.g., from transvection, composite gates).
+    These are not singletons and don't have pre-computed inverses.
+    Uses parent's inverse() which computes the inverse dynamically.
+    """
+    pass
 
 
-class SUM(Gate):
-    def __init__(self, control, target, dimension):
-        symplectic = np.array([
-            [1, 1, 0, 0],   # image of X0:  X0 -> X0 X1
-            [0, 1, 0, 0],   # image of X1:  X1 -> X1
-            [0, 0, 1, 0],   # image of Z0:  Z0 -> Z0
-            [0, 0, -1, 1]   # image of Z1:  Z1 -> Z0^-1 Z1
-        ], dtype=int).T % dimension
+class _HADAMARD(Gate):
+    """Hadamard gate: X -> -Z, Z -> X (or inverse: X -> Z, Z -> -X)"""
 
-        phase_vector = np.array([0, 0, 0, 0], dtype=int)
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
 
-        super().__init__("SUM", [control, target], symplectic, dimensions=dimension, phase_vector=phase_vector)
+        if is_inverse:
+            symplectic = np.array([
+                [0, 1],    # image of X:  X -> Z
+                [-1, 0]    # image of Z:  Z -> -X
+            ], dtype=int)
+            name = "H_inv"
+        else:
+            symplectic = np.array([
+                [0, -1],   # image of X:  X -> -Z
+                [1, 0]     # image of Z:  Z -> X
+            ], dtype=int)
+            name = "H"
 
-    def unitary(self, dims=None) -> sp.csr_matrix:
-        if dims is None:
-            dims = self.dimensions
-        D = np.prod(dims)
-        aa = self.qudit_indices
-        a0 = aa[0]
-        a1 = aa[1]
-        aa2 = np.array([1 for i in range(D)])
-        aa3 = np.array([CX_func(i, a0, a1, dims) for i in range(D)])
-        aa4 = np.array([i for i in range(D)])
-        return sp.csr_matrix((aa2, (aa3, aa4)))
+        super().__init__(name, symplectic)
 
-    def copy(self) -> 'Gate':
-        d = _scalar_dim(self.dimensions)
-        return SUM(int(self.qudit_indices[0]), int(self.qudit_indices[1]), d)
+    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+        from sympleq.core.circuits.utils import H_mat
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        U = H_mat(dimension)
+        if self._is_inverse:
+            return U.conj().T
+        return U
 
-
-class CZ(Gate):
-    def __init__(self, index1, index2, dimension):
-        symplectic = np.array([
-            [1, 0, 0, 0],  # image of X0:  X0 -> X0
-            [0, 1, 0, 0],  # image of X1:  X1 -> X1
-            [0, 1, 1, 0],  # image of Z0:  Z0 -> Z0
-            [1, 0, 0, 1]   # image of Z1:  Z1 -> Z1
-        ], dtype=int).T
-
-        phase_vector = np.array([0, 0, 0, 0], dtype=int)
-
-        super().__init__("CZ", [index1, index2], symplectic, dimensions=dimension, phase_vector=phase_vector)
-
-    def copy(self) -> 'Gate':
-        d = _scalar_dim(self.dimensions)
-        return CZ(int(self.qudit_indices[0]), int(self.qudit_indices[1]), d)
+    to_local_hilbert_space = local_unitary
 
 
-class SWAP(Gate):
-    def __init__(self, index1, index2, dimension):
+class _PHASE(Gate):
+    """Phase gate (S): X -> XZ, Z -> Z. Has special phase vector for qubits."""
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+
+        if is_inverse:
+            symplectic = np.array([
+                [1, -1],  # image of X:  X -> XZ^{-1}
+                [0, 1]    # image of Z:  Z -> Z
+            ], dtype=int).T
+            name = "S_inv"
+        else:
+            symplectic = np.array([
+                [1, 1],   # image of X:  X -> XZ
+                [0, 1]    # image of Z:  Z -> Z
+            ], dtype=int).T
+            name = "S"
+
+        # Qubits (dimension=2) have a special phase vector
+        if is_inverse:
+            exceptional = {2: np.array([-1, 0], dtype=int)}
+        else:
+            exceptional = {2: np.array([1, 0], dtype=int)}
+
+        super().__init__(name, symplectic, exceptional_phase_vectors=exceptional)
+
+    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+        from sympleq.core.circuits.utils import S_mat
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        U = S_mat(dimension)
+        if self._is_inverse:
+            return U.conj().T
+        return U
+
+    to_local_hilbert_space = local_unitary
+
+
+class _CX(Gate):
+    """CX gate: X0 -> X0 X1, X1 -> X1, Z0 -> Z0, Z1 -> Z0^{-1} Z1"""
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+
+        # CX is self-inverse for qubits, but not in general
+        if is_inverse:
+            symplectic = np.array([
+                [1, -1, 0, 0],   # image of X0:  X0 -> X0 X1^{-1}
+                [0, 1, 0, 0],    # image of X1:  X1 -> X1
+                [0, 0, 1, 0],    # image of Z0:  Z0 -> Z0
+                [0, 0, 1, 1]     # image of Z1:  Z1 -> Z0 Z1
+            ], dtype=int).T
+            name = "CX_inv"
+        else:
+            symplectic = np.array([
+                [1, 1, 0, 0],    # image of X0:  X0 -> X0 X1
+                [0, 1, 0, 0],    # image of X1:  X1 -> X1
+                [0, 0, 1, 0],    # image of Z0:  Z0 -> Z0
+                [0, 0, -1, 1]    # image of Z1:  Z1 -> Z0^{-1} Z1
+            ], dtype=int).T
+            name = "CX"
+
+        super().__init__(name, symplectic)
+
+    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+        """CX acts as |j,k⟩ -> |j, (j+k) mod d⟩ (or |j, (k-j) mod d⟩ for inverse)."""
+
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        D = d * d  # total dimension
+        U = np.zeros((D, D), dtype=complex)
+        for j in range(d):
+            for k in range(d):
+                in_idx = j * d + k  # |j,k⟩
+                if self._is_inverse:
+                    out_k = (k - j) % d
+                else:
+                    out_k = (j + k) % d
+                out_idx = j * d + out_k  # |j, out_k⟩
+                U[out_idx, in_idx] = 1.0
+        return sp.csr_matrix(U)
+
+    to_local_hilbert_space = local_unitary
+
+
+class _SWAP(Gate):
+    """SWAP gate: X0 <-> X1, Z0 <-> Z1. Self-inverse."""
+
+    def __init__(self):
         symplectic = np.array([
             [0, 1, 0, 0],  # image of X0:  X0 -> X1
             [1, 0, 0, 0],  # image of X1:  X1 -> X0
@@ -292,136 +465,204 @@ class SWAP(Gate):
             [0, 0, 1, 0]   # image of Z1:  Z1 -> Z0
         ], dtype=int).T
 
-        phase_vector = np.array([0, 0, 0, 0], dtype=int)
+        super().__init__("SWAP", symplectic)
 
-        super().__init__("SWAP", [index1, index2], symplectic, dimensions=dimension, phase_vector=phase_vector)
+    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+        """SWAP acts as |j,k⟩ -> |k,j⟩."""
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        D = d * d
+        U = np.zeros((D, D), dtype=complex)
+        for j in range(d):
+            for k in range(d):
+                in_idx = j * d + k   # |j,k⟩
+                out_idx = k * d + j  # |k,j⟩
+                U[out_idx, in_idx] = 1.0
+        return sp.csr_matrix(U)
 
-    def unitary(self, dims=None) -> sp.csr_matrix:
-        """
-        SWAP on two qudits at positions self.qudit_indices = [a0, a1]
-        for an arbitrary mixed-radix register with local dims.
-        Builds permutation matrix P with P_{f(i), i} = 1 where f applies the swap.
-        """
-        if dims is None:
-            dims = self.dimensions
-        dims = np.asarray(dims, dtype=int)
+    to_local_hilbert_space = local_unitary
 
-        a0, a1 = map(int, self.qudit_indices)  # expect 0-based positions
-        q = len(dims)
-        if not (0 <= a0 < q and 0 <= a1 < q and a0 != a1):
-            raise ValueError("Invalid qudit indices to swap.")
-
-        D = int(np.prod(dims))
-
-        # Columns are original indices 0..D-1; rows are mapped indices f(i)
-        cols = np.arange(D, dtype=int)
-        rows = np.fromiter((SWAP_func(i, a0, a1, dims) for i in cols), count=D, dtype=int)
-
-        data = np.ones(D, dtype=int)
-        return sp.csr_matrix((data, (rows, cols)), shape=(D, D))
-
-    def copy(self) -> 'Gate':
-        d = _scalar_dim(self.dimensions)
-        return SWAP(int(self.qudit_indices[0]), int(self.qudit_indices[1]), d)
+    def inverse(self) -> _SWAP:
+        # SWAP is self-inverse
+        return self
 
 
-class CNOT(Gate):
-    def __init__(self, control, target):
+class _CZ(Gate):
+    """Controlled-Z gate. Self-inverse."""
+
+    def __init__(self):
         symplectic = np.array([
-            [1, 1, 0, 0],   # image of X0:  X0 -> X0 X1
-            [0, 1, 0, 0],   # image of X1:  X1 -> X1
-            [0, 0, 1, 0],   # image of Z0:  Z0 -> Z0
-            [0, 0, 1, 1]   # image of Z1:  Z1 -> Z0^-1 Z1
+            [1, 0, 0, 1],  # image of X0:  X0 -> X0 Z1
+            [0, 1, 1, 0],  # image of X1:  X1 -> Z0 X1
+            [0, 0, 1, 0],  # image of Z0:  Z0 -> Z0
+            [0, 0, 0, 1]   # image of Z1:  Z1 -> Z1
         ], dtype=int).T
 
-        phase_vector = np.array([0, 0, 0, 0], dtype=int)
+        super().__init__("CZ", symplectic)
 
-        super().__init__("SUM", [control, target], symplectic, dimensions=2, phase_vector=phase_vector)
+    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+        """CZ adds phase ω^{jk} to |j,k⟩ where ω = exp(2πi/d)."""
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        D = d * d
+        omega = np.exp(2j * np.pi / d)
+        U = np.zeros((D, D), dtype=complex)
+        for j in range(d):
+            for k in range(d):
+                idx = j * d + k
+                U[idx, idx] = omega ** (j * k)
+        return sp.csr_matrix(U)
 
-    def unitary(self, dims=None) -> sp.csr_matrix:
-        if dims is None:
-            dims = self.dimensions
-        D = np.prod(dims)
-        aa = self.qudit_indices
-        a0 = aa[0]
-        a1 = aa[1]
-        aa2 = np.array([1 for i in range(D)])
-        aa3 = np.array([CX_func(i, a0, a1, dims) for i in range(D)])
-        aa4 = np.array([i for i in range(D)])
-        return sp.csr_matrix((aa2, (aa3, aa4)))
+    to_local_hilbert_space = local_unitary
 
-    def copy(self) -> 'Gate':
-        return CNOT(int(self.qudit_indices[0]), int(self.qudit_indices[1]))
-
-
-class Hadamard(Gate):
-    def __init__(self, index: int, dimension: int, inverse: bool = False):
-        self.is_inverse = bool(inverse)
-        if inverse:
-            symplectic = np.array([
-                [0, 1],    # image of X:  X -> Z
-                [-1, 0]    # image of Z:  Z -> -X
-            ], dtype=int) % dimension
-        else:
-            symplectic = np.array([
-                [0, -1],   # image of X:  X -> -Z
-                [1, 0]     # image of Z:  Z -> X
-            ], dtype=int) % dimension
-
-        phase_vector = np.array([0, 0], dtype=int)
-
-        name = "H" if not inverse else "H_inv"
-        super().__init__(name, [index], symplectic, dimensions=dimension, phase_vector=phase_vector)
-
-    def unitary(self, dims=None) -> sp.csr_matrix:
-        if dims is None:
-            dims = self.dimensions
-        return tensor([H_mat(dims[i]) if i in self.qudit_indices else I_mat(dims[i]) for i in range(len(dims))])
-
-    def copy(self) -> 'Gate':
-        d = _scalar_dim(self.dimensions)
-        return Hadamard(int(self.qudit_indices[0]), d, inverse=self.is_inverse)
+    def inverse(self) -> _CZ:
+        # CZ is self-inverse
+        return self
 
 
-class PHASE(Gate):
+class _Gates:
+    """
+    Singleton container for pre-instantiated gates.
 
-    def __init__(self, index: int, dimension: int):
-        symplectic = np.array([
-            [1, 1],  # image of X:  X -> XZ
-            [0, 1]   # image of Z:  Z -> Z
-        ], dtype=int).T
-        if dimension == 2:
-            phase_vector = np.array([1, 0], dtype=int)
-        else:
-            phase_vector = np.array([0, 0], dtype=int)
+    Gates are accessed as properties, e.g., GATES.H, GATES.S, GATES.CX.
+    Inverse gates are linked so that gate.inverse() returns the inverse singleton.
+    """
 
-        super().__init__("S", [index], symplectic, dimensions=dimension, phase_vector=phase_vector)
+    def __init__(self):
+        # Single-qudit gates
+        self._H = _HADAMARD(is_inverse=False)
+        self._H_inv = _HADAMARD(is_inverse=True)
+        self._H._inverse = self._H_inv
+        self._H_inv._inverse = self._H
 
-    def unitary(self, dims=None) -> sp.csr_matrix:
-        if dims is None:
-            dims = self.dimensions
+        self._S = _PHASE(is_inverse=False)
+        self._S_inv = _PHASE(is_inverse=True)
+        self._S._inverse = self._S_inv
+        self._S_inv._inverse = self._S
 
-        unitary = tensor([S_mat(dims[i]) if i in self.qudit_indices else I_mat(dims[i]) for i in range(len(dims))])
-        return unitary
+        # Two-qudit gates
+        self._CX = _CX(is_inverse=False)
+        self._CX_inv = _CX(is_inverse=True)
+        self._CX._inverse = self._CX_inv
+        self._CX_inv._inverse = self._CX
 
-    def copy(self) -> 'Gate':
-        d = _scalar_dim(self.dimensions)
-        return PHASE(int(self.qudit_indices[0]), d)
+        self._SWAP = _SWAP()
+        # SWAP is self-inverse, already handled in the class
+
+        self._CZ = _CZ()
+        # CZ is self-inverse, already handled in the class
+
+    # Hadamard
+    @property
+    def H(self) -> _HADAMARD:
+        return self._H
+
+    @property
+    def H_inv(self) -> _HADAMARD:
+        return self._H_inv
+
+    # Phase (S)
+    @property
+    def S(self) -> _PHASE:
+        return self._S
+
+    @property
+    def S_inv(self) -> _PHASE:
+        return self._S_inv
+
+    # CX (controlled-X / CNOT)
+    @property
+    def CX(self) -> _CX:
+        return self._CX
+
+    @property
+    def CX_inv(self) -> _CX:
+        return self._CX_inv
+
+    # SWAP
+    @property
+    def SWAP(self) -> _SWAP:
+        return self._SWAP
+
+    # CZ
+    @property
+    def CZ(self) -> _CZ:
+        return self._CZ
+
+
+# Global singleton instance
+GATES = _Gates()
 
 
 class PauliGate(Gate):
-    def __init__(self, pauli: PauliString):
+    """
+    A gate constructed from a PauliString.
+
+    Unlike the singleton gates, PauliGate is dynamically created based on the input PauliString.
+    The symplectic matrix is identity, and the phase vector encodes the Pauli conjugation effect.
+    """
+
+    def __init__(self, pauli):
+        # Import here to avoid circular imports
+        from sympleq.core.paulis import PauliString
+        from sympleq.core.circuits.utils import symplectic_form
+
+        if not isinstance(pauli, PauliString):
+            raise TypeError("PauliGate requires a PauliString")
+
         self.pauli_string = pauli
         n = pauli.n_qudits()
         lcm = int(pauli.lcm)
+
         symplectic = np.eye(2 * n, dtype=int)
         phase_vector = (2 * symplectic_form(n, lcm) @ np.concatenate([pauli.x_exp, pauli.z_exp])) % (2 * lcm)
-        super().__init__("Pauli", list(range(n)), symplectic, dimensions=pauli.dimensions, phase_vector=phase_vector)
 
-    def copy(self) -> 'Gate':
-        return PauliGate(self.pauli_string)
+        # Store dimensions for this gate (needed for act method compatibility)
+        self._dimensions = np.asarray(pauli.dimensions, dtype=int)
 
-    def unitary(self, dims=None) -> sp.csr_matrix:
-        if dims is None:
-            dims = self.dimensions
-        return pauli_unitary_from_tableau(dims[0], self.pauli_string.x_exp, self.pauli_string.z_exp)
+        super().__init__("Pauli", symplectic, phase_vector)
+
+    @property
+    def dimensions(self) -> np.ndarray:
+        return self._dimensions
+
+    def inverse(self) -> PauliGate:
+        # Pauli gates are self-inverse (up to phase)
+        return self
+
+    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+        """
+        Compute the unitary for this PauliGate.
+
+        For PauliGate, dimension is optional since it's determined by the stored PauliString.
+        """
+        from sympleq.core.circuits.utils import pauli_unitary_from_tableau
+        # Use the dimension from the PauliString
+        d = int(self._dimensions[0])  # assumes uniform dimensions
+        x = self.pauli_string.x_exp
+        z = self.pauli_string.z_exp
+        return pauli_unitary_from_tableau(d, x, z, convention="bare")
+
+    to_local_hilbert_space = local_unitary
+
+    def act(self, pauli: P, qudits: int | tuple[int, ...] | None = None) -> P:
+        """
+        Apply this PauliGate to a Pauli object.
+
+        For PauliGate, qudits defaults to all qudits in order (0, 1, 2, ..., n-1)
+        since the gate was constructed for a specific number of qudits.
+        """
+        if qudits is None:
+            qudits = tuple(range(self._n_qudits))
+        return super().act(pauli, qudits)
+
+
+# Convenience aliases for backward compatibility
+# These are the gate classes, not instances
+HADAMARD = _HADAMARD
+PHASE = _PHASE
+CX = _CX
+SWAP = _SWAP
+CZ = _CZ

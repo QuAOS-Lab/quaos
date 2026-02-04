@@ -38,7 +38,7 @@ class PauliSum(PauliObject):
             The dimensions of each qudit. If an integer is provided,
             all qudits are assumed to have the same dimension.
             If no value is provided, the default is `DEFAULT_QUDIT_DIMENSION`.
-        weights: list[int | float | complex] | np.ndarray | None = None
+        weights: list[int] | list[float] | list[complex] | np.ndarray | None = None
             The weights for each PauliString.
         phases: int | list[int] | np.ndarray | None = None
             The phases of the PauliStrings in the range [0, lcm(dimensions) - 1].
@@ -130,7 +130,8 @@ class PauliSum(PauliObject):
 
     @classmethod
     def from_pauli_strings(cls, pauli_string: PauliString | list[PauliString],
-                           weights: int | float | complex | list[int | float | complex] | np.ndarray | None = None,
+                           weights: int | float | complex |
+                           list[int] | list[float] | list[complex] | np.ndarray | None = None,
                            phases: int | list[int] | np.ndarray | None = None,
                            inherit_phases: bool = False) -> PauliSum:
         """
@@ -174,7 +175,8 @@ class PauliSum(PauliObject):
 
     @classmethod
     def from_pauli_objects(cls, pauli_objects: PauliObject | Sequence[PauliObject],
-                           weights: int | float | complex | list[int | float | complex] | np.ndarray | None = None,
+                           weights: int | float | complex |
+                           list[int] | list[float] | list[complex] | np.ndarray | None = None,
                            phases: int | list[int] | np.ndarray | None = None,
                            inherit_weights: bool = False,
                            inherit_phases: bool = False) -> PauliSum:
@@ -223,7 +225,7 @@ class PauliSum(PauliObject):
 
     @classmethod
     def from_string(cls, pauli_str: str | list[str], dimensions: int | list[int] | np.ndarray | None = None,
-                    weights: int | float | complex | list[int | float | complex] | np.ndarray | None = None,
+                    weights: int | float | complex | list[int] | list[float] | list[complex] | np.ndarray | None = None,
                     phases: int | list[int] | np.ndarray | None = None
                     ) -> PauliSum:
         """
@@ -235,7 +237,7 @@ class PauliSum(PauliObject):
             The string representation of the Pauli string, where exponents are separated by 'x' and 'z'.
         dimensions : list[int] | np.ndarray | None
             The dimensions parameter to be passed to the PauliSum constructor.
-        weights : int | float | complex | list[int | float | complex] | np.ndarray | None
+        weights : int | float | complex | list[int] | list[float] | list[complex] | np.ndarray | None
             The weights parameter to be passed to the PauliSum constructor.
         phases : int | list[int] | np.ndarray | None
             The phases parameter to be passed to the PauliSum constructor.
