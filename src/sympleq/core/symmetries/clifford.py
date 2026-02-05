@@ -6,7 +6,7 @@ from sympleq.core.symmetries.phase_correction import clifford_phase_decompositio
 from sympleq.core.symmetries.block_decomposition import block_decompose_optimal, ordered_block_sizes
 
 
-def min_qudit_clifford_symmetry(pauli_sum: PauliSum, debug_F: np.ndarray | None = None
+def min_qudit_clifford_symmetry(pauli_sum: PauliSum, debug_F: np.ndarray | None = None, talk: bool = False
                                 ) -> tuple[Gate, Gate, Gate]:
     """
     Find a single Clifford symmetry g of the given PauliSum, and decompose it into blocks with a minimal qudit cost
@@ -30,7 +30,8 @@ def min_qudit_clifford_symmetry(pauli_sum: PauliSum, debug_F: np.ndarray | None 
         raise RuntimeError("No non-trivial Clifford symmetry found for the given PauliSum.")
     g = G[0]
 
-    print('Got symmetry - decomposing')
+    if talk:
+        print('Got symmetry - decomposing')
 
     S, T = block_decompose_optimal(g.symplectic, int(pauli_sum.lcm), min_block_size=4)
     h_S, h_T = clifford_phase_decomposition(g.symplectic, g.phase_vector, S, T, int(pauli_sum.lcm))
@@ -87,6 +88,7 @@ def find_clifford_symmetries(
     color_mode: str = "wl",
     max_wl_rounds: int = 10,
     known_F: np.ndarray | None = None,
+    debug_permutation: list[int] | None = None
 ) -> list[Gate]:
     """
     Return up to k automorphisms preserving S and the vector set. See flags above.
@@ -98,5 +100,5 @@ def find_clifford_symmetries(
         p2_bitset=p2_bitset,
         color_mode=color_mode,
         max_wl_rounds=max_wl_rounds,
-        dynamic_refine_every=int(dynamic_refine_every), known_F=known_F
+        dynamic_refine_every=int(dynamic_refine_every), known_F=known_F, debug_permutation=debug_permutation
     )

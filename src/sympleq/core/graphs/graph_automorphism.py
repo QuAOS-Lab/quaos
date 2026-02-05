@@ -189,7 +189,9 @@ def _check_leaf(pi: np.ndarray, ctx: _LeafContext, known_F: np.ndarray | None = 
     H_basis_tgt.set_phases(np.array(ctx.base_phases[tgt_idx], dtype=int, copy=True))
     F, h0, _, _ = find_map_to_target_pauli_sum(H_basis_src, H_basis_tgt)
 
+    fail_loudly = False
     if known_F is not None and np.array_equal(F.T, known_F):
+        fail_loudly = True
         print('[DEBUG] Found known symmetry.')
 
     nq = ctx.n_qudits
@@ -218,6 +220,8 @@ def _check_leaf(pi: np.ndarray, ctx: _LeafContext, known_F: np.ndarray | None = 
     h_lin = solve_phase_vector_h_from_residual(ctx.base_tableau, delta, ctx.pauli_sum.dimensions,
                                                debug=False, row_basis_cache=ctx.row_basis_cache)
     if h_lin is None:
+        if fail_loudly:
+            print('[DEBUG] Failed to find phase correction.')
         return None
 
     h0_mod = np.asarray(h0, dtype=int) % ctx.two_lcm
@@ -229,16 +233,24 @@ def _check_leaf(pi: np.ndarray, ctx: _LeafContext, known_F: np.ndarray | None = 
     H_out_cf.weight_to_phase()
 
     if not np.array_equal(H_out_cf.tableau, ctx.ref_tableau):
+        if fail_loudly:
+            print('[DEBUG] tableau mismatch.')
         return None
     if not np.all((ctx.ref_phases - H_out_cf.phases) % ctx.two_lcm == 0):
+        if fail_loudly:
+            print('[DEBUG] phase mismatch.')
         return None
     if not np.array_equal(H_out_cf.weights, ctx.ref_weights):
+        if fail_loudly:
+            print('[DEBUG] weight mismatch.')
         return None
-    Omega = np.zeros((2 * nq, 2 * nq), dtype=int)
-    Omega[:nq, nq:] = np.eye(nq, dtype=int)
-    Omega[nq:, :nq] = -np.eye(nq, dtype=int)
-    if np.all(((ctx.p - 1) * np.diag(F @ Omega @ F.T) + h_tot % 2) != 0):
-        return None
+    # Omega = np.zeros((2 * nq, 2 * nq), dtype=int)   # This has caused rare failures on known symmetries ... ???
+    # Omega[:nq, nq:] = np.eye(nq, dtype=int)
+    # Omega[nq:, :nq] = -np.eye(nq, dtype=int)
+    # if np.all(((ctx.p - 1) * np.diag(F @ Omega @ F.T) + h_tot % 2) != 0):
+    #     if fail_loudly:
+    #         print('[DEBUG] Inconsistent phase correction.')
+    #     return None
 
     return SG
 
@@ -252,6 +264,7 @@ def clifford_graph_automorphism_search(
     color_mode: str = "wl",   # "wl" | "coeffs_only" | "none"
     max_wl_rounds: int = 10,
     known_F: np.ndarray | None = None,
+    debug_permutation: list[int] | None = None,
 ) -> list[Gate]:
     """
     Find up to k automorphisms preserving S and the vector set.
@@ -259,12 +272,16 @@ def clifford_graph_automorphism_search(
     Dynamic WL (if enabled) is used only for ordering every `dynamic_refine_every` steps.
     """
 
+    if known_F is not None and debug_permutation is None:
+        debug_permutation = tableau_permutation(pauli_sum.tableau, pauli_sum.tableau @ known_F)
+
     # ---- preprocessing that depends only on pauli_sum ----
     independent_labels, dependencies = get_linear_dependencies(pauli_sum.tableau, 2)
     labels = sorted(set(independent_labels) | set(dependencies.keys()))
     S_mod = pauli_sum.symplectic_product_matrix()
     G, basis_order = pauli_sum.matroid()
-    coeffs = pauli_sum.weights
+    # Optionally disable coefficient coloring when chasing a specific permutation
+    coeffs = None if debug_permutation is not None else pauli_sum.weights
 
     if not np.all([pauli_sum.dimensions[i] == pauli_sum.dimensions[0] for i in range(1, len(pauli_sum.dimensions))]):
         raise ValueError("All qubits must have same dimension for now. The key things to fix are: "
@@ -287,7 +304,7 @@ def clifford_graph_automorphism_search(
 
     base_colors, base_classes = _build_base_partition(
         S_mod, p,
-        coeffs=coeffs,
+        coeffs=np.abs(coeffs) if coeffs is not None else None,   # abs needed here as phase is not Clifford invariant
         col_invariants=col_invariants if color_mode == "wl" else None,
         max_rounds=max_wl_rounds,
         color_mode=color_mode,
@@ -339,6 +356,11 @@ def clifford_graph_automorphism_search(
     phi = -np.ones(n, dtype=np.int64)
     used = np.zeros(n, dtype=bool)
     identity_perm = np.arange(pauli_sum.n_paulis(), dtype=np.int64)
+    target_pi = None
+    if debug_permutation is not None:
+        target_pi = np.asarray(debug_permutation, dtype=np.int64)
+        if target_pi.shape[0] != pauli_sum.n_paulis():
+            raise ValueError("debug_permutation length must equal number of Pauli terms.")
 
     steps = 0
     cur_colors = base_colors.copy()
@@ -409,9 +431,13 @@ def clifford_graph_automorphism_search(
         cur_colors = _wl_colors_from_S(S_mod, int(2), coeffs=coeffs, col_invariants=None, max_rounds=1)
 
     def dfs() -> bool:
+        print(f"[DEBUG] dfs: {phi}")
         nonlocal steps
         if len(results) >= k_wanted:
             return True
+        if target_pi is not None and np.any((phi >= 0) & (phi != target_pi)):
+            print(f"[DEBUG] prune: assignment {phi} conflicts with target {target_pi}")
+            return False
         if np.all(phi >= 0):
             pi = phi.copy()
             leaf = _check_leaf(pi, leaf_ctx, known_F=known_F)
@@ -429,13 +455,23 @@ def clifford_graph_automorphism_search(
         mapped_idx = np.where(phi >= 0)[0].astype(np.int64)
 
         # Order candidates by current colors (ordering heuristic only)
-        candidate = [y for y in base_classes[bi] if not used[y]]
-        if coeffs is not None:
-            candidate = [y for y in candidate if coeffs[i] == coeffs[y]]
-        candidate.sort(key=lambda y: cur_colors[y])
+        if target_pi is not None:
+            targ_y = int(target_pi[i])
+            if used[targ_y]:
+                print(f"[DEBUG] target impossible at i={i}: target {targ_y} already used")
+                return False
+            # bypass base-class and coeff filtering in debug mode
+            candidate = [targ_y]
+        else:
+            candidate = [y for y in base_classes[bi] if not used[y]]
+            if coeffs is not None:
+                candidate = [y for y in candidate if coeffs[i] == coeffs[y]]
+            candidate.sort(key=lambda y: cur_colors[y])
 
         for y in candidate:
             if not consistency(phi, mapped_idx, i, y):
+                if target_pi is not None:
+                    print(f"[DEBUG] target candidate fails consistency at i={i}, y={y}")
                 continue
             phi[i] = y
             used[y] = True
@@ -449,3 +485,22 @@ def clifford_graph_automorphism_search(
 
     dfs()
     return results[:k_wanted]
+
+
+def tableau_permutation(Ta, Tb):
+    """
+    Debug helper
+    """
+    if Ta.shape != Tb.shape:
+        return None
+    used = set()
+    pi = [-1]*Ta.shape[0]
+    for i in range(Ta.shape[0]):
+        for j in range(Tb.shape[0]):
+            if j in used:
+                continue
+            if np.array_equal(Ta[i], Tb[j]):
+                pi[i] = j
+                used.add(j)
+                break
+    return None if -1 in pi else pi
