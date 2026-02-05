@@ -5,7 +5,8 @@ from numba import njit
 from typing import Any
 from sympleq.core.graphs.graph_coloring import _build_base_partition
 from sympleq.core.finite_field_solvers import get_linear_dependencies
-from sympleq.core.circuits.target import find_map_to_target_pauli_sum
+from sympleq.core.circuits.target import find_map_to_target_pauli_sum, get_phase_vector
+from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 from sympleq.core.finite_field_solvers import _select_row_basis_indices
 from sympleq.core.paulis import PauliSum
 from sympleq.core.circuits import Gate
@@ -158,19 +159,27 @@ class _LeafContext:
     basis_order: list[int]
     labels: list[int]
     pauli_sum: PauliSum
-    pauli_weighted: PauliSum
+    # Coefficient-normalized copy used in leaf checks: phases are absorbed into weights
+    # so we can compare full complex coefficients without any weight_to_phase ambiguity.
+    pauli_coeff: PauliSum
     ref_tableau: np.ndarray
-    ref_phases: np.ndarray
     ref_weights: np.ndarray
     base_tableau: np.ndarray
     base_weights: np.ndarray
     base_phases: np.ndarray
     basis_indices: np.ndarray
     basis_source_ps: PauliSum
+    # Precomputed inverse of the square row-basis tableau (when rank == 2*n_qudits).
+    # This makes the leaf mapping deterministic (no order-dependent transvections).
+    basis_src_inv_gf2: np.ndarray | None
+    basis_src_inv_gfp: galois.FieldArray | None
     row_basis_cache: dict[str, np.ndarray]
 
 
-def _check_leaf(pi: np.ndarray, ctx: _LeafContext, known_F: np.ndarray | None = None) -> Gate | None:
+def _check_leaf(pi: np.ndarray,
+                ctx: _LeafContext,
+                known_F: np.ndarray | None = None,
+                fail_loudly: bool = False) -> Gate | None:
     """
     Run all structural and phase-correction checks for a candidate permutation.
     Returns a symmetry Gate or None.
@@ -182,40 +191,129 @@ def _check_leaf(pi: np.ndarray, ctx: _LeafContext, known_F: np.ndarray | None = 
     if not _check_code_automorphism(ctx.G, ctx.basis_order, ctx.labels, pi, ctx.G_mod2):
         return None
 
-    H_basis_src = ctx.basis_source_ps
-    tgt_idx = pi[ctx.basis_indices]
-    H_basis_tgt = PauliSum.from_tableau(ctx.base_tableau[tgt_idx], ctx.pauli_sum.dimensions,
-                                        weights=ctx.base_weights[tgt_idx])
-    H_basis_tgt.set_phases(np.array(ctx.base_phases[tgt_idx], dtype=int, copy=True))
-    F, h0, _, _ = find_map_to_target_pauli_sum(H_basis_src, H_basis_tgt)
+    # For constructing candidate symplectics we must be careful about *row order*.
+    # In rank-deficient cases, transvection-based mapping is order-dependent, so we
+    # prefer a stable pivot-order basis (cached) over the sorted independent-label list.
+    basis_rows = ctx.basis_indices
+    if ctx.p == 2 and ctx.row_basis_cache is not None:
+        rb = ctx.row_basis_cache.get("gf2")
+        if rb is not None and rb.size:
+            basis_rows = rb.astype(int, copy=False)
 
-    fail_loudly = False
-    if known_F is not None and np.array_equal(F.T, known_F):
-        fail_loudly = True
-        print('[DEBUG] Found known symmetry.')
+    tgt_idx = pi[basis_rows]
+    H_basis_tgt = PauliSum.from_tableau(
+        ctx.base_tableau[tgt_idx],
+        ctx.pauli_sum.dimensions,
+        weights=ctx.base_weights[tgt_idx],
+    )
+    H_basis_tgt.set_phases(np.array(ctx.base_phases[tgt_idx], dtype=int, copy=True))
+    H_basis_src = PauliSum.from_tableau(
+        ctx.base_tableau[basis_rows],
+        ctx.pauli_sum.dimensions,
+        weights=ctx.base_weights[basis_rows],
+    )
+    H_basis_src.set_phases(np.array(ctx.base_phases[basis_rows], dtype=int, copy=True))
+
+    # Derive the symplectic map from the row-basis permutation whenever possible.
+    # This is the most direct "basis -> basis" construction and avoids order-dependent
+    # transvection sequences.
+    F: np.ndarray
+    h0: np.ndarray
+    if ctx.p == 2 and ctx.basis_src_inv_gf2 is not None:
+        T = (ctx.base_tableau[tgt_idx] & 1).astype(np.uint8, copy=False)
+        F = (ctx.basis_src_inv_gf2 @ T) & 1
+        F = np.asarray(F, dtype=int)
+        h0 = get_phase_vector(F, int(ctx.pauli_sum.dimensions[0]))
+    elif ctx.p != 2 and ctx.basis_src_inv_gfp is not None:
+        GF = galois.GF(int(ctx.p))
+        T = GF(ctx.base_tableau[tgt_idx] % ctx.p)
+        F_gf = ctx.basis_src_inv_gfp @ T
+        F = (np.asarray(F_gf, dtype=int) % ctx.p).astype(int, copy=False)
+        h0 = get_phase_vector(F, int(ctx.pauli_sum.dimensions[0]))
+    else:
+        # Rank-deficient tableau: the basis alone doesn't determine F.
+        # Build an F from a pivot-order basis mapping; this tends to recover a
+        # "good" symplectic completion that makes phase correction solvable.
+        if ctx.p == 2:
+            src_basis = (H_basis_src.tableau & 1).astype(int, copy=False)
+            tgt_basis = (H_basis_tgt.tableau & 1).astype(int, copy=False)
+            F = map_pauli_sum_to_target_tableau(src_basis, tgt_basis)
+
+            # Sanity-check: the candidate must implement the full row mapping implied by pi.
+            # If not, fall back to a basis-first full mapping (rare; mostly for pathological
+            # dependency representations).
+            base = ctx.base_tableau & 1
+            tgt_full = ctx.base_tableau[pi] & 1
+            if not np.array_equal((base @ F) & 1, tgt_full):
+                all_idx = np.arange(base.shape[0], dtype=int)
+                basis_set = set(int(x) for x in basis_rows)
+                rest = np.array([i for i in all_idx if i not in basis_set], dtype=int)
+                order = np.concatenate([np.asarray(basis_rows, dtype=int), rest])
+                F = map_pauli_sum_to_target_tableau(base[order], tgt_full[order])
+
+            h0 = get_phase_vector(F, int(ctx.pauli_sum.dimensions[0]))
+        else:
+            # Generic fallback for non-qubit rank-deficient cases.
+            F, h0, _, _ = find_map_to_target_pauli_sum(H_basis_src, H_basis_tgt)
+
+    if fail_loudly and known_F is not None and not np.array_equal(F.T, known_F):
+        print(f'[DEBUG] Found correct permutation, but incorrect F.')
+        print('known_F:\n', known_F)
+        print('candidate F:\n', F.T)
+        print('basis indices:\n', ctx.basis_indices)
+        print('input basis:\n', H_basis_src.tableau)
+        print('target indices:\n', tgt_idx)
+        print('target basis:\n', H_basis_tgt.tableau)
+        print('H_tableau (base order):\n', ctx.base_tableau)
 
     nq = ctx.n_qudits
-    pauli_weighted = ctx.pauli_weighted
+    pauli_coeff = ctx.pauli_coeff
 
     SG_F = Gate('Symmetry', list(range(nq)), F.T, ctx.pauli_sum.dimensions, np.asarray(h0, dtype=int))
-    H_full_tg = pauli_weighted.copy()[pi]
-    H_full_F = SG_F.act(pauli_weighted)
+    H_full_F = SG_F.act(pauli_coeff)
 
-    delta = (H_full_tg.phases - H_full_F.phases) % (2 * int(ctx.pauli_sum.lcm))
+    # We want coefficients to match under the permutation. With phases absorbed into weights,
+    # the coefficient of term i after acting is w_i * omega^{phase_i}, while the target is w_{pi[i]}.
+    # Solve for a per-term residual phase b_i such that omega^{b_i} = w_{pi[i]} / (w_i * omega^{phase_i}).
+    two_lcm = 2 * int(ctx.pauli_sum.lcm)
+    w_src = np.asarray(pauli_coeff.weights, dtype=np.complex128)
+    w_tgt = w_src[pi]
+    phase_out = np.asarray(H_full_F.phases, dtype=int) % two_lcm
 
-    if ctx.p == 2 and np.any(delta % 2 != 0):
-        F2 = F % 2
-        A, B = F2[:nq, :nq], F2[:nq, nq:]
-        C, D = F2[nq:, :nq], F2[nq:, nq:]
-        hx0 = np.diag((A @ B.T) % 2) % 2
-        hz0 = np.diag((C @ D.T) % 2) % 2
-        h0_alt = np.concatenate([hx0, hz0]).astype(int)
+    if two_lcm == 4:
+        omega_pows = np.array([1.0 + 0.0j, 0.0 + 1.0j, -1.0 + 0.0j, 0.0 - 1.0j], dtype=np.complex128)
+        denom = w_src * omega_pows[phase_out]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = np.where(np.abs(denom) > 1e-15, w_tgt / denom, 1.0 + 0.0j)
+        # Pick the closest 4th-root; reject if not close to any.
+        dist = np.abs(ratio.reshape(-1, 1) - omega_pows.reshape(1, -1))
+        b = np.argmin(dist, axis=1).astype(int)
+        if fail_loudly:
+            bad = np.where(dist[np.arange(dist.shape[0]), b] > 1e-6)[0]
+            if bad.size:
+                print("[DEBUG] coefficient ratio not a 4th root of unity at rows:", bad[:10])
+        if np.any(dist[np.arange(dist.shape[0]), b] > 1e-6):
+            return None
+        delta = b % two_lcm
+    else:
+        # Generic (slower) path: use a small neighborhood around the nearest angle.
+        omega = np.exp(2j * np.pi / two_lcm)
+        denom = w_src * (omega ** phase_out)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = np.where(np.abs(denom) > 1e-15, w_tgt / denom, 1.0 + 0.0j)
+        theta = np.angle(ratio)
+        k0 = (np.round((two_lcm * theta) / (2.0 * np.pi)).astype(int) % two_lcm)
+        candidates = np.stack([(k0 - 1) % two_lcm, k0, (k0 + 1) % two_lcm], axis=1)
+        omega_pow = omega ** candidates
+        dist = np.abs(ratio.reshape(-1, 1) - omega_pow)
+        pick = np.argmin(dist, axis=1)
+        delta = candidates[np.arange(candidates.shape[0]), pick] % two_lcm
+        if np.any(dist[np.arange(dist.shape[0]), pick] > 1e-6):
+            return None
 
-        SG_F_alt = Gate('Symmetry', list(range(nq)), F.T, ctx.pauli_sum.dimensions, h0_alt)
-        H_full_Fa = SG_F_alt.act(pauli_weighted)
-        delta_alt = (H_full_tg.phases - H_full_Fa.phases) % 4
-        if (delta_alt % 2).sum() < (delta % 2).sum():
-            h0, SG_F, H_full_F, delta = h0_alt, SG_F_alt, H_full_Fa, delta_alt
+    # Historical note: an older phase-correction path assumed only even corrections were possible
+    # for qubits and attempted a second h0 guess. We now solve directly over Z_4, so we keep a
+    # single baseline h0 and let the linear solve handle the remaining gauge freedom.
 
     h_lin = solve_phase_vector_h_from_residual(ctx.base_tableau, delta, ctx.pauli_sum.dimensions,
                                                debug=False, row_basis_cache=ctx.row_basis_cache)
@@ -229,18 +327,14 @@ def _check_leaf(pi: np.ndarray, ctx: _LeafContext, known_F: np.ndarray | None = 
     h_tot = (h0_mod + h_lin_mod) % ctx.two_lcm
     SG = Gate('Symmetry', list(range(nq)), F.T, ctx.pauli_sum.dimensions, h_tot)
 
-    H_out_cf = SG.act(pauli_weighted).to_standard_form()
-    H_out_cf.weight_to_phase()
+    # Compare in coefficient form (phases absorbed into weights) for robustness.
+    H_out_cf = SG.act(pauli_coeff).to_standard_form()
 
     if not np.array_equal(H_out_cf.tableau, ctx.ref_tableau):
         if fail_loudly:
             print('[DEBUG] tableau mismatch.')
         return None
-    if not np.all((ctx.ref_phases - H_out_cf.phases) % ctx.two_lcm == 0):
-        if fail_loudly:
-            print('[DEBUG] phase mismatch.')
-        return None
-    if not np.array_equal(H_out_cf.weights, ctx.ref_weights):
+    if not np.all(np.isclose(H_out_cf.weights, ctx.ref_weights, atol=1e-8, rtol=0)):
         if fail_loudly:
             print('[DEBUG] weight mismatch.')
         return None
@@ -273,15 +367,21 @@ def clifford_graph_automorphism_search(
     """
 
     if known_F is not None and debug_permutation is None:
-        debug_permutation = tableau_permutation(pauli_sum.tableau, pauli_sum.tableau @ known_F)
+        # Permutation convention in this file: pi maps a source term index i to the target index pi[i]
+        # such that acting by the symmetry sends row i -> row pi[i].
+        #
+        # If we build Tb = Ta @ F^T, then Tb[i] is the image of Ta[i], so we want pi with
+        # Tb[i] == Ta[pi[i]]. Hence tableau_permutation(Tb, Ta) (not the inverse).
+        debug_permutation = tableau_permutation(pauli_sum.tableau @ known_F.T % 2, pauli_sum.tableau)
 
     # ---- preprocessing that depends only on pauli_sum ----
     independent_labels, dependencies = get_linear_dependencies(pauli_sum.tableau, 2)
     labels = sorted(set(independent_labels) | set(dependencies.keys()))
     S_mod = pauli_sum.symplectic_product_matrix()
     G, basis_order = pauli_sum.matroid()
-    # Optionally disable coefficient coloring when chasing a specific permutation
-    coeffs = None if debug_permutation is not None else pauli_sum.weights
+    # Use coefficient magnitudes only: Clifford symmetries can change phases of terms via the
+    # phase-vector correction, but cannot change magnitudes.
+    coeffs = np.abs(pauli_sum.weights)
 
     if not np.all([pauli_sum.dimensions[i] == pauli_sum.dimensions[0] for i in range(1, len(pauli_sum.dimensions))]):
         raise ValueError("All qubits must have same dimension for now. The key things to fix are: "
@@ -304,7 +404,7 @@ def clifford_graph_automorphism_search(
 
     base_colors, base_classes = _build_base_partition(
         S_mod, p,
-        coeffs=np.abs(coeffs) if coeffs is not None else None,   # abs needed here as phase is not Clifford invariant
+        coeffs=coeffs if coeffs is not None else None,
         col_invariants=col_invariants if color_mode == "wl" else None,
         max_rounds=max_wl_rounds,
         color_mode=color_mode,
@@ -330,19 +430,37 @@ def clifford_graph_automorphism_search(
             key = (int(base_colors[idx]), coeffs[idx])
             rem_counts[key] = rem_counts.get(key, 0) + 1
 
-    # Prepare references for the leaf checks so they dont have to be computed every time
-    pauli_weighted = pauli_sum.copy()
-    pauli_weighted.weight_to_phase()
-    pauli_standard = pauli_weighted.to_standard_form()
-    pauli_standard.weight_to_phase()
+    # Prepare references for the leaf checks so they dont have to be computed every time.
+    # We do all comparisons in coefficient form (phases absorbed into weights), which
+    # avoids representation ambiguity when weights have arbitrary complex arguments.
+    pauli_coeff = pauli_sum.copy()
+    pauli_coeff.phase_to_weight()
+    pauli_standard = pauli_coeff.to_standard_form()
     ref_tableau = pauli_standard.tableau.astype(int, copy=False)
-    ref_phases = np.asarray(pauli_standard.phases, dtype=int)
     ref_weights = np.asarray(pauli_standard.weights)
     base_tableau = pauli_sum.tableau.astype(int, copy=False)
     base_weights = np.asarray(pauli_sum.weights)
     base_phases = np.asarray(pauli_sum.phases, dtype=int)
     basis_indices = np.asarray(independent_labels, dtype=int)
     basis_source_ps = pauli_sum[basis_indices]
+
+    # If the tableau has full rank (rank == 2*n_qudits), the basis mapping uniquely determines
+    # the symplectic matrix F via a single inversion. Precompute that inverse once.
+    basis_src_inv_gf2: np.ndarray | None = None
+    basis_src_inv_gfp: galois.FieldArray | None = None
+    basis_src = np.asarray(basis_source_ps.tableau, dtype=int)
+    if basis_src.shape[0] == basis_src.shape[1]:
+        if p == 2:
+            try:
+                basis_src_inv_gf2 = _gf2_inv(basis_src & 1)
+            except np.linalg.LinAlgError:
+                basis_src_inv_gf2 = None
+        else:
+            GF = galois.GF(int(p))
+            try:
+                basis_src_inv_gfp = np.linalg.inv(GF(basis_src % p))
+            except np.linalg.LinAlgError:
+                basis_src_inv_gfp = None
 
     dims_array = np.asarray(pauli_sum.dimensions, dtype=int)
     row_basis_cache: dict[str, np.ndarray] = {}
@@ -411,15 +529,16 @@ def clifford_graph_automorphism_search(
         basis_order=basis_order,
         labels=labels,
         pauli_sum=pauli_sum,
-        pauli_weighted=pauli_weighted,
+        pauli_coeff=pauli_coeff,
         ref_tableau=ref_tableau,
-        ref_phases=ref_phases,
         ref_weights=ref_weights,
         base_tableau=base_tableau,
         base_weights=base_weights,
         base_phases=base_phases,
         basis_indices=basis_indices,
         basis_source_ps=basis_source_ps,
+        basis_src_inv_gf2=basis_src_inv_gf2,
+        basis_src_inv_gfp=basis_src_inv_gfp,
         row_basis_cache=row_basis_cache,
     )
 
@@ -431,7 +550,6 @@ def clifford_graph_automorphism_search(
         cur_colors = _wl_colors_from_S(S_mod, int(2), coeffs=coeffs, col_invariants=None, max_rounds=1)
 
     def dfs() -> bool:
-        print(f"[DEBUG] dfs: {phi}")
         nonlocal steps
         if len(results) >= k_wanted:
             return True
@@ -440,10 +558,13 @@ def clifford_graph_automorphism_search(
             return False
         if np.all(phi >= 0):
             pi = phi.copy()
-            leaf = _check_leaf(pi, leaf_ctx, known_F=known_F)
+            fail_loud = target_pi is not None and np.array_equal(pi, target_pi)
+            leaf = _check_leaf(pi, leaf_ctx, known_F=known_F, fail_loudly=fail_loud)
             if leaf is not None:
                 results.append(leaf)
                 return True
+            if fail_loud:
+                print("[DEBUG] reached target permutation but leaf check failed")
             return False
 
         if dynamic_refine_every and (steps % dynamic_refine_every == 0):
