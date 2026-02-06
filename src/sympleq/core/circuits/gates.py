@@ -5,7 +5,7 @@ from typing import TypeVar, Self
 import scipy.sparse as sp
 
 from sympleq.core.paulis import PauliObject
-from sympleq.core.circuits.utils import embed_symplectic, transvection_matrix
+from sympleq.core.circuits.utils import embed_symplectic, transvection_matrix, symplectic_form
 from sympleq.core.circuits.random_symplectic import symplectic_random_transvection
 from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
@@ -522,6 +522,120 @@ class _CZ(Gate):
         return self
 
 
+class _X(Gate):
+    """Generalized X gate (shift operator): X|j⟩ = |j+1 mod d⟩."""
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+        symplectic = np.eye(2, dtype=int)
+
+        if is_inverse:
+            # X^{-1} = X^{d-1} has tableau [-1, 0]
+            self._tableau = np.array([-1, 0], dtype=int)
+            name = "X_inv"
+        else:
+            self._tableau = np.array([1, 0], dtype=int)
+            name = "X"
+
+        super().__init__(name, symplectic)
+
+    def phase_vector(self, dimension: int) -> np.ndarray:
+        # h = 2 * Ω @ tableau, where Ω = [[0, 1], [-1, 0]]
+        # Ω @ [x, 0] = [0, -x], so h = [0, -2x]
+        x = self._tableau[0]
+        return np.array([0, -2 * x], dtype=int) % (2 * dimension)
+
+    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        # X|j⟩ = |j+1 mod d⟩, X^{-1}|j⟩ = |j-1 mod d⟩
+        U = np.zeros((d, d), dtype=complex)
+        for j in range(d):
+            if self._is_inverse:
+                U[(j - 1) % d, j] = 1.0
+            else:
+                U[(j + 1) % d, j] = 1.0
+        return sp.csr_matrix(U)
+
+    to_local_hilbert_space = local_unitary
+
+
+class _Y(Gate):
+    """Generalized Y gate: Y = X * Z."""
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+        symplectic = np.eye(2, dtype=int)
+
+        if is_inverse:
+            self._tableau = np.array([-1, -1], dtype=int)
+            name = "Y_inv"
+        else:
+            self._tableau = np.array([1, 1], dtype=int)
+            name = "Y"
+
+        super().__init__(name, symplectic)
+
+    def phase_vector(self, dimension: int) -> np.ndarray:
+        # h = 2 * Ω @ [x, z] = 2 * [z, -x]
+        x, z = self._tableau
+        return np.array([2 * z, -2 * x], dtype=int) % (2 * dimension)
+
+    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        omega = np.exp(2j * np.pi / d)
+        # Y = X * Z: Y|j⟩ = ω^j |j+1 mod d⟩
+        U = np.zeros((d, d), dtype=complex)
+        for j in range(d):
+            if self._is_inverse:
+                # Y^{-1}|j⟩ = ω^{-(j-1)} |j-1 mod d⟩
+                U[(j - 1) % d, j] = omega ** (-(j - 1) % d)
+            else:
+                U[(j + 1) % d, j] = omega ** j
+        return sp.csr_matrix(U)
+
+    to_local_hilbert_space = local_unitary
+
+
+class _Z(Gate):
+    """Generalized Z gate (clock operator): Z|j⟩ = ω^j |j⟩."""
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+        symplectic = np.eye(2, dtype=int)
+
+        if is_inverse:
+            self._tableau = np.array([0, -1], dtype=int)
+            name = "Z_inv"
+        else:
+            self._tableau = np.array([0, 1], dtype=int)
+            name = "Z"
+
+        super().__init__(name, symplectic)
+
+    def phase_vector(self, dimension: int) -> np.ndarray:
+        # h = 2 * Ω @ [0, z] = 2 * [z, 0]
+        z = self._tableau[1]
+        return np.array([2 * z, 0], dtype=int) % (2 * dimension)
+
+    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        omega = np.exp(2j * np.pi / d)
+        # Z|j⟩ = ω^j |j⟩, Z^{-1}|j⟩ = ω^{-j} |j⟩
+        if self._is_inverse:
+            diag = [omega ** (-j % d) for j in range(d)]
+        else:
+            diag = [omega ** j for j in range(d)]
+        return sp.csr_matrix(np.diag(diag))
+
+    to_local_hilbert_space = local_unitary
+
+
 class _Gates:
     """
     Singleton container for pre-instantiated gates.
@@ -553,6 +667,22 @@ class _Gates:
 
         self._CZ = _CZ()
         # CZ is self-inverse, already handled in the class
+
+        # Pauli gates
+        self._X = _X(is_inverse=False)
+        self._X_inv = _X(is_inverse=True)
+        self._X._inverse = self._X_inv
+        self._X_inv._inverse = self._X
+
+        self._Y = _Y(is_inverse=False)
+        self._Y_inv = _Y(is_inverse=True)
+        self._Y._inverse = self._Y_inv
+        self._Y_inv._inverse = self._Y
+
+        self._Z = _Z(is_inverse=False)
+        self._Z_inv = _Z(is_inverse=True)
+        self._Z._inverse = self._Z_inv
+        self._Z_inv._inverse = self._Z
 
     # Hadamard
     @property
@@ -591,6 +721,33 @@ class _Gates:
     def CZ(self) -> _CZ:
         return self._CZ
 
+    # Pauli X
+    @property
+    def X(self) -> _X:
+        return self._X
+
+    @property
+    def X_inv(self) -> _X:
+        return self._X_inv
+
+    # Pauli Y
+    @property
+    def Y(self) -> _Y:
+        return self._Y
+
+    @property
+    def Y_inv(self) -> _Y:
+        return self._Y_inv
+
+    # Pauli Z
+    @property
+    def Z(self) -> _Z:
+        return self._Z
+
+    @property
+    def Z_inv(self) -> _Z:
+        return self._Z_inv
+
 
 # Global singleton instance
 GATES = _Gates()
@@ -607,7 +764,6 @@ class PauliGate(Gate):
     def __init__(self, pauli):
         # Import here to avoid circular imports
         from sympleq.core.paulis import PauliString
-        from sympleq.core.circuits.utils import symplectic_form
 
         if not isinstance(pauli, PauliString):
             raise TypeError("PauliGate requires a PauliString")

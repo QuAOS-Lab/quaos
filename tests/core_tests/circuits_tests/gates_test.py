@@ -468,3 +468,66 @@ class TestGates():
             assert np.allclose(U, U_expected), (
                 f"PauliGate unitary mismatch for x={x_exp}, z={z_exp}, d={d}"
             )
+
+    @pytest.mark.parametrize("d", [2, 3, 5])
+    def test_pauli_singleton_inverses(self, d: int):
+        """Test Pauli gate singleton inverses: X * X_inv = I."""
+        X = GATES.X.local_unitary(d).toarray()
+        X_inv = GATES.X_inv.local_unitary(d).toarray()
+        assert np.allclose(X @ X_inv, np.eye(d)), "X @ X_inv != I"
+
+        Y = GATES.Y.local_unitary(d).toarray()
+        Y_inv = GATES.Y_inv.local_unitary(d).toarray()
+        assert np.allclose(Y @ Y_inv, np.eye(d)), "Y @ Y_inv != I"
+
+        Z = GATES.Z.local_unitary(d).toarray()
+        Z_inv = GATES.Z_inv.local_unitary(d).toarray()
+        assert np.allclose(Z @ Z_inv, np.eye(d)), "Z @ Z_inv != I"
+
+    @pytest.mark.parametrize("d", [2, 3, 5])
+    def test_pauli_singleton_order(self, d: int):
+        """Test X^d = Z^d = I (Pauli gates have order d)."""
+        X = GATES.X.local_unitary(d).toarray()
+        X_d = np.linalg.matrix_power(X, d)
+        assert np.allclose(X_d, np.eye(d)), f"X^{d} != I"
+
+        Z = GATES.Z.local_unitary(d).toarray()
+        Z_d = np.linalg.matrix_power(Z, d)
+        assert np.allclose(Z_d, np.eye(d)), f"Z^{d} != I"
+
+        # Y = XZ has order d for odd dimensions
+        # For d=2, Y^2 = -I (so Y has order 4)
+        Y = GATES.Y.local_unitary(d).toarray()
+        if d == 2:
+            Y_4 = np.linalg.matrix_power(Y, 4)
+            assert np.allclose(Y_4, np.eye(d)), "Y^4 != I for d=2"
+        else:
+            Y_d = np.linalg.matrix_power(Y, d)
+            assert np.allclose(Y_d, np.eye(d)), f"Y^{d} != I"
+
+    def test_pauli_singleton_inverse_linkage(self):
+        """Test inverse gate linkage works correctly."""
+        assert GATES.X.inverse() is GATES.X_inv
+        assert GATES.X_inv.inverse() is GATES.X
+        assert GATES.Y.inverse() is GATES.Y_inv
+        assert GATES.Y_inv.inverse() is GATES.Y
+        assert GATES.Z.inverse() is GATES.Z_inv
+        assert GATES.Z_inv.inverse() is GATES.Z
+
+    def test_pauli_qubit_self_inverse(self):
+        """For qubits (d=2), X and X_inv give the same unitary (X^2 = I)."""
+        X = GATES.X.local_unitary(2).toarray()
+        X_inv = GATES.X_inv.local_unitary(2).toarray()
+        assert np.allclose(X, X_inv), "For d=2, X and X_inv should be the same"
+
+        Z = GATES.Z.local_unitary(2).toarray()
+        Z_inv = GATES.Z_inv.local_unitary(2).toarray()
+        assert np.allclose(Z, Z_inv), "For d=2, Z and Z_inv should be the same"
+
+    @pytest.mark.parametrize("d", [2, 3, 5])
+    def test_pauli_xy_relation(self, d: int):
+        """Test Y = X * Z relation."""
+        X = GATES.X.local_unitary(d).toarray()
+        Z = GATES.Z.local_unitary(d).toarray()
+        Y = GATES.Y.local_unitary(d).toarray()
+        assert np.allclose(Y, X @ Z), "Y should equal X @ Z"
