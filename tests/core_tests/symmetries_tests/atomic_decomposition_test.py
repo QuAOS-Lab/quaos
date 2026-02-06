@@ -1415,3 +1415,39 @@ class TestAtomicDecompositionFuzz:
             recon = mod_p(B @ Sigma @ Linv, p)
             assert np.array_equal(recon, mod_p(F, p))
 
+class TestAtomicDecompositionCertifiedAPI:
+    def test_certified_raises_when_uncertified(self) -> None:
+        rng = np.random.default_rng(0)
+        p = 2
+        n = 4
+        F = rand_symplectic(rng, n, p, steps=20)
+
+        with pytest.raises(Exception):  # ideally CertificationError
+            _ = atomic_block_decompose(F, p, mode="certified")
+
+    def test_best_effort_always_returns_valid(self) -> None:
+        rng = np.random.default_rng(1)
+        for p in [2, 3, 5]:
+            for n in [1, 2, 3, 4]:
+                F = rand_symplectic(rng, n, p, steps=15)
+                Sigma, B, info = atomic_block_decompose(F, p, mode="best_effort")
+
+                assert is_symplectic(Sigma, p)
+                _assert_symplectic_basis_full(B, p)
+
+                # reconstruction
+                Linv = symplectic_left_inverse(B, p)
+                recon = mod_p(B @ Sigma @ Linv, p)
+                assert np.array_equal(recon, mod_p(F, p))
+
+                assert info["status"] in ("OK", "DEGRADED")
+                
+    def test_certified_succeeds_on_paired_only(self) -> None:
+        p = 5
+        n = 3
+        A = np.diag([2, 2, 3]).astype(np.int64)
+        F = _symplectic_scale(A, p)
+
+        Sigma, B, info = atomic_block_decompose(F, p, mode="certified")
+        assert info["status"] == "OK"
+        assert info["certified"] is True

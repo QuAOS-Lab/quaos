@@ -192,11 +192,19 @@ def _check_leaf(pi: np.ndarray,
         return None
 
     # For constructing candidate symplectics we must be careful about *row order*.
-    # In rank-deficient cases, transvection-based mapping is order-dependent, so we
-    # prefer a stable pivot-order basis (cached) over the sorted independent-label list.
+    #
+    # - Full-rank case: we precompute an inverse for ctx.basis_indices, so we must
+    #   use that exact ordered basis when constructing F.
+    # - Rank-deficient case: transvection-based mapping is order-dependent, so we
+    #   prefer a stable pivot-order basis (cached) over the independent-label list.
+    use_precomputed_inv = (
+        (ctx.p == 2 and ctx.basis_src_inv_gf2 is not None)
+        or (ctx.p != 2 and ctx.basis_src_inv_gfp is not None)
+    )
     basis_rows = ctx.basis_indices
-    if ctx.p == 2 and ctx.row_basis_cache is not None:
-        rb = ctx.row_basis_cache.get("gf2")
+    if not use_precomputed_inv and ctx.row_basis_cache is not None:
+        key = "gf2" if ctx.p == 2 else "gfp"
+        rb = ctx.row_basis_cache.get(key)
         if rb is not None and rb.size:
             basis_rows = rb.astype(int, copy=False)
 
@@ -223,13 +231,14 @@ def _check_leaf(pi: np.ndarray,
         T = (ctx.base_tableau[tgt_idx] & 1).astype(np.uint8, copy=False)
         F = (ctx.basis_src_inv_gf2 @ T) & 1
         F = np.asarray(F, dtype=int)
-        h0 = get_phase_vector(F, int(ctx.pauli_sum.dimensions[0]))
+        # get_phase_vector expects Gate.symplectic (not the right-action matrix F).
+        h0 = get_phase_vector(F.T, int(ctx.pauli_sum.dimensions[0]))
     elif ctx.p != 2 and ctx.basis_src_inv_gfp is not None:
         GF = galois.GF(int(ctx.p))
         T = GF(ctx.base_tableau[tgt_idx] % ctx.p)
         F_gf = ctx.basis_src_inv_gfp @ T
         F = (np.asarray(F_gf, dtype=int) % ctx.p).astype(int, copy=False)
-        h0 = get_phase_vector(F, int(ctx.pauli_sum.dimensions[0]))
+        h0 = get_phase_vector(F.T, int(ctx.pauli_sum.dimensions[0]))
     else:
         # Rank-deficient tableau: the basis alone doesn't determine F.
         # Build an F from a pivot-order basis mapping; this tends to recover a
@@ -251,7 +260,7 @@ def _check_leaf(pi: np.ndarray,
                 order = np.concatenate([np.asarray(basis_rows, dtype=int), rest])
                 F = map_pauli_sum_to_target_tableau(base[order], tgt_full[order])
 
-            h0 = get_phase_vector(F, int(ctx.pauli_sum.dimensions[0]))
+            h0 = get_phase_vector(F.T, int(ctx.pauli_sum.dimensions[0]))
         else:
             # Generic fallback for non-qubit rank-deficient cases.
             F, h0, _, _ = find_map_to_target_pauli_sum(H_basis_src, H_basis_tgt)
@@ -260,7 +269,7 @@ def _check_leaf(pi: np.ndarray,
         print(f'[DEBUG] Found correct permutation, but incorrect F.')
         print('known_F:\n', known_F)
         print('candidate F:\n', F.T)
-        print('basis indices:\n', ctx.basis_indices)
+        print('basis rows used:\n', basis_rows)
         print('input basis:\n', H_basis_src.tableau)
         print('target indices:\n', tgt_idx)
         print('target basis:\n', H_basis_tgt.tableau)

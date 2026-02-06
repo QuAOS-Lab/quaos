@@ -102,3 +102,5 @@ def find_clifford_symmetries(
         max_wl_rounds=max_wl_rounds,
         dynamic_refine_every=int(dynamic_refine_every), known_F=known_F, debug_permutation=debug_permutation
     )
+
+

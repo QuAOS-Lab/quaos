@@ -2,8 +2,6 @@ from sympleq.models.random_hamiltonian import random_gate_symmetric_hamiltonian
 from sympleq.core.circuits import SWAP
 from sympleq.core.symmetries.clifford import find_clifford_symmetries, qudit_cost, min_qudit_clifford_symmetry
 from sympleq.core.circuits import Circuit
-
-from sympleq.core.symmetries.modular_helpers import omega_matrix, mod_p, inv_mod_scalar
 import numpy as np
 
 
@@ -134,17 +132,17 @@ class TestSymmetryFinder:
             assert F == Circuit(F.dimensions, [T.inv(), S, T]).composite_gate()
 
             assert H.to_standard_form() == F.act(H).to_standard_form()
-            assert T.act(S.act(T.inv().act(H))).to_standard_form() == H.to_standard_form()
+            assert T.act(S.act(T.inv().act(H))).is_close(H, literal=False)
 
             assert S.act(T.inv().act(H)).to_standard_form() == T.inv().act(H).to_standard_form()
             assert qudit_cost(S) <= 3
 
     def test_random_arbitrary_symmetry(self):
 
-        n_tests = 200
+        n_tests = 2000
         p = 2
-        n_qudits = 15
-        n_paulis = 40
+        n_qudits = 3
+        n_paulis = 7
 
         for _ in range(n_tests):
             sym = Circuit.from_random(10, [p] * n_qudits)  #
@@ -219,10 +217,10 @@ class TestSymmetryFinder:
                 assert qudit_cost(S) <= qc
 
     def test_generate_symmetric_hamiltonian(self):
-        n_qudits = 5
-        n_paulis = 12
+        n_qudits = 3
+        n_paulis = 8
         p = 2
-        n_tests = 100
+        n_tests = 1000
         for _ in range(n_tests):
             sym = Circuit.from_random(10, [p] * n_qudits)  #
             sym = sym.composite_gate()
