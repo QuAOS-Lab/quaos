@@ -23,6 +23,58 @@ from .module_invariants import (
 from .atomic_krylov import _select_module_generators_from_top_space
 
 
+def _full_top_space_basis_in_span(
+    N: np.ndarray,
+    space_basis: np.ndarray,
+    L: int,
+    p: int,
+) -> np.ndarray:
+    """
+    Build a deterministic spanning set for the L-top quotient space inside span(space_basis).
+
+    We reuse the same construction that jordan_chain_tops_nilpotent_in_span encodes:
+      tops[L] spans K_L / (K_{L-1} + N K_{L+1}) where K_j := ker(N^j) ∩ span(space_basis).
+
+    Unlike _select_module_generators_from_top_space, this does NOT try to pick module generators.
+    It returns a *basis for the entire top space* (as ambient columns in sector coordinates).
+    """
+    L = int(L)
+    if L <= 0:
+        return np.zeros((N.shape[0], 0), dtype=np.int64)
+
+    N = mod_p(N, p)
+    space_basis = independent_columns(mod_p(space_basis, p), p)
+    if space_basis.shape[1] == 0:
+        return np.zeros((N.shape[0], 0), dtype=np.int64)
+
+    # Build K_{L-1}, K_L, K_{L+1} in the restricted span
+    KLm1 = kernel_in_span(mat_pow_mod(N, L - 1, p), space_basis, p) if L - 1 >= 1 else np.zeros((N.shape[0], 0), dtype=np.int64)
+    KLm1 = independent_columns(mod_p(KLm1, p), p)
+
+    KL = kernel_in_span(mat_pow_mod(N, L, p), space_basis, p)
+    KL = independent_columns(mod_p(KL, p), p)
+
+    KLp1 = kernel_in_span(mat_pow_mod(N, L + 1, p), space_basis, p)
+    KLp1 = independent_columns(mod_p(KLp1, p), p)
+
+    # S = K_{L-1} + N K_{L+1}
+    if KLp1.shape[1]:
+        NKLp1 = mod_p(N @ KLp1, p)
+        S = np.concatenate([KLm1, NKLp1], axis=1) if KLm1.shape[1] else NKLp1
+    else:
+        S = KLm1
+    S = independent_columns(mod_p(S, p), p) if S.shape[1] else S
+
+    rS = rank_mod(S, p) if S.shape[1] else 0
+    need = KL.shape[1] - rS
+    if need <= 0:
+        return np.zeros((N.shape[0], 0), dtype=np.int64)
+
+    # Pick a complement of S inside KL deterministically
+    chosen = _basis_extend(S, KL, need, p)
+    return independent_columns(mod_p(chosen, p), p)
+
+
 def _is_alternating(B: np.ndarray, p: int) -> bool:
     """
     Alternating bilinear form matrix test over GF(p).
@@ -158,8 +210,9 @@ def _find_partner_in_top_span(
         raise RuntimeError("_find_partner_in_top_span: failed to build partner with pairing=1.")
     return w
 
+
 def atomic_blocks_in_self_sector_nonunipotent(
-    F: np.ndarray, p: int, key: Tuple[int, ...], primaries: dict
+    F: np.ndarray, p: int, key: Tuple[int, ...], primaries: dict, *, allow_fallback: bool = True
 ) -> Tuple[List[AtomicBlock], AtomicInvariant]:
     """
     Self-reciprocal sector q=q* with q != x±1.
@@ -248,7 +301,12 @@ def atomic_blocks_in_self_sector_nonunipotent(
             L = max(tops.keys())
 
             A_raw = independent_columns(mod_p(tops[L], p), p)
+
+            # Reduced set: one per indecomposable q^L block (module generators)
             A = _select_module_generators_from_top_space(F_sec, N, A_raw, deg_q, int(L), p)
+
+            # Full top-space basis at this length (for partner search / existence in p=2)
+            A_top = _full_top_space_basis_in_span(N, space_basis, int(L), p)
 
             if A.shape[1] == 0:
                 # nothing usable at this L; deterministically drop this length
@@ -285,7 +343,8 @@ def atomic_blocks_in_self_sector_nonunipotent(
                 continue
 
             # Candidate 2: hyperbolic pairing block from two cyclic modules
-            w_top = _find_partner_in_top_span(v_top, A, Ω, N, int(L), p)
+            w_top = _find_partner_in_top_span(v_top, A_top, Ω, N, int(L), p)
+
             Cw = cyclic_submodule_basis(F_sec, N, w_top, deg_q, int(L), p)
             Cw = independent_columns(mod_p(Cw, p), p)
 
@@ -332,8 +391,8 @@ def atomic_blocks_in_self_sector_nonunipotent(
     except Exception as e:
         extraction_error = e
 
-    # If extraction failed in p=2, degrade gracefully to a single sector-sized block.
-    if extraction_error is not None and p == 2:
+    # If extraction failed in p=2, optionally degrade to a single sector-sized block.
+    if extraction_error is not None and p == 2 and allow_fallback:
         blocks = [AtomicBlock(T_blk=mod_p(T_sec, p), half_dim=m, sector_key=key, inv=None)]
         blocks_meta = [{
             "type": "fallback_sector",
@@ -359,10 +418,12 @@ def atomic_blocks_in_self_sector_nonunipotent(
             )
 
     # Status / invariant payload
-    if p != 2:
-        status = "OK"
+    if extraction_error is not None:
+        status = "DEGRADED_p2" if p == 2 else "ERROR"
     else:
-        status = "heuristic_p2" if extraction_error is None else "DEGRADED_p2"
+        # If we got here, extraction succeeded. We can certify p=2 too *if* the
+        # spanning / consistency checks passed (they did, otherwise we'd have raised).
+        status = "OK"
 
     inv_data: Dict[str, Any] = {
         "status": status,
