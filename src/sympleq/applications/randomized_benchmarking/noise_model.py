@@ -104,6 +104,10 @@ class NoiseModel(ABC):
         where n = n_kraus_operators and M = n_qudits.
 
         lambda_{ij} = sum_k alpha_{ki} alpha^*_{kj} in Eq.(3), where i, j are multi-indices.
+
+        NOTE: For the moment we work with Clifford noise models only, and the process matrix is diagonal,
+        so that we could work with the probabilities directly. Nevertheless, this is a good starting point
+        for the future to generalize to non-Clifford noise.
         """
         pass
 

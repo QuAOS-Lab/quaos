@@ -450,7 +450,7 @@ class TestCircuits():
         ps = PauliSum.from_random(n_paulis, dimensions)
 
         intermediate = circuit.act(ps)
-        result = circuit.inv().act(intermediate)
+        result = circuit.inverse().act(intermediate)
 
         assert ps == result
 

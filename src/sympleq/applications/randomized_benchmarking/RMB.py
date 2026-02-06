@@ -3,7 +3,7 @@ from typing import Generator
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 from sympleq.core.circuits.circuits import Circuit
-from sympleq.core.circuits.gates import PHASE, SUM, SWAP, Gate, Hadamard
+from sympleq.core.circuits.gates import GATES, Gate
 from sympleq.applications.randomized_benchmarking.noise_model import DephasingNoise, NoiseModel, Noiseless
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis.pauli_sum import PauliSum
@@ -21,7 +21,7 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
 
         self.rng = rng
 
-        self._circuit = circuit + circuit.inv()
+        self._circuit = circuit + circuit.inverse()
         self.noise_model = noise_model
         self._initial_state = RMB.initial_state(circuit.dimensions, random_initial_state, self.rng)
 
@@ -30,8 +30,8 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
         if with_random_elimination > 0.0:
             gate_to_eliminate_indices = []
             pauli = self._initial_state.copy()
-            for idx, gate in enumerate(circuit.gates):
-                intermediate = gate.act(pauli)
+            for idx, (gate, idxs) in enumerate(zip(circuit.gates, circuit.qudit_indices)):
+                intermediate = gate.act(pauli, idxs)
                 if pauli == intermediate:
                     gate_to_eliminate_indices.append(idx)
 
@@ -239,24 +239,7 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
 
     def _apply_gate_to_rho_with_error(self, gate: Gate, rho: np.ndarray) -> np.ndarray:
         # FIXME: after merging #106, clean this up
-        if gate.name.endswith("-inv"):
-            match gate.name:
-                case "H-inv":
-                    gatehack = Hadamard(gate.qudit_indices[0], gate.dimensions[0])
-                case "S-inv":
-                    gatehack = PHASE(gate.qudit_indices[0], gate.dimensions[0])
-                case "SWAP-inv":
-                    gatehack = SWAP(gate.qudit_indices[0], gate.qudit_indices[1], gate.dimensions[0])
-                case "SUM-inv":
-                    gatehack = SUM(gate.qudit_indices[0], gate.qudit_indices[1], gate.dimensions[0])
-                case _:
-                    print(gate)
-                    raise ValueError("Unknown gate")
-
-            unitary = gatehack.unitary(self.dimensions).transpose().conjugate()
-        else:
-            unitary = gate.unitary(self.dimensions)
-
+        unitary = gate.local_unitary(self.dimensions[])
         rho = unitary @ rho @ unitary.transpose().conjugate()
 
         # Apply noise using Kraus form: ρ_out = Σ_i K_i ρ K†_i
@@ -354,7 +337,7 @@ if __name__ == "__main__":
     gate_density = 4.5
     dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qudits
     dimension = dimensions[0]
-    circuit = Circuit(dimensions, [PHASE(0, dimension)])
+    circuit = Circuit.from_tuples(dimensions, (GATES.S, 0))
     rmb = RMB.from_random(dimensions, gate_density,
                           noise_model=DephasingNoise(0.25),
                           with_random_elimination=False,
