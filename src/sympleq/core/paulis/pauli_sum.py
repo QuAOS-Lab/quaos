@@ -768,25 +768,45 @@ class PauliSum(PauliObject):
         """
         Combines equivalent Pauli operators in the sum by summing their coefficients and deleting duplicates.
         """
-        # Match the graphs branch: absorb phases into weights, then merge by tableau equality.
+        # IMPORTANT: the old nested-loop implementation double-counted terms when more
+        # than two identical tableaus were present (because it could merge an already-merged
+        # coefficient again). Do a stable group-by instead.
+        #
+        # Strategy:
+        # 1) Absorb phases into weights (so tableau equality is the only key).
+        # 2) Sort by tableau rows, then sum weights in each contiguous group.
         self.phase_to_weight()
 
-        to_delete = []
-        for i in reversed(range(self.n_paulis())):
-            ps1 = self.select_pauli_string(i)
-            for j in range(i + 1, self.n_paulis()):
-                ps2 = self.select_pauli_string(j)
-                if ps1.has_equal_tableau(ps2):
-                    self._weights[i] = self.weights[i] + self.weights[j]
-                    to_delete.append(j)
-        self._delete_paulis(to_delete)
+        n = self.n_paulis()
+        if n <= 1:
+            return
 
-        # remove zero weight Paulis
-        to_delete = []
-        for i in range(self.n_paulis()):
-            if self.weights[i] == 0:
-                to_delete.append(i)
-        self._delete_paulis(to_delete)
+        T = np.asarray(self.tableau, dtype=int)
+        W = np.asarray(self.weights, dtype=np.complex128)
+
+        order = np.lexsort(T.T)
+        T = T[order]
+        W = W[order]
+
+        new_T = []
+        new_W = []
+
+        i = 0
+        while i < n:
+            j = i + 1
+            # group identical tableau rows
+            while j < n and np.array_equal(T[j], T[i]):
+                j += 1
+            new_T.append(T[i])
+            new_W.append(np.sum(W[i:j]))
+            i = j
+
+        self._tableau = np.asarray(new_T, dtype=int)
+        self._weights = np.asarray(new_W, dtype=np.complex128)
+        self._phases = np.zeros(self._weights.shape[0], dtype=int)
+
+        # remove zero-weight Paulis using the library tolerance
+        self.remove_zero_weight_paulis()
 
     def remove_trivial_paulis(self):
         """

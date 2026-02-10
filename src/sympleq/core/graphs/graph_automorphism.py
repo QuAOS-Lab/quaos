@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import numpy as np
 import galois
 from numba import njit
-from typing import Any
+from typing import Any, cast
 from sympleq.core.graphs.graph_coloring import _build_base_partition
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 from sympleq.core.circuits.target import find_map_to_target_pauli_sum, get_phase_vector
@@ -467,7 +467,9 @@ def clifford_graph_automorphism_search(
         else:
             GF = galois.GF(int(p))
             try:
-                basis_src_inv_gfp = np.linalg.inv(GF(basis_src % p))
+                # galois overloads numpy.linalg for FieldArray, but type checkers often
+                # don't understand that and infer a float ndarray.
+                basis_src_inv_gfp = cast(galois.FieldArray, np.linalg.inv(GF(basis_src % p)))
             except np.linalg.LinAlgError:
                 basis_src_inv_gfp = None
 
@@ -558,29 +560,36 @@ def clifford_graph_automorphism_search(
         # 1-WL just to order
         cur_colors = _wl_colors_from_S(S_mod, int(2), coeffs=coeffs, col_invariants=None, max_rounds=1)
 
-    def dfs() -> bool:
+    @dataclass
+    class _DFSFrame:
+        i: int
+        bi: int
+        mapped_idx: np.ndarray
+        candidate: list[int]
+        idx: int = 0  # next candidate index to try
+        assigned_y: int = -1  # -1 means "unassigned"
+
+    def _undo_assignment(frame: _DFSFrame) -> None:
+        y = int(frame.assigned_y)
+        if y < 0:
+            return
+        phi[frame.i] = -1
+        used[y] = False
+        _inc_count(y)
+        frame.assigned_y = -1
+
+    def _make_frame() -> _DFSFrame | None:
         nonlocal steps
         if len(results) >= k_wanted:
-            return True
-        if target_pi is not None and np.any((phi >= 0) & (phi != target_pi)):
-            print(f"[DEBUG] prune: assignment {phi} conflicts with target {target_pi}")
-            return False
-        if np.all(phi >= 0):
-            pi = phi.copy()
-            fail_loud = target_pi is not None and np.array_equal(pi, target_pi)
-            leaf = _check_leaf(pi, leaf_ctx, known_F=known_F, fail_loudly=fail_loud)
-            if leaf is not None:
-                results.append(leaf)
-                return True
-            if fail_loud:
-                print("[DEBUG] reached target permutation but leaf check failed")
-            return False
+            return None
 
         if dynamic_refine_every and (steps % dynamic_refine_every == 0):
             dynamic_refine()
         steps += 1
 
-        i = select_next()
+        i = int(select_next())
+        if i < 0:
+            return None
         bi = int(base_colors[i])
         mapped_idx = np.where(phi >= 0)[0].astype(np.int64)
 
@@ -589,31 +598,93 @@ def clifford_graph_automorphism_search(
             targ_y = int(target_pi[i])
             if used[targ_y]:
                 print(f"[DEBUG] target impossible at i={i}: target {targ_y} already used")
-                return False
-            # bypass base-class and coeff filtering in debug mode
-            candidate = [targ_y]
+                candidate: list[int] = []
+            else:
+                # bypass base-class and coeff filtering in debug mode
+                candidate = [targ_y]
         else:
             candidate = [y for y in base_classes[bi] if not used[y]]
             if coeffs is not None:
                 candidate = [y for y in candidate if coeffs[i] == coeffs[y]]
             candidate.sort(key=lambda y: cur_colors[y])
 
-        for y in candidate:
-            if not consistency(phi, mapped_idx, i, y):
-                if target_pi is not None:
-                    print(f"[DEBUG] target candidate fails consistency at i={i}, y={y}")
+        return _DFSFrame(i=i, bi=bi, mapped_idx=mapped_idx, candidate=candidate)
+
+    # Iterative DFS (explicit stack) to avoid hitting Python's recursion limit for large Pauli sums.
+    stack: list[_DFSFrame] = []
+    while True:
+        if len(results) >= k_wanted:
+            break
+
+        # Debug pruning: current partial assignment disagrees with the target permutation.
+        if target_pi is not None and np.any((phi >= 0) & (phi != target_pi)):
+            print(f"[DEBUG] prune: assignment {phi} conflicts with target {target_pi}")
+            # backtrack to the most recent assigned variable
+            while stack and stack[-1].assigned_y < 0:
+                stack.pop()
+            if not stack:
+                break
+            _undo_assignment(stack[-1])
+            continue
+
+        # Leaf check
+        if np.all(phi >= 0):
+            pi = phi.copy()
+            fail_loud = target_pi is not None and np.array_equal(pi, target_pi)
+            leaf = _check_leaf(pi, leaf_ctx, known_F=known_F, fail_loudly=fail_loud)
+            if leaf is not None:
+                results.append(leaf)
+                break  # match previous behavior: stop after the first found symmetry
+            if fail_loud:
+                print("[DEBUG] reached target permutation but leaf check failed")
+            # leaf failed -> backtrack one level
+            if not stack:
+                break
+            _undo_assignment(stack[-1])
+            continue
+
+        # Ensure there's a frame for the next variable.
+        if not stack or stack[-1].assigned_y >= 0:
+            fr = _make_frame()
+            if fr is None:
+                # No variable to assign or no candidates: fail this branch.
+                if not stack:
+                    break
+                _undo_assignment(stack[-1])
                 continue
-            phi[i] = y
+            stack.append(fr)
+
+        frame = stack[-1]
+
+        # Try candidates for this frame's variable i.
+        assigned = False
+        while frame.idx < len(frame.candidate):
+            y = int(frame.candidate[frame.idx])
+            frame.idx += 1
+            if used[y]:
+                continue
+            if not consistency(phi, frame.mapped_idx, frame.i, y):
+                if target_pi is not None:
+                    print(f"[DEBUG] target candidate fails consistency at i={frame.i}, y={y}")
+                continue
+
+            phi[frame.i] = y
             used[y] = True
             _dec_count(y)
-            if dfs():
-                return True
-            phi[i] = -1
-            used[y] = False
-            _inc_count(y)
-        return False
+            frame.assigned_y = y
+            assigned = True
+            break
 
-    dfs()
+        if assigned:
+            # descend; next loop iteration will create/advance the next frame
+            continue
+
+        # No candidates left for this variable -> pop frame (no assignment) and backtrack.
+        stack.pop()
+        if not stack:
+            break
+        _undo_assignment(stack[-1])
+
     return results[:k_wanted]
 
 

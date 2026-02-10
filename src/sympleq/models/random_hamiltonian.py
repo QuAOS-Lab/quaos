@@ -444,6 +444,7 @@ def gf2_rank_of_tableau(tableau: np.ndarray) -> int:
         r.add(tableau_row_to_bits(row))
     return r.rank
 
+
 def tableau_basis_seeds(n_qudits: int) -> np.ndarray:
     """
     Return the 2n basis vectors in GF(2)^{2n} as a (2n, 2n) int array.
