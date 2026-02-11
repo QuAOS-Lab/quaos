@@ -370,21 +370,28 @@ class PauliSum(PauliObject):
         Extract per-term phases from complex weights onto the integer phase vector.
 
         For each weight w_i, choose an integer k_i in [0, 2*d - 1] (with d=self.lcm)
-        so that w_i * exp(-2πi * k_i / (2d)) is as close as possible to a positive real.
+        so that w_i * exp(-2 pi i * k_i / (2d)) has an argument as close to 0 as possible.
         Then add k_i to self.phases[i] (mod 2d) and replace the weight with the rotated value.
 
         Notes:
         - If a weight is (numerically) zero, we leave it and add no phase.
-        - We try the nearest discrete phase (by rounding the argument), and also ±1
-            neighbor to break ties in favor of larger positive real part.
+        - This is a *gauge choice* that is translation-consistent: if w' = w * omega^m with
+          omega = exp(2 pi i/(2d)), then both weights are rotated to the same residual factor and
+          their extracted phases differ by m (mod 2d). This property is important for symmetry
+          finding, where coefficients can differ by a discrete Clifford phase.
         """
         d = int(self.lcm)
         two_d = 2 * d
         new_weights = np.array(self.weights, dtype=np.complex128)
         new_phases = np.array(self.phases, dtype=int)
 
+        if two_d <= 0:
+            raise ValueError("Invalid modulus (2*lcm) for weight_to_phase()")
+
         # tiny threshold to treat weights as zero (avoid noisy angles)
         eps = 1e-15
+        two_pi = 2.0 * np.pi
+        step = two_pi / float(two_d)
 
         for i in range(self.n_paulis()):
             w = new_weights[i]
@@ -393,41 +400,25 @@ class PauliSum(PauliObject):
             if not np.isfinite(w) or abs(w) < eps:
                 continue
 
-            theta = np.angle(w)
+            # Use a consistent "half-up" rounding in [0, 2pi) so that
+            # round(x + m) == round(x) + m holds exactly for integer m.
+            theta = float(np.angle(w))
+            theta_mod = theta % two_pi
+            x = theta_mod / step  # in [0, 2d)
+            k_best = int(np.floor(x + 0.5)) % two_d
 
-            # nearest discrete phase index
-            k0 = int(np.round((two_d * theta) / (2.0 * np.pi))) % two_d
-            candidates = [(k0 - 1) % two_d, k0 % two_d, (k0 + 1) % two_d]
+            rot = np.exp(-2j * np.pi * (k_best / two_d))
+            w_best = w * rot
 
-            valid = []
-            for k in candidates:
-                # rotation by discrete (2d)-th root of unity
-                # safe because two_d > 0 (checked above)
-                rot = np.exp(-2j * np.pi * (k / two_d))
-                w_rot = w * rot
-                if not np.isfinite(w_rot):
-                    continue
-                ang = np.angle(w_rot)
-                if np.isnan(ang):
-                    continue
-                # prefer smallest |angle| (closest to real axis), break ties by larger real part
-                score = (abs(ang), -w_rot.real)
-                valid.append((score, k, w_rot))
-
-            if valid:
-                # pick the best candidate
-                _, k_best, w_best = min(valid)
-            else:
-                # fallback: use k0 even if odd numerics; keep original magnitude
-                k_best = k0
-                w_best = w * np.exp(-2j * np.pi * (k_best / two_d))
+            # If the rotated weight is close to the real axis, remove imag part
+            if abs(w_best.imag) <= 1e-12 * max(1.0, abs(w_best)):
+                w_best = complex(w_best.real, 0.0)
 
             new_phases[i] = (new_phases[i] + k_best) % two_d
             new_weights[i] = w_best
 
-        # commit
         self._phases = new_phases
-        self._weights = np.round(new_weights, 10)
+        self._weights = np.round(new_weights, 12)
 
     @overload
     def __getitem__(self,
