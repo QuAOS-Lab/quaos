@@ -28,9 +28,13 @@ The probability of each Kraus operator (used for quantum trajectory sampling) is
 
     p_i = Σ_j |α_{ij}|² = ||K_i||²
 
+    
+We take two simplofying assumptions:
+**Uncorrelated noise**
 For uncorrelated noise on multiple qudits, the multi-qudit quantities are
 tensor products of single-qudit quantities.
 
+**Clifford noise**
 For now, we assume that Kraus operators are Clifford. This simplifies greatly how they act on PauliSums,
 as they are basically Gates.
 """
@@ -42,6 +46,7 @@ from abc import ABC, abstractmethod
 from itertools import product
 import math
 
+from sympleq.core.circuits.gates import Gate
 from sympleq.core.paulis.pauli_sum import PauliSum
 
 
@@ -69,11 +74,7 @@ class NoiseModel(ABC):
             # in _apply_gate_to_pauli_with_error.
             self.cached_probabilities[gate_n_qudits] = np.cumsum(probs)
 
-        self.cached_operators = {}
-
-    @abstractmethod
-    def n_kraus_operators(self) -> int:
-        pass
+        self.cached_gates: dict = {}
 
     @classmethod
     @abstractmethod
@@ -83,6 +84,18 @@ class NoiseModel(ABC):
                         weighted: bool = True) -> list[PauliSum]:
         """"
         K_i = sum_{j} alpha_{ij} sigma_j
+
+        The number of Kraus operators for a single qudit of dimensions d is d^2.
+        For multiple qudits is just the product prod(d**2 for d in dimensions).
+        We fix the order
+        """
+        pass
+
+    @classmethod
+    @abstractmethod
+    def kraus_gates(cls, dimension: int | None = None) -> list[Gate]:
+        """"
+        The gate corresponding to the Kraus operator, acting as ps1 = G_i.act(ps, qudit_indices)
         """
         pass
 
@@ -111,8 +124,14 @@ class NoiseModel(ABC):
         """
         pass
 
-    def act(self, pauli_sum: PauliSum, qudit_indices: np.ndarray) -> PauliSum:
-        n_qudits = len(qudit_indices)
+    def act(self, pauli_sum: PauliSum, qudits: int | tuple[int, ...]) -> PauliSum:
+
+        if isinstance(qudits, int):
+            n_qudits = len(qudits)
+
+            qudits = (qudits, )
+        relevant_dimension = pauli_sum.dimensions[qudits]
+
         # Get probabilities to select one possible quantum trajectory
         if n_qudits not in self.cached_probabilities:
             probs = self.kraus_probabilities(n_qudits)
@@ -125,20 +144,19 @@ class NoiseModel(ABC):
         idx = int(np.searchsorted(probs, self.rng.random()))
 
         key = (pauli_sum.dimensions.tobytes(), qudit_indices.tobytes())
-        if key not in self.cached_operators:
-            self.cached_operators[key] = self.kraus_operators(
-                pauli_sum.dimensions, qudit_indices, weighted=False)
+        if key not in self.cached_gates:
+            self.cached_gates[key] = self.kraus_gates()
 
-        operators = self.cached_operators[key]
-        k = operators[idx]
-        return (k * pauli_sum * k.H())
+        gates = self.cached_gates[key]
+        gate = gates[idx]
+        return gate.act(pauli_sum, qudits)
 
 
 class Noiseless(NoiseModel):
     def __init__(self) -> None:
         super().__init__(rng=default_rng())
 
-    def n_kraus_operators(self) -> int:
+    def kraus_gates(cls, dimension: int | None = None) -> list[Gate]:
         return 1
 
     def kraus_operators(self,
