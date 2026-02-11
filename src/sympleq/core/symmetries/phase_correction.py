@@ -47,7 +47,7 @@ def solve_phase_vector_h_from_residual(
         p_uni = int(dims[0])
 
         # -------------------------
-        # QUBITS: modulus=4, solve in GF(2) on delta/2
+        # QUBITS: modulus=4 but only even changes possible, so solve in GF(2) on delta/2
         # -------------------------
         if p_uni == 2:
             # delta must be even for a Pauli-frame correction to exist
@@ -86,7 +86,6 @@ def solve_phase_vector_h_from_residual(
 
         # ODD PRIME
         else:
-            raise NotImplementedError("Odd-prime uniform dimensions not yet implemented for phase correction.")
             A_p_full = (A % p_uni).astype(int, copy=False)
             b_p_full = (b % p_uni).astype(int, copy=False)
 

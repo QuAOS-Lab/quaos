@@ -176,10 +176,55 @@ class _LeafContext:
     row_basis_cache: dict[str, np.ndarray]
 
 
+def _residual_phase_from_coeff_ratio(
+    *,
+    w_src: np.ndarray,
+    w_tgt: np.ndarray,
+    phase_out: np.ndarray,
+    two_lcm: int,
+) -> np.ndarray | None:
+    """
+    Given coefficient-form source weights w_src and target weights w_tgt=w_src[pi], and output phases
+    phase_out from acting with a candidate Clifford (on coefficient-form input), compute delta such that:
+
+        w_tgt[i] ~= w_src[i] * omega**phase_out[i] * omega**delta[i]
+
+    where omega = exp(2*pi*i/two_lcm).
+    Returns delta mod two_lcm, or None if any ratio is not close to a root of unity.
+    """
+    w_src = np.asarray(w_src, dtype=np.complex128)
+    w_tgt = np.asarray(w_tgt, dtype=np.complex128)
+    phase_out = np.asarray(phase_out, dtype=int) % int(two_lcm)
+
+    if two_lcm == 4:
+        omega_pows = np.array([1.0 + 0.0j, 0.0 + 1.0j, -1.0 + 0.0j, 0.0 - 1.0j], dtype=np.complex128)
+        denom = w_src * omega_pows[phase_out]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = np.where(np.abs(denom) > 1e-15, w_tgt / denom, 1.0 + 0.0j)
+        dist = np.abs(ratio.reshape(-1, 1) - omega_pows.reshape(1, -1))
+        b = np.argmin(dist, axis=1).astype(int)
+        if np.any(dist[np.arange(dist.shape[0]), b] > 1e-6):
+            return None
+        return b % two_lcm
+
+    omega = np.exp(2j * np.pi / two_lcm)
+    denom = w_src * (omega ** phase_out)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = np.where(np.abs(denom) > 1e-15, w_tgt / denom, 1.0 + 0.0j)
+    theta = np.angle(ratio)
+    k0 = (np.round((two_lcm * theta) / (2.0 * np.pi)).astype(int) % two_lcm)
+    candidates = np.stack([(k0 - 1) % two_lcm, k0, (k0 + 1) % two_lcm], axis=1)
+    omega_pow = omega ** candidates
+    dist = np.abs(ratio.reshape(-1, 1) - omega_pow)
+    pick = np.argmin(dist, axis=1)
+    delta = candidates[np.arange(candidates.shape[0]), pick] % two_lcm
+    if np.any(dist[np.arange(dist.shape[0]), pick] > 1e-6):
+        return None
+    return delta
+
+
 def _check_leaf(pi: np.ndarray,
-                ctx: _LeafContext,
-                known_F: np.ndarray | None = None,
-                fail_loudly: bool = False) -> Gate | None:
+                ctx: _LeafContext) -> Gate | None:
     """
     Run all structural and phase-correction checks for a candidate permutation.
     Returns a symmetry Gate or None.
@@ -191,89 +236,34 @@ def _check_leaf(pi: np.ndarray,
     if not _check_code_automorphism(ctx.G, ctx.basis_order, ctx.labels, pi, ctx.G_mod2):
         return None
 
-    # For constructing candidate symplectics we must be careful about *row order*.
-    #
-    # - Full-rank case: we precompute an inverse for ctx.basis_indices, so we must
-    #   use that exact ordered basis when constructing F.
-    # - Rank-deficient case: transvection-based mapping is order-dependent, so we
-    #   prefer a stable pivot-order basis (cached) over the independent-label list.
-    use_precomputed_inv = (
-        (ctx.p == 2 and ctx.basis_src_inv_gf2 is not None)
-        or (ctx.p != 2 and ctx.basis_src_inv_gfp is not None)
-    )
-    basis_rows = ctx.basis_indices
-    if not use_precomputed_inv and ctx.row_basis_cache is not None:
-        key = "gf2" if ctx.p == 2 else "gfp"
-        rb = ctx.row_basis_cache.get(key)
-        if rb is not None and rb.size:
-            basis_rows = rb.astype(int, copy=False)
-
-    tgt_idx = pi[basis_rows]
+    # Build the candidate symplectic from the permutation of the (ordered) row-basis.
+    tgt_idx = pi[ctx.basis_indices]
     H_basis_tgt = PauliSum.from_tableau(
         ctx.base_tableau[tgt_idx],
         ctx.pauli_sum.dimensions,
         weights=ctx.base_weights[tgt_idx],
     )
     H_basis_tgt.set_phases(np.array(ctx.base_phases[tgt_idx], dtype=int, copy=True))
-    H_basis_src = PauliSum.from_tableau(
-        ctx.base_tableau[basis_rows],
-        ctx.pauli_sum.dimensions,
-        weights=ctx.base_weights[basis_rows],
-    )
-    H_basis_src.set_phases(np.array(ctx.base_phases[basis_rows], dtype=int, copy=True))
+    H_basis_src = ctx.basis_source_ps
 
-    # Derive the symplectic map from the row-basis permutation whenever possible.
-    # This is the most direct "basis -> basis" construction and avoids order-dependent
-    # transvection sequences.
     F: np.ndarray
     h0: np.ndarray
     if ctx.p == 2 and ctx.basis_src_inv_gf2 is not None:
         T = (ctx.base_tableau[tgt_idx] & 1).astype(np.uint8, copy=False)
         F = (ctx.basis_src_inv_gf2 @ T) & 1
         F = np.asarray(F, dtype=int)
-        # get_phase_vector expects Gate.symplectic (not the right-action matrix F).
-        h0 = get_phase_vector(F.T, int(ctx.pauli_sum.dimensions[0]))
     elif ctx.p != 2 and ctx.basis_src_inv_gfp is not None:
         GF = galois.GF(int(ctx.p))
         T = GF(ctx.base_tableau[tgt_idx] % ctx.p)
         F_gf = ctx.basis_src_inv_gfp @ T
         F = (np.asarray(F_gf, dtype=int) % ctx.p).astype(int, copy=False)
-        h0 = get_phase_vector(F.T, int(ctx.pauli_sum.dimensions[0]))
     else:
-        # Rank-deficient tableau: the basis alone doesn't determine F.
-        # Build an F from a pivot-order basis mapping; this tends to recover a
-        # "good" symplectic completion that makes phase correction solvable.
-        if ctx.p == 2:
-            src_basis = (H_basis_src.tableau & 1).astype(int, copy=False)
-            tgt_basis = (H_basis_tgt.tableau & 1).astype(int, copy=False)
-            F = map_pauli_sum_to_target_tableau(src_basis, tgt_basis)
+        # Rank-deficient tableau: the basis alone doesn't determine F, so we fall back
+        # to the generic mapper.
+        F, _h0, _, _ = find_map_to_target_pauli_sum(H_basis_src, H_basis_tgt)
 
-            # Sanity-check: the candidate must implement the full row mapping implied by pi.
-            # If not, fall back to a basis-first full mapping (rare; mostly for pathological
-            # dependency representations).
-            base = ctx.base_tableau & 1
-            tgt_full = ctx.base_tableau[pi] & 1
-            if not np.array_equal((base @ F) & 1, tgt_full):
-                all_idx = np.arange(base.shape[0], dtype=int)
-                basis_set = set(int(x) for x in basis_rows)
-                rest = np.array([i for i in all_idx if i not in basis_set], dtype=int)
-                order = np.concatenate([np.asarray(basis_rows, dtype=int), rest])
-                F = map_pauli_sum_to_target_tableau(base[order], tgt_full[order])
-
-            h0 = get_phase_vector(F.T, int(ctx.pauli_sum.dimensions[0]))
-        else:
-            # Generic fallback for non-qubit rank-deficient cases.
-            F, h0, _, _ = find_map_to_target_pauli_sum(H_basis_src, H_basis_tgt)
-
-    if fail_loudly and known_F is not None and not np.array_equal(F.T, known_F):
-        print(f'[DEBUG] Found correct permutation, but incorrect F.')
-        print('known_F:\n', known_F)
-        print('candidate F:\n', F.T)
-        print('basis rows used:\n', basis_rows)
-        print('input basis:\n', H_basis_src.tableau)
-        print('target indices:\n', tgt_idx)
-        print('target basis:\n', H_basis_tgt.tableau)
-        print('H_tableau (base order):\n', ctx.base_tableau)
+    # Use a deterministic lift from symplectic -> quadratic phase vector; linear correction is solved below.
+    h0 = get_phase_vector(F.T, int(ctx.pauli_sum.dimensions[0]))
 
     nq = ctx.n_qudits
     pauli_coeff = ctx.pauli_coeff
@@ -284,51 +274,17 @@ def _check_leaf(pi: np.ndarray,
     # We want coefficients to match under the permutation. With phases absorbed into weights,
     # the coefficient of term i after acting is w_i * omega^{phase_i}, while the target is w_{pi[i]}.
     # Solve for a per-term residual phase b_i such that omega^{b_i} = w_{pi[i]} / (w_i * omega^{phase_i}).
-    two_lcm = 2 * int(ctx.pauli_sum.lcm)
+    two_lcm = 2 * ctx.pauli_sum.lcm
     w_src = np.asarray(pauli_coeff.weights, dtype=np.complex128)
     w_tgt = w_src[pi]
     phase_out = np.asarray(H_full_F.phases, dtype=int) % two_lcm
-
-    if two_lcm == 4:
-        omega_pows = np.array([1.0 + 0.0j, 0.0 + 1.0j, -1.0 + 0.0j, 0.0 - 1.0j], dtype=np.complex128)
-        denom = w_src * omega_pows[phase_out]
-        with np.errstate(divide="ignore", invalid="ignore"):
-            ratio = np.where(np.abs(denom) > 1e-15, w_tgt / denom, 1.0 + 0.0j)
-        # Pick the closest 4th-root; reject if not close to any.
-        dist = np.abs(ratio.reshape(-1, 1) - omega_pows.reshape(1, -1))
-        b = np.argmin(dist, axis=1).astype(int)
-        if fail_loudly:
-            bad = np.where(dist[np.arange(dist.shape[0]), b] > 1e-6)[0]
-            if bad.size:
-                print("[DEBUG] coefficient ratio not a 4th root of unity at rows:", bad[:10])
-        if np.any(dist[np.arange(dist.shape[0]), b] > 1e-6):
-            return None
-        delta = b % two_lcm
-    else:
-        # Generic (slower) path: use a small neighborhood around the nearest angle.
-        omega = np.exp(2j * np.pi / two_lcm)
-        denom = w_src * (omega ** phase_out)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            ratio = np.where(np.abs(denom) > 1e-15, w_tgt / denom, 1.0 + 0.0j)
-        theta = np.angle(ratio)
-        k0 = (np.round((two_lcm * theta) / (2.0 * np.pi)).astype(int) % two_lcm)
-        candidates = np.stack([(k0 - 1) % two_lcm, k0, (k0 + 1) % two_lcm], axis=1)
-        omega_pow = omega ** candidates
-        dist = np.abs(ratio.reshape(-1, 1) - omega_pow)
-        pick = np.argmin(dist, axis=1)
-        delta = candidates[np.arange(candidates.shape[0]), pick] % two_lcm
-        if np.any(dist[np.arange(dist.shape[0]), pick] > 1e-6):
-            return None
-
-    # Historical note: an older phase-correction path assumed only even corrections were possible
-    # for qubits and attempted a second h0 guess. We now solve directly over Z_4, so we keep a
-    # single baseline h0 and let the linear solve handle the remaining gauge freedom.
+    delta = _residual_phase_from_coeff_ratio(w_src=w_src, w_tgt=w_tgt, phase_out=phase_out, two_lcm=two_lcm)
+    if delta is None:
+        return None
 
     h_lin = solve_phase_vector_h_from_residual(ctx.base_tableau, delta, ctx.pauli_sum.dimensions,
                                                debug=False, row_basis_cache=ctx.row_basis_cache)
     if h_lin is None:
-        if fail_loudly:
-            print('[DEBUG] Failed to find phase correction.')
         return None
 
     h0_mod = np.asarray(h0, dtype=int) % ctx.two_lcm
@@ -340,12 +296,8 @@ def _check_leaf(pi: np.ndarray,
     H_out_cf = SG.act(pauli_coeff).to_standard_form()
 
     if not np.array_equal(H_out_cf.tableau, ctx.ref_tableau):
-        if fail_loudly:
-            print('[DEBUG] tableau mismatch.')
         return None
     if not np.all(np.isclose(H_out_cf.weights, ctx.ref_weights, atol=1e-8, rtol=0)):
-        if fail_loudly:
-            print('[DEBUG] weight mismatch.')
         return None
     # Omega = np.zeros((2 * nq, 2 * nq), dtype=int)   # This has caused rare failures on known symmetries ... ???
     # Omega[:nq, nq:] = np.eye(nq, dtype=int)
@@ -366,22 +318,12 @@ def clifford_graph_automorphism_search(
     p2_bitset: str | bool = "auto",
     color_mode: str = "wl",   # "wl" | "coeffs_only" | "none"
     max_wl_rounds: int = 10,
-    known_F: np.ndarray | None = None,
-    debug_permutation: list[int] | None = None,
 ) -> list[Gate]:
     """
     Find up to k automorphisms preserving S and the vector set.
     All preprocessing based only on pauli_sum is handled internally.
     Dynamic WL (if enabled) is used only for ordering every `dynamic_refine_every` steps.
     """
-
-    if known_F is not None and debug_permutation is None:
-        # Permutation convention in this file: pi maps a source term index i to the target index pi[i]
-        # such that acting by the symmetry sends row i -> row pi[i].
-        #
-        # If we build Tb = Ta @ F^T, then Tb[i] is the image of Ta[i], so we want pi with
-        # Tb[i] == Ta[pi[i]]. Hence tableau_permutation(Tb, Ta) (not the inverse).
-        debug_permutation = tableau_permutation(pauli_sum.tableau @ known_F.T % 2, pauli_sum.tableau)
 
     # ---- preprocessing that depends only on pauli_sum ----
     independent_labels, dependencies = get_linear_dependencies(pauli_sum.tableau, 2)
@@ -485,11 +427,6 @@ def clifford_graph_automorphism_search(
     phi = -np.ones(n, dtype=np.int64)
     used = np.zeros(n, dtype=bool)
     identity_perm = np.arange(pauli_sum.n_paulis(), dtype=np.int64)
-    target_pi = None
-    if debug_permutation is not None:
-        target_pi = np.asarray(debug_permutation, dtype=np.int64)
-        if target_pi.shape[0] != pauli_sum.n_paulis():
-            raise ValueError("debug_permutation length must equal number of Pauli terms.")
 
     steps = 0
     cur_colors = base_colors.copy()
@@ -593,50 +530,26 @@ def clifford_graph_automorphism_search(
         bi = int(base_colors[i])
         mapped_idx = np.where(phi >= 0)[0].astype(np.int64)
 
-        # Order candidates by current colors (ordering heuristic only)
-        if target_pi is not None:
-            targ_y = int(target_pi[i])
-            if used[targ_y]:
-                print(f"[DEBUG] target impossible at i={i}: target {targ_y} already used")
-                candidate: list[int] = []
-            else:
-                # bypass base-class and coeff filtering in debug mode
-                candidate = [targ_y]
-        else:
-            candidate = [y for y in base_classes[bi] if not used[y]]
-            if coeffs is not None:
-                candidate = [y for y in candidate if coeffs[i] == coeffs[y]]
-            candidate.sort(key=lambda y: cur_colors[y])
+        candidate = [y for y in base_classes[bi] if not used[y]]
+        if coeffs is not None:
+            candidate = [y for y in candidate if coeffs[i] == coeffs[y]]
+        candidate.sort(key=lambda y: cur_colors[y])
 
         return _DFSFrame(i=i, bi=bi, mapped_idx=mapped_idx, candidate=candidate)
 
-    # Iterative DFS (explicit stack) to avoid hitting Python's recursion limit for large Pauli sums.
+    # Iterative DFS
     stack: list[_DFSFrame] = []
     while True:
         if len(results) >= k_wanted:
             break
 
-        # Debug pruning: current partial assignment disagrees with the target permutation.
-        if target_pi is not None and np.any((phi >= 0) & (phi != target_pi)):
-            print(f"[DEBUG] prune: assignment {phi} conflicts with target {target_pi}")
-            # backtrack to the most recent assigned variable
-            while stack and stack[-1].assigned_y < 0:
-                stack.pop()
-            if not stack:
-                break
-            _undo_assignment(stack[-1])
-            continue
-
         # Leaf check
         if np.all(phi >= 0):
             pi = phi.copy()
-            fail_loud = target_pi is not None and np.array_equal(pi, target_pi)
-            leaf = _check_leaf(pi, leaf_ctx, known_F=known_F, fail_loudly=fail_loud)
+            leaf = _check_leaf(pi, leaf_ctx)
             if leaf is not None:
                 results.append(leaf)
                 break  # match previous behavior: stop after the first found symmetry
-            if fail_loud:
-                print("[DEBUG] reached target permutation but leaf check failed")
             # leaf failed -> backtrack one level
             if not stack:
                 break
@@ -664,8 +577,6 @@ def clifford_graph_automorphism_search(
             if used[y]:
                 continue
             if not consistency(phi, frame.mapped_idx, frame.i, y):
-                if target_pi is not None:
-                    print(f"[DEBUG] target candidate fails consistency at i={frame.i}, y={y}")
                 continue
 
             phi[frame.i] = y
@@ -686,22 +597,3 @@ def clifford_graph_automorphism_search(
         _undo_assignment(stack[-1])
 
     return results[:k_wanted]
-
-
-def tableau_permutation(Ta, Tb):
-    """
-    Debug helper
-    """
-    if Ta.shape != Tb.shape:
-        return None
-    used = set()
-    pi = [-1]*Ta.shape[0]
-    for i in range(Ta.shape[0]):
-        for j in range(Tb.shape[0]):
-            if j in used:
-                continue
-            if np.array_equal(Ta[i], Tb[j]):
-                pi[i] = j
-                used.add(j)
-                break
-    return None if -1 in pi else pi

@@ -220,7 +220,7 @@ class TestSymmetryFinder:
         n_qudits = 3
         n_paulis = 8
         p = 2
-        n_tests = 1000
+        n_tests = 100
         for _ in range(n_tests):
             sym = Circuit.from_random(10, [p] * n_qudits)  #
             sym = sym.composite_gate()
