@@ -135,39 +135,40 @@ def _beta_from_top_generators_p2(
 ) -> int:
     """
     Chapter-5-style beta on the 'top quotient' for this extracted indecomposable,
-    computed from the quadratic invariant
-        q_L(v) := <v, N^{L-1} v>  in GF(2),
-    evaluated on a symplectic top basis for the block.
+    computed from the quadratic invariant evaluated on a symplectic top basis.
 
-    For our extraction:
-      - V_beta(2k): gens is 1 column (a top generator) -> beta = q_L(v)
-      - W_beta(odd): gens is 2 columns v,w with <v,N^{L-1}w>=1 -> beta = q_L(v)*q_L(w)
-        (Arf invariant for dim=2 with that symplectic pairing).
-      - W(even): beta should come out 0 in all “honest” cases; we still compute it.
+    (p=2): the label is detected at mid-chain, not at N^{L-1}.
+      - V_beta(2k):     use q(v) = <v, N^{k-1} v> = <v, N^{L/2 - 1} v>
+      - W_beta(2l+1):   use q(v) = <v, N^{l}   v> = <v, N^{(L-1)/2} v>
+      - W(even): label should come out 0 in “honest” cases; we still compute it.
     """
     p = 2
     gens = mod_p(gens, p)
     if gens.shape[1] == 0:
         return 0
 
-    Nr = np.eye(N.shape[0], dtype=np.int64) if (L - 1) == 0 else mat_pow_mod(N, L - 1, p)
+    # Mid-chain exponent for the quadratic refinement (Chapter 5, p=2 case)
+    if L % 2 == 0:
+        # L = 2k  -> exponent k-1
+        exp = max(L // 2 - 1, 0)
+    else:
+        # L = 2l+1 -> exponent l
+        exp = (L - 1) // 2
 
-    # q_L(v) = v^T Ω N^{L-1} v
+    Nr = np.eye(N.shape[0], dtype=np.int64) if exp == 0 else mat_pow_mod(N, exp, p)
+
     def q(vcol: np.ndarray) -> int:
         vcol = mod_p(vcol.reshape(-1, 1), p)
         return int(mod_p(vcol.T @ Omega @ (Nr @ vcol), p).reshape(()))
 
     if gens.shape[1] == 1:
-        return q(gens[:, 0])
+        return q(gens[:, 0]) & 1
 
     if gens.shape[1] == 2:
-        qv = q(gens[:, 0])
-        qw = q(gens[:, 1])
-        # In a symplectic (top) basis, Arf = Σ q(e_i) q(f_i); here m=1
+        qv = q(gens[:, 0]) & 1
+        qw = q(gens[:, 1]) & 1
         return (qv & qw)  # product in GF(2)
 
-    # Shouldn’t happen with the current 1-block-at-a-time extraction;
-    # if it does, fall back to 0 (safe diagnostic) rather than crashing.
     return 0
 
 
