@@ -1,14 +1,9 @@
 from sympleq.core.paulis import PauliSum
-import numpy as np
 
 
 class ToricCode:
 
     def __init__(self, Nx: int, Ny: int, c_x: float, c_z: float, c_g: float, periodic: bool = True):
-        """
-        TODO: The other models are functions, this is a class. Perhaps change this or the others for consistency
-
-        """
         self.Nx = Nx
         self.Ny = Ny
         self.periodic = periodic
@@ -196,8 +191,8 @@ class ToricCode:
         return terms, coeffs
 
     def hamiltonian(self) -> PauliSum:
-        ps, cc = self.build_toric_code_hamiltonian()
-        return PauliSum.from_string(ps, weights=np.asarray(cc), dimensions=[2 for _ in range(self.n_qubits)])
+        ps, weights = self.build_toric_code_hamiltonian()
+        return PauliSum.from_string(ps, weights=weights, dimensions=[2] * self.n_qubits)
 
 
 if __name__ == "__main__":

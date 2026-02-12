@@ -231,6 +231,7 @@ def clifford_phase_decomposition(F: np.ndarray, h_F: np.ndarray,
     n2 = F.shape[0]
     n = n2 // 2
     dims = [d] * n
+    all_qudit_indices = tuple(range(n))
 
     def diag_U(C: np.ndarray) -> np.ndarray:
         """Return diag(C^T U C) in the same convention used by Gate.act."""
@@ -245,11 +246,12 @@ def clifford_phase_decomposition(F: np.ndarray, h_F: np.ndarray,
 
     # Helper to build the composite phase for given h_S, with h_T fixed above
     def composite_phase(h_S: np.ndarray) -> np.ndarray:
-        T_gate = Gate('T', list(range(n)), T, dims, h_T)
-        S_gate = Gate('S', list(range(n)), S, dims, h_S)
+        T_gate = Gate('T', T, h_T)
+        S_gate = Gate('S', S, h_S)
         # Order matters: [T^{-1}, S, T] gives composite symplectic T S T^{-1}
-        circuit = Circuit(dims, [T_gate.inv(), S_gate, T_gate])
-        return circuit.composite_gate().phase_vector % mod
+        circuit = Circuit.from_gates_and_qudits(dims, [T_gate.inverse(), S_gate, T_gate],
+                                                      [all_qudit_indices, all_qudit_indices, all_qudit_indices])
+        return circuit.composite_gate().phase_vector() % mod
 
     base = composite_phase(np.zeros(n2, dtype=int))
 

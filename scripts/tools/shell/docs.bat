@@ -13,7 +13,7 @@ if not exist %DOC_VENV% (
 
 call %DOC_VENV%\Scripts\activate
 pip install -r %DOC_REQUIREMENTS%
-pip install -r %SRC_REQUIREMENTS%
+pip install -e .
 
 rmdir /s /q "%DOC_AUTOSUMMARY%"
 

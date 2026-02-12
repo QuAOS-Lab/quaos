@@ -7,7 +7,6 @@ set CONFIGS_ROOT=scripts/configs
 set SRC_ROOT=src
 set DOC_ROOT=docs
 set SRC_VENV=venv
-set SRC_REQUIREMENTS=scripts/configs/requirements.txt
 
 REM Docs env variables
 set DOC_VENV=%DOC_ROOT%/doc_venv

@@ -4,7 +4,12 @@ import itertools
 from sympleq.core.paulis import PauliSum
 from sympleq.applications.measurement.covariance_graph import graph
 from sympleq.core.circuits import Circuit
-from sympleq.core.circuits.gates import Hadamard as H, SUM as CX, PHASE as S
+from sympleq.core.circuits.gates import GATES
+
+# Convenience aliases
+H = GATES.H
+CX = GATES.CX
+S = GATES.S
 
 
 def mcmc_number_initial_samples(shots: int, n_0: int = 500, scaling_factor: float = 1 / 10000) -> int:
@@ -254,7 +259,7 @@ def diagonalize(P: PauliSum) -> Circuit:
         if not P.is_commuting():
             raise Exception("Paulis must be pairwise commuting to be diagonalized")
     P1 = P.copy()
-    C = Circuit(dims)
+    C = Circuit.empty(dims)
 
     if P.is_quditwise_commuting():
         # for each dimension, call diagonalize_iter_quditwise_ on the qudits of the same dimension
@@ -273,12 +278,11 @@ def diagonalize(P: PauliSum) -> Circuit:
 
     # if any qudits are X rather than Z, apply H to make them Z
     if [i for i in range(q) if any(P1.x_exp[:, i])]:
-        C1 = Circuit(dims)
+        C1 = Circuit.empty(dims)
         for i in range(q):
             if any(P1.x_exp[:, i]):
-                g = H(i, dims[i])
-                C.add_gate(g)
-                C1.add_gate(g)
+                C.add_gate(H, i)
+                C1.add_gate(H, i)
         P1 = C1.act(P1)
     return C
 
@@ -314,12 +318,11 @@ def diagonalize_iter_(P: PauliSum, C: Circuit, aa: list[int]) -> Circuit:
 
     # add CNOT gates to cancel out all non-zero X-parts on Pauli a1, qudits in aa
     while any(P.x_exp[a1, i] for i in aa):
-        C1 = Circuit(P.dimensions)
+        C1 = Circuit.empty(P.dimensions)
         for i in aa:
             if P.x_exp[a1, i]:
-                g = CX(a, i, P.dimensions[a])
-                C.add_gate(g)
-                C1.add_gate(g)
+                C.add_gate(CX, a, i)
+                C1.add_gate(CX, a, i)
         P = C1.act(P)
 
     # check whether there are any non-zero Z-parts on Pauli a1, qudits in aa
@@ -327,21 +330,19 @@ def diagonalize_iter_(P: PauliSum, C: Circuit, aa: list[int]) -> Circuit:
 
         # if Pauli a1, qudit a is X, apply S gate to make it Y
         if not P.z_exp[a1, a]:
-            g = S(a, P.dimensions[a])
-            C.add_gate(g)
-            P = g.act(P)
+            C.add_gate(S, a)
+            P = S.act(P, a)
 
         # add backwards CNOT gates to cancel out all non-zero Z-parts on Pauli a1, qudits in aa
-        gg = [CX(i, a, P.dimensions[a]) for i in aa if P.z_exp[a1, i]]
-        C.add_gate(gg)
-        for g in gg:
-            P = g.act(P)
+        for i in aa:
+            if P.z_exp[a1, i]:
+                C.add_gate(CX, i, a)
+                P = CX.act(P, (i, a))
 
     # if Pauli a1, qudit a is Y, add S gate to make it X
     while P.z_exp[a1, a]:
-        g = S(a, P.dimensions[a])
-        C.add_gate(g)
-        P = g.act(P)
+        C.add_gate(S, a)
+        P = S.act(P, a)
     return C
 
 
@@ -376,9 +377,8 @@ def diagonalize_iter_quditwise_(P: PauliSum, C: Circuit, aa: list[int]) -> Circu
 
     # if Pauli a1, qudit a is Y, add S gate to make it X
     while P.z_exp[a1, a]:
-        g = S(a, P.dimensions[a])
-        C.add_gate(g)
-        P = g.act(P)
+        C.add_gate(S, a)
+        P = S.act(P, a)
     return C
 
 
@@ -517,13 +517,13 @@ def construct_diagnostic_circuits(circuit_list: list[Circuit]) -> list[Circuit]:
     """
     diagnostic_circuits = []
     for circ in circuit_list:
-        C_diag = Circuit(dimensions=circ.dimensions)
-        for g in circ.gates:
-            C_diag.add_gate(g.copy())
-            if g.name == 'H':
-                C_diag.add_gate(g.copy())
-                C_diag.add_gate(g.copy())
-                C_diag.add_gate(g.copy())
+        C_diag = Circuit.empty(dimensions=circ.dimensions)
+        for gate, qudits in zip(circ.gates, circ.qudit_indices):
+            C_diag.add_gate(gate, *qudits)
+            if gate.name == 'H':
+                C_diag.add_gate(gate, *qudits)
+                C_diag.add_gate(gate, *qudits)
+                C_diag.add_gate(gate, *qudits)
         diagnostic_circuits.append(C_diag)
     return diagnostic_circuits
 
@@ -552,7 +552,7 @@ def construct_diagnostic_states(diagnostic_circuits: list[Circuit],
         state = [0] * np.prod(diagnostic_circuits[0].dimensions)
         state[0] = 1
         state = np.array(state)
-        state_preparation_circuits = [Circuit(diagnostic_circuits[0].dimensions)] * len(diagnostic_circuits)
+        state_preparation_circuits = [Circuit.empty(diagnostic_circuits[0].dimensions)] * len(diagnostic_circuits)
         return ([state] * len(diagnostic_circuits), state_preparation_circuits)
     elif mode == 'random':
         raise Exception('Random diagnostic states not yet implemented')
@@ -583,8 +583,8 @@ def standard_noise_probability_function(circuit: Circuit, p_entangling=0.03,
     """
     n_local = 0
     n_entangling = 0
-    for g in circuit.gates:
-        if g.name == 'SUM':
+    for gate in circuit.gates:
+        if gate.name == 'CX':
             n_entangling += 1
         else:
             n_local += 1

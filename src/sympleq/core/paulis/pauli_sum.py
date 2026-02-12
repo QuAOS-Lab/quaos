@@ -38,7 +38,7 @@ class PauliSum(PauliObject):
             The dimensions of each qudit. If an integer is provided,
             all qudits are assumed to have the same dimension.
             If no value is provided, the default is `DEFAULT_QUDIT_DIMENSION`.
-        weights: list[int | float | complex] | np.ndarray | None = None
+        weights: list[int] | list[float] | list[complex] | np.ndarray | None = None
             The weights for each PauliString.
         phases: int | list[int] | np.ndarray | None = None
             The phases of the PauliStrings in the range [0, lcm(dimensions) - 1].
@@ -130,7 +130,8 @@ class PauliSum(PauliObject):
 
     @classmethod
     def from_pauli_strings(cls, pauli_string: PauliString | list[PauliString],
-                           weights: int | float | complex | list[int | float | complex] | np.ndarray | None = None,
+                           weights: int | float | complex |
+                           list[int] | list[float] | list[complex] | np.ndarray | None = None,
                            phases: int | list[int] | np.ndarray | None = None,
                            inherit_phases: bool = False) -> PauliSum:
         """
@@ -174,7 +175,8 @@ class PauliSum(PauliObject):
 
     @classmethod
     def from_pauli_objects(cls, pauli_objects: PauliObject | Sequence[PauliObject],
-                           weights: int | float | complex | list[int | float | complex] | np.ndarray | None = None,
+                           weights: int | float | complex |
+                           list[int] | list[float] | list[complex] | np.ndarray | None = None,
                            phases: int | list[int] | np.ndarray | None = None,
                            inherit_weights: bool = False,
                            inherit_phases: bool = False) -> PauliSum:
@@ -223,7 +225,7 @@ class PauliSum(PauliObject):
 
     @classmethod
     def from_string(cls, pauli_str: str | list[str], dimensions: int | list[int] | np.ndarray | None = None,
-                    weights: int | float | complex | list[int | float | complex] | np.ndarray | None = None,
+                    weights: int | float | complex | list[int] | list[float] | list[complex] | np.ndarray | None = None,
                     phases: int | list[int] | np.ndarray | None = None
                     ) -> PauliSum:
         """
@@ -235,7 +237,7 @@ class PauliSum(PauliObject):
             The string representation of the Pauli string, where exponents are separated by 'x' and 'z'.
         dimensions : list[int] | np.ndarray | None
             The dimensions parameter to be passed to the PauliSum constructor.
-        weights : int | float | complex | list[int | float | complex] | np.ndarray | None
+        weights : int | float | complex | list[int] | list[float] | list[complex] | np.ndarray | None
             The weights parameter to be passed to the PauliSum constructor.
         phases : int | list[int] | np.ndarray | None
             The phases parameter to be passed to the PauliSum constructor.
@@ -370,28 +372,21 @@ class PauliSum(PauliObject):
         Extract per-term phases from complex weights onto the integer phase vector.
 
         For each weight w_i, choose an integer k_i in [0, 2*d - 1] (with d=self.lcm)
-        so that w_i * exp(-2 pi i * k_i / (2d)) has an argument as close to 0 as possible.
+        so that w_i * exp(-2πi * k_i / (2d)) is as close as possible to a positive real.
         Then add k_i to self.phases[i] (mod 2d) and replace the weight with the rotated value.
 
         Notes:
         - If a weight is (numerically) zero, we leave it and add no phase.
-        - This is a *gauge choice* that is translation-consistent: if w' = w * omega^m with
-          omega = exp(2 pi i/(2d)), then both weights are rotated to the same residual factor and
-          their extracted phases differ by m (mod 2d). This property is important for symmetry
-          finding, where coefficients can differ by a discrete Clifford phase.
+        - We try the nearest discrete phase (by rounding the argument), and also ±1
+            neighbor to break ties in favor of larger positive real part.
         """
         d = int(self.lcm)
         two_d = 2 * d
         new_weights = np.array(self.weights, dtype=np.complex128)
         new_phases = np.array(self.phases, dtype=int)
 
-        if two_d <= 0:
-            raise ValueError("Invalid modulus (2*lcm) for weight_to_phase()")
-
         # tiny threshold to treat weights as zero (avoid noisy angles)
         eps = 1e-15
-        two_pi = 2.0 * np.pi
-        step = two_pi / float(two_d)
 
         for i in range(self.n_paulis()):
             w = new_weights[i]
@@ -400,25 +395,41 @@ class PauliSum(PauliObject):
             if not np.isfinite(w) or abs(w) < eps:
                 continue
 
-            # Use a consistent "half-up" rounding in [0, 2pi) so that
-            # round(x + m) == round(x) + m holds exactly for integer m.
-            theta = float(np.angle(w))
-            theta_mod = theta % two_pi
-            x = theta_mod / step  # in [0, 2d)
-            k_best = int(np.floor(x + 0.5)) % two_d
+            theta = np.angle(w)
 
-            rot = np.exp(-2j * np.pi * (k_best / two_d))
-            w_best = w * rot
+            # nearest discrete phase index
+            k0 = int(np.round((two_d * theta) / (2.0 * np.pi))) % two_d
+            candidates = [(k0 - 1) % two_d, k0 % two_d, (k0 + 1) % two_d]
 
-            # If the rotated weight is close to the real axis, remove imag part
-            if abs(w_best.imag) <= 1e-12 * max(1.0, abs(w_best)):
-                w_best = complex(w_best.real, 0.0)
+            valid = []
+            for k in candidates:
+                # rotation by discrete (2d)-th root of unity
+                # safe because two_d > 0 (checked above)
+                rot = np.exp(-2j * np.pi * (k / two_d))
+                w_rot = w * rot
+                if not np.isfinite(w_rot):
+                    continue
+                ang = np.angle(w_rot)
+                if np.isnan(ang):
+                    continue
+                # prefer smallest |angle| (closest to real axis), break ties by larger real part
+                score = (abs(ang), -w_rot.real)
+                valid.append((score, k, w_rot))
+
+            if valid:
+                # pick the best candidate
+                _, k_best, w_best = min(valid)
+            else:
+                # fallback: use k0 even if odd numerics; keep original magnitude
+                k_best = k0
+                w_best = w * np.exp(-2j * np.pi * (k_best / two_d))
 
             new_phases[i] = (new_phases[i] + k_best) % two_d
             new_weights[i] = w_best
 
+        # commit
         self._phases = new_phases
-        self._weights = np.round(new_weights, 12)
+        self._weights = np.round(new_weights, 10)
 
     @overload
     def __getitem__(self,
@@ -759,45 +770,35 @@ class PauliSum(PauliObject):
         """
         Combines equivalent Pauli operators in the sum by summing their coefficients and deleting duplicates.
         """
-        # IMPORTANT: the old nested-loop implementation double-counted terms when more
-        # than two identical tableaus were present (because it could merge an already-merged
-        # coefficient again). Do a stable group-by instead.
-        #
-        # Strategy:
-        # 1) Absorb phases into weights (so tableau equality is the only key).
-        # 2) Sort by tableau rows, then sum weights in each contiguous group.
+        # Work in coefficient-form (phases absorbed into weights) so equality is on tableau only.
         self.phase_to_weight()
 
-        n = self.n_paulis()
-        if n <= 1:
+        if self.n_paulis() <= 1:
             return
 
         T = np.asarray(self.tableau, dtype=int)
         W = np.asarray(self.weights, dtype=np.complex128)
 
+        # Deterministic grouping: sort by tableau, then sum weights for identical rows.
         order = np.lexsort(T.T)
-        T = T[order]
-        W = W[order]
+        T_sorted = np.ascontiguousarray(T[order])
+        W_sorted = W[order]
 
-        new_T = []
-        new_W = []
+        row_dtype = np.dtype((np.void, T_sorted.dtype.itemsize * T_sorted.shape[1]))
+        row_view = T_sorted.view(row_dtype).ravel()
 
-        i = 0
-        while i < n:
-            j = i + 1
-            # group identical tableau rows
-            while j < n and np.array_equal(T[j], T[i]):
-                j += 1
-            new_T.append(T[i])
-            new_W.append(np.sum(W[i:j]))
-            i = j
+        _, first_idx, inv = np.unique(row_view, return_index=True, return_inverse=True)
+        summed = np.zeros(first_idx.shape[0], dtype=np.complex128)
+        np.add.at(summed, inv, W_sorted)
 
-        self._tableau = np.asarray(new_T, dtype=int)
-        self._weights = np.asarray(new_W, dtype=np.complex128)
-        self._phases = np.zeros(self._weights.shape[0], dtype=int)
+        T_unique = T_sorted[first_idx]
+        phases = np.zeros(T_unique.shape[0], dtype=int)
 
-        # remove zero-weight Paulis using the library tolerance
-        self.remove_zero_weight_paulis()
+        # Drop (numerically) zero coefficients.
+        keep = np.abs(summed) > 1e-14
+        self._tableau = T_unique[keep]
+        self._weights = summed[keep]
+        self._phases = phases[keep]
 
     def remove_trivial_paulis(self):
         """

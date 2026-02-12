@@ -1,6 +1,5 @@
-# pip install openfermion pandas
+# pip install openfermion
 import numpy as np
-import pandas as pd
 
 from openfermion.transforms.opconversions.jordan_wigner import jordan_wigner
 from openfermion.transforms.opconversions.bravyi_kitaev import bravyi_kitaev
@@ -44,16 +43,6 @@ def qubit_pauli_tableau(qubit_op, n_qubits=None):
     return T, np.asarray(coeffs, dtype=complex), labels
 
 
-def tableau_dataframe(tableau, coeffs):
-    n_qubits = tableau.shape[1] // 2
-    cols = [f"X{j}" for j in range(n_qubits)] + [f"Z{j}" for j in range(n_qubits)] + ["coeff_re", "coeff_im"]
-    df = pd.DataFrame(
-        np.hstack([tableau, np.column_stack([coeffs.real, coeffs.imag])]),
-        columns=cols
-    )
-    return df
-
-
 def fermi_hubbard_tableau(Lx: int,
                           Ly: int = 1,
                           t: float = 1.0,
@@ -61,8 +50,7 @@ def fermi_hubbard_tableau(Lx: int,
                           mu: float = 0.0,
                           periodic: bool = False,
                           spinless: bool = False,
-                          mapping: str = "jw",
-                          save_csv: str | None = None):
+                          mapping: str = "jw"):
     """
     Build the Fermi–Hubbard model on an Lx x Ly lattice, map to qubits,
     and return the tableau [x|z] with coefficients.
@@ -93,7 +81,6 @@ def fermi_hubbard_tableau(Lx: int,
     coeffs : (n_terms,) complex ndarray
     labels : list[str]
     n_qubits : int
-    df : pandas.DataFrame  (columns: X0..Xn-1, Z0..Zn-1, coeff_re, coeff_im)
     """
     # 1) Fermionic Hamiltonian
     fermion_ham = fermi_hubbard(
@@ -116,14 +103,8 @@ def fermi_hubbard_tableau(Lx: int,
 
     # 4) Tableau
     T, coeffs, labels = qubit_pauli_tableau(qubit_op, n_qubits=n_qubits)
-    df = tableau_dataframe(T, coeffs)
 
-    if save_csv is not None:
-        df_out = df.copy()
-        df_out.insert(0, "Pauli_term", labels)
-        df_out.to_csv(save_csv, index=False)
-
-    return T, coeffs, labels, n_qubits, df
+    return T, coeffs, labels, n_qubits
 
 
 def fermi_hubbard_model(x_dimension: int,
@@ -134,13 +115,13 @@ def fermi_hubbard_model(x_dimension: int,
                         periodic: bool = False,
                         spinless: bool = False):
 
-    tableau, coeffs, _, n_qubits, _ = fermi_hubbard_tableau(Lx=x_dimension,
-                                                            Ly=y_dimension,
-                                                            t=tunneling,
-                                                            U=coulomb,
-                                                            mu=chemical_potential,
-                                                            periodic=periodic,
-                                                            spinless=spinless)
+    tableau, coeffs, _, n_qubits = fermi_hubbard_tableau(Lx=x_dimension,
+                                                         Ly=y_dimension,
+                                                         t=tunneling,
+                                                         U=coulomb,
+                                                         mu=chemical_potential,
+                                                         periodic=periodic,
+                                                         spinless=spinless)
 
     P = PauliSum.from_tableau(tableau, weights=coeffs, dimensions=[2] * n_qubits)
     return P

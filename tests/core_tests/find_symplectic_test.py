@@ -107,6 +107,11 @@ class TestSymplecticSolver:
         for i in range(1000):
             u = np.random.randint(p, size=2 * n)
             v = np.random.randint(p, size=2 * n)
+            # ensure neither u and v are zero, as that would make the system consistent with w=0
+            if np.array_equal(u, np.zeros(2 * n)):
+                u[np.random.randint(2 * n)] = 1  # Ensure non-zero input
+            if np.array_equal(v, np.zeros(2 * n)):
+                v[np.random.randint(2 * n)] = 1  # Ensure non-zero target
 
             w = find_symplectic_solution(u, v)
 

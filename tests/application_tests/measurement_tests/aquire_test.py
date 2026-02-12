@@ -25,9 +25,13 @@ class TestAquire:
         assert xxx == correct_xxx, "Clique coverings do not match"
         circuit_list, circuit_dictionary = construct_circuit_list(P, xxx, {})
         for i, c in enumerate(circuit_list):
-            comp_c = correct_circuit_list[i]
-            for j, g in enumerate(c.gates):
-                assert g.name == comp_c[j][0] and np.all(g.qudit_indices == comp_c[j][1]), f"Circuit {i} does not match"
+            comp_c = correct_circuit_list[i]  # E.g. [['S', [0]], ['S', [0]], ['H', [0]], ['H', [1]]]
+            for j, gate in enumerate(c.gates):
+                assert gate.name == comp_c[j][0], f"Circuit {i} gates do not match: {gate.name} and {comp_c[j][0]}"
+
+            for j, gate_qudit_indices in enumerate(c.qudit_indices):
+                assert list(gate_qudit_indices) == comp_c[j][1], \
+                    f"Circuit {i} qudit indices do not match: {gate_qudit_indices} and {comp_c[j][1]}"
 
         true_cov_graph = true_covariance_graph(P, psi) * com_graph.adj
         assert np.allclose(true_cov_graph, true_variance_graph, atol=10**(-6)), "true covariance graphs do not match"

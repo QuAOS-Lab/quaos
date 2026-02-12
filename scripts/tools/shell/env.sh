@@ -7,7 +7,6 @@ export CONFIGS_ROOT=scripts/configs
 export SRC_ROOT=src
 export DOC_ROOT=docs
 export SRC_VENV=venv
-export SRC_REQUIREMENTS=scripts/configs/requirements.txt
 
 # Docs env variables
 export DOC_VENV=$DOC_ROOT/doc_venv
