@@ -12,6 +12,60 @@ N_tests = 30
 
 class TestPaulis:
 
+    def test_combine_equivalent_paulis_regression(self):
+        # Regression: combining must not double-count or keep cancelled terms.
+        d = 2
+        dims = [d, d]
+        # Same tableau twice with opposite coefficients -> should cancel to empty.
+        T = np.array([[1, 0, 0, 1],
+                      [1, 0, 0, 1]], dtype=int)
+        weights = np.array([1.0 + 0.0j, -1.0 + 0.0j], dtype=complex)
+        phases = np.array([0, 0], dtype=int)
+        H = PauliSum.from_tableau(T, dimensions=dims, weights=weights, phases=phases)
+        H.combine_equivalent_paulis()
+        assert H.n_paulis() == 0
+
+    def test_combine_equivalent_paulis_randomized(self):
+        rng = np.random.default_rng(0)
+        for d in PRIME_LIST:
+            for _ in range(10):
+                n_qudits = int(rng.integers(1, 4))
+                dims = [d] * n_qudits
+                lcm = int(np.lcm.reduce(dims))
+                mod = 2 * lcm
+
+                # Build k unique rows, then duplicate them with random coefficients/phases.
+                k_unique = int(rng.integers(3, 8))
+                mult = int(rng.integers(2, 5))
+                base_rows = rng.integers(0, d, size=(k_unique, 2 * n_qudits), dtype=int)
+
+                rows = np.repeat(base_rows, mult, axis=0)
+                weights = (rng.normal(size=rows.shape[0]) + 1j * rng.normal(size=rows.shape[0])).astype(complex)
+                phases = rng.integers(0, mod, size=rows.shape[0], dtype=int)
+
+                H = PauliSum.from_tableau(rows, dimensions=dims, weights=weights, phases=phases)
+
+                # Expected coefficient sum in coefficient-form (phases absorbed into weights).
+                expected = {}
+                omega = np.exp(2 * np.pi * 1j / mod)
+                for i in range(rows.shape[0]):
+                    key = rows[i].tobytes()
+                    coeff = weights[i] * (omega ** phases[i])
+                    expected[key] = expected.get(key, 0.0 + 0.0j) + coeff
+
+                H.combine_equivalent_paulis()
+
+                got = {H.tableau[i].tobytes(): complex(H.weights[i]) for i in range(H.n_paulis())}
+
+                # Zeros should be removed.
+                for k, v in expected.items():
+                    if abs(v) <= 1e-14:
+                        assert k not in got
+                    else:
+                        assert k in got
+                        assert np.allclose(got[k], v, atol=1e-12, rtol=0)
+                assert np.all(H.phases == 0)
+
     def test_pauli_multiplication(self):
         for dim in PRIME_LIST:
             x1 = Pauli.Xnd(1, dim)
@@ -407,10 +461,10 @@ class TestPaulis:
 
     def test_combine_equivalent_paulis(self):
         dims = [2, 2]
-        # Two identical tableau/phase entries that should merge, one with different phase, one different tableau.
+        # Equivalent tableau rows should always merge; phases are absorbed into the complex coefficient.
         ps_a = PauliString.from_string("x1z0 x0z1", dims)
         ps_b = PauliString.from_string("x1z0 x0z1", dims)
-        ps_c = PauliString.from_string("x1z0 x0z1", dims)  # different phase => should stay separate
+        ps_c = PauliString.from_string("x1z0 x0z1", dims)  # different phase => different coefficient
         ps_d = PauliString.from_string("x0z1 x1z0", dims)
 
         P = PauliSum.from_pauli_strings([ps_a, ps_b, ps_c, ps_d],
@@ -419,23 +473,21 @@ class TestPaulis:
 
         P.combine_equivalent_paulis()
 
-        assert P.n_paulis() == 3
+        assert P.n_paulis() == 2
+        assert np.all(P.phases == 0)
 
         obs = {}
         for i in range(P.n_paulis()):
             row = np.asarray(P.tableau[i]).tolist()
-            key = (tuple(row), int(P.phases[i]))
-            obs[key] = P.weights[i]
+            obs[tuple(row)] = complex(P.weights[i])
 
-        key_a = (tuple(ps_a.tableau[0].tolist()), 0)
-        key_c = (tuple(ps_c.tableau[0].tolist()), 1)
-        key_d = (tuple(ps_d.tableau[0].tolist()), 0)
-        exp = {
-            key_a: 3.0,  # merged weights 1.0 + 2.0
-            key_c: 3.0,
-            key_d: 4.0,
-        }
-        assert obs == exp, f"Combined weights/phases mismatch: {obs} vs {exp}"
+        # For qubits, mod = 2*lcm = 4 and omega = exp(2*pi*i/4) = 1j.
+        # The phase=1 term contributes (3.0 * 1j).
+        key_x = tuple(ps_a.tableau[0].tolist())
+        key_d = tuple(ps_d.tableau[0].tolist())
+        assert key_x in obs and key_d in obs
+        assert np.allclose(obs[key_x], 3.0 + 3.0j, atol=1e-12, rtol=0)
+        assert np.allclose(obs[key_d], 4.0 + 0.0j, atol=1e-12, rtol=0)
 
     def test_phase_and_dot_product(self):
 

@@ -115,7 +115,7 @@ class TestCircuits():
         for _ in range(1000):
             n_qudits = np.random.randint(2, 10)
             dimensions = np.random.randint(2, 5, size=n_qudits)
-            C = Circuit.from_random(depth=10, dimensions=dimensions)
+            C = Circuit.from_random(n_gates=10, dimensions=dimensions)
             ps = PauliSum.from_random(10, dimensions)
             out = C.act(ps)
             assert np.all(out.dimensions == dimensions)
@@ -137,7 +137,7 @@ class TestCircuits():
         n_paulis = 1
         for _ in range(N):
             P = PauliSum.from_random(n_paulis, dimensions, rand_weights=False)
-            C = Circuit.from_random(depth=np.random.randint(1, 6), dimensions=dimensions)
+            C = Circuit.from_random(n_gates=np.random.randint(1, 6), dimensions=dimensions)
             U = C.unitary()
 
             ps_m = P.to_hilbert_space()
