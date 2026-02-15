@@ -12,7 +12,7 @@ fi
 
 source "$DOC_VENV/bin/activate"
 pip install -r "$DOC_REQUIREMENTS"
-pip install -r "$SRC_REQUIREMENTS"
+pip install -e .
 
 rm -rf "$DOC_AUTOSUMMARY"
 

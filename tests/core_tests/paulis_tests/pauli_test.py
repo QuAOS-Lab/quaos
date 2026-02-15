@@ -198,6 +198,30 @@ class TestPaulis:
                     [p_string1 @ p_string3, p_string2 @ p_string3])
                 assert ps_out == ps_out_correct, 'Error in PauliSum tensor product'
 
+    def test_combine_equivalent_paulis_merges_duplicates(self):
+        """
+        Duplicate tableau rows should be merged even when their weights differ, with
+        the resulting weight equal to the sum of the duplicates.
+        """
+        rng = np.random.default_rng()
+        dims = [DEFAULT_QUDIT_DIMENSION, DEFAULT_QUDIT_DIMENSION]
+
+        for _ in range(25):
+            x_exp = rng.integers(0, dims[0], size=len(dims))
+            z_exp = rng.integers(0, dims[0], size=len(dims))
+
+            ps = PauliString.from_exponents(x_exp, z_exp, dims)
+
+            # Two identical PauliStrings with different weights
+            weights = np.array([rng.normal(), rng.normal()])
+            P = PauliSum.from_pauli_strings([ps, ps], weights=weights, phases=[0, 0])
+
+            P.combine_equivalent_paulis()
+
+            assert P.n_paulis() == 1, "Duplicates were not collapsed"
+            assert np.isclose(P.weights[0], weights.sum()), "Weights did not sum when collapsing duplicates"
+            assert np.array_equal(P.tableau[0], ps.tableau[0]), "Tableau changed when collapsing duplicates"
+
     def test_symplectic_matrix_single_pauli(self):
         for _ in range(N_tests):
             dim = random.choice(PRIME_LIST)

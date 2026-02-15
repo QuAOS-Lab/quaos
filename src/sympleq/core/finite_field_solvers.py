@@ -1,8 +1,9 @@
+
+from typing import Optional
 import numpy as np
 from math import gcd
 import galois
 from collections import defaultdict
-# TODO: Move tests to test suite (and write more!)
 
 
 def solve_linear_system_over_gf(A: np.ndarray, b: np.ndarray, GF: type | int) -> np.ndarray:
@@ -135,161 +136,338 @@ def gf_solve(A: np.ndarray, b: np.ndarray, GF: type) -> np.ndarray:
     return solution.reshape(-1, 1)
 
 
-def get_linear_dependencies(vectors: np.ndarray,
-                            p: int | list[int] | np.ndarray
-                            ) -> tuple[list[int], dict[int, list[tuple[int, int]]]]:
+def get_linear_dependencies(
+    vectors: np.ndarray,
+    p: int | list[int] | np.ndarray,
+    compute_dependencies: bool = True,
+) -> tuple[list[int], dict[int, list[tuple[int, int]]]]:
     """
-    Find linear dependencies among rows of `vectors` over finite fields.
+    Fast replacement for get_linear_dependencies.
 
-    Parameters
-    ----------
-    vectors : np.ndarray
-        Matrix of shape (m, n). Each row is a vector.
-    p : int | list[int] | np.ndarray
-        - If int: all columns are over GF(p).
-        - If list/array of length n: p[j] is the prime for column j.
-        - If list/array of length n//2: per-qudit primes; each value is duplicated for X/Z columns.
-        - If list/array of length m: p[i] is the prime field per row (legacy mode).
+    - For single prime p (especially p=2): returns exact pivot rows and exact dependencies.
+    - For per-column primes: returns correct pivot rows (same criterion as your code),
+      but dependency coefficients only if all primes are identical (same as your code).
+    - For per-row primes: processes each group with the fast single-prime path.
 
-    Returns
-    -------
-    pivot_indices : list[int]
-        Indices of linearly independent rows.
-    dependencies : dict[int, list[tuple[int, int]]]
-        Mapping: row index -> list of (pivot_index, coefficient) such that
-        row = sum(coeff * pivot).
+    Notes:
+    - For p=2, dependencies are coefficients in GF(2) (0/1).
+    - For odd prime p, dependencies are coefficients in GF(p).
     """
-    m, n = vectors.shape  # m = rows (vectors), n = columns
+    V = np.asarray(vectors, dtype=np.int64)
+    m, n = V.shape
 
-    # Normalize p into per-column primes when possible.
-    p_cols: list[int]
-    mode: str
+    # Normalize p into mode and per-column primes when possible.
     if isinstance(p, int):
-        p_cols = [int(p)] * n
-        mode = "per-column"
-    elif isinstance(p, (list, np.ndarray)):
+        p_int = int(p)
+        return _get_deps_single_prime(V, p_int, compute_dependencies)
+
+    if isinstance(p, (list, np.ndarray)):
+        p = np.asarray(p, dtype=int)
         lp = len(p)
+
+        if lp == m:
+            # per-row legacy: group and process each group
+            pivot_indices: list[int] = []
+            dependencies: dict[int, list[tuple[int, int]]] = {}
+            prime_groups = defaultdict(list)
+            for i, prime in enumerate(p.tolist()):
+                prime_groups[int(prime)].append(i)
+            for prime, idxs in prime_groups.items():
+                piv, deps = _get_deps_single_prime(V[idxs, :], int(prime), compute_dependencies)
+                pivot_indices.extend([idxs[j] for j in piv])
+                if compute_dependencies:
+                    for local_row, expr in deps.items():
+                        dependencies[idxs[local_row]] = [(idxs[piv_j], c) for piv_j, c in expr]
+            return pivot_indices, dependencies
+
         if lp == n:
-            p_cols = [int(x) for x in p]
-            mode = "per-column"
+            p_cols = p.tolist()
         elif lp == n // 2 and n % 2 == 0:
-            # Per-qudit list provided; duplicate for X/Z halves
-            p_cols = [int(x) for x in np.repeat(p, 2)]
-            mode = "per-column"
-        elif lp == m:
-            # Legacy behavior: per-row primes
-            ps = [int(x) for x in p]
-            mode = "per-row"
+            p_cols = np.repeat(p, 2).tolist()
         else:
-            raise AssertionError(
-                f"Length of p must be either rows={m}, cols={n}, or cols/2={n // 2} (for qudits). Got {lp}"
-            )
-    else:
-        raise TypeError(f"p must be int or list/np.ndarray of ints, it is {type(p)}")
+            raise AssertionError(f"Length of p must be rows={m}, cols={n}, or cols/2={n // 2}. Got {lp}")
 
-    pivot_indices: list[int] = []
-    dependencies: dict[int, list[tuple[int, int]]] = {}
+        # Per-column primes: pivot criterion is “independent if increases rank for any prime subset”.
+        # We can do this by running elimination separately per distinct prime on its column subset,
+        # but WITHOUT galois row_reduce. Just incremental elimination mod p.
 
-    if mode == "per-row":
-        # Group rows by prime and process each group independently
-        prime_groups = defaultdict(list)
-        for i, prime in enumerate(ps):
-            prime_groups[prime].append(i)
+        prime_cols = defaultdict(list)
+        for j, prime in enumerate(p_cols):
+            prime_cols[int(prime)].append(j)
+        primes = list(prime_cols.keys())
 
-        for prime, indices in prime_groups.items():
-            if len(indices) == 1:
-                pivot_indices.append(indices[0])
-                continue
+        # Maintain separate eliminators per prime
+        eliminators = {q: _IncrementalElim(mod=q, ncols=len(prime_cols[q])) for q in primes}
 
-            GF = galois.GF(prime)
-            V = GF(vectors[indices, :])
+        pivot_indices: list[int] = []
+        # We can only produce dependencies if there's a single prime overall (same as your code)
+        dependencies: dict[int, list[tuple[int, int]]] = {} if compute_dependencies else {}
 
-            # Identify group pivots incrementally
-            group_pivots = []
-            seen = GF.Zeros((0, V.shape[1]))
-            for idx_in_group, i in enumerate(indices):
-                candidate = V[idx_in_group]
-                A = GF(np.vstack([seen, candidate]))
-                R = A.row_reduce()
-                rank = sum(1 for row in R if np.any(row != 0))
-                if rank > seen.shape[0]:
-                    group_pivots.append(i)
-                    seen = A
-            pivot_indices.extend(group_pivots)
+        # We also need a mapping from global pivot list to each prime’s pivot indices if we want deps;
+        # but we only do deps when single prime.
+        for i in range(m):
+            independent = False
+            # test rank increase on any prime subset
+            for q in primes:
+                cols = prime_cols[q]
+                row = V[i, cols] % q
+                if eliminators[q].would_increase_rank(row):
+                    independent = True
+                    break
 
-            # Dependencies within the group
-            if len(group_pivots) > 0:
-                B = V[[indices.index(j) for j in group_pivots], :]
-                for idx_in_group, i in enumerate(indices):
-                    if i in group_pivots:
-                        continue
-                    x = solve_modular_linear_system(B, V[idx_in_group])
-                    deps = [(group_pivots[j], int(x[j])) for j in range(len(x)) if x[j] != 0]
-                    dependencies[i] = deps
+            if independent:
+                pivot_indices.append(i)
+                # actually add to all eliminators (mirrors your “updated_seen” logic)
+                for q in primes:
+                    cols = prime_cols[q]
+                    row = V[i, cols] % q
+                    eliminators[q].add_row(row, i, track_combo=False)
+
+        # dependencies only if exactly one prime
+        if compute_dependencies and len(primes) == 1:
+            q = primes[0]
+            cols = prime_cols[q]
+            piv, deps = _get_deps_single_prime(V[:, cols], q, compute_dependencies=True)
+            # piv returned are *row indices* already, but might differ slightly from the “any prime” criterion
+            # Only return deps for those not in pivot_indices according to our pivot selection:
+            pivot_set = set(pivot_indices)
+            # Build basis rows from pivot_indices in this field:
+            B = (V[pivot_indices, :][:, cols] % q).astype(np.int64)
+            elim = _IncrementalElim(mod=q, ncols=B.shape[1])
+            for k, ridx in enumerate(pivot_indices):
+                elim.add_row(B[k], ridx, track_combo=True)
+
+            for i in range(m):
+                if i in pivot_set:
+                    continue
+                row = (V[i, cols] % q).astype(np.int64)
+                combo = elim.solve_in_span(row)
+                if combo is not None:
+                    dependencies[i] = [(ridx, int(coeff)) for ridx, coeff in combo.items() if coeff % q != 0]
 
         return pivot_indices, dependencies
 
-    # Per-column primes path
-    # Build prime -> column indices map
-    prime_cols: dict[int, list[int]] = defaultdict(list)
-    for j, prime in enumerate(p_cols):
-        prime_cols[int(prime)].append(j)
+    raise TypeError(f"p must be int or list/np.ndarray of ints, got {type(p)}")
 
-    unique_primes = list(prime_cols.keys())
 
-    # Track seen rows per-prime on the respective column subsets
-    seen_per_prime: dict[int, np.ndarray] = {}
-    for q in unique_primes:
-        GFq = galois.GF(q)
-        seen_per_prime[q] = GFq.Zeros((0, len(prime_cols[q])))
+# ----------------------------
+# Core single-prime routines
+# ----------------------------
 
-    # Select pivots: a row is independent if it increases rank for any prime on its column subset
+def _get_deps_single_prime(
+    V: np.ndarray, p: int, compute_dependencies: bool
+) -> tuple[list[int], dict[int, list[tuple[int, int]]]]:
+    """
+    Exact pivots + dependencies for a single prime field GF(p).
+    """
+    m, n = V.shape
+    p = int(p)
+
+    elim = _IncrementalElim(mod=p, ncols=n)
+
+    pivots: list[int] = []
+    deps: dict[int, list[tuple[int, int]]] = {} if compute_dependencies else {}
+
     for i in range(m):
-        increases_any = False
-        updated_seen = {}
-        for q in unique_primes:
-            cols = prime_cols[q]
-            if len(cols) == 0:
-                continue
-            GFq = galois.GF(q)
-            candidate = GFq(vectors[i, cols])
-            A_prev = seen_per_prime[q]
-            A = GFq(np.vstack([A_prev, candidate]))
-            R = A.row_reduce()
-            rank_new = sum(1 for row in R if np.any(row != 0))
-            if rank_new > A_prev.shape[0]:
-                increases_any = True
-                updated_seen[q] = A
-            else:
-                updated_seen[q] = A_prev
+        row = (V[i] % p).astype(np.int64, copy=False)
+        if p == 2:
+            row = (row & 1).astype(np.uint8, copy=False)
 
-        if increases_any:
-            pivot_indices.append(i)
-            for q in unique_primes:
-                seen_per_prime[q] = updated_seen[q]
+        if elim.would_increase_rank(row):
+            pivots.append(i)
+            elim.add_row(row, i, track_combo=compute_dependencies)
         else:
-            # Mark as dependent; coefficients are computed later as best-effort
-            continue
+            if compute_dependencies:
+                combo = elim.solve_in_span(row)
+                if combo is None:
+                    # should not happen if would_increase_rank returned False
+                    continue
+                # return as list of (pivot_row_index, coeff)
+                deps[i] = [(ridx, int(coeff)) for ridx, coeff in combo.items() if coeff % p != 0]
 
-    # Compute dependencies best-effort:
-    # If all columns share the same prime, compute exact coefficients as before.
-    if len(unique_primes) == 1:
-        q = unique_primes[0]
-        GFq = galois.GF(q)
-        cols = prime_cols[q]
-        Vq = GFq(vectors[:, cols])
-        Bq = Vq[pivot_indices, :]
-        for i in range(m):
-            if i in pivot_indices:
+    return pivots, deps
+
+
+class _IncrementalElim:
+    """
+    Incremental row-space basis over GF(p) for prime p.
+
+    Stores:
+      - piv_col_to_row[piv]   : the reduced basis row with pivot at column piv (pivot value = 1)
+      - piv_col_to_combo[piv] : dict mapping ORIGINAL pivot-row ids -> coefficients,
+                               such that (basis row) = sum coeff * V[row_id]  (mod p)
+
+    Then for a dependent row `v`, solve_in_span(v) returns a dict combo with
+        v = sum combo[row_id] * V[row_id]  (mod p)
+    """
+
+    def __init__(self, mod: int, ncols: int):
+        self.p = int(mod)
+        self.ncols = int(ncols)
+
+        self.piv_col_to_row: dict[int, np.ndarray] = {}
+        self.piv_col_to_combo: dict[int, dict[int, int]] = {}
+        self.pivot_cols: list[int] = []  # keep sorted for deterministic reduction order
+
+    def would_increase_rank(self, row: np.ndarray) -> bool:
+        r = self._reduce_vec_only(row)
+        return self._first_nonzero_col(r) is not None
+
+    def add_row(self, row: np.ndarray, row_id: int, track_combo: bool):
+        """
+        Add `row` to the basis if independent.
+
+        If track_combo=True, maintain combinations in terms of pivot-row IDs.
+        """
+        if self.p == 2:
+            r = (row & 1).astype(np.uint8, copy=True)
+        else:
+            r = (row % self.p).astype(np.int64, copy=True)
+
+        combo: dict[int, int] | None
+        if track_combo:
+            combo = {int(row_id): 1 if self.p != 2 else 1}
+        else:
+            combo = None
+
+        # Reduce using existing basis; for basis-building we update combo with SUBTRACTION
+        for piv in self.pivot_cols:
+            coeff = (r[piv] & 1) if self.p == 2 else int(r[piv] % self.p)
+            if not coeff:
                 continue
-            x = solve_modular_linear_system(Bq, Vq[i])
-            deps = [(pivot_indices[j], int(x[j])) for j in range(len(x)) if x[j] != 0]
-            dependencies[i] = deps
-    else:
-        # Mixed primes: return independent set; dependency coefficients are non-unique across fields.
-        dependencies = {}
+            prow = self.piv_col_to_row[piv]
+            if self.p == 2:
+                r ^= prow
+                if combo is not None:
+                    pc = self.piv_col_to_combo[piv]
+                    # combo := combo - coeff*pc ; in GF(2), "-" == "+"
+                    for k, v in pc.items():
+                        combo[k] = combo.get(k, 0) ^ (v & 1)
+            else:
+                r = (r - coeff * prow) % self.p
+                if combo is not None:
+                    pc = self.piv_col_to_combo[piv]
+                    for k, v in pc.items():
+                        combo[k] = (combo.get(k, 0) - coeff * v) % self.p
 
-    return pivot_indices, dependencies
+        piv_new = self._first_nonzero_col(r)
+        if piv_new is None:
+            # dependent row; nothing to add
+            return
+
+        # Normalize new pivot row so pivot entry is 1, and scale combo accordingly
+        if self.p != 2:
+            inv = pow(int(r[piv_new]), -1, self.p)
+            r = (r * inv) % self.p
+            if combo is not None:
+                for k in list(combo.keys()):
+                    combo[k] = (combo[k] * inv) % self.p
+        # p==2 already normalized
+
+        # Insert pivot col into sorted pivot list (deterministic reduction order)
+        insert_at = np.searchsorted(self.pivot_cols, piv_new)
+        self.pivot_cols.insert(int(insert_at), int(piv_new))
+
+        # Store new basis row
+        self.piv_col_to_row[int(piv_new)] = r.copy()
+        if track_combo:
+            assert combo is not None
+            # ensure mod p
+            if self.p != 2:
+                combo = {k: (v % self.p) for k, v in combo.items() if (v % self.p) != 0}
+            else:
+                combo = {k: (v & 1) for k, v in combo.items() if (v & 1) != 0}
+            self.piv_col_to_combo[int(piv_new)] = combo
+
+        # Eliminate this pivot from the other basis rows to keep RREF-like form,
+        # and apply same ops to combos.
+        for pc in list(self.piv_col_to_row.keys()):
+            if pc == piv_new:
+                continue
+            basis_row = self.piv_col_to_row[pc]
+            factor = (basis_row[piv_new] & 1) if self.p == 2 else int(basis_row[piv_new] % self.p)
+            if not factor:
+                continue
+
+            if self.p == 2:
+                self.piv_col_to_row[pc] = basis_row ^ r
+                if track_combo:
+                    c = self.piv_col_to_combo[pc]
+                    newc = dict(c)
+                    # c := c - factor*combo ; in GF(2) subtraction is XOR
+                    for k, v in self.piv_col_to_combo[piv_new].items():
+                        newc[k] = newc.get(k, 0) ^ (v & 1)
+                    # cleanup
+                    newc = {k: (v & 1) for k, v in newc.items() if (v & 1) != 0}
+                    self.piv_col_to_combo[pc] = newc
+            else:
+                self.piv_col_to_row[pc] = (basis_row - factor * r) % self.p
+                if track_combo:
+                    c = self.piv_col_to_combo[pc]
+                    newc = dict(c)
+                    for k, v in self.piv_col_to_combo[piv_new].items():
+                        newc[k] = (newc.get(k, 0) - factor * v) % self.p
+                    newc = {k: (v % self.p) for k, v in newc.items() if (v % self.p) != 0}
+                    self.piv_col_to_combo[pc] = newc
+
+    def solve_in_span(self, row: np.ndarray) -> Optional[dict[int, int]]:
+        """
+        If row is in span(basis), return coefficients on pivot-row IDs:
+            row = sum combo[row_id] * V[row_id]  (mod p)
+        """
+        if self.p == 2:
+            r = (row & 1).astype(np.uint8, copy=True)
+        else:
+            r = (row % self.p).astype(np.int64, copy=True)
+
+        combo: dict[int, int] = {}
+
+        # Reduce; for solving, we update combo with ADDITION
+        for piv in self.pivot_cols:
+            coeff = (r[piv] & 1) if self.p == 2 else int(r[piv] % self.p)
+            if not coeff:
+                continue
+            prow = self.piv_col_to_row[piv]
+            if self.p == 2:
+                r ^= prow
+                pc = self.piv_col_to_combo[piv]
+                for k, v in pc.items():
+                    combo[k] = combo.get(k, 0) ^ (v & 1)
+            else:
+                r = (r - coeff * prow) % self.p
+                pc = self.piv_col_to_combo[piv]
+                for k, v in pc.items():
+                    combo[k] = (combo.get(k, 0) + coeff * v) % self.p
+
+        if self._first_nonzero_col(r) is not None:
+            return None
+
+        # cleanup zeros
+        if self.p == 2:
+            combo = {k: (v & 1) for k, v in combo.items() if (v & 1) != 0}
+        else:
+            combo = {k: (v % self.p) for k, v in combo.items() if (v % self.p) != 0}
+        return combo
+
+    def _reduce_vec_only(self, row: np.ndarray) -> np.ndarray:
+        """Reduce a row using basis rows, without tracking combos."""
+        if self.p == 2:
+            r = (row & 1).astype(np.uint8, copy=True)
+            for piv in self.pivot_cols:
+                if r[piv] & 1:
+                    r ^= self.piv_col_to_row[piv]
+            return r
+        else:
+            r = (row % self.p).astype(np.int64, copy=True)
+            for piv in self.pivot_cols:
+                coeff = int(r[piv] % self.p)
+                if coeff:
+                    r = (r - coeff * self.piv_col_to_row[piv]) % self.p
+            return r
+
+    def _first_nonzero_col(self, r: np.ndarray) -> Optional[int]:
+        nz = np.flatnonzero(r) if self.p == 2 else np.flatnonzero(r % self.p)
+        return int(nz[0]) if nz.size else None
 
 
 def gf_inv(A, p: int = 2):
@@ -427,6 +605,64 @@ def gf_lu(A, p: int = 2):
     return L % p, U % p, P
 
 
+def _select_row_basis_indices(A_int: np.ndarray, p: int, max_rows: int) -> np.ndarray:
+    """
+    Return indices of a greedily chosen row basis of `A_int` over GF(p).
+
+    The routine performs a light Gauss-Jordan sweep, moving left-to-right across
+    columns and picking the first unused row with a non-zero entry as the pivot.
+    Each pivot row is normalized and used to eliminate the pivot column from the
+    other unused rows. Collection stops once either all columns are processed or
+    `max_rows` independent rows have been gathered.
+
+    Parameters
+    ----------
+    A_int : np.ndarray
+        Integer matrix whose rows are candidate equations.
+    p : int
+        Prime for the finite field GF(p).
+        max_rows : int
+        Maximum number of independent rows to return (often the number of columns).
+
+    Returns
+    -------
+    np.ndarray
+        1-D array of row indices that are linearly independent over GF(p).
+    """
+    GF = galois.GF(p)
+    A = GF(A_int % p).copy()
+    N, M = A.shape
+    used = np.zeros(N, dtype=bool)
+    basis = []
+    col = 0
+    for _ in range(N):
+        if col >= M:
+            break
+        pick = None
+        for r in range(N):
+            if used[r]:
+                continue
+            if A[r, col] != GF(0):
+                pick = r
+                break
+        if pick is None:
+            col += 1
+            continue
+        basis.append(pick)
+        used[pick] = True
+        inv = GF(1) / A[pick, col]
+        A[pick, :] = A[pick, :] * inv
+        for r in range(N):
+            if r == pick or used[r]:
+                continue
+            if A[r, col] != GF(0):
+                A[r, :] = A[r, :] - A[r, col] * A[pick, :]
+        col += 1
+        if len(basis) >= max_rows:
+            break
+    return np.array(basis, dtype=int)
+
+
 def _random_invertible_matrix(p: int, size: int, rng: np.random.Generator) -> np.ndarray:
     """Generate a random invertible matrix over GF(p) with the given dimension."""
     GFp = galois.GF(p)
@@ -449,7 +685,7 @@ def _is_permutation_matrix(P: np.ndarray) -> bool:
 
 
 def _test_gf_inv() -> None:
-    rng = np.random.default_rng(1234)
+    rng = np.random.default_rng()
     for p in (2, 3, 5, 7):
         for n in (1, 2, 4):
             A = _random_invertible_matrix(p, n, rng)
@@ -459,7 +695,7 @@ def _test_gf_inv() -> None:
 
 
 def _test_gf_rref() -> None:
-    rng = np.random.default_rng(5678)
+    rng = np.random.default_rng()
     for p in (2, 3, 5):
         m, n = 4, 6
         for _ in range(5):
@@ -484,7 +720,7 @@ def _test_gf_rref() -> None:
 
 
 def _test_gflu() -> None:
-    rng = np.random.default_rng(91011)
+    rng = np.random.default_rng()
     for p in (2, 5, 11):
         for n in (2, 3, 5):
             A = _random_matrix(p, (n, n), rng)

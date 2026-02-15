@@ -231,7 +231,8 @@ if __name__ == "__main__":
     #     print(h)
 
     # random hamiltonian example
-    from sympleq.models.random_hamiltonian import random_pauli_hamiltonian, random_pauli_symmetry_hamiltonian
+    # TODO: move to tests
+    from sympleq.models.random_hamiltonian import random_pauli_symmetry_hamiltonian
 
     n_qudits = 12
     n_paulis = 24

@@ -136,7 +136,6 @@ Development scripts, examples, experiments, and auxiliary tools.
    Configuration files for development tools:
    
    - ``dev_requirements.txt``: Development dependencies
-   - ``requirements.txt``: Production dependencies
    - ``pytest.ini``: Pytest configuration
    - ``pytest_cov_config.ini``: Coverage settings
    - ``setup.cfg``: Package metadata and tool configurations
@@ -173,7 +172,6 @@ Development scripts, examples, experiments, and auxiliary tools.
     scripts/
     ├── configs/
     │   ├── dev_requirements.txt
-    │   ├── requirements.txt
     │   ├── pytest.ini
     │   └── setup.cfg
     ├── examples/

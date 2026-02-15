@@ -770,27 +770,35 @@ class PauliSum(PauliObject):
         """
         Combines equivalent Pauli operators in the sum by summing their coefficients and deleting duplicates.
         """
-        # self.standardise()  # makes sure all phases are 0
+        # Work in coefficient-form (phases absorbed into weights) so equality is on tableau only.
         self.phase_to_weight()
-        # combine equivalent Paulis
-        to_delete = []
-        for i in reversed(range(self.n_paulis())):
-            ps1 = self.select_pauli_string(i)
-            for j in range(i + 1, self.n_paulis()):
-                ps2 = self.select_pauli_string(j)
-                if ps1.has_equal_tableau(ps2):
-                    # FIXME: can overflow for very large n_paulis.
-                    #        One solution could be to normalize it by dividing by the smallest weight.
-                    self._weights[i] = self.weights[i] + self.weights[j]
-                    to_delete.append(j)
-        self._delete_paulis(to_delete)
 
-        # remove zero weight Paulis
-        to_delete = []
-        for i in range(self.n_paulis()):
-            if self.weights[i] == 0:
-                to_delete.append(i)
-        self._delete_paulis(to_delete)
+        if self.n_paulis() <= 1:
+            return
+
+        T = np.asarray(self.tableau, dtype=int)
+        W = np.asarray(self.weights, dtype=np.complex128)
+
+        # Deterministic grouping: sort by tableau, then sum weights for identical rows.
+        order = np.lexsort(T.T)
+        T_sorted = np.ascontiguousarray(T[order])
+        W_sorted = W[order]
+
+        row_dtype = np.dtype((np.void, T_sorted.dtype.itemsize * T_sorted.shape[1]))
+        row_view = T_sorted.view(row_dtype).ravel()
+
+        _, first_idx, inv = np.unique(row_view, return_index=True, return_inverse=True)
+        summed = np.zeros(first_idx.shape[0], dtype=np.complex128)
+        np.add.at(summed, inv, W_sorted)
+
+        T_unique = T_sorted[first_idx]
+        phases = np.zeros(T_unique.shape[0], dtype=int)
+
+        # Drop (numerically) zero coefficients.
+        keep = np.abs(summed) > 1e-14
+        self._tableau = T_unique[keep]
+        self._weights = summed[keep]
+        self._phases = phases[keep]
 
     def remove_trivial_paulis(self):
         """
