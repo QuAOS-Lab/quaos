@@ -4,12 +4,23 @@ from sympleq.core.paulis import PauliSum
 from sympleq.core.circuits import Circuit, HADAMARD as H, CX, PHASE as S
 
 
-def number_of_SUM_X(r_control, r_target, d):
+def number_of_SUM_X(r_control: int, r_target: int, d: int):
     """
-    Find the smallest positive integer N such that:
-        (r_target + N * r_control) % d == 0
+    Return the number of SUM gates needed to cancel out the X part of a Pauli operator.
 
-    This counts the number N of SUM gates needed to cancel out the X part of a Pauli operator.
+    Parameters
+        ----------
+        r_control : int
+            The exponent of the control qudit.
+        r_target : int
+            The exponent of the target qudit.
+        d : int
+            The dimension of the qudits.
+
+    Returns
+    -------
+    int
+        The number of SUM gates needed to cancel out the X part of a Pauli operator.
     """
     N = 1
     while (r_target + N * r_control) % d != 0:
@@ -20,7 +31,24 @@ def number_of_SUM_X(r_control, r_target, d):
     return N
 
 
-def number_of_SUM_Z(s_control, s_target, d):
+def number_of_SUM_Z(s_control: int, s_target: int, d: int):
+    """
+    Return the number of SUM gates needed to cancel out the Z part of a Pauli operator.
+
+    Parameters
+        ----------
+        s_control : int
+            The exponent of the control qudit.
+        s_target : int
+            The exponent of the target qudit.
+        d : int
+            The dimension of the qudits.
+
+    Returns
+    -------
+    int
+        The number of SUM gates needed to cancel out the Z part of a Pauli operator.
+    """
     N = 1
     while (s_control - N * s_target) % d != 0:
         if N > d:
@@ -30,7 +58,24 @@ def number_of_SUM_Z(s_control, s_target, d):
     return N
 
 
-def number_of_S(x_exp, z_exp, d):
+def number_of_S(x_exp: int, z_exp: int, d: int):
+    """
+    Return the number of PHASE gates needed to cancel out the Z part of a Pauli operator.
+
+    Parameters
+        ----------
+        x_exp : int
+            The exponent of the X part of the Pauli operator.
+        z_exp : int
+            The exponent of the Z part of the Pauli operator.
+        d : int
+            The dimension of the qudits.
+
+    Returns
+    -------
+    int
+        The number of PHASE gates needed to cancel out the Z part of a Pauli operator.
+    """
     N = 1
     while (x_exp * N + z_exp) % d != 0:
         if N > d:
@@ -40,55 +85,134 @@ def number_of_S(x_exp, z_exp, d):
     return N
 
 
-def cancel_X(pauli_sum, qudit, pauli_index, C, q_max):
-    list_of_gates = []
+def cancel_X(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit, q_max: int):
+    """
+    Cancel out the X part of a Pauli operator.
+
+    Parameters
+    ----------
+    pauli_sum : PauliSum
+        The PauliSum that we are cancelling out the X part of.
+    qudit : int
+        The qudit that we are currently operating on.
+    pauli_index : int
+        The index of the Pauli operator that we are cancelling out the X part of.
+    C : Circuit
+        The circuit that we are adding the gates to.
+    q_max : int
+        The maximum number of qudits.
+
+    Returns
+    -------
+    pauli_sum : PauliSum
+        The PauliSum after the X part of the Pauli operator has been cancelled out.
+    C : Circuit
+        The circuit after the gates have been added to cancel out the X part of the Pauli operator.
+    """
     for i in range(qudit + 1, q_max):
         if pauli_sum.x_exp[pauli_index, i]:
             number_of_sum_x = number_of_SUM_X(pauli_sum.x_exp[pauli_index, qudit],
                                               pauli_sum.x_exp[pauli_index, i],
                                               pauli_sum.dimensions[i])
-            list_of_gates += [CX(qudit, i, pauli_sum.dimensions[qudit])] * number_of_sum_x
-    C.add_gate(list_of_gates)
-    for g in list_of_gates:
-        pauli_sum = g.act(pauli_sum)
+            for _ in range(number_of_sum_x):
+                C.add_gate(CX(), qudit, i)
+                CX().act(pauli_sum, (qudit, i))
     return pauli_sum, C
 
 
-def cancel_Z(pauli_sum, qudit, pauli_index, C, q_max):
+def cancel_Z(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit, q_max: int):
+    """
+    Cancel out the Z part of a Pauli operator.
 
-    list_of_gates = []
-    list_of_gates += [H(qudit, pauli_sum.dimensions[qudit])]
+    Parameters
+    ----------
+    pauli_sum : PauliSum
+        The PauliSum that we are cancelling out the Z part of.
+    qudit : int
+        The qudit that we are currently operating on.
+    pauli_index : int
+        The index of the Pauli operator that we are cancelling out the Z part of.
+    C : Circuit
+        The circuit that we are adding the gates to.
+    q_max : int
+        The maximum number of qudits.
+
+    Returns
+    -------
+    pauli_sum : PauliSum
+        The PauliSum after the Z part of the Pauli operator has been cancelled out.
+    C : Circuit
+        The circuit after the gates have been added to cancel out the Z part of the Pauli operator.
+    """
+    C.add_gate(H(), qudit)
+    H().act(pauli_sum, qudit)
     for i in range(qudit + 1, q_max):
         if pauli_sum.z_exp[pauli_index, i]:
             number_of_sum_z = number_of_SUM_Z(pauli_sum.z_exp[pauli_index, i],
                                               pauli_sum.x_exp[pauli_index, qudit],
                                               pauli_sum.dimensions[i])
-            list_of_gates += [CX(i, qudit, pauli_sum.dimensions[qudit])] * number_of_sum_z
-    list_of_gates += [H(qudit, pauli_sum.dimensions[qudit])]
-    C.add_gate(list_of_gates)
-    for g in list_of_gates:
-        pauli_sum = g.act(pauli_sum)
+            for _ in range(number_of_sum_z):
+                C.add_gate(CX(), qudit, i)
+                CX().act(pauli_sum, (qudit, i))
+    C.add_gate(H(), qudit)
+    H().act(pauli_sum, qudit)
     return pauli_sum, C
 
 
-def cancel_Y(pauli_sum, qudit, pauli_index, C):
-    list_of_gates = [S(qudit, pauli_sum.dimensions[qudit])] * number_of_S(pauli_sum.x_exp[pauli_index, qudit],
-                                                                          pauli_sum.z_exp[pauli_index, qudit],
-                                                                          pauli_sum.dimensions[qudit])
-    C.add_gate(list_of_gates)
-    for g in list_of_gates:
-        pauli_sum = g.act(pauli_sum)
+def cancel_Y(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit):
+    """
+    Cancel out the Y part of a Pauli operator.
+
+    Parameters
+    ----------
+    pauli_sum : PauliSum
+        The PauliSum that we are cancelling out the Y part of.
+    qudit : int
+        The qudit that we are currently operating on.
+    pauli_index : int
+        The index of the Pauli operator that we are cancelling out the Y part of.
+    C : Circuit
+        The circuit that we are adding the gates to.
+
+    Returns
+    -------
+    pauli_sum : PauliSum
+        The PauliSum after the Y part of the Pauli operator has been cancelled out.
+    C : Circuit
+        The circuit after the gates have been added to cancel out the Y part of the Pauli operator.
+    """
+    number_of_phase = number_of_S(pauli_sum.x_exp[pauli_index, qudit], pauli_sum.z_exp[pauli_index, qudit],
+                                  pauli_sum.dimensions[qudit])
+    for _ in range(number_of_phase):
+        C.add_gate(S(), qudit)
+        S().act(pauli_sum, qudit)
     return pauli_sum, C
 
 
 def cancel_pauli(P, current_qudit, pauli_index, circuit, n_q_max):
     """
-    Needs an x component on current_qudit
+    Cancel out all non-zero X and Z parts of a Pauli operator.
 
-    P -> p_1 ... p_current_qudit  I I ... I p_n_q_max p.... p_n_paulis
+    Parameters
+    ----------
+    P : PauliSum
+        The PauliSum that we are cancelling out the Pauli operator from.
+    current_qudit : int
+        The qudit that we are currently operating on.
+    pauli_index : int
+        The index of the Pauli operator that we are cancelling out.
+    circuit : Circuit
+        The circuit that we are adding the gates to.
+    n_q_max : int
+        The maximum number of qudits.
 
+    Returns
+    -------
+    P : PauliSum
+        The PauliSum after the Pauli operator has been cancelled out.
+    circuit : Circuit
+        The circuit after the gates have been added to cancel out the Pauli operator.
     """
-    # add CX gates to cancel out all non-zero X-parts on Pauli pauli_index, i > qudit
     if any(P.x_exp[pauli_index, i] for i in range(current_qudit + 1, n_q_max)):
         P, circuit = cancel_X(P, current_qudit, pauli_index, circuit, n_q_max)
 
@@ -104,10 +228,30 @@ def cancel_pauli(P, current_qudit, pauli_index, circuit, n_q_max):
 
 
 def symplectic_reduction_qudit(P):
+    """
+    Applies the symplectic reduction algorithm to a PauliSum.
+
+    This algorithm will reduce the number of qudits in the PauliSum by
+    cancelling out any non-zero X and Z parts of the Pauli operators
+    that are not part of the symplectic group.
+
+    Parameters
+    ----------
+    P : PauliSum
+        The PauliSum that we are applying the symplectic reduction algorithm to.
+
+    Returns
+    -------
+    C : Circuit
+        The circuit that implements the symplectic reduction algorithm.
+    pivots : list
+        A list of the pivots of the symplectic reduction algorithm.
+    """
+
     d = P.dimensions
     q = P.n_qudits()
     P1 = P.copy()
-    C = Circuit(d)
+    C = Circuit.empty(d)
     pivots = []
 
     for i in range(P.n_qudits()):
@@ -119,13 +263,33 @@ def symplectic_reduction_qudit(P):
     conditional_qubits = sorted(set(range(q)) - removable_qubits - pivot_qudits)
     if len(conditional_qubits) > 0:
         for cq in conditional_qubits:
-            g = H(cq, d[cq])
-            C.add_gate(g)
-        P1 = g.act(P1)
+            C.add_gate(H(), cq)
+            P1 = H().act(P1, cq)
     return C, sorted(pivots, key=lambda x: x[1])
 
 
 def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
+    """
+    Applies one iteration of the symplectic reduction algorithm to a PauliSum.
+
+    Parameters
+    ----------
+    P : PauliSum
+        The PauliSum that we are applying the symplectic reduction algorithm to.
+    C : Circuit
+        The circuit that implements the symplectic reduction algorithm.
+    pivots : list
+        A list of the pivots of the symplectic reduction algorithm.
+    current_qudit : int
+        The qudit that we are currently operating on.
+
+    Returns
+    -------
+    C : Circuit
+        The circuit after one iteration of the symplectic reduction algorithm.
+    pivots : list
+        The list of pivots after one iteration of the symplectic reduction algorithm.
+    """
     n_p, n_q = P.n_paulis(), P.n_qudits()
     P = C.act(P)
     n_q_max = n_q
@@ -138,9 +302,8 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
     # does the current qudit have any X or Z components?
     if any(P.x_exp[:, current_qudit]) or any(P.z_exp[:, current_qudit]):
         if not any(P.x_exp[:, current_qudit]):  # If it is z we need to add a Hadamard gate to make it an X
-            g = H(current_qudit, P.dimensions[current_qudit])
-            C.add_gate(g)
-            P = g.act(P)
+            C.add_gate(H(), current_qudit)
+            P = H().act(P, current_qudit)
 
         current_pauli = min(i for i in range(n_p) if P.x_exp[i, current_qudit])  # first Pauli that has an x-component
         pivots.append((current_pauli, current_qudit, 'X'))
@@ -152,31 +315,55 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
         current_pauli = min(i for i in range(n_p) if P.z_exp[i, current_qudit])  # first Pauli that has a z-component
         pivots.append((current_pauli, current_qudit, 'Z'))
 
-        g = H(current_qudit, P.dimensions[current_qudit])
-        C.add_gate(g)
-        P = g.act(P)
+        C.add_gate(H(), current_qudit)
+        P = H().act(P, current_qudit)
 
         P, C = cancel_pauli(P, current_qudit, current_pauli, C, n_q_max)
 
-        g = H(current_qudit, P.dimensions[current_qudit])
-        C.add_gate(g)
-        P = g.act(P)
+        C.add_gate(H(), current_qudit)
+        P = H().act(P, current_qudit)
     return C, pivots
 
 
 def symplectic_pauli_reduction(hamiltonian: PauliSum) -> Circuit:
+    """
+    Applies the symplectic reduction algorithm to a PauliSum and returns the resulting Circuit.
+
+    Parameters
+    ----------
+    hamiltonian : PauliSum
+        The PauliSum that we are applying the symplectic reduction algorithm to.
+
+    Returns
+    -------
+    Circuit
+        The Circuit that implements the symplectic reduction algorithm.
+    """
     C, pivots = symplectic_reduction_qudit(hamiltonian)
     return C
 
 
 def pauli_reduce(hamiltonian: PauliSum) -> tuple[PauliSum, list[PauliSum], Circuit, list]:
     """
-    Reduces the Hamiltonian to a smaller number of qudits by removing leading X and Z operators.
+    Applies the symplectic reduction algorithm to a PauliSum and returns the reduced hamiltonian and the
+    conditioned hamiltonians.
 
-    This returns a list of reduced Hamiltonians, each corresponding to a different symmetry sector of the Z symmetries.
+    Parameters
+    ----------
+    hamiltonian : PauliSum
+        The PauliSum that we are applying the symplectic reduction algorithm to.
 
+    Returns
+    -------
+    h_red : PauliSum
+        The PauliSum after applying the symplectic reduction algorithm.
+    conditioned_hamiltonians : list[PauliSum]
+        The list of PauliSum's that are the conditioned hamiltonians.
+    C : Circuit
+        The Circuit that implements the symplectic reduction algorithm.
+    all_phases : list
+        The list of all possible phases of the conditioned hamiltonians.
     """
-    # hamiltonian.remove_trivial_qudits()
     C = symplectic_pauli_reduction(hamiltonian)
 
     h_red = C.act(hamiltonian)
