@@ -3,6 +3,7 @@ import numpy as np
 import scipy.sparse as sp
 from sympleq.utils import int_to_bases, bases_to_int
 from functools import reduce
+from typing import Sequence, Callable
 
 
 def is_symplectic(F, p: int) -> bool:
@@ -281,7 +282,7 @@ def pauli_unitary_from_tableau(
     """
     x = np.asarray(x, dtype=int)
     z = np.asarray(z, dtype=int)
-    assert x.shape == z.shape and x.ndim == 1, "x and z must be 1D arrays of same length"
+    assert x.shape == z.shape and x.ndim == 1, f"x len({len(x)}) and z len({len(z)}) must be 1D arrays of same length"
 
     locals_ = [
         pauli_unitary_qudit(d, int(xk), int(zk), convention=convention)
@@ -324,7 +325,7 @@ def _digits_to_int(digits: np.ndarray, strides: np.ndarray) -> int:
     return int(np.dot(digits, strides))
 
 
-def SWAP_func(i: int, a0: int, a1: int, dims: np.ndarray) -> int:
+def SWAP_func(i: int, a0: int, a1: int, dims: np.ndarray | list[int]) -> int:
     """
     Map a basis index i -> f(i) by swapping qudit positions a0 <-> a1
     in a mixed-radix register with local dimensions `dims`.
@@ -337,3 +338,64 @@ def SWAP_func(i: int, a0: int, a1: int, dims: np.ndarray) -> int:
     digits = _int_to_digits(i, dims, strides).astype(int)
     digits[a0], digits[a1] = digits[a1], digits[a0]
     return _digits_to_int(digits, strides)
+
+
+### State utils ####
+
+
+def _apply_single_qudit_dense(
+    psi: np.ndarray,
+    dims: Sequence[int] | np.ndarray,
+    U_loc: np.ndarray,
+    q: int,
+) -> np.ndarray:
+    """
+    Apply a single-qudit gate U_loc to qudit q of psi (flat vector).
+    U_loc shape: (d_q, d_q).
+    """
+    dims = tuple(int(d) for d in dims)
+    n = len(dims)
+    D_total = int(np.prod(dims))
+    psi = np.asarray(psi, dtype=np.complex128).reshape(D_total)
+
+    psi_t = psi.reshape(dims)
+
+    # Move target axis to front
+    perm = (q,) + tuple(i for i in range(n) if i != q)
+    inv_perm = np.argsort(perm)
+    psi_perm = np.transpose(psi_t, perm)
+
+    d_q = dims[q]
+    rest_dim = D_total // d_q
+
+    psi_flat = psi_perm.reshape(d_q, rest_dim)
+    psi_flat = U_loc @ psi_flat
+    psi_perm = psi_flat.reshape((d_q,) + psi_perm.shape[1:])
+
+    psi_t = np.transpose(psi_perm, inv_perm)
+    return psi_t.reshape(D_total)
+
+
+def _apply_two_qudit_permutation(
+    psi: np.ndarray,
+    dims: Sequence[int] | np.ndarray,
+    map_func: Callable[[int, int, int, Sequence[int] | np.ndarray], int] | Callable[[int, int, int, np.ndarray], int],
+    a0: int,
+    a1: int,
+) -> np.ndarray:
+    """
+    Apply a 2-qudit permutation gate defined by an index mapping
+        j_out = map_func(j_in, a0, a1, dims)
+    directly to the flat statevector psi.
+
+    Used for SUM/CNOT (with CX_func) and SWAP (with SWAP_func).
+    """
+    dims = np.asarray(dims, dtype=int).reshape(-1)
+    D = int(np.prod(dims))
+    psi = np.asarray(psi, dtype=np.complex128).reshape(D)
+
+    out = np.empty_like(psi)
+    for j in range(D):
+        out[map_func(j, a0, a1, dims)] = psi[j]
+
+    return out

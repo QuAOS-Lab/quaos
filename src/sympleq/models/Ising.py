@@ -3,7 +3,10 @@ from sympleq.core.circuits import Gate
 import numpy as np
 
 
-def ising_chain_hamiltonian(n_spins, J_zz, h_x, periodic=False):
+def ising_chain_hamiltonian(n_spins: int,
+                            J_zz: float | np.ndarray | list,
+                            h_x: float | np.ndarray | list,
+                            periodic: bool = False):
     """
     Constructs the Hamiltonian of the 1D Ising model in a transverse field.
 
@@ -11,9 +14,11 @@ def ising_chain_hamiltonian(n_spins, J_zz, h_x, periodic=False):
     ----------
     n_spins : int
         The number of spins in the chain.
-    J_zz : float
+    J_zz : float or np.ndarray or list
         The Ising interaction strength between nearest-neighbour spins.
-    h_x : float
+        If this is a matrix, it will be used as the interaction strength matrix
+        should only have nearest neighbour terms
+    h_x : float or np.ndarray or list
         The strength of the transverse field.
     periodic : bool, optional
         Whether the chain is periodic (default: False).
@@ -27,13 +32,43 @@ def ising_chain_hamiltonian(n_spins, J_zz, h_x, periodic=False):
     weights = []
     dims = [2 for _ in range(n_spins)]
 
+    if isinstance(J_zz, np.ndarray) or isinstance(J_zz, list):
+        J_zz = np.array(J_zz)  # Convert to numpy array if list
+        if J_zz.shape != (n_spins,) and periodic:
+            raise ValueError("J_zz must be a vector of size n_spins for periodic chain")
+        elif J_zz.shape != (n_spins - 1,) and not periodic:
+            raise ValueError("J_zz must be a vector of size n_spins-1 for closed chain")
+        else:
+            raise ValueError(f"J_zz shape, {J_zz.shape}, not compatible with boundary conditions."
+                             "Should be (n_spins) for periodic chain or (n_spins-1) for closed chain.")
+    elif isinstance(J_zz, float) or isinstance(J_zz, int):
+        J_zz = J_zz * np.ones(n_spins if periodic else n_spins - 1)
+    else:
+        raise ValueError("J_zz must be a float or numpy array")
+
+    if isinstance(h_x, np.ndarray):
+        h_x = np.array(h_x)  # Convert to numpy array if list
+        if h_x.shape != (n_spins,):
+            raise ValueError("h_x must be a vector of size n_spins")
+    elif isinstance(h_x, float) or isinstance(h_x, int):
+        h_x = h_x * np.ones(n_spins)
+    else:
+        raise ValueError("h_x must be a float or numpy array")
+
+    # this bit is just for typing
+    if not isinstance(J_zz, np.ndarray):
+        raise Exception("J_zz must be a numpy array")
+
+    if not isinstance(h_x, np.ndarray):
+        raise Exception("h_x must be a numpy array")
+
     # ZZ terms
     for i in range(n_spins - 1):
         zz = np.zeros(n_spins, dtype=int)
         zz[i] = 1
         zz[i + 1] = 1
         paulis.append(PauliString.from_exponents(np.zeros(n_spins, dtype=int), zz, dims))
-        weights.append(J_zz)
+        weights.append(J_zz[i])
 
     # Periodic ZZ term (last ↔ first spin)
     if periodic and n_spins > 2:
@@ -41,14 +76,14 @@ def ising_chain_hamiltonian(n_spins, J_zz, h_x, periodic=False):
         zz[0] = 1
         zz[-1] = 1
         paulis.append(PauliString.from_exponents(np.zeros(n_spins, dtype=int), zz, dims))
-        weights.append(J_zz)
+        weights.append(J_zz[n_spins])
 
     # X terms (transverse field)
     for i in range(n_spins):
         x = np.zeros(n_spins, dtype=int)
         x[i] = 1
         paulis.append(PauliString.from_exponents(x, np.zeros(n_spins, dtype=int), dims))
-        weights.append(h_x)
+        weights.append(h_x[i])
 
     return PauliSum.from_pauli_strings(paulis, weights=weights, phases=None)
 
@@ -116,17 +151,62 @@ def ising_2d_hamiltonian(n_x: int, n_y: int, J_zz: float, h_x: float, periodic: 
     return PauliSum.from_pauli_strings(paulis, weights=weights, phases=None)
 
 
-def heuristic_clifford_symmetry(n_spins: int):
+def heuristic_clifford_symmetry(n_spins: int, periodic: bool = False) -> Gate:
     A = np.zeros((n_spins, n_spins), dtype=int)
     B = np.ones((n_spins, n_spins), dtype=int)
     C = np.zeros((n_spins, n_spins), dtype=int)
 
-    A[0, 1] = 1
-    A[1, 0] = 1
-    for i in range(n_spins - 2):
-        A[-1 - i, 2 + i] = 1
+    if periodic:
+        A[0, 1] = 1
+        A[1, 0] = 1
+        for i in range(n_spins - 2):
+            A[-1 - i, 2 + i] = 1
+    else:
+        # ones on anti-diagonal
+        for i in range(n_spins):
+            A[-i - 1, i] = 1
 
     F = np.block([[A, B], [C, A]])
     F_G = Gate('F', F,
                np.concatenate([np.zeros(n_spins, dtype=int), np.ones(n_spins, dtype=int)]))
     return F_G
+
+
+def product_state_ising(
+    N: int,
+    kind: str = "x_plus",
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Build a simple product state on an N-site qubit chain.
+
+    Returns
+    -------
+    psi : (2**N,) complex ndarray
+        Statevector in computational basis |0...0>,|0...1>,...,|1...1>.
+    dims : (N,) int ndarray
+        Dimensions (all 2's).
+    """
+    dims = np.full(N, 2, dtype=int)
+
+    # Single-qubit kets
+    ket0 = np.array([1.0, 0.0], dtype=np.complex128)  # |0> ~ |↑_z>
+    ket1 = np.array([0.0, 1.0], dtype=np.complex128)  # |1> ~ |↓_z>
+    ket_plus = (ket0 + ket1) / np.sqrt(2.0)
+    ket_minus = (ket0 - ket1) / np.sqrt(2.0)
+
+    if kind == "z_up":
+        locals_ = [ket0 for _ in range(N)]
+    elif kind == "z_neel":
+        locals_ = [ket0 if i % 2 == 0 else ket1 for i in range(N)]
+    elif kind == "x_plus":
+        locals_ = [ket_plus for _ in range(N)]
+    elif kind == "x_minus":
+        locals_ = [ket_minus for _ in range(N)]
+    else:
+        raise ValueError(f"Unknown product_state kind '{kind}'.")
+
+    psi = locals_[0]
+    for k in range(1, N):
+        psi = np.kron(psi, locals_[k])
+
+    return psi, dims

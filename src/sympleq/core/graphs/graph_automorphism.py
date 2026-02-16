@@ -2,9 +2,11 @@ from dataclasses import dataclass
 import numpy as np
 import galois
 from numba import njit
+from typing import Any, cast
 from sympleq.core.graphs.graph_coloring import _build_base_partition
 from sympleq.core.finite_field_solvers import get_linear_dependencies
-from sympleq.core.circuits.target import find_map_to_target_pauli_sum
+from sympleq.core.circuits.target import find_map_to_target_pauli_sum, get_phase_vector
+from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 from sympleq.core.finite_field_solvers import _select_row_basis_indices
 from sympleq.core.paulis import PauliSum
 from sympleq.core.circuits import Gate
@@ -85,11 +87,39 @@ class _ConsistencyChecker:
         return _consistent_numba(self.S_mod, phi, mapped_idx, i, y)
 
 
+def _gf2_inv(M: np.ndarray) -> np.ndarray:
+    """Invert a square GF(2) matrix using XOR elimination; raises LinAlgError if singular."""
+    A = (M.copy().astype(np.uint8) & 1)
+    n = A.shape[0]
+    if A.shape[0] != A.shape[1]:
+        raise np.linalg.LinAlgError("GF2 inverse requires square matrix")
+    Id = np.eye(n, dtype=np.uint8)
+    aug = np.hstack((A, Id))
+    row = 0
+    for col in range(n):
+        if row >= n:
+            break
+        nz = np.flatnonzero(aug[row:, col])
+        if nz.size == 0:
+            continue
+        piv = row + nz[0]
+        if piv != row:
+            aug[[row, piv]] = aug[[piv, row]]
+        mask = aug[:, col].astype(bool)
+        mask[row] = False
+        aug[mask] ^= aug[row]
+        row += 1
+    if not np.array_equal(aug[:, :n] & 1, np.eye(n, dtype=np.uint8)):
+        raise np.linalg.LinAlgError("matrix is singular over GF(2)")
+    return aug[:, n:] & 1
+
+
 def _check_code_automorphism(
     G: galois.FieldArray,
     basis_order: list[int],
     labels: list[int],
-    pi: np.ndarray
+    pi: np.ndarray,
+    G_mod2: np.ndarray | None = None,
 ) -> bool:
     """
     Linear-code test over GF(p): there exists U with U G P = G ?
@@ -98,13 +128,23 @@ def _check_code_automorphism(
     lab_to_idx = {lab: i for i, lab in enumerate(labels)}
     B_cols = np.array([lab_to_idx[b] for b in basis_order], dtype=int)
     PBcols = pi[B_cols]
-    C = G[:, PBcols]
-    try:
-        U = np.linalg.inv(C)  # works on galois.FieldArray
-    except np.linalg.LinAlgError:
-        return False
-    Gp = G[:, pi]
-    return np.array_equal(U @ Gp, G)
+    if G_mod2 is not None:
+        C = G_mod2[:, PBcols]
+        try:
+            C_inv = _gf2_inv(C)
+        except np.linalg.LinAlgError:
+            return False
+        Gp = G_mod2[:, pi]
+        return np.array_equal((C_inv @ Gp) & 1, G_mod2)
+    else:
+        C = G[:, PBcols]
+        # fall back to galois / numpy inverse; accept LinAlgError as failure
+        try:
+            U = np.linalg.inv(C)  # works on galois.FieldArray
+        except np.linalg.LinAlgError:
+            return False
+        Gp = G[:, pi]
+        return np.array_equal(U @ Gp, G)
 
 
 @dataclass
@@ -115,6 +155,7 @@ class _LeafContext:
     identity_perm: np.ndarray
     S_mod: np.ndarray
     G: galois.FieldArray
+    G_mod2: np.ndarray | None
     basis_order: list[int]
     labels: list[int]
     pauli_sum: PauliSum
@@ -126,10 +167,15 @@ class _LeafContext:
     base_phases: np.ndarray
     basis_indices: np.ndarray
     basis_source_ps: PauliSum
+    # Precomputed inverse of the square row-basis tableau (when rank == 2*n_qudits).
+    # This makes the leaf mapping deterministic (no order-dependent transvections).
+    basis_src_inv_gf2: np.ndarray | None
+    basis_src_inv_gfp: galois.FieldArray | None
     row_basis_cache: dict[str, np.ndarray]
 
 
-def _check_leaf(pi: np.ndarray, ctx: _LeafContext) -> Gate | None:
+def _check_leaf(pi: np.ndarray,
+                ctx: _LeafContext) -> Gate | None:
     """
     Run all structural and phase-correction checks for a candidate permutation.
     Returns a symmetry Gate or None.
@@ -138,18 +184,39 @@ def _check_leaf(pi: np.ndarray, ctx: _LeafContext) -> Gate | None:
         return None
     if not np.array_equal(ctx.S_mod[np.ix_(pi, pi)], ctx.S_mod):
         return None
-    if not _check_code_automorphism(ctx.G, ctx.basis_order, ctx.labels, pi):
+    if not _check_code_automorphism(ctx.G, ctx.basis_order, ctx.labels, pi, ctx.G_mod2):
         return None
 
-    H_basis_src = ctx.basis_source_ps
+    # Build the candidate symplectic from the permutation of the (ordered) row-basis.
     tgt_idx = pi[ctx.basis_indices]
-    H_basis_tgt = PauliSum.from_tableau(ctx.base_tableau[tgt_idx], ctx.pauli_sum.dimensions,
-                                        weights=ctx.base_weights[tgt_idx])
+    H_basis_tgt = PauliSum.from_tableau(
+        ctx.base_tableau[tgt_idx],
+        ctx.pauli_sum.dimensions,
+        weights=ctx.base_weights[tgt_idx],
+    )
     H_basis_tgt.set_phases(np.array(ctx.base_phases[tgt_idx], dtype=int, copy=True))
-    F, h0, _, _ = find_map_to_target_pauli_sum(H_basis_src, H_basis_tgt)
+    H_basis_src = ctx.basis_source_ps
+
+    F: np.ndarray
+    h0: np.ndarray
+    if ctx.p == 2 and ctx.basis_src_inv_gf2 is not None:
+        T = (ctx.base_tableau[tgt_idx] & 1).astype(np.uint8, copy=False)
+        F = (ctx.basis_src_inv_gf2 @ T) & 1
+        F = np.asarray(F, dtype=int)
+    elif ctx.p != 2 and ctx.basis_src_inv_gfp is not None:
+        GF = galois.GF(int(ctx.p))
+        T = GF(ctx.base_tableau[tgt_idx] % ctx.p)
+        F_gf = ctx.basis_src_inv_gfp @ T
+        F = (np.asarray(F_gf, dtype=int) % ctx.p).astype(int, copy=False)
+    else:
+        # Rank-deficient tableau: the basis alone doesn't determine F, so we fall back
+        # to the generic mapper.
+        F, _h0, _, _ = find_map_to_target_pauli_sum(H_basis_src, H_basis_tgt)
+
+    # Use a deterministic lift from symplectic -> quadratic phase vector; linear correction is solved below.
+    h0 = get_phase_vector(F.T, int(ctx.pauli_sum.dimensions[0]))
 
     nq = ctx.n_qudits
-    # Canonical coefficient-form Hamiltonian (phases separated, weights normalized)
     pauli = ctx.pauli_sum
 
     SG_F = Gate('Symmetry', F.T, np.asarray(h0, dtype=int))
@@ -158,6 +225,7 @@ def _check_leaf(pi: np.ndarray, ctx: _LeafContext) -> Gate | None:
 
     delta = (H_full_tg.phases - H_full_F.phases) % (2 * int(ctx.pauli_sum.lcm))
 
+    # For qubits, the quadratic part is not unique; if odd residuals appear, try a standard diagonal lift.
     if ctx.p == 2 and np.any(delta % 2 != 0):
         F2 = F % 2
         A, B = F2[:nq, :nq], F2[:nq, nq:]
@@ -172,13 +240,8 @@ def _check_leaf(pi: np.ndarray, ctx: _LeafContext) -> Gate | None:
         if (delta_alt % 2).sum() < (delta % 2).sum():
             h0, SG_F, H_full_F, delta = h0_alt, SG_F_alt, H_full_Fa, delta_alt
 
-    h_lin = solve_phase_vector_h_from_residual(
-        ctx.base_tableau,
-        delta,
-        ctx.pauli_sum.dimensions,
-        debug=False,
-        row_basis_cache=ctx.row_basis_cache,
-    )
+    h_lin = solve_phase_vector_h_from_residual(ctx.base_tableau, delta, ctx.pauli_sum.dimensions,
+                                               debug=False, row_basis_cache=ctx.row_basis_cache)
     if h_lin is None:
         return None
 
@@ -194,12 +257,15 @@ def _check_leaf(pi: np.ndarray, ctx: _LeafContext) -> Gate | None:
         return None
     if not np.all((ctx.ref_phases - H_out_cf.phases) % ctx.two_lcm == 0):
         return None
-    if not np.array_equal(H_out_cf.weights, ctx.ref_weights):
+    if not np.all(np.isclose(H_out_cf.weights, ctx.ref_weights, atol=1e-8, rtol=0)):
         return None
-
-    # NOTE: Historically we had an additional consistency check involving diag(F Ω F^T) and h_tot.
-    # In practice this rejected valid symmetries due to convention mismatches (and is redundant given the
-    # explicit verification above: SG.act(pauli) == pauli up to standardisation).
+    # Omega = np.zeros((2 * nq, 2 * nq), dtype=int)   # This has caused rare failures on known symmetries ... ???
+    # Omega[:nq, nq:] = np.eye(nq, dtype=int)
+    # Omega[nq:, :nq] = -np.eye(nq, dtype=int)
+    # if np.all(((ctx.p - 1) * np.diag(F @ Omega @ F.T) + h_tot % 2) != 0):
+    #     if fail_loudly:
+    #         print('[DEBUG] Inconsistent phase correction.')
+    #     return None
 
     return SG
 
@@ -220,8 +286,8 @@ def clifford_graph_automorphism_search(
     """
 
     # ---- preprocessing that depends only on pauli_sum ----
-    # Use one canonical representation for *everything* (coloring, basis mapping, leaf checks),
-    # so permutations and the induced symplectic map are computed in a consistent coefficient convention.
+    # Choose a canonical gauge up front so coefficients that differ only by a discrete
+    # Clifford phase are represented with identical weights and differing integer phases.
     pauli = pauli_sum.copy()
     pauli.weight_to_phase()
 
@@ -229,7 +295,7 @@ def clifford_graph_automorphism_search(
     labels = sorted(set(independent_labels) | set(dependencies.keys()))
     S_mod = pauli.symplectic_product_matrix()
     G, basis_order = pauli.matroid()
-    coeffs = pauli.weights
+    coeffs = np.asarray(pauli.weights)
 
     if not np.all([pauli.dimensions[i] == pauli.dimensions[0] for i in range(1, len(pauli.dimensions))]):
         raise ValueError("All qubits must have same dimension for now. The key things to fix are: "
@@ -252,7 +318,7 @@ def clifford_graph_automorphism_search(
 
     base_colors, base_classes = _build_base_partition(
         S_mod, p,
-        coeffs=coeffs,
+        coeffs=coeffs if coeffs is not None else None,
         col_invariants=col_invariants if color_mode == "wl" else None,
         max_rounds=max_wl_rounds,
         color_mode=color_mode,
@@ -269,7 +335,16 @@ def clifford_graph_automorphism_search(
     base_order = sorted(base_classes.keys(), key=lambda c: -len(base_classes[c]))
     domain_order = [i for c in base_order for i in base_classes[c]]
 
-    # Prepare references for the leaf checks so they dont have to be computed every time
+    # Track remaining candidates per color (and coeff if present) to avoid repeated scans in select_next
+    rem_counts: dict[Any, int] = {}
+    if coeffs is None:
+        rem_counts.update({c: len(base_classes[c]) for c in base_classes})
+    else:
+        for idx in range(n):
+            key = (int(base_colors[idx]), coeffs[idx])
+            rem_counts[key] = rem_counts.get(key, 0) + 1
+
+    # Prepare references for the leaf checks so they dont have to be computed every time.
     pauli_standard = pauli.to_standard_form()
     pauli_standard.weight_to_phase()
     ref_tableau = pauli_standard.tableau.astype(int, copy=False)
@@ -281,15 +356,34 @@ def clifford_graph_automorphism_search(
     basis_indices = np.asarray(independent_labels, dtype=int)
     basis_source_ps = pauli[basis_indices]
 
+    # If the tableau has full rank (rank == 2*n_qudits), the basis mapping uniquely determines
+    # the symplectic matrix F via a single inversion. Precompute that inverse once.
+    basis_src_inv_gf2: np.ndarray | None = None
+    basis_src_inv_gfp: galois.FieldArray | None = None
+    basis_src = np.asarray(basis_source_ps.tableau, dtype=int)
+    if basis_src.shape[0] == basis_src.shape[1]:
+        if p == 2:
+            try:
+                basis_src_inv_gf2 = _gf2_inv(basis_src & 1)
+            except np.linalg.LinAlgError:
+                basis_src_inv_gf2 = None
+        else:
+            GF = galois.GF(int(p))
+            try:
+                # galois overloads numpy.linalg for FieldArray, but type checkers often
+                # don't understand that and infer a float ndarray.
+                basis_src_inv_gfp = cast(galois.FieldArray, np.linalg.inv(GF(basis_src % p)))
+            except np.linalg.LinAlgError:
+                basis_src_inv_gfp = None
+
     dims_array = np.asarray(pauli.dimensions, dtype=int)
     row_basis_cache: dict[str, np.ndarray] = {}
     if dims_array.size and np.all(dims_array == dims_array[0]):
         p_uni = int(dims_array[0])
-        cache = _select_row_basis_indices(base_tableau % p_uni, p_uni, base_tableau.shape[1])
         if p_uni == 2:
-            row_basis_cache["gf2"] = cache
+            row_basis_cache["gf2"] = _select_row_basis_indices(base_tableau % 2, 2, base_tableau.shape[1])
         else:
-            row_basis_cache["gfp"] = cache
+            row_basis_cache["gfp"] = _select_row_basis_indices(base_tableau % p_uni, p_uni, base_tableau.shape[1])
 
     phi = -np.ones(n, dtype=np.int64)
     used = np.zeros(n, dtype=bool)
@@ -298,27 +392,49 @@ def clifford_graph_automorphism_search(
     steps = 0
     cur_colors = base_colors.copy()
 
+    def _dec_count(y_idx: int):
+        if coeffs is None:
+            rem_counts[int(base_colors[y_idx])] -= 1
+        else:
+            key = (int(base_colors[y_idx]), coeffs[y_idx])
+            rem_counts[key] -= 1
+
+    def _inc_count(y_idx: int):
+        if coeffs is None:
+            rem_counts[int(base_colors[y_idx])] += 1
+        else:
+            key = (int(base_colors[y_idx]), coeffs[y_idx])
+            rem_counts[key] += 1
+
     def select_next() -> int:
-        # MRV measured against base feasibility
+        # MRV measured against remaining count in the relevant color/coeff bucket
         best_i, best_rem = -1, 10**9
         for i in domain_order:
             if phi[i] >= 0:
                 continue
-            bi = int(base_colors[i])
-            rem = sum((not used[y] and (coeffs is None or coeffs[i] == coeffs[y])) for y in base_classes[bi])
+            if coeffs is None:
+                rem = rem_counts[int(base_colors[i])]
+            else:
+                rem = rem_counts.get((int(base_colors[i]), coeffs[i]), 0)
             if rem < best_rem:
                 best_i, best_rem = i, rem
                 if rem <= 1:
                     break
         return best_i
 
+    # For GF(2), carry an int copy to avoid FieldArray overhead in the code-automorphism test
+    G_mod2 = None
+    if p == 2:
+        G_mod2 = (np.asarray(G, dtype=np.uint8) & 1)
+
     leaf_ctx = _LeafContext(
         p=p,
-        two_lcm=2 * pauli_sum.lcm,
-        n_qudits=pauli_sum.n_qudits(),
+        two_lcm=2 * int(pauli.lcm),
+        n_qudits=pauli.n_qudits(),
         identity_perm=identity_perm,
         S_mod=S_mod,
         G=G,
+        G_mod2=G_mod2,
         basis_order=basis_order,
         labels=labels,
         pauli_sum=pauli,
@@ -330,6 +446,8 @@ def clifford_graph_automorphism_search(
         base_phases=base_phases,
         basis_indices=basis_indices,
         basis_source_ps=basis_source_ps,
+        basis_src_inv_gf2=basis_src_inv_gf2,
+        basis_src_inv_gfp=basis_src_inv_gfp,
         row_basis_cache=row_basis_cache,
     )
 
@@ -340,42 +458,103 @@ def clifford_graph_automorphism_search(
         # 1-WL just to order
         cur_colors = _wl_colors_from_S(S_mod, int(2), coeffs=coeffs, col_invariants=None, max_rounds=1)
 
-    def dfs() -> bool:
+    @dataclass
+    class _DFSFrame:
+        i: int
+        bi: int
+        mapped_idx: np.ndarray
+        candidate: list[int]
+        idx: int = 0  # next candidate index to try
+        assigned_y: int = -1  # -1 means "unassigned"
+
+    def _undo_assignment(frame: _DFSFrame) -> None:
+        y = int(frame.assigned_y)
+        if y < 0:
+            return
+        phi[frame.i] = -1
+        used[y] = False
+        _inc_count(y)
+        frame.assigned_y = -1
+
+    def _make_frame() -> _DFSFrame | None:
         nonlocal steps
         if len(results) >= k_wanted:
-            return True
-        if np.all(phi >= 0):
-            pi = phi.copy()
-            leaf = _check_leaf(pi, leaf_ctx)
-            if leaf is not None:
-                results.append(leaf)
-                return True
-            return False
+            return None
 
         if dynamic_refine_every and (steps % dynamic_refine_every == 0):
             dynamic_refine()
         steps += 1
 
-        i = select_next()
+        i = int(select_next())
+        if i < 0:
+            return None
         bi = int(base_colors[i])
         mapped_idx = np.where(phi >= 0)[0].astype(np.int64)
 
-        # Order candidates by current colors (ordering heuristic only)
         candidate = [y for y in base_classes[bi] if not used[y]]
         if coeffs is not None:
             candidate = [y for y in candidate if coeffs[i] == coeffs[y]]
         candidate.sort(key=lambda y: cur_colors[y])
 
-        for y in candidate:
-            if not consistency(phi, mapped_idx, i, y):
-                continue
-            phi[i] = y
-            used[y] = True
-            if dfs():
-                return True
-            phi[i] = -1
-            used[y] = False
-        return False
+        return _DFSFrame(i=i, bi=bi, mapped_idx=mapped_idx, candidate=candidate)
 
-    dfs()
+    # Iterative DFS
+    stack: list[_DFSFrame] = []
+    while True:
+        if len(results) >= k_wanted:
+            break
+
+        # Leaf check
+        if np.all(phi >= 0):
+            pi = phi.copy()
+            leaf = _check_leaf(pi, leaf_ctx)
+            if leaf is not None:
+                results.append(leaf)
+                break  # match previous behavior: stop after the first found symmetry
+            # leaf failed -> backtrack one level
+            if not stack:
+                break
+            _undo_assignment(stack[-1])
+            continue
+
+        # Ensure there's a frame for the next variable.
+        if not stack or stack[-1].assigned_y >= 0:
+            fr = _make_frame()
+            if fr is None:
+                # No variable to assign or no candidates: fail this branch.
+                if not stack:
+                    break
+                _undo_assignment(stack[-1])
+                continue
+            stack.append(fr)
+
+        frame = stack[-1]
+
+        # Try candidates for this frame's variable i.
+        assigned = False
+        while frame.idx < len(frame.candidate):
+            y = int(frame.candidate[frame.idx])
+            frame.idx += 1
+            if used[y]:
+                continue
+            if not consistency(phi, frame.mapped_idx, frame.i, y):
+                continue
+
+            phi[frame.i] = y
+            used[y] = True
+            _dec_count(y)
+            frame.assigned_y = y
+            assigned = True
+            break
+
+        if assigned:
+            # descend; next loop iteration will create/advance the next frame
+            continue
+
+        # No candidates left for this variable -> pop frame (no assignment) and backtrack.
+        stack.pop()
+        if not stack:
+            break
+        _undo_assignment(stack[-1])
+
     return results[:k_wanted]

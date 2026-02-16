@@ -815,6 +815,10 @@ class PauliObject(ABC):
             new_weights[i] = self.weights[i] * omega
         self._phases = np.zeros(self.n_paulis(), dtype=int)
         self._weights = new_weights
+        # self.round_weights()
+
+    def round_weights(self, digits: int = 2):
+        self._weights = np.round(self.weights, digits)
 
     def to_standard_form(self) -> Self:
         """

@@ -169,6 +169,28 @@ class Gate(ABC):
     def __repr__(self) -> str:
         return f"Gate(name={self._name}, n_qudits={self._n_qudits})"
 
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, Gate):
+            return NotImplemented
+
+        if self._n_qudits != value._n_qudits:
+            return False
+
+        if not np.array_equal(self._symplectic, value._symplectic):
+            return False
+
+        if not np.array_equal(self._phase_vector, value._phase_vector):
+            return False
+
+        if self._exceptional_phase_vectors.keys() != value._exceptional_phase_vectors.keys():
+            return False
+
+        for dim in self._exceptional_phase_vectors:
+            if not np.array_equal(self._exceptional_phase_vectors[dim], value._exceptional_phase_vectors[dim]):
+                return False
+
+        return True
+
     def act(self, pauli: P, qudits: int | tuple[int, ...]) -> P:
         """
         Apply this gate to a Pauli object at the specified qudit indices.

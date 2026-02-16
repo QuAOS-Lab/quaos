@@ -7,7 +7,7 @@ import scipy.sparse as sp
 from .pauli_object import PauliObject
 from .pauli import Pauli
 from .constants import DEFAULT_QUDIT_DIMENSION
-from .bases_manipulation import bases_to_int
+from sympleq.utils import bases_to_int
 
 if TYPE_CHECKING:
     from .pauli_sum import PauliSum
