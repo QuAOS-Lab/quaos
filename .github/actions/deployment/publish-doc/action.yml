@@ -11,11 +11,6 @@ inputs:
     required: false
     default: "./docs/doc_requirements.txt"
     type: string
-  source-requirements:
-    description: "Path to source requirements file"
-    required: false
-    default: "./scripts/configs/requirements.txt"
-    type: string
 
 outputs:
   artifact-name:
@@ -38,11 +33,6 @@ runs:
         echo "📦 Installing documentation requirements..."
         if [ -f "${{ inputs.doc-requirements }}" ]; then
           pip install -r ${{ inputs.doc-requirements }}
-        fi
-
-        echo "📦 Installing source requirements..."
-        if [ -f "${{ inputs.source-requirements }}" ]; then
-          pip install -r ${{ inputs.source-requirements }}
         fi
 
         echo "📦 Installing project..."
