@@ -1,6 +1,7 @@
 from sympleq.core.circuits.gates import GATES, Gate
-from sympleq.models.random_hamiltonian import random_gate_symmetric_hamiltonian
+from sympleq.models.random_hamiltonian import random_gate_symmetric_hamiltonian, random_pauli_symmetry_hamiltonian
 from sympleq.core.symmetries.clifford import find_clifford_symmetries  # , qudit_cost, min_qudit_clifford_symmetry
+from sympleq.core.symmetries.pauli import pauli_reduce
 from sympleq.core.circuits import Circuit
 import numpy as np
 
@@ -159,3 +160,22 @@ class TestSymmetryFinder:
                 assert np.all(H_s.weights == H_out.weights)
 
                 assert c.act(H, all_qudit_indices).to_standard_form() == H.to_standard_form()
+
+    def test_random_pauli_symmetry(self):
+        n_tests = 10
+        n_qudits = 10
+        n_paulis = 50
+
+        for _ in range(n_tests):
+            n_redundant = np.random.randint(0, n_qudits - 3)
+            n_conditional = np.random.randint(0, n_qudits - n_redundant - 1)
+            ham = random_pauli_symmetry_hamiltonian(n_qudits, n_paulis, n_redundant=n_redundant,
+                                                    n_conditional=n_conditional)
+            h_reduced, conditioned_hams, reducing_circuit, eigenvalues = pauli_reduce(ham)
+            assert h_reduced.n_qudits() == n_qudits - n_redundant
+            num_only_z_columns = 0
+            for i in range(h_reduced.n_qudits()):
+                if not any(h_reduced.x_exp[:, i]):
+                    num_only_z_columns += 1
+            assert num_only_z_columns == n_conditional
+            # TODO: add checks that test the number of actual conditional hamiltonians that is currently wrong
