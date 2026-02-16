@@ -207,10 +207,6 @@ def tensor(mm: list[sp.csr_matrix]) -> sp.csr_matrix:
     return sp.csr_matrix(sp.kron(mm[0], tensor(mm[1:]), format="csr"))
 
 
-def I_mat(d: int) -> sp.csr_matrix:
-    return sp.csr_matrix(np.diag([1] * d))
-
-
 def H_mat(d: int) -> sp.csr_matrix:
     omega = np.exp(2 * np.pi * 1j / d)
     return sp.csr_matrix(1 / np.sqrt(d) * np.array([[omega ** (i0 * i1) for i0 in range(d)] for i1 in range(d)]))
@@ -292,12 +288,6 @@ def pauli_unitary_from_tableau(
     return sp.csr_matrix(U)
 
 
-def CX_func(i, a0, a1, dims):
-    aa = int_to_bases(i, dims)
-    aa[a1] = (aa[a1] + aa[a0]) % dims[a1]
-    return bases_to_int(aa, dims)
-
-
 def _mixed_radix_strides(dims: np.ndarray) -> np.ndarray:
     """
     strides[k] = product of dims[k+1:], with strides[-1] = 1.
@@ -324,6 +314,11 @@ def _digits_to_int(digits: np.ndarray, strides: np.ndarray) -> int:
     return int(np.dot(digits, strides))
 
 
+'''
+def I_mat(d: int) -> sp.csr_matrix:
+    return sp.csr_matrix(np.diag([1] * d))
+
+
 def SWAP_func(i: int, a0: int, a1: int, dims: np.ndarray) -> int:
     """
     Map a basis index i -> f(i) by swapping qudit positions a0 <-> a1
@@ -337,3 +332,10 @@ def SWAP_func(i: int, a0: int, a1: int, dims: np.ndarray) -> int:
     digits = _int_to_digits(i, dims, strides).astype(int)
     digits[a0], digits[a1] = digits[a1], digits[a0]
     return _digits_to_int(digits, strides)
+
+
+def CX_func(i, a0, a1, dims):
+    aa = int_to_bases(i, dims)
+    aa[a1] = (aa[a1] + aa[a0]) % dims[a1]
+    return bases_to_int(aa, dims)
+'''
