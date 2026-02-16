@@ -188,6 +188,8 @@ def random_pauli_symmetry_hamiltonian(n_qudits: int, n_paulis: int, n_redundant=
 
 
 def random_gate_symmetric_hamiltonian(G: Gate,
+                                      dimension: int,
+                                      qudit_indices: tuple[int, ...] | list[int],
                                       n_qudits: int,
                                       n_paulis: int | None = None,
                                       weight_mode: str = 'uniform',
@@ -213,27 +215,90 @@ def random_gate_symmetric_hamiltonian(G: Gate,
 
     Notes
     -----
-    This function first generates a random Pauli string Hamiltonian, then applies the gate and its inverse to it.
-    The sum of the two is the symmetric Hamiltonian. The weights are rounded to 10 decimal places and Pauli strings
-    with zero weight are removed.
+    This function samples random Pauli strings and closes each one under the orbit of G, producing a sum that is
+    exactly invariant under G without needing to know the gate's global order. The weights are rounded to 10 decimal
+    places and Pauli strings with zero weight are removed.
     """
-
-    if n_qudits <= 0:
-        raise ValueError("n_qudits must be greater than zero.")
 
     if n_paulis is None:
         n_paulis = 2 * n_qudits
-    P = random_pauli_symmetry_hamiltonian(n_qudits, n_paulis, 0, 0, weight_mode=weight_mode)
-    G_inv = G.inverse()
-    qudit_index = np.random.randint(0, n_qudits - 1)
-    P_prime = G_inv.act(P, qudit_index)
-    P_sym = P + P_prime
-    P_sym.phase_to_weight()
-    P_sym.combine_equivalent_paulis()
+
+    if isinstance(qudit_indices, list):
+        qudit_indices = tuple(qudit_indices)
+
+    # Build full dimensions for the Hamiltonian, embedding the gate dimensions on the target indices.
+    dims = np.full(n_qudits, dimension, dtype=int)
+
+    rng = np.random.default_rng()
+
+    def _new_weight() -> float:
+        return float(rng.random()) if weight_mode == 'random' else 1.0
+
+    def _orbit(seed: PauliSum) -> list[PauliSum]:
+        """
+        Close the orbit of `seed` under G. Using the first repeat of (tableau, weight) as the stopping condition
+        guarantees an algebraically closed set without needing the global gate order.
+        """
+        seen = set()
+        orbit_terms = []
+        term = seed
+        while True:
+            key = (tuple(term.tableau[0]), complex(np.around(term.weights[0], decimals=12)))
+            if key in seen:
+                break
+            seen.add(key)
+            orbit_terms.append(term)
+            term = G.act(term, qudit_indices).to_standard_form()
+        return orbit_terms
+
+    # Accumulate orbit-closed terms until we have at least n_paulis *non-zero* unique tableau rows.
+    # We combine coefficients on-the-fly to avoid producing an empty Hamiltonian due to cancellations.
+    coeff_by_row: dict[bytes, complex] = {}
+    row_by_key: dict[bytes, np.ndarray] = {}
+
+    def _add_coeff(row: np.ndarray, coeff: complex) -> None:
+        k = np.asarray(row, dtype=int).tobytes()
+        prev = coeff_by_row.get(k)
+        if prev is None:
+            coeff_by_row[k] = complex(coeff)
+            row_by_key[k] = np.asarray(row, dtype=int).copy()
+            return
+        new = prev + complex(coeff)
+        if abs(new) <= 1e-14:
+            # Exact (or near) cancellation; drop the term to keep the Hamiltonian compact.
+            coeff_by_row.pop(k, None)
+            row_by_key.pop(k, None)
+        else:
+            coeff_by_row[k] = new
+
+    max_attempts = 1000
+    attempts = 0
+    while len(coeff_by_row) < n_paulis:
+        attempts += 1
+        if attempts > max_attempts:
+            raise RuntimeError(
+                f"Failed to generate a non-trivial symmetric Hamiltonian after {max_attempts} attempts "
+                f"(have {len(coeff_by_row)} unique terms, want {n_paulis})."
+            )
+
+        seed = PauliSum.from_random(1, dims, rand_weights=False, rand_phases=False)
+        seed.weights = np.array([_new_weight()], dtype=complex)
+        seed = seed.to_standard_form()
+
+        for term in _orbit(seed):
+            _add_coeff(term.tableau[0], term.weights[0])
+
+    tableaus = np.vstack(list(row_by_key.values()))
+    weights = np.array(list(coeff_by_row.values()), dtype=np.complex128)
+    phases = np.zeros(weights.shape[0], dtype=int)
+
+    P_sym = PauliSum.from_tableau(tableaus, dimensions=dims, weights=weights, phases=phases)
+    P_sym.standardise()
     P_sym.set_weights(np.around(P_sym.weights, decimals=10))
     P_sym.remove_zero_weight_paulis()
+
     if scrambled is True:
-        g = Gate.from_random(n_qudits, 2)
-        P_sym = g.act(P_sym, qudit_index)
+        g = Gate.from_random(n_qudits, dims[0])
+        P_sym = g.act(P_sym, qudit_indices)
 
     return P_sym
