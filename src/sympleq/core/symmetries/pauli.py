@@ -116,7 +116,7 @@ def cancel_X(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit, q_ma
                                               pauli_sum.dimensions[i])
             for _ in range(number_of_sum_x):
                 C.add_gate(CX(), qudit, i)
-                CX().act(pauli_sum, (qudit, i))
+                pauli_sum = CX().act(pauli_sum, (qudit, i))
     return pauli_sum, C
 
 
@@ -145,17 +145,17 @@ def cancel_Z(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit, q_ma
         The circuit after the gates have been added to cancel out the Z part of the Pauli operator.
     """
     C.add_gate(H(), qudit)
-    H().act(pauli_sum, qudit)
+    pauli_sum = H().act(pauli_sum, qudit)
     for i in range(qudit + 1, q_max):
         if pauli_sum.z_exp[pauli_index, i]:
             number_of_sum_z = number_of_SUM_Z(pauli_sum.z_exp[pauli_index, i],
-                                              pauli_sum.x_exp[pauli_index, qudit],
+                                              pauli_sum.z_exp[pauli_index, qudit],
                                               pauli_sum.dimensions[i])
             for _ in range(number_of_sum_z):
-                C.add_gate(CX(), qudit, i)
-                CX().act(pauli_sum, (qudit, i))
+                C.add_gate(CX(), i, qudit)
+                pauli_sum = CX().act(pauli_sum, (i, qudit))
     C.add_gate(H(), qudit)
-    H().act(pauli_sum, qudit)
+    pauli_sum = H().act(pauli_sum, qudit)
     return pauli_sum, C
 
 
@@ -185,11 +185,11 @@ def cancel_Y(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit):
                                   pauli_sum.dimensions[qudit])
     for _ in range(number_of_phase):
         C.add_gate(S(), qudit)
-        S().act(pauli_sum, qudit)
+        pauli_sum = S().act(pauli_sum, qudit)
     return pauli_sum, C
 
 
-def cancel_pauli(P, current_qudit, pauli_index, circuit, n_q_max):
+def cancel_pauli(P: PauliSum, current_qudit: int, pauli_index: int, circuit: Circuit, n_q_max: int):
     """
     Cancel out all non-zero X and Z parts of a Pauli operator.
 
@@ -213,6 +213,7 @@ def cancel_pauli(P, current_qudit, pauli_index, circuit, n_q_max):
     circuit : Circuit
         The circuit after the gates have been added to cancel out the Pauli operator.
     """
+    # add CX gates to cancel out all non-zero X-parts on Pauli pauli_index, i > qudit
     if any(P.x_exp[pauli_index, i] for i in range(current_qudit + 1, n_q_max)):
         P, circuit = cancel_X(P, current_qudit, pauli_index, circuit, n_q_max)
 
@@ -264,7 +265,7 @@ def symplectic_reduction_qudit(P):
     if len(conditional_qubits) > 0:
         for cq in conditional_qubits:
             C.add_gate(H(), cq)
-            P1 = H().act(P1, cq)
+        P1 = H().act(P1, cq)
     return C, sorted(pivots, key=lambda x: x[1])
 
 
