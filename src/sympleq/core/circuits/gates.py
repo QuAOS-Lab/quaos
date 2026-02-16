@@ -9,6 +9,7 @@ from sympleq.core.circuits.utils import embed_symplectic, transvection_matrix
 from sympleq.core.circuits.random_symplectic import symplectic_random_transvection
 from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
+from sympleq.core.circuits.target import get_phase_vector
 
 
 # We define a type using TypeVar to let the type checker know that
@@ -87,7 +88,7 @@ class Gate(ABC):
 
         symplectic = symplectic_random_transvection(n_qudits, dimension, num_transvections)
         # For random gates, we use zero phase vector (phases depend on specific gate sequence)
-        phase_vector = np.zeros(2 * n_qudits, dtype=int)
+        phase_vector = get_phase_vector(symplectic, dimension)
 
         return _GenericGate("random", symplectic, phase_vector)
 
@@ -211,7 +212,7 @@ class Gate(ABC):
         new_tableau[:, tableau_mask] = updated_tableau
 
         # Compute phase contribution
-        phase_vec = self.phase_vector(relevant_lcm)
+        phase_vec = self.phase_vector(relevant_lcm) % (2 * pauli.lcm)
         modified_phase_vector = phase_vec - self._V_diag
         linear_terms = T_affected @ modified_phase_vector
         quadratic_terms = np.sum(T_affected * (T_affected @ self._p_part), axis=1)
@@ -261,12 +262,27 @@ class Gate(ABC):
 
         C_inv = -Omega.T @ self._symplectic.T @ Omega
 
-        # TODO: Compute inverse phase vector properly
-        import warnings
-        warnings.warn("Inverse phase vector computation not fully implemented for generic gates.")
-        phase_vector_inv = np.zeros(2 * n, dtype=int)
+        U = np.zeros((2 * n, 2 * n), dtype=int)
+        U[n:, :n] = np.eye(n, dtype=int)
+
+        U_C = (self._symplectic.T @ U @ self._symplectic)
+        U_C_inv = (C_inv.T @ U @ C_inv)
+
+        P_C = (2 * np.triu(U_C) - np.diag(np.diag(U_C)))
+        P_C_inv = (2 * np.triu(U_C_inv) - np.diag(np.diag(U_C_inv)))
+
+        # FIXME: handle exceptional phase vector correctly
+
+        term1 = (-self.phase_vector() @ C_inv)
+        term2 = (np.diag(U_C.T)) @ C_inv
+        term3 = np.diag((C_inv.T @ P_C @ C_inv))
+        term4 = np.diag(U_C_inv)
+        term5 = np.diag(P_C_inv)
+
+        phase_vector_inv = (term1 + term2 - term3 + term4 - term5)
 
         inv_name = self._name + "_inv" if not self._name.endswith("_inv") else self._name[:-4]
+
         return self.__class__(inv_name, C_inv, phase_vector_inv)
 
     def transvection(self, transvection_vector: np.ndarray | list, transvection_weight: int = 1) -> Gate:

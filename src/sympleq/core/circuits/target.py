@@ -134,8 +134,8 @@ def get_phase_vector(gate_symplectic: np.ndarray, dimension: int) -> np.ndarray:
 
     U = np.zeros((2 * n_qudits, 2 * n_qudits), dtype=int)
     U[n_qudits:, :n_qudits] = np.eye(n_qudits, dtype=int)
-    lhs = (dimension - 1) * np.diag(gate_symplectic.T @ U @ gate_symplectic) % 2
-    return lhs
+    lhs = (dimension - 1) * np.diag(gate_symplectic.T @ U @ gate_symplectic) % 2  # Eq. (10) mod 2 is there for all d
+    return lhs  # (- lhs) % (2 * dimension) TODO: d > 2 testing, do we need the minus?
 
 
 def str_to_int(string):

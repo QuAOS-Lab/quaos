@@ -69,13 +69,11 @@ class TestCircuits():
             n_paulis = 5
             # make a random circuit
             circuit = Circuit.from_random(n_gates, dimensions)
-            print(circuit)
 
             # make a random pauli sum
             pauli_sum = PauliSum.from_random(n_paulis, dimensions)
             # compose the circuit and pauli sum
             composed_gate = circuit.composite_gate()
-            print(composed_gate.symplectic)
             # For composite gate, act on all qudits
             output_composite = composed_gate.act(pauli_sum, tuple(range(n_qudits)))
             output_sequential = circuit.act(pauli_sum)
