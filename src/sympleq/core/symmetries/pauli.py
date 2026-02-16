@@ -1,7 +1,7 @@
 import numpy as np
 import itertools
 from sympleq.core.paulis import PauliSum
-from sympleq.core.circuits import Circuit, Hadamard as H, SUM as CX, PHASE as S
+from sympleq.core.circuits import Circuit, HADAMARD as H, CX, PHASE as S
 
 
 def number_of_SUM_X(r_control, r_target, d):
