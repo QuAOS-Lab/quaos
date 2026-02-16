@@ -182,7 +182,7 @@ def random_pauli_symmetry_hamiltonian(n_qudits: int, n_paulis: int, n_redundant=
     P = PauliSum.from_string(pauli_strings, dimensions=[2] * n_qudits, weights=weights, phases=phases)
 
     g = Gate.from_random(n_qudits, 2)
-    P = g.act(P, 2)
+    P = g.act(P, tuple(range(n_qudits)))
 
     return P
 
@@ -487,4 +487,3 @@ def random_gate_symmetric_hamiltonian(G: Gate,
         P_sym = g.act(P_sym, all_indices)
 
     return P_sym
-

@@ -219,9 +219,9 @@ def _check_leaf(pi: np.ndarray,
     nq = ctx.n_qudits
     pauli = ctx.pauli_sum
 
-    SG_F = Gate('Symmetry', list(range(nq)), F.T, ctx.pauli_sum.dimensions, np.asarray(h0, dtype=int))
+    SG_F = Gate('Symmetry', F.T, np.asarray(h0, dtype=int))
     H_full_tg = pauli.copy()[pi]
-    H_full_F = SG_F.act(pauli)
+    H_full_F = SG_F.act(pauli, tuple(range(nq)))
 
     delta = (H_full_tg.phases - H_full_F.phases) % (2 * int(ctx.pauli_sum.lcm))
 
@@ -234,8 +234,8 @@ def _check_leaf(pi: np.ndarray,
         hz0 = np.diag((C @ D.T) % 2) % 2
         h0_alt = np.concatenate([hx0, hz0]).astype(int)
 
-        SG_F_alt = Gate('Symmetry', list(range(nq)), F.T, ctx.pauli_sum.dimensions, h0_alt)
-        H_full_Fa = SG_F_alt.act(pauli)
+        SG_F_alt = Gate('Symmetry', F.T, h0_alt)
+        H_full_Fa = SG_F_alt.act(pauli, tuple(range(nq)))
         delta_alt = (H_full_tg.phases - H_full_Fa.phases) % 4
         if (delta_alt % 2).sum() < (delta % 2).sum():
             h0, SG_F, H_full_F, delta = h0_alt, SG_F_alt, H_full_Fa, delta_alt
@@ -248,9 +248,9 @@ def _check_leaf(pi: np.ndarray,
     h0_mod = np.asarray(h0, dtype=int) % ctx.two_lcm
     h_lin_mod = np.asarray(h_lin, dtype=int) % ctx.two_lcm
     h_tot = (h0_mod + h_lin_mod) % ctx.two_lcm
-    SG = Gate('Symmetry', list(range(nq)), F.T, ctx.pauli_sum.dimensions, h_tot)
+    SG = Gate('Symmetry', F.T, h_tot)
 
-    H_out_cf = SG.act(pauli).to_standard_form()
+    H_out_cf = SG.act(pauli, tuple(range(nq))).to_standard_form()
     H_out_cf.weight_to_phase()
 
     if not np.array_equal(H_out_cf.tableau, ctx.ref_tableau):

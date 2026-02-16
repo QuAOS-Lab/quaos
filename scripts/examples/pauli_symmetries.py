@@ -1,13 +1,13 @@
 import sys
 sys.path.append("./")
 
-from sympleq.hamiltonian import symplectic_pauli_reduction, pauli_reduce
-from sympleq.paulis import PauliSum
+from sympleq.core.symmetries.pauli import symplectic_pauli_reduction, pauli_reduce
+from sympleq.core.paulis import PauliSum
 
 
 ham = ['x1z0 x1z0 x0z0', 'x0z0 x1z0 x1z0', 'x0z1 x0z0 x0z1']
-ham = PauliSum(ham, weights=[1, 1, 1], dimensions=[2, 2, 2])
-print(ham, '/n')
+ham = PauliSum.from_string(ham, weights=[1, 1, 1], dimensions=[2, 2, 2])
+print(ham, '\n')
 circuit = symplectic_pauli_reduction(ham)
 h_reduced, conditioned_hams, reducing_circuit, eigenvalues = pauli_reduce(ham)
 print(h_reduced)

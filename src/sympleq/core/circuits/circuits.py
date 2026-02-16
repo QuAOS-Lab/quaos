@@ -620,49 +620,49 @@ class Circuit:
         # in a few algorithms
         raise NotImplementedError
 
-    def local_circuit(self, indices: list[int] | np.ndarray) -> 'Circuit':
-        """
-        Returns a Circuit object containing only the gates that act only on the specified qudit indices.
-        """
-        indices = list(indices)
-        index_map = {old: new for new, old in enumerate(indices)}
+    # def local_circuit(self, indices: list[int] | np.ndarray) -> 'Circuit':
+    #     """
+    #     Returns a Circuit object containing only the gates that act only on the specified qudit indices.
+    #     """
+    #     indices = list(indices)
+    #     index_map = {old: new for new, old in enumerate(indices)}
 
-        def _remap_gate(gate: Gate) -> Gate | None:
-            # Skip gates that touch qudits outside the requested subset
-            if not all(idx in index_map for idx in gate.qudit_indices):
-                return None
+    #     def _remap_gate(gate: Gate) -> Gate | None:
+    #         # Skip gates that touch qudits outside the requested subset
+    #         if not all(idx in index_map for idx in gate.qudit_indices):
+    #             return None
 
-            # Handle PauliGate separately to keep its pauli_string consistent with the new local qudit ordering
-            if isinstance(gate, PauliGate):
-                ps = gate.pauli_string
-                x_local = []
-                z_local = []
-                dims_local = []
-                for old_idx in indices:
-                    x_local.append(int(ps.x_exp[old_idx]))
-                    z_local.append(int(ps.z_exp[old_idx]))
-                    dims_local.append(int(ps.dimensions[old_idx]))
-                ps_local = PauliString.from_exponents(x_local, z_local, dims_local)
-                try:
-                    return PauliGate(ps_local, name=gate.name)
-                except ValueError:
-                    # PauliGate requires at least one non-trivial component; skip if trivial on this subset.
-                    return None
+    #         # Handle PauliGate separately to keep its pauli_string consistent with the new local qudit ordering
+    #         if isinstance(gate, PauliGate):
+    #             ps = gate.pauli_string
+    #             x_local = []
+    #             z_local = []
+    #             dims_local = []
+    #             for old_idx in indices:
+    #                 x_local.append(int(ps.x_exp[old_idx]))
+    #                 z_local.append(int(ps.z_exp[old_idx]))
+    #                 dims_local.append(int(ps.dimensions[old_idx]))
+    #             ps_local = PauliString.from_exponents(x_local, z_local, dims_local)
+    #             try:
+    #                 return PauliGate(ps_local, name=gate.name)
+    #             except ValueError:
+    #                 # PauliGate requires at least one non-trivial component; skip if trivial on this subset.
+    #                 return None
 
-            # Generic gate: copy and remap indices/dimensions to the local numbering
-            g_copy = gate.copy()
-            g_copy.qudit_indices = np.asarray([index_map[idx] for idx in gate.qudit_indices], dtype=int)
-            g_copy.dimensions = np.asarray([self.dimensions[idx] for idx in gate.qudit_indices], dtype=int)
-            return g_copy
+    #         # Generic gate: copy and remap indices/dimensions to the local numbering
+    #         g_copy = gate.copy()
+    #         g_copy.qudit_indices = np.asarray([index_map[idx] for idx in gate.qudit_indices], dtype=int)
+    #         g_copy.dimensions = np.asarray([self.dimensions[idx] for idx in gate.qudit_indices], dtype=int)
+    #         return g_copy
 
-        local_gates = []
-        for gate in self.gates:
-            remapped = _remap_gate(gate)
-            if remapped is not None:
-                local_gates.append(remapped)
+    #     local_gates = []
+    #     for gate in self.gates:
+    #         remapped = _remap_gate(gate)
+    #         if remapped is not None:
+    #             local_gates.append(remapped)
 
-        local_dimensions = [self.dimensions[i] for i in indices]
-        return Circuit(local_dimensions, local_gates)
+    #     local_dimensions = [self.dimensions[i] for i in indices]
+    #     return Circuit(local_dimensions, local_gates)
 
     def gates_layout(self,
                      with_qudit_indices: bool = False,

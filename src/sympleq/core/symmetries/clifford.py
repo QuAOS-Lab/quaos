@@ -29,9 +29,9 @@ def min_qudit_clifford_symmetry(pauli_sum: PauliSum, talk: bool = False
         print('Got symmetry - decomposing')
 
     S, T = block_decompose_optimal(g.symplectic, int(pauli_sum.lcm), min_block_size=4)
-    h_S, h_T = clifford_phase_decomposition(g.symplectic, g.phase_vector, S, T, int(pauli_sum.lcm))
-    S_gate = Gate('S', g.qudit_indices, S, g.dimensions, h_S)
-    T_gate = Gate('T', g.qudit_indices, T, g.dimensions, h_T)
+    h_S, h_T = clifford_phase_decomposition(g.symplectic, g.phase_vector(), S, T, int(pauli_sum.lcm))
+    S_gate = Gate('S', S, h_S)
+    T_gate = Gate('T', T, h_T)
 
     return g, S_gate, T_gate
 
@@ -50,23 +50,23 @@ def multiple_min_qudit_clifford_symmetries(pauli_sum: PauliSum,
     Ts = []
     for i, g in enumerate(G):
         S, T = block_decompose_optimal(g.symplectic, pauli_sum.lcm)
-        h_S, h_T = clifford_phase_decomposition(g.symplectic, g.phase_vector, S, T, int(pauli_sum.lcm))
-        S_gate = Gate(f'S{i}', g.qudit_indices, S, g.dimensions, h_S)
-        T_gate = Gate(f'T{i}', g.qudit_indices, T, g.dimensions, h_T)
+        h_S, h_T = clifford_phase_decomposition(g.symplectic, g.phase_vector(), S, T, int(pauli_sum.lcm))
+        S_gate = Gate(f'S{i}', S, h_S)
+        T_gate = Gate(f'T{i}', T, h_T)
         Ss.append(S_gate)
         Ts.append(T_gate)
 
     return G, Ss, Ts
 
 
-def block_structure(gate: Gate):
+def block_structure(gate: Gate, lcm: int):
     symp = gate.symplectic
-    sizes = np.asarray(ordered_block_sizes(symp, int(gate.lcm)), dtype=int) / 2
+    sizes = np.asarray(ordered_block_sizes(symp, lcm), dtype=int) / 2
     return sizes
 
 
-def qudit_cost(gate: Gate):
-    return int(max(block_structure(gate)))
+def qudit_cost(gate: Gate, lcm: int):
+    return int(max(block_structure(gate, lcm)))
 
 
 def _labels_union(independent: list[int], dependencies: dict[int, list[tuple[int, int]]]) -> list[int]:

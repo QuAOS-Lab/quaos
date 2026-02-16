@@ -2,286 +2,450 @@
 from __future__ import annotations
 
 import numpy as np
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
-from .modular_helpers import mod_p, independent_columns, rank_mod, _solve_linear, omega_matrix
+from .modular_helpers import mod_p, rank_mod
 from .atomic_types import AtomicBlock, AtomicInvariant
 from .atomic_linear import (
-    restrict_operator,
+    independent_columns,
     is_nondegenerate,
     darboux_basis_from_span,
-    mat_pow_mod,
-    kernel_in_span,
-    symplectic_orthogonal_complement_in_span,
-)
-from .module_invariants import (
-    q_of_F_restricted,
-    jordan_chain_tops_nilpotent,   # full-space tops (used for invariant summary)
-    cyclic_submodule_basis,
 )
 
-from .atomic_krylov import _select_module_generators_from_top_space
+
+def _pair_value(v: np.ndarray, w: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int, p: int) -> int:
+    """Chain-level induced pairing: <v, N^{L-1} w>."""
+    if L <= 0:
+        raise ValueError("L must be >= 1")
+    Nr = np.eye(N.shape[0], dtype=np.int64) if (L - 1) == 0 else mat_pow_mod(N, L - 1, p)
+    val = mod_p(v.T @ Omega @ (Nr @ w), p)
+    return int(val.reshape(()))
 
 
-def _full_top_space_basis_in_span(
-    N: np.ndarray,
-    space_basis: np.ndarray,
-    L: int,
-    p: int,
+def mat_pow_mod(A: np.ndarray, e: int, p: int) -> np.ndarray:
+    """Fast exponentiation mod p."""
+    if e < 0:
+        raise ValueError("Negative exponent not supported in mat_pow_mod.")
+    n = A.shape[0]
+    R = np.eye(n, dtype=np.int64)
+    B = mod_p(A, p).copy()
+    k = e
+    while k > 0:
+        if k & 1:
+            R = mod_p(R @ B, p)
+        B = mod_p(B @ B, p)
+        k >>= 1
+    return R
+
+
+def symplectic_orthogonal_complement_in_span(
+    Omega: np.ndarray, T_block: np.ndarray, space_basis: np.ndarray, p: int
 ) -> np.ndarray:
     """
-    Build a deterministic spanning set for the L-top quotient space inside span(space_basis).
-
-    We reuse the same construction that jordan_chain_tops_nilpotent_in_span encodes:
-      tops[L] spans K_L / (K_{L-1} + N K_{L+1}) where K_j := ker(N^j) ∩ span(space_basis).
-
-    Unlike _select_module_generators_from_top_space, this does NOT try to pick module generators.
-    It returns a *basis for the entire top space* (as ambient columns in sector coordinates).
+    Given:
+      - space_basis: columns span current working subspace S (subset of sector coords)
+      - T_block: columns span extracted symplectic subspace W (subset of S)
+    Return columns spanning S ∩ W^⊥ (symplectic orthogonal complement inside S).
     """
-    L = int(L)
-    if L <= 0:
-        return np.zeros((N.shape[0], 0), dtype=np.int64)
-
-    N = mod_p(N, p)
-    space_basis = independent_columns(mod_p(space_basis, p), p)
     if space_basis.shape[1] == 0:
-        return np.zeros((N.shape[0], 0), dtype=np.int64)
+        return space_basis
 
-    # Build K_{L-1}, K_L, K_{L+1} in the restricted span
-    KLm1 = kernel_in_span(mat_pow_mod(N, L - 1, p), space_basis, p) if L - 1 >= 1 else np.zeros((N.shape[0], 0), dtype=np.int64)
-    KLm1 = independent_columns(mod_p(KLm1, p), p)
+    # Solve for coefficients c such that (space_basis c) is orthogonal to W:
+    # < space_basis c, T_block > = 0  =>  c^T (space_basis^T Omega T_block) = 0.
+    M = mod_p(space_basis.T @ Omega @ T_block, p)  # (dimS x dimW)
+    # Nullspace of M^T corresponds to orthogonal vectors in coefficient space
+    # i.e. M^T c = 0.
+    MT = mod_p(M.T, p)
+    ker = nullspace_basis_mod(MT, p)  # columns in coefficient space
+    if ker.shape[1] == 0:
+        return np.zeros((space_basis.shape[0], 0), dtype=np.int64)
 
-    KL = kernel_in_span(mat_pow_mod(N, L, p), space_basis, p)
-    KL = independent_columns(mod_p(KL, p), p)
-
-    KLp1 = kernel_in_span(mat_pow_mod(N, L + 1, p), space_basis, p)
-    KLp1 = independent_columns(mod_p(KLp1, p), p)
-
-    # S = K_{L-1} + N K_{L+1}
-    if KLp1.shape[1]:
-        NKLp1 = mod_p(N @ KLp1, p)
-        S = np.concatenate([KLm1, NKLp1], axis=1) if KLm1.shape[1] else NKLp1
-    else:
-        S = KLm1
-    S = independent_columns(mod_p(S, p), p) if S.shape[1] else S
-
-    rS = rank_mod(S, p) if S.shape[1] else 0
-    need = KL.shape[1] - rS
-    if need <= 0:
-        return np.zeros((N.shape[0], 0), dtype=np.int64)
-
-    # Pick a complement of S inside KL deterministically
-    chosen = _basis_extend(S, KL, need, p)
-    return independent_columns(mod_p(chosen, p), p)
+    rem = mod_p(space_basis @ ker, p)
+    rem = independent_columns(rem, p)
+    return rem
 
 
-def _is_alternating(B: np.ndarray, p: int) -> bool:
+def nullspace_basis_mod(A: np.ndarray, p: int) -> np.ndarray:
+    """Return a basis (columns) for the nullspace of A over GF(p)."""
+    A = mod_p(A, p)
+    m, n = A.shape
+    if m == 0:
+        return np.eye(n, dtype=np.int64)
+
+    # Row-reduce A to RREF and track pivots
+    R, pivots = rref_mod(A, p)
+    pivots = list(pivots)
+    pivot_set = set(pivots)
+    free = [j for j in range(n) if j not in pivot_set]
+    if not free:
+        return np.zeros((n, 0), dtype=np.int64)
+
+    # Build nullspace vectors for each free var
+    basis = []
+    for f in free:
+        x = np.zeros((n, 1), dtype=np.int64)
+        x[f, 0] = 1
+        # For each pivot row i, pivot col = pivots[i], solve x[piv] = -R[i,f]
+        for i, pc in enumerate(pivots):
+            x[pc, 0] = (-R[i, f]) % p
+        basis.append(x)
+
+    return mod_p(np.concatenate(basis, axis=1), p)
+
+
+def rref_mod(A: np.ndarray, p: int) -> Tuple[np.ndarray, List[int]]:
+    """Reduced row echelon form over GF(p); returns (RREF, pivot_cols)."""
+    A = mod_p(A, p).copy()
+    m, n = A.shape
+    pivots: List[int] = []
+    r = 0
+    for c in range(n):
+        if r >= m:
+            break
+        # find pivot row
+        piv = None
+        for rr in range(r, m):
+            if A[rr, c] % p != 0:
+                piv = rr
+                break
+        if piv is None:
+            continue
+        # swap
+        if piv != r:
+            A[[r, piv]] = A[[piv, r]]
+        # normalize pivot row
+        inv = pow(int(A[r, c]), p - 2, p) if p != 2 else 1
+        A[r, :] = (A[r, :] * inv) % p
+        # eliminate other rows
+        for rr in range(m):
+            if rr == r:
+                continue
+            if A[rr, c] % p != 0:
+                factor = A[rr, c] % p
+                A[rr, :] = (A[rr, :] - factor * A[r, :]) % p
+        pivots.append(c)
+        r += 1
+    return A, pivots
+
+
+def cyclic_submodule_basis(F_sec: np.ndarray, N: np.ndarray, v_top: np.ndarray, deg_q: int, L: int, p: int) -> np.ndarray:
     """
-    Alternating bilinear form matrix test over GF(p).
-    For odd p: B^T = -B and diag=0.
-    For p=2:  -B = B, so "alternating" reduces to symmetric with diag=0.
+    Build a basis for the cyclic F-module generated by v_top, truncated to the expected
+    size deg_q * L. Uses the restricted coordinates on the current sector.
     """
-    B = mod_p(B, p)
-    if np.any(np.diag(B) % p != 0):
-        return False
-    return np.array_equal(B.T % p, (-B) % p)
-
-
-def _basis_extend(base: np.ndarray, candidates: np.ndarray, want: int, p: int) -> np.ndarray:
-    """
-    Deterministically pick 'want' columns from 'candidates' that extend span(base).
-    Returns picked columns (ambient coords).
-    """
-    base = independent_columns(mod_p(base, p), p) if base.size else base
-    picked = np.zeros((candidates.shape[0], 0), dtype=np.int64)
-    r_base = rank_mod(base, p) if base.size else 0
-
-    for j in range(candidates.shape[1]):
-        c = candidates[:, j:j + 1]
-        r_try = rank_mod(np.concatenate([base, picked, c], axis=1), p)
-        if r_try > r_base + picked.shape[1]:
-            picked = np.concatenate([picked, c], axis=1)
-            if picked.shape[1] == want:
-                return picked
-
-    raise RuntimeError("_basis_extend: could not extend by required amount.")
+    # We build v, vF, vF^2, ..., but we can exploit primary structure: size target = deg_q*L.
+    target = deg_q * L
+    rows = []
+    v = mod_p(v_top.reshape(-1, 1), p)
+    cur = v
+    for _ in range(target * 2 + 4):  # overshoot guard; independent_columns will trim
+        rows.append(cur)
+        cur = mod_p(F_sec.T @ cur, p)  # NOTE: v are column vectors here; row convention -> right-mult means col transforms by F^T
+        if len(rows) >= target:
+            # not safe to break early; still allow more to resolve dependence, but keep a cap above
+            pass
+        if len(rows) > target * 2 + 3:
+            break
+    M = mod_p(np.concatenate(rows, axis=1), p)
+    M = independent_columns(M, p)
+    # Truncate if too large (shouldn't happen for correct primary/truncation)
+    if M.shape[1] > target:
+        M = M[:, :target]
+    return M
 
 
 def jordan_chain_tops_nilpotent_in_span(N: np.ndarray, space_basis: np.ndarray, max_exp: int, p: int) -> Dict[int, np.ndarray]:
     """
-    Restricted analogue of jordan_chain_tops_nilpotent:
-      tops[L] columns represent K_L / (K_{L-1} + N K_{L+1}) inside span(space_basis),
-    where K_j := ker(N^j) ∩ span(space_basis).
+    Return top representatives at each length L, within the current working span S=span(space_basis),
+    for the nilpotent N on this restricted space.
 
-    Deterministic: uses the same extension rule as module_invariants.
+    Output dict: L -> matrix whose columns span a complement for
+        T_L := K_L / (K_{L-1} + N K_{L+1})
+    represented as actual vectors in S.
+
+    NOTE: This is a deterministic construction used by the atomic routines.
     """
-    N = mod_p(N, p)
-    space_basis = independent_columns(mod_p(space_basis, p), p)
-    d = N.shape[0]
-    if space_basis.shape[1] == 0:
-        return {}
+    # Work in coordinate space of S: represent N_S = (space_basis)^+ N (space_basis)
+    # but we can stay in ambient by repeated kernels inside span.
 
-    # K[0] = 0, K[j] for j=1..max_exp, and K[max_exp+1] := K[max_exp]
-    K: List[np.ndarray] = [np.zeros((d, 0), dtype=np.int64)]
-    for j in range(1, int(max_exp) + 1):
-        Kj = kernel_in_span(mat_pow_mod(N, j, p), space_basis, p)
-        K.append(independent_columns(Kj, p))
-    K.append(K[int(max_exp)])
-
+    # Build K_j = { v in S : v N^j = 0 }.
+    # With column-vector convention for computations: condition is N^T^j v = 0 in col form
+    # since row v satisfies v N^j = 0 <=> (N^T)^j v^T = 0.
     tops: Dict[int, np.ndarray] = {}
-    for L in range(1, int(max_exp) + 1):
-        KL = K[L]
-        if KL.shape[1] == 0:
+    if space_basis.shape[1] == 0:
+        return tops
+
+    # Precompute (N^T)^j
+    Nt = mod_p(N.T, p)
+    Nt_pows = [np.eye(N.shape[0], dtype=np.int64)]
+    for j in range(1, max_exp + 2):
+        Nt_pows.append(mod_p(Nt_pows[-1] @ Nt, p))
+
+    # Helper: kernel in S of linear map A (ambient): {x in S : A x = 0}
+    def ker_in_span(A: np.ndarray) -> np.ndarray:
+        AS = mod_p(A @ space_basis, p)
+        coeff = nullspace_basis_mod(AS, p)  # coefficients c with AS c = 0
+        return mod_p(space_basis @ coeff, p)
+
+    K = [np.zeros((N.shape[0], 0), dtype=np.int64)]  # K0
+    for j in range(1, max_exp + 2):
+        Kj = ker_in_span(Nt_pows[j])
+        Kj = independent_columns(Kj, p)
+        K.append(Kj)
+
+    # Build T_L complements: K_L / (K_{L-1} + N K_{L+1})
+    for L in range(1, max_exp + 1):
+        K_L = K[L]
+        if K_L.shape[1] == 0:
             continue
+        sum_space = K[L - 1]
+        NKLp1 = mod_p(Nt @ K[L + 1], p)  # in col form, image under Nt corresponds to row*N
+        denom = sum_space
+        if NKLp1.shape[1] > 0:
+            denom = np.concatenate([denom, NKLp1], axis=1) if denom.shape[1] > 0 else NKLp1
+        denom = independent_columns(denom, p) if denom.shape[1] > 0 else denom
 
-        S = K[L - 1]
-        NKLp1 = mod_p(N @ K[L + 1], p) if K[L + 1].shape[1] else np.zeros((d, 0), dtype=np.int64)
-        if NKLp1.shape[1]:
-            S = np.concatenate([S, NKLp1], axis=1) if S.shape[1] else NKLp1
-        S = independent_columns(S, p) if S.shape[1] else S
-
-        rS = rank_mod(S, p) if S.shape[1] else 0
-        need = KL.shape[1] - rS
-        if need <= 0:
-            continue
-
-        chosen = _basis_extend(S, KL, need, p)
-        tops[L] = chosen
+        # Complement of denom inside K_L: find columns in K_L not in span(denom)
+        if denom.shape[1] == 0:
+            tops[L] = K_L
+        else:
+            # Solve K_L = denom * X + comp * Y; get comp by extending denom to basis of K_L
+            comp = complement_columns_mod(denom, K_L, p)
+            if comp.shape[1] > 0:
+                tops[L] = comp
 
     return tops
 
 
-def _induced_form_matrix_on_tops(A: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int, p: int) -> np.ndarray:
+def complement_columns_mod(A: np.ndarray, B: np.ndarray, p: int) -> np.ndarray:
     """
-    Induced (quotient) form on L-tops:
-        B_L(u,v) = <u, N^{L-1} v>  (mod p)
-    for columns u,v of A.
+    Given A (n x a) and B (n x b) with span(A) subset span(B),
+    return columns of B that complement A to a basis of span(B).
     """
-    if L <= 0:
-        raise ValueError("L must be >= 1")
+    if B.shape[1] == 0:
+        return B
     if A.shape[1] == 0:
-        return np.zeros((0, 0), dtype=np.int64)
-    Nr = np.eye(N.shape[0], dtype=np.int64) if (L - 1) == 0 else mat_pow_mod(N, L - 1, p)
-    return mod_p(A.T @ Omega @ (Nr @ A), p)
+        return independent_columns(B, p)
+
+    # Build [A | B] and find a basis; then pick those basis columns coming from B but not from A.
+    AB = mod_p(np.concatenate([A, B], axis=1), p)
+    R, piv = rref_mod(AB.T, p)  # row-reduce transposed to find independent columns in AB (hacky but works)
+    # Actually rref_mod above is for rows; better: do rref on AB and get pivot cols.
+    # We'll do a simple pivot selection using rank increments.
+    piv_cols = []
+    cur = np.zeros((AB.shape[0], 0), dtype=np.int64)
+    cur_rank = 0
+    for j in range(AB.shape[1]):
+        cand = np.concatenate([cur, AB[:, j:j + 1]], axis=1)
+        r = rank_mod(cand, p)
+        if r > cur_rank:
+            piv_cols.append(j)
+            cur = cand
+            cur_rank = r
+
+    # From pivots, return those that are from B-part and not already in A-part
+    comp_cols = [j - A.shape[1] for j in piv_cols if j >= A.shape[1]]
+    if not comp_cols:
+        return np.zeros((B.shape[0], 0), dtype=np.int64)
+    return mod_p(B[:, comp_cols], p)
 
 
-def _pair_value(v: np.ndarray, w: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int, p: int) -> int:
+def _full_top_space_basis_in_span(N: np.ndarray, space_basis: np.ndarray, L: int, p: int) -> np.ndarray:
     """
-    Compute <v, N^{L-1} w> mod p (scalar).
+    Return a basis (columns) for K_L within current span S (space_basis).
+    This is used to solve for a top partner w satisfying <v, N^{L-1} w> = 1.
     """
-    Nr = np.eye(N.shape[0], dtype=np.int64) if (L - 1) == 0 else mat_pow_mod(N, L - 1, p)
-    return int(mod_p(v.T @ Omega @ (Nr @ w), p).reshape(()))
+    Nt = mod_p(N.T, p)
+    NtL = mat_pow_mod(Nt, L, p)
+
+    AS = mod_p(NtL @ space_basis, p)
+    coeff = nullspace_basis_mod(AS, p)
+    K_L = mod_p(space_basis @ coeff, p)
+    K_L = independent_columns(K_L, p)
+    return K_L
+
+
+def _select_module_generators_from_top_space(
+    F_sec: np.ndarray, N: np.ndarray, A_raw: np.ndarray, deg_q: int, L: int, p: int
+) -> np.ndarray:
+    """
+    Convert a basis for top quotient reps at length L into a reduced set of module generators.
+    Acceptance test: cyclic_submodule_basis has expected dimension deg_q * L.
+    """
+    if A_raw.shape[1] == 0:
+        return A_raw
+
+    gens = []
+    target = deg_q * L
+    for j in range(A_raw.shape[1]):
+        v = A_raw[:, j:j + 1]
+        Cv = cyclic_submodule_basis(F_sec, N, v, deg_q, L, p)
+        Cv = independent_columns(Cv, p)
+        if Cv.shape[1] == target:
+            gens.append(v)
+
+    if not gens:
+        return np.zeros((A_raw.shape[0], 0), dtype=np.int64)
+
+    G = mod_p(np.concatenate(gens, axis=1), p)
+    G = independent_columns(G, p)
+    return G
 
 
 def _find_partner_in_top_span(
-    v: np.ndarray, A: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int, p: int
+    v_top: np.ndarray, A_top: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int, p: int
 ) -> np.ndarray:
     """
-    Given v (a top vector) and A whose columns span the top space at length L,
-    find w in span(A) such that <v, N^{L-1} w> = 1.
-
-    Deterministic:
-      - try basis columns with scaling,
-      - else solve a 1×m linear system.
+    Find w in span(A_top) such that <v, N^{L-1} w> = 1.
+    Deterministic and solver-free: since this is a single equation, we just pick the
+    first top-basis direction with nonzero pairing and scale it.
     """
-    v = mod_p(v.reshape(-1, 1), p)
-    A = independent_columns(mod_p(A, p), p)
-    if A.shape[1] == 0:
-        raise RuntimeError("_find_partner_in_top_span: empty top space.")
+    if A_top.shape[1] == 0:
+        raise RuntimeError("Top space is empty; cannot find hyperbolic partner.")
 
     Nr = np.eye(N.shape[0], dtype=np.int64) if (L - 1) == 0 else mat_pow_mod(N, L - 1, p)
-    r = mod_p(v.T @ Omega @ (Nr @ A), p)  # 1×m
 
-    # fast: pick first nonzero entry and scale that basis vector
-    nz = np.where(r.reshape(-1) % p != 0)[0]
-    if nz.size:
-        j = int(nz[0])
-        a = int(r[0, j]) % p
-        inv = pow(a, p - 2, p) if p != 2 else 1  # in p=2, a=1 anyway
-        return mod_p(A[:, j:j + 1] * inv, p)
+    # row[j] = <v, N^{L-1} A_top[:,j]>
+    row = mod_p(v_top.T @ Omega @ (Nr @ A_top), p).reshape(-1)  # shape (dimTop,)
 
-    # else: solve r * c = 1
-    Aeq = mod_p(r, p)  # 1×m
-    beq = np.array([[1]], dtype=np.int64)
-    c = _solve_linear(Aeq, beq, p)  # m×1
-    w = mod_p(A @ c, p)
-    # sanity
-    if _pair_value(v, w, Omega, N, L, p) % p != 1 % p:
-        raise RuntimeError("_find_partner_in_top_span: failed to build partner with pairing=1.")
-    return w
+    # Deterministic: choose first nonzero coordinate
+    j = None
+    for idx in range(row.size):
+        if int(row[idx] % p) != 0:
+            j = idx
+            break
+    if j is None:
+        raise RuntimeError("No partner exists in span(A_top) with nonzero induced pairing.")
+
+    w = mod_p(A_top[:, j:j + 1], p)
+    a = int(row[j] % p)
+
+    # scale so pairing becomes 1
+    if p == 2:
+        # only possible nonzero is 1, so already normalized
+        return w
+    inva = pow(a, p - 2, p)
+    return mod_p(w * inva, p)
+
+
+def _cyclic_module_basis_checked(
+    F_sec: np.ndarray,
+    N: np.ndarray,
+    v_top: np.ndarray,
+    deg_q: int,
+    L: int,
+    p: int,
+) -> np.ndarray:
+    """Return a cyclic module basis and enforce the expected dimension deg_q*L.
+
+    This is an Upgrade-B guardrail: in self sectors, choosing a partner from the
+    *top span* (or even from a top quotient basis) can accidentally pick a vector
+    that does not generate a full indecomposable summand (it can collapse to a
+    shorter chain, or share an already-accounted-for module). We therefore only
+    accept v if its cyclic span has the expected dimension.
+    """
+    target = int(deg_q) * int(L)
+    Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)
+    Cv = independent_columns(mod_p(Cv, p), p)
+    if Cv.shape[1] != target:
+        raise RuntimeError(
+            f"Top vector does not generate a full module: got dim={Cv.shape[1]}, expected {target}."
+        )
+    return Cv
+
+
+def _try_hyperbolic_pair_from_generators(
+    F_sec: np.ndarray,
+    N: np.ndarray,
+    v_top: np.ndarray,
+    Cv: np.ndarray,
+    other_gens: np.ndarray,
+    Omega: np.ndarray,
+    deg_q: int,
+    L: int,
+    p: int,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Find a hyperbolic partner w among *verified* module generators.
+
+    Returns (w_top, Cw, span) with:
+      - Cw has dim = deg_q*L
+      - span = span(Cv, Cw) has dim = 2*deg_q*L and is symplectically nondegenerate
+    """
+    exp_single = int(deg_q) * int(L)
+    exp_pair = 2 * exp_single
+
+    if other_gens.shape[1] == 0:
+        raise RuntimeError("No other generator available to pair with.")
+
+    for j in range(other_gens.shape[1]):
+        cand = other_gens[:, j:j + 1]
+        a = _pair_value(v_top, cand, Omega, N, int(L), p) % p
+        if a == 0:
+            continue
+        inva = pow(int(a), p - 2, p) if p != 2 else 1
+        cand = mod_p(cand * inva, p)
+
+        # Enforce full module on the partner.
+        try:
+            Ccand = _cyclic_module_basis_checked(F_sec, N, cand, deg_q, int(L), p)
+        except RuntimeError:
+            continue
+
+        span = independent_columns(np.concatenate([Cv, Ccand], axis=1), p)
+        if span.shape[1] != exp_pair:
+            continue
+        if span.shape[1] % 2 != 0:
+            continue
+        if not is_nondegenerate(Omega, span, p):
+            continue
+
+        return cand, Ccand, span
+
+    raise RuntimeError("Failed to find a certified hyperbolic partner among generators.")
+
+
+# -------------------------
+# Main entry: self sector decomposition (non-unipotent)
+# -------------------------
 
 
 def atomic_blocks_in_self_sector_nonunipotent(
-    F: np.ndarray, p: int, key: Tuple[int, ...], primaries: dict, *, allow_fallback: bool = True
+    F_sec: np.ndarray,
+    T_sec: np.ndarray,
+    Omega: np.ndarray,
+    N: np.ndarray,
+    deg_q: int,
+    max_exp: int,
+    key: Tuple[int, int],
+    p: int,
+    *,
+    allow_fallback: bool = True,
 ) -> Tuple[List[AtomicBlock], AtomicInvariant]:
     """
-    Self-reciprocal sector q=q* with q != x±1.
+    Decompose a self-reciprocal symplectic sector W_phi=V_phi (phi=phi^*), excluding the
+    p=2 unipotent special case handled elsewhere.
 
-    Pipeline:
-      1) take ambient sector span V = primaries[key]["V_basis"]
-      2) canonicalize to a Darboux basis T (so restricted Ω is standard)
-      3) restrict F to sector coordinates, compute N=q(F) nilpotent
-      4) compute invariant summaries from the induced forms on top spaces
-      5) deterministically extract atomic blocks by largest-L top pairing,
-         removing each block by symplectic orthogonal complement.
-      6) lift each block back to ambient via T
-
-    Notes:
-      - For p=2 this routine is still heuristic; if block extraction fails,
-        we degrade gracefully to a single sector-sized block so callers can proceed.
+    Returns:
+      - list of AtomicBlock with bases in ambient coordinates (T_sec maps sector->ambient)
+      - AtomicInvariant object describing the sector decomposition status
     """
-    F = mod_p(F, p)
+    # Robustness: keep original exponent for reporting (even if we shrink exp_work later).
+    max_exp_orig = int(max_exp)
 
-    q = primaries[key]["poly"]
-    deg_q = int(primaries[key]["deg"])
-    max_exp_orig = int(primaries[key]["exponent"])   # keep original for reporting
-    exp_work = int(max_exp_orig)                     # may be decreased locally during extraction
+    Ω = mod_p(Omega, p)
 
-    V = independent_columns(mod_p(primaries[key]["V_basis"], p), p)
-    if V.shape[1] == 0:
-        inv = AtomicInvariant(sector_key=key, sector_type="self", poly_key=key, data={"status": "empty"})
-        return [], inv
+    m = F_sec.shape[0] // 2
+    assert F_sec.shape == (2 * m, 2 * m)
 
-    # Canonicalize sector basis to Darboux so Ω becomes standard in sector coords
-    n2 = F.shape[0]
-    Ω_amb = omega_matrix(n2 // 2, p)
-    if not is_nondegenerate(Ω_amb, V, p):
-        raise RuntimeError("Self sector basis is degenerate; cannot proceed.")
-
-    T_sec = darboux_basis_from_span(Ω_amb, V, p)  # (2n × 2m)
-    m2 = T_sec.shape[1]
-    if m2 % 2 != 0:
-        raise RuntimeError("Self sector dimension must be even.")
-    m = m2 // 2
-
-    F_sec = restrict_operator(F, T_sec, p)  # (2m × 2m), in canonical symplectic coords
-    Ω = omega_matrix(m, p)                  # standard Ω on sector
-
-    N = q_of_F_restricted(F_sec, q, p)      # nilpotent on this primary
-
-    # -------------------------
-    # Invariant summary (full sector)
-    # -------------------------
-    tops_full = jordan_chain_tops_nilpotent(N, max_exp_orig, p)  # Dict[L] -> (2m × mult_L)
-
+    # Precompute top multiplicities / top forms (diagnostics)
     top_multiplicities: Dict[int, int] = {}
-    top_form: Dict[int, Dict[str, Any]] = {}
+    top_form: Dict[int, Any] = {}
 
-    for L, A in tops_full.items():
-        A = independent_columns(mod_p(A, p), p)
-        top_multiplicities[int(L)] = int(A.shape[1])
-        B = _induced_form_matrix_on_tops(A, Ω, N, int(L), p)
-        rB = rank_mod(B, p)
-        top_form[int(L)] = {
-            "rank": int(rB),
-            "alternating": bool(_is_alternating(B, p)),
-        }
+    # Working max length (can shrink if we can't safely extract at long lengths)
+    exp_work = int(max_exp)
 
-    # -------------------------
-    # Deterministic block extraction in sector coords
-    # -------------------------
-    blocks_meta: List[Dict[str, Any]] = []
     blocks: List[AtomicBlock] = []
+    blocks_meta: List[Dict[str, Any]] = []
 
     # keep accepted block bases in sector coordinates for span sanity-check
     built_cols_sec: List[np.ndarray] = []
@@ -305,24 +469,92 @@ def atomic_blocks_in_self_sector_nonunipotent(
             # Reduced set: one per indecomposable q^L block (module generators)
             A = _select_module_generators_from_top_space(F_sec, N, A_raw, deg_q, int(L), p)
 
-            # Full top-space basis at this length (for partner search / existence in p=2)
-            A_top = _full_top_space_basis_in_span(N, space_basis, int(L), p)
-
             if A.shape[1] == 0:
                 # nothing usable at this L; deterministically drop this length
                 exp_work = int(L) - 1
                 continue
 
-            v_top = A[:, 0:1]
+            # -------------------------
+            # Upgrade B extraction at fixed length L:
+            #   - only accept v/w that generate *full* cyclic modules (dim = deg_q*L)
+            #   - if hyperbolic pairing is needed, prefer partners among verified generators
+            #     (this is the robust, basis-independent version of "pair in the top space")
+            # -------------------------
+            exp_single = int(deg_q) * int(L)
+            exp_pair = 2 * exp_single
 
-            # Candidate 1: self-dual cyclic module
-            bvv = _pair_value(v_top, v_top, Ω, N, int(L), p)
+            made_block = False
+            # Delay construction of the full top-space basis unless we need a fallback.
+            A_top: np.ndarray | None = None
 
-            Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)  # (2m × deg*L)
-            Cv = independent_columns(mod_p(Cv, p), p)
+            for i in range(A.shape[1]):
+                v_top = A[:, i:i + 1]
 
-            if Cv.shape[1] > 0 and (Cv.shape[1] % 2 == 0) and is_nondegenerate(Ω, Cv, p):
-                T_blk = darboux_basis_from_span(Ω, Cv, p)  # SECTOR COORDS
+                # Candidate 1: self-dual cyclic module
+                try:
+                    Cv = _cyclic_module_basis_checked(F_sec, N, v_top, deg_q, int(L), p)
+                except RuntimeError:
+                    # Despite passing the generator test, v may still collapse numerically;
+                    # treat as unusable and try next.
+                    continue
+
+                bvv = _pair_value(v_top, v_top, Ω, N, int(L), p)
+
+                if (Cv.shape[1] % 2 == 0) and is_nondegenerate(Ω, Cv, p):
+                    T_blk = darboux_basis_from_span(Ω, Cv, p)  # SECTOR COORDS
+                    built_cols_sec.append(T_blk)
+
+                    rem = symplectic_orthogonal_complement_in_span(Ω, T_blk, space_basis, p)
+
+                    T_blk_amb = mod_p(T_sec @ T_blk, p)
+                    blocks.append(
+                        AtomicBlock(
+                            T_blk=T_blk_amb,
+                            half_dim=int(T_blk_amb.shape[1] // 2),
+                            sector_key=key,
+                            inv=None,
+                        )
+                    )
+                    blocks_meta.append(
+                        {"type": "self", "L": int(L), "half_dim": int(T_blk_amb.shape[1] // 2), "bvv": int(bvv)}
+                    )
+                    space_basis = rem
+                    made_block = True
+                    break
+
+                # Candidate 2: hyperbolic pairing with a *verified* generator partner
+                other_gens = (
+                    np.concatenate([A[:, :i], A[:, i + 1:]], axis=1)
+                    if A.shape[1] > 1
+                    else np.zeros((A.shape[0], 0), dtype=np.int64)
+                )
+
+                try:
+                    w_top, Cw, span = _try_hyperbolic_pair_from_generators(
+                        F_sec, N, v_top, Cv, other_gens, Ω, deg_q, int(L), p
+                    )
+                except RuntimeError:
+                    # Fallback: allow *any* partner in the full top space, but still
+                    # enforce the full-module and full-block dimension checks.
+                    if A_top is None:
+                        A_top = _full_top_space_basis_in_span(N, space_basis, int(L), p)
+                    try:
+                        w_top = _find_partner_in_top_span(v_top, A_top, Ω, N, int(L), p)
+                        Cw = _cyclic_module_basis_checked(F_sec, N, w_top, deg_q, int(L), p)
+                    except Exception:
+                        continue
+
+                    span = independent_columns(np.concatenate([Cv, Cw], axis=1), p)
+                    if span.shape[1] != exp_pair:
+                        continue
+                    if span.shape[1] % 2 != 0 or not is_nondegenerate(Ω, span, p):
+                        continue
+
+                # At this point we have a certified hyperbolic block.
+                if span.shape[1] != exp_pair:
+                    continue
+
+                T_blk = darboux_basis_from_span(Ω, span, p)  # SECTOR COORDS
                 built_cols_sec.append(T_blk)
 
                 rem = symplectic_orthogonal_complement_in_span(Ω, T_blk, space_basis, p)
@@ -337,56 +569,16 @@ def atomic_blocks_in_self_sector_nonunipotent(
                     )
                 )
                 blocks_meta.append(
-                    {"type": "self", "L": int(L), "half_dim": int(T_blk_amb.shape[1] // 2), "bvv": int(bvv)}
+                    {"type": "hyperbolic", "L": int(L), "half_dim": int(T_blk_amb.shape[1] // 2), "bvv": int(bvv)}
                 )
                 space_basis = rem
+                made_block = True
+                break
+
+            if not made_block:
+                # No extractable block at this length: deterministically drop this length.
+                exp_work = int(L) - 1
                 continue
-
-            # Candidate 2: hyperbolic pairing block from two cyclic modules
-            w_top = _find_partner_in_top_span(v_top, A_top, Ω, N, int(L), p)
-
-            Cw = cyclic_submodule_basis(F_sec, N, w_top, deg_q, int(L), p)
-            Cw = independent_columns(mod_p(Cw, p), p)
-
-            span = independent_columns(np.concatenate([Cv, Cw], axis=1), p)
-            if span.shape[1] % 2 != 0 or not is_nondegenerate(Ω, span, p):
-                found = False
-                for j in range(1, A.shape[1]):
-                    cand = A[:, j:j + 1]
-                    if _pair_value(v_top, cand, Ω, N, int(L), p) % p == 0:
-                        continue
-                    a = _pair_value(v_top, cand, Ω, N, int(L), p) % p
-                    inva = pow(int(a), p - 2, p) if p != 2 else 1
-                    cand = mod_p(cand * inva, p)
-                    Ccand = cyclic_submodule_basis(F_sec, N, cand, deg_q, int(L), p)
-                    Ccand = independent_columns(mod_p(Ccand, p), p)
-                    span2 = independent_columns(np.concatenate([Cv, Ccand], axis=1), p)
-                    if span2.shape[1] % 2 == 0 and is_nondegenerate(Ω, span2, p):
-                        span = span2
-                        w_top = cand
-                        found = True
-                        break
-                if not found:
-                    raise RuntimeError("Self sector: failed to form a nondegenerate hyperbolic block from top pairing.")
-
-            T_blk = darboux_basis_from_span(Ω, span, p)  # SECTOR COORDS
-            built_cols_sec.append(T_blk)
-
-            rem = symplectic_orthogonal_complement_in_span(Ω, T_blk, space_basis, p)
-
-            T_blk_amb = mod_p(T_sec @ T_blk, p)
-            blocks.append(
-                AtomicBlock(
-                    T_blk=T_blk_amb,
-                    half_dim=int(T_blk_amb.shape[1] // 2),
-                    sector_key=key,
-                    inv=None,
-                )
-            )
-            blocks_meta.append(
-                {"type": "hyperbolic", "L": int(L), "half_dim": int(T_blk_amb.shape[1] // 2), "bvv": int(bvv)}
-            )
-            space_basis = rem
 
     except Exception as e:
         extraction_error = e

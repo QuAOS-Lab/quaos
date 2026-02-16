@@ -1292,51 +1292,51 @@ def _sector_signature(meta: dict, p: int) -> list[tuple]:
     return sorted(sig, key=str)
 
 
-def _diagnose_one_case(F: np.ndarray, p: int) -> str:
-    lines: list[str] = []
-    lines.append(f"is_symplectic(F,p)={is_symplectic(F, p)}  shape={F.shape}")
+# def _diagnose_one_case(F: np.ndarray, p: int) -> str:
+#     lines: list[str] = []
+#     lines.append(f"is_symplectic(F,p)={is_symplectic(F, p)}  shape={F.shape}")
 
-    try:
-        meta = rcf_prepass(F, p)
-        lines.append(f"rcf_prepass: Lmin_star={meta.get('Lmin_star')}  n_sectors={len(meta.get('sectors', []))}")
-        lines.append(f"sector_signature={_sector_signature(meta, p)}")
-    except Exception as e:
-        lines.append("rcf_prepass FAILED:")
-        lines.append(f"{type(e).__name__}: {e}")
-        lines.append(traceback.format_exc())
-        return "\n".join(lines)
+#     try:
+#         meta = rcf_prepass(F, p)
+#         lines.append(f"rcf_prepass: Lmin_star={meta.get('Lmin_star')}  n_sectors={len(meta.get('sectors', []))}")
+#         lines.append(f"sector_signature={_sector_signature(meta, p)}")
+#     except Exception as e:
+#         lines.append("rcf_prepass FAILED:")
+#         lines.append(f"{type(e).__name__}: {e}")
+#         lines.append(traceback.format_exc())
+#         return "\n".join(lines)
 
-    prim = meta["primaries"]
+#     prim = meta["primaries"]
 
-    for i, sec in enumerate(meta["sectors"]):
-        try:
-            if sec["type"] == "paired":
-                key = sec["key"]
-                key_star = sec["key_star"]
-                blocks, inv = atomic_blocks_in_paired_sector(F, p, key, key_star, prim)
-                lines.append(
-                    f"sector[{i}] paired OK: key={key} key*={key_star}  n_blocks={len(blocks)}  status={inv.data.get('status')}"
-                )
-            else:
-                key = sec["key"]
-                q = prim[key]["poly"]
-                if p == 2 and _is_x_pm_1(q, p):
-                    blocks, inv = atomic_blocks_in_unipotent_self_sector_p2(F, key, prim)
-                    lines.append(
-                        f"sector[{i}] self unipotent-p2 OK: key={key}  n_blocks={len(blocks)}  status={inv.data.get('status')}"
-                    )
-                else:
-                    blocks, inv = atomic_blocks_in_self_sector_nonunipotent(F, p, key, prim)
-                    lines.append(
-                        f"sector[{i}] self nonunipotent OK: key={key}  n_blocks={len(blocks)}  status={inv.data.get('status')}"
-                    )
-        except Exception as e:
-            lines.append(
-                f"sector[{i}] BUILDER FAILED: type={sec['type']} key={sec.get('key')} err={type(e).__name__}: {e}"
-            )
-            lines.append(traceback.format_exc())
+#     for i, sec in enumerate(meta["sectors"]):
+#         try:
+#             if sec["type"] == "paired":
+#                 key = sec["key"]
+#                 key_star = sec["key_star"]
+#                 blocks, inv = atomic_blocks_in_paired_sector(F, p, key, key_star, prim)
+#                 lines.append(
+#                     f"sector[{i}] paired OK: key={key} key*={key_star}  n_blocks={len(blocks)}  status={inv.data.get('status')}"
+#                 )
+#             else:
+#                 key = sec["key"]
+#                 q = prim[key]["poly"]
+#                 if p == 2 and _is_x_pm_1(q, p):
+#                     blocks, inv = atomic_blocks_in_unipotent_self_sector_p2(F, key, prim)
+#                     lines.append(
+#                         f"sector[{i}] self unipotent-p2 OK: key={key}  n_blocks={len(blocks)}  status={inv.data.get('status')}"
+#                     )
+#                 else:
+#                     blocks, inv = atomic_blocks_in_self_sector_nonunipotent(F, p, key, prim)
+#                     lines.append(
+#                         f"sector[{i}] self nonunipotent OK: key={key}  n_blocks={len(blocks)}  status={inv.data.get('status')}"
+#                     )
+#         except Exception as e:
+#             lines.append(
+#                 f"sector[{i}] BUILDER FAILED: type={sec['type']} key={sec.get('key')} err={type(e).__name__}: {e}"
+#             )
+#             lines.append(traceback.format_exc())
 
-    return "\n".join(lines)
+#     return "\n".join(lines)
 
 
 class TestAtomicDecompositionFuzz:
