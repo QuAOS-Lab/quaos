@@ -1,6 +1,6 @@
 from __future__ import annotations
 import numpy as np
-from .modular_helpers import (mod_p, omega_matrix, inv_mod_mat, nullspace_mod,
+from ..modular_helpers import (mod_p, omega_matrix, inv_mod_mat, nullspace_mod,
                               independent_columns, rank_mod, inv_mod_scalar)
 
 

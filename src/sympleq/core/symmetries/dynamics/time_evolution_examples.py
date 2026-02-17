@@ -6,7 +6,7 @@ from sympleq.core.symmetries.block_decomposition import block_decompose_optimal,
 from sympleq.core.symmetries.clifford import clifford_phase_decomposition
 from sympleq.core.circuits import Gate, Circuit, gate_to_circuit
 from sympleq.core.paulis import PauliSum
-from sympleq.core.symmetries.krylov_time_evolve import krylov_observable_dynamics_symmetry
+from sympleq.core.symmetries.dynamics.krylov_time_evolve import krylov_observable_dynamics_symmetry
 import matplotlib.pyplot as plt
 from time import time
 

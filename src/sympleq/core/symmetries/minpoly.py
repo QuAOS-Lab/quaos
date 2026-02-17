@@ -1,5 +1,6 @@
 from __future__ import annotations
 import numpy as np
+import zlib
 from typing import List, Tuple, Optional
 
 from sympleq.core.symmetries.modular_helpers import mod_p, matmul_mod, inv_mod_scalar
@@ -341,34 +342,52 @@ def _squarefree_decomposition(f: np.ndarray, p: int) -> List[Tuple[np.ndarray, i
 def _distinct_degree_factorization(f: np.ndarray, p: int) -> List[Tuple[np.ndarray, int]]:
     """
     Factor squarefree monic f into products of irreducibles of each degree.
-    Returns [(g1,1),(g2,2),...] where gi is product of all irreducibles of degree i.
+
+    Returns a list [(g1,1),(g2,2),...] where gi is the product of all irreducible
+    factors of degree exactly i.
+
+    Correct DDF must also handle the case gcd(x^{p^d}-x, f_rem) == f_rem,
+    which happens precisely when all remaining factors have degree d.
     """
-    f = poly_monic(f, p)
-    n = _poly_deg(f)
+    f_rem = poly_monic(f, p)
+    n = _poly_deg(f_rem)
     if n <= 1:
-        return [(f, n)]
+        return [(f_rem, n)]
 
     x = np.array([0, 1], dtype=np.int64)
     h = x.copy()
     res: List[Tuple[np.ndarray, int]] = []
 
-    # h <- x^{p^d} mod f iteratively using Frobenius: h <- h^p mod f
-    for d in range(1, n + 1):
-        h = _poly_pow_mod(h, p, f, p)  # x^{p^d} mod f
-        g = poly_gcd(poly_sub(h, x, p), f, p)
-        if not _poly_is_one(g, p) and _poly_deg(g) >= 1 and _poly_deg(g) < _poly_deg(f):
-            res.append((poly_monic(g, p), d))
-            q, r = poly_divmod(f, g, p)
-            if not poly_is_zero(r):
-                raise RuntimeError("DDF: division remainder nonzero (unexpected)")
-            f = poly_monic(q, p)
-            h = _poly_mod(h, f, p)
-        if _poly_deg(f) <= 1:
+    # It suffices to loop d = 1..floor(n/2). Any remaining factor then is irreducible.
+    for d in range(1, n // 2 + 1):
+        # h = x^{p^d} mod f_rem, via Frobenius: h <- h^p mod f_rem
+        h = _poly_pow_mod(h, p, f_rem, p)
+
+        g = poly_gcd(poly_sub(h, x, p), f_rem, p)
+        if _poly_is_one(g, p):
+            continue
+
+        # g can equal f_rem: then *all* remaining factors have degree exactly d.
+        res.append((poly_monic(g, p), d))
+
+        q, r = poly_divmod(f_rem, g, p)
+        if not poly_is_zero(r):
+            raise RuntimeError("DDF: division remainder nonzero (unexpected)")
+        f_rem = poly_monic(q, p)
+
+        if _poly_is_one(f_rem, p) or _poly_deg(f_rem) <= 0:
+            f_rem = np.array([1], dtype=np.int64)
             break
 
-    if _poly_deg(f) >= 1 and not _poly_is_one(f, p):
-        res.append((poly_monic(f, p), _poly_deg(f)))
+        # Reduce h modulo new modulus to keep degrees bounded.
+        h = _poly_mod(h, f_rem, p)
+
+    # Any leftover must be irreducible (squarefree, degree > n/2 => only one factor).
+    if not _poly_is_one(f_rem, p) and _poly_deg(f_rem) >= 1:
+        res.append((poly_monic(f_rem, p), _poly_deg(f_rem)))
+
     return res
+
 
 
 def _random_poly(deg_bound: int, p: int, rng: np.random.Generator) -> np.ndarray:
@@ -480,7 +499,9 @@ def factor_poly_over_fp(f: np.ndarray, p: int, rng: Optional[np.random.Generator
     Returns a list of irreducible factors, repeated by multiplicity.
     """
     if rng is None:
-        rng = np.random.default_rng()
+        # Deterministic seed derived from the input polynomial (stable across runs)
+        seed = zlib.adler32(poly_monic(f, p).tobytes()) & 0xFFFFFFFF
+        rng = np.random.default_rng(seed)
 
     f0 = poly_monic(f, p)          # keep original for sanity check
     f = f0.copy()
@@ -549,7 +570,6 @@ def factor_poly_over_fp(f: np.ndarray, p: int, rng: Optional[np.random.Generator
         raise RuntimeError("factor_poly_over_fp sanity check failed: product(factors) != f0")
 
     return out
-
 
 
 def _poly_eval_at(f: np.ndarray, x: int, p: int) -> int:

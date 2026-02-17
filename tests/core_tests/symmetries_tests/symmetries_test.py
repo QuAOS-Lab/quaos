@@ -224,7 +224,7 @@ class TestSymmetryFinder:
 
             F, S, T = min_qudit_clifford_symmetry(H)
 
-            # assert np.all(F.symplectic == scrambled_sym.symplectic), f"Symplectic mismatch: \n{F.symplectic}\n{scrambled_sym.symplectic}"
+            # assert np.all(F.symplectic == scrambled_sym.symplectic)
             # assert np.all(F.phase_vector() == scrambled_sym.phase_vector())
             # assert F == Circuit.from_gates_and_qudits([p] * n_qudits, [T.inverse(), S, T],
             #                                           [all_qudit_indices, all_qudit_indices,

@@ -6,10 +6,10 @@ from sympleq.core.paulis import PauliSum
 from sympleq.core.circuits import Gate
 from sympleq.core.symmetries.block_decomposition import block_decompose_optimal
 from sympleq.core.symmetries.clifford import clifford_phase_decomposition
-from sympleq.core.symmetries.krylov_time_evolve import (
+from sympleq.core.symmetries.dynamics.krylov_time_evolve import (
     observable_dynamics_krylov,
 )
-from sympleq.core.symmetries.krylov_time_evolve import (
+from sympleq.core.symmetries.dynamics.krylov_time_evolve import (
     krylov_observable_dynamics_plain,
 )
 from sympleq.core.states.state import State

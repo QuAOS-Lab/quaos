@@ -2,6 +2,7 @@
 import numpy as np
 import pytest
 
+from sympleq.core.circuits.random_symplectic import symplectic_random_transvection
 from sympleq.core.symmetries.modular_helpers import (
     mod_p,
     rank_mod,
@@ -38,8 +39,8 @@ from sympleq.core.symmetries.minpoly import (
     factor_poly_over_fp,
 )
 
-from sympleq.core.symmetries.rcf_prepass import rcf_prepass, _is_x_pm_1
-from sympleq.core.symmetries.atomic_linear import (
+from sympleq.core.symmetries.atomic_decomposition_helpers.rcf_prepass import rcf_prepass, _is_x_pm_1
+from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_linear import (
     symplectic_left_inverse,
     restrict_operator,
     is_nondegenerate,
@@ -47,7 +48,7 @@ from sympleq.core.symmetries.atomic_linear import (
     symplectic_completion_from_block,
 )
 
-from sympleq.core.symmetries.atomic_unipotent_p2 import (
+from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_unipotent_p2 import (
     atomic_blocks_in_unipotent_self_sector_p2,
 )
 
@@ -56,14 +57,15 @@ import os
 import traceback
 import textwrap
 
-from sympleq.core.symmetries.atomic_paired import atomic_blocks_in_paired_sector
-from sympleq.core.symmetries.atomic_self import atomic_blocks_in_self_sector_nonunipotent
+from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_paired import atomic_blocks_in_paired_sector
+from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_self import atomic_blocks_in_self_sector_nonunipotent
 
 
 
 # -----------------------
 # test utils
 # -----------------------
+
 
 def _extract_atomic_blocks_from_global_basis(B: np.ndarray, half_dims: list[int], p: int) -> list[np.ndarray]:
     """

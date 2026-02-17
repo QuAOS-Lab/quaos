@@ -81,6 +81,7 @@
         "hstack",
         "idxs",
         "indecomposable",
+        "invs",
         "ipykernel",
         "ipython",
         "ipywidgets",

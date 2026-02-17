@@ -49,3 +49,41 @@ class AtomicDecomposition:
     blocks: List[AtomicBlock]            # in the order they appear in S
     invariants: List[AtomicInvariant]    # per-sector certificates (optionally duplicated per block)
     qudit_cost: int                      # max_k over blocks
+
+
+@dataclass(frozen=True, slots=True)
+class SectorContext:
+    # identity
+    sector_key: Tuple[int, ...]          # q(x) coeff tuple for this sector (monic)
+    sector_type: SectorType              # "paired" or "self"
+    poly_key: Tuple[int, ...]            # same as sector_key for self; for paired can still be q
+
+    # pairing partner (only for paired)
+    sector_key_star: Optional[Tuple[int, ...]] = None
+
+    # parameters
+    p: int = 2
+    deg_q: int = 0
+    max_exp: int = 0                    # k(q)
+
+    # sector coordinate embedding
+    T_sec: np.ndarray | None = None            # (2n x dim_sec), columns basis of sector in ambient
+    # optional inverse map ambient->sector coords if you want speed/stability
+    T_sec_leftinv: Optional[np.ndarray] = None  # (dim_sec x 2n), s.t. leftinv @ T_sec = I
+
+    # restricted operators in sector coords
+    F_sec: np.ndarray | None = None            # (dim_sec x dim_sec)
+    Omega_sec: np.ndarray | None = None        # (dim_sec x dim_sec) symplectic form restricted
+    N_sec: Optional[np.ndarray] = None  # (dim_sec x dim_sec) nilpotent N = q(F)|_{V_q}
+
+    # extra cached invariants (optional)
+    meta: Dict[str, Any] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PrepassContext:
+    p: int
+    n: int
+    Omega: np.ndarray                  # ambient
+    sectors: list[SectorContext]
+    meta: Dict[str, Any]               # e.g. Lmin_star, signatures, etc

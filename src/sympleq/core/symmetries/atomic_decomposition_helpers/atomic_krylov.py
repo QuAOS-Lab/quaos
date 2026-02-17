@@ -1,5 +1,5 @@
 import numpy as np
-from .modular_helpers import mod_p, _solve_linear, independent_columns, rank_mod
+from ..modular_helpers import mod_p, _solve_linear, independent_columns, rank_mod
 from .module_invariants import cyclic_submodule_basis
 
 

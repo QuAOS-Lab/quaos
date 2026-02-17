@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 from typing import Any, Dict, List, Tuple
 
-from .modular_helpers import mod_p, independent_columns, omega_matrix, inv_mod_mat, rank_mod
+from ..modular_helpers import mod_p, independent_columns, omega_matrix, inv_mod_mat, rank_mod
 from .atomic_types import AtomicBlock, AtomicInvariant
 from .atomic_linear import is_nondegenerate, darboux_basis_from_span
 from .module_invariants import (

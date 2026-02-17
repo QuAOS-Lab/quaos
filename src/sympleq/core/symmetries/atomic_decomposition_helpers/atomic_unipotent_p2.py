@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 from typing import Any, Dict, List, Tuple
 
-from .modular_helpers import mod_p, independent_columns, rank_mod, omega_matrix
+from ..modular_helpers import mod_p, independent_columns, rank_mod, omega_matrix
 from .atomic_types import AtomicBlock, AtomicInvariant
 from .atomic_linear import (
     restrict_operator,
@@ -130,6 +130,7 @@ def _find_partner_in_top_span_p2(
 
     return None
 
+
 def _beta_from_top_generators_p2(
     gens: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int
 ) -> int:
@@ -233,7 +234,7 @@ def atomic_blocks_in_unipotent_self_sector_p2(
         length_summary[int(L)] = {
             "mult": int(A.shape[1]),
             # diagnostic: how many of these tops have q_L(v)=1
-            "q1_count": int(sum(_beta_from_top_generators_p2(A[:, j:j+1], Ω, N, int(L)) for j in range(A.shape[1]))),
+            "q1_count": int(sum(_beta_from_top_generators_p2(A[:, j:j + 1], Ω, N, int(L)) for j in range(A.shape[1]))),
         }
 
     # -------------------------
@@ -286,8 +287,11 @@ def atomic_blocks_in_unipotent_self_sector_p2(
                 typ = "V_alpha" if beta == 1 else "V"
 
                 T_blk_amb = mod_p(T_sec @ T_blk, p)
-                blocks.append(AtomicBlock(T_blk=T_blk_amb, half_dim=int(T_blk_amb.shape[1] // 2), sector_key=key, inv=None))
-                blocks_meta.append({"type": typ, "L": int(L), "half_dim": int(T_blk_amb.shape[1] // 2), "beta": int(beta)})
+                blocks.append(AtomicBlock(T_blk=T_blk_amb, half_dim=int(T_blk_amb.shape[1] // 2),
+                                          sector_key=key, inv=None))
+                blocks_meta.append({"type": typ, "L": int(L),
+                                    "half_dim": int(T_blk_amb.shape[1] // 2),
+                                    "beta": int(beta)})
 
                 space_basis = rem
                 progressed = True
@@ -356,7 +360,7 @@ def atomic_blocks_in_unipotent_self_sector_p2(
             f"(dim_blocks={dim_blocks}, dim_sector={dim_sector}). "
             f"key={key}, deg={deg_q}, exp0={max_exp0}"
         )
-    
+
     if built_cols_sec:
         all_cols_sec = np.concatenate(built_cols_sec, axis=1)
         if rank_mod(all_cols_sec, p) != all_cols_sec.shape[1]:

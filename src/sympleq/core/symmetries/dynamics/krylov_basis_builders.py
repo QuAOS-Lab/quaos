@@ -1,5 +1,5 @@
 import numpy as np
-from .modular_helpers import mod_p, _solve_linear
+from ..modular_helpers import mod_p, _solve_linear
 
 
 def build_partner_in_span(K: np.ndarray, Omega: np.ndarray, span_basis: np.ndarray, p: int) -> np.ndarray:

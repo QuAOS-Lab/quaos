@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 from typing import Any, Dict, List, Tuple, Literal, Optional
 
-from .rcf_prepass import rcf_prepass, _is_x_pm_1
+from .atomic_decomposition_helpers.rcf_prepass import rcf_prepass, _is_x_pm_1
 from .modular_helpers import (
     mod_p,
     omega_matrix,
@@ -12,17 +12,19 @@ from .modular_helpers import (
     is_symplectic,
     rank_mod,
 )
-from .atomic_types import AtomicBlock, AtomicInvariant
-from .atomic_linear import (
+from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_types import AtomicBlock, AtomicInvariant
+from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_linear import (
     split_uv,
     is_nondegenerate,
     darboux_basis_from_span,
     symplectic_completion_from_block,
 )
-from .atomic_paired import atomic_blocks_in_paired_sector
-from .atomic_self import atomic_blocks_in_self_sector_nonunipotent
-from .atomic_unipotent_p2 import atomic_blocks_in_unipotent_self_sector_p2
-
+from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_paired import atomic_blocks_in_paired_sector
+from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_self import atomic_blocks_in_self_sector_nonunipotent
+from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_unipotent_p2 import (
+    atomic_blocks_in_unipotent_self_sector_p2)
+from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_linear import restrict_operator
+from sympleq.core.symmetries.atomic_decomposition_helpers.module_invariants import q_of_F_restricted
 
 Mode = Literal["auto", "certified", "best_effort"]
 
@@ -152,31 +154,53 @@ def _build_sector(
     *,
     certified: bool,
 ) -> Tuple[List[AtomicBlock], AtomicInvariant]:
-    """
-    Build blocks + invariant for one sector.
 
-    certified=True:
-      - paired builder gets allow_fallback=False
-      - caller will require inv.data["status"] == "OK" and global spanning
-
-    certified=False:
-      - paired builder gets allow_fallback=True
-      - caller may still need to symplectically complete the global basis
-    """
     if sec["type"] == "paired":
         key = sec["key"]
         key_star = sec["key_star"]
         blocks, inv = atomic_blocks_in_paired_sector(F, p, key, key_star, prim, allow_fallback=not certified)
-
         return blocks, inv
 
-    key = sec["key"]
-    q = prim[key]["poly"]
+    # self sector
+    sector_key = sec["key"]
+    info = prim[sector_key]
+
+    q = info["poly"]
     if p == 2 and _is_x_pm_1(q, p):
-        blocks, inv = atomic_blocks_in_unipotent_self_sector_p2(F, key, prim)
+        blocks, inv = atomic_blocks_in_unipotent_self_sector_p2(F, sector_key, prim)
         return blocks, inv
 
-    blocks, inv = atomic_blocks_in_self_sector_nonunipotent(F, p, key, prim, allow_fallback=not certified)
+    # inside _build_sector, self sector branch, after p=2 unipotent special case:
+
+    W = sec["W_basis"]                        # ambient basis spanning sector
+    Ω_amb = omega_matrix(F.shape[0] // 2, p)  # ambient standard Ω
+
+    # build a symplectic basis for the sector in ambient coordinates
+    T_sec = darboux_basis_from_span(Ω_amb, W, p)
+
+    # restrict F to sector coords
+    F_sec = restrict_operator(F, T_sec, p)
+
+    # N = q(F_sec) where q is the primary polynomial
+    q = prim[sector_key]["poly"]
+    N_sec = q_of_F_restricted(F_sec, q, p)
+
+    deg_q = int(sec["deg"])
+    max_exp = int(sec["exponent"])
+    Omega_sec = omega_matrix(T_sec.shape[1] // 2, p)  # since T_sec is symplectic
+
+    blocks, inv = atomic_blocks_in_self_sector_nonunipotent(
+        F_sec=F_sec,
+        T_sec=T_sec,
+        Omega=Omega_sec,
+        N=N_sec,
+        deg_q=deg_q,
+        max_exp=max_exp,
+        p=p,
+        sector_key=sector_key,
+        poly_key=tuple(sector_key),
+        allow_fallback=not certified,   # IMPORTANT
+    )
     return blocks, inv
 
 
@@ -257,6 +281,10 @@ def atomic_block_decompose_certified(F: np.ndarray, p: int) -> Tuple[np.ndarray,
                     "key": sec.get("key"),
                     "key_star": sec.get("key_star"),
                     "error": f"{type(e).__name__}: {e}",
+                    "deg": sec.get("deg"),
+                    "exponent": sec.get("exponent"),
+                    "dim2": sec.get("dim2"),
+                    "sec_note": sec.get("note", ""),
                 }
             )
             continue
@@ -273,6 +301,11 @@ def atomic_block_decompose_certified(F: np.ndarray, p: int) -> Tuple[np.ndarray,
                     "key_star": sec.get("key_star"),
                     "status": inv.data.get("status"),
                     "note": inv.data.get("note", ""),
+                    "deg": sec.get("deg"),
+                    "exponent": sec.get("exponent"),
+                    "dim2": sec.get("dim2"),
+                    "sec_note": sec.get("note", ""),
+                    "builder_debug": inv.data.get("last_attempts", inv.data.get("progress_lengths", None)),
                 }
             )
 

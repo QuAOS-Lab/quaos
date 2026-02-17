@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Sequence, Optional
-from sympleq.core.symmetries.symmetry_reduced_krylov import (
+from sympleq.core.symmetries.dynamics.symmetry_reduced_krylov import (
     krylov_observable_dynamics_symmetry_reduced,
 )
 from sympleq.core.paulis import PauliSum
