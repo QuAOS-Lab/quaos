@@ -9,9 +9,8 @@ from collections import defaultdict
 
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis import PauliSum, PauliString, Pauli, PauliObject
-from .utils import embed_unitary
+from .utils import embed_unitary, embed_symplectic
 from .gates import Gate, GATES, _GenericGate
-from .utils import embed_symplectic
 
 
 # Type alias for from_tuples input: (Gate, qudit_idx1, qudit_idx2, ...)
@@ -55,7 +54,7 @@ class Circuit:
         self.dimensions.setflags(write=False)
 
         self._gates = gates
-        self._qudit_indices = list(qudit_indices)
+        self._qudit_indices = [tuple([int(idx) for idx in idxs]) for idxs in qudit_indices]
 
     @property
     def gates(self) -> list[Gate]:
@@ -660,7 +659,7 @@ class Circuit:
         """
 
         def gate_name(gate: Gate) -> str:
-            return gate.name.replace("-inv", "*")[:gate_name_len].center(gate_name_len)
+            return gate.name.replace("_inv", "*")[:gate_name_len].center(gate_name_len)
 
         n_qudits = self.n_qudits()
         lines: list[str] = ["" for _ in range(3 * n_qudits)]

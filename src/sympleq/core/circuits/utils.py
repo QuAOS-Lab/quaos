@@ -52,7 +52,7 @@ def symplectic_product_matrix(pauli_sum_tableau: np.ndarray, p: int = 2) -> np.n
     return spm
 
 
-def symplectic_form(n: int, p: int = 2) -> np.ndarray:
+def symplectic_form(n: int) -> np.ndarray:
     """
     Construct the symplectic matrix Omega for a given dimension n over GF(p).
 
@@ -66,10 +66,7 @@ def symplectic_form(n: int, p: int = 2) -> np.ndarray:
     Id = np.eye(n, dtype=int)
     Z = np.zeros((n, n), dtype=int)
 
-    if p == 2:
-        return np.block([[Z, Id], [Id, Z]])
-    else:
-        return np.block([[Z, Id], [-Id, Z]])
+    return np.block([[Z, Id], [-Id, Z]])
 
 
 def transvection_matrix(h: np.ndarray, p=2, multiplier=1):
@@ -84,7 +81,7 @@ def transvection_matrix(h: np.ndarray, p=2, multiplier=1):
         The transvection matrix as a 2n x 2n matrix over integers modulo p
     """
     n = len(h) // 2
-    Omega = symplectic_form(n, p)
+    Omega = symplectic_form(n)
 
     F_h = (np.eye(2 * n, dtype=int) + multiplier * (Omega @ np.outer(h.T, h))) % p
     return F_h
@@ -142,7 +139,7 @@ def _multi_index_to_linear(index: list[int] | np.ndarray, dims: list[int] | np.n
 
 
 def embed_unitary(U_local: sp.csr_matrix,
-                  qudit_indices: list[int] | np.ndarray,
+                  qudit_indices: tuple[int, ...] | list[int] | np.ndarray,
                   total_dimensions: list[int] | np.ndarray) -> sp.csr_matrix:
     """
     Embed a local unitary acting on a subset of qudits into the full Hilbert space.

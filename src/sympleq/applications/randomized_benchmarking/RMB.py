@@ -2,14 +2,17 @@ from __future__ import annotations
 from typing import Generator
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
+import scipy.sparse as sp
+
 from sympleq.core.circuits.circuits import Circuit
+from sympleq.core.circuits.utils import embed_unitary
 from sympleq.core.circuits.gates import GATES, Gate
-from sympleq.applications.randomized_benchmarking.noise_model import DephasingNoise, NoiseModel, Noiseless
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis.pauli_sum import PauliSum
+from sympleq.applications.randomized_benchmarking.noise_model import CompositeNoise, DephasingNoise, DepolarizingNoise, NoiseModel, Noiseless
 
 
-class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move pretty print to circuit class.
+class RMB:
     def __init__(self,
                  circuit: Circuit,
                  random_initial_state: bool,
@@ -49,7 +52,7 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
 
     @classmethod
     def initial_state(cls,
-                      dimensions: list[int] | np.ndarray,
+                      dimensions: list[int] | np.ndarray | None = None,
                       random_phases: bool = False,
                       rng: RNGGenerator | None = None) -> PauliSum:
         if rng is None:
@@ -163,8 +166,16 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
         return self._circuit.dimensions
 
     @property
+    def lcm(self) -> int:
+        return self._circuit.lcm
+
+    @property
     def gates(self) -> list[Gate]:
         return self._circuit.gates
+
+    @property
+    def qudit_indices(self) -> list[tuple[int, ...]]:
+        return self._circuit.qudit_indices
 
     def n_gates(self) -> int:
         return len(self._circuit.gates)
@@ -172,40 +183,9 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
     def n_qudits(self) -> int:
         return len(self._circuit.dimensions)
 
-    def rho_average(self, pauli_sum: PauliSum, n_runs: int = 1000) -> np.ndarray:
-        def _get_output_probabilities(pauli_sum: PauliSum, n_runs: int = 1000) -> dict[PauliSum, int]:
-            output_probabilities: dict[PauliSum, int] = {}
-            for _ in range(n_runs):
-                output = self.average_act(pauli_sum)
-                if output not in output_probabilities:
-                    output_probabilities[output] = 1
-                else:
-                    output_probabilities[output] += 1
-
-            return output_probabilities
-
-        output = _get_output_probabilities(pauli_sum, n_runs)
-        rho: np.ndarray | None = None
-        for output_pauli, count in output.items():
-            if rho is None:
-                rho = pauli_to_rho(output_pauli) * (count / n_runs)
-            else:
-                rho += pauli_to_rho(output_pauli) * (count / n_runs)
-
-        assert rho is not None
-        return rho
-
-    def rho_exact(self, pauli_sum: PauliSum) -> np.ndarray:
-        rho = pauli_to_rho(pauli_sum)
-
-        for gate in self.gates:
-            rho = self._apply_gate_to_rho_with_error(gate, rho)
-
-        return np.around(rho, 10)
-
     def average_act(self, pauli_sum: PauliSum, n_runs: int = 1) -> PauliSum:
         """
-        Calculate final output state, including random errors.
+        Calculate final output state, including random errors. The result is averaged over many runs.
         Parameters
         ----------
         n_runs: int = 1
@@ -228,43 +208,35 @@ class RMB:  # FIXME: after merging #106 make this s ubclass of circuit and move 
 
         return output
 
-    def _apply_gate_to_pauli_with_error(self, gate: Gate, pauli: PauliSum) -> PauliSum:
-        # Get the 'correct' pauli
-        pauli = gate.act(pauli)
+    def act(self, pauli: PauliSum) -> PauliSum:
+        """
+        Calculate final output state, including random errors.
 
-        # Apply noise model
-        pauli = self.noise_model.act(pauli, gate.qudit_indices)
+        Returns
+        -------
+        PauliSum
+            The resulting PauliSum after applying the noisy circuit.
+        """
+        for gate, qudits in zip(self.gates, self.qudit_indices):
+            pauli = gate.act(pauli, qudits)
+            pauli = self.noise_model.apply_quantum_trajectory(pauli, qudits)
 
         return pauli
 
-    def _apply_gate_to_rho_with_error(self, gate: Gate, rho: np.ndarray) -> np.ndarray:
-        # FIXME: after merging #106, clean this up
-        unitary = gate.local_unitary(self.dimensions[])
-        rho = unitary @ rho @ unitary.transpose().conjugate()
+    def act_iter(self, pauli: PauliSum) -> Generator[PauliSum, None, None]:
+        for gate, qudits in zip(self.gates, self.qudit_indices):
+            pauli = gate.act(pauli, qudits)
+            pauli = self.noise_model.apply_quantum_trajectory(pauli, qudits)
+            yield pauli
 
-        # Apply noise using Kraus form: ρ_out = Σ_i K_i ρ K†_i
-        output_rho: np.ndarray | None = None
-        for K in self.noise_model.kraus_operators(self.dimensions, gate.qudit_indices):
-            K_matrix = K.to_hilbert_space()
-            term = K_matrix @ rho @ K_matrix.conj().T
-            if output_rho is None:
-                output_rho = term
-            else:
-                output_rho += term
+    def act_in_hilbert_space(self, rho: sp.csr_matrix) -> sp.csr_matrix:
+        for gate, qudits in zip(self.gates, self.qudit_indices):
+            dimension = self.dimensions[qudits[0]]
+            unitary = embed_unitary(gate.local_unitary(dimension), qudits, self.dimensions)
+            rho = np.around(unitary @ rho @ unitary.conjugate().transpose(), 10)
+            rho = self.noise_model.act_in_hilbert_space(rho, qudits, self.dimensions)
 
-        assert output_rho is not None
-        return output_rho
-
-    def act(self, pauli_sum: PauliSum) -> PauliSum:
-        for gate in self.gates:
-            pauli_sum = self._apply_gate_to_pauli_with_error(gate, pauli_sum)
-
-        return pauli_sum
-
-    def act_iter(self, pauli_sum: PauliSum) -> Generator[PauliSum, None, None]:
-        for gate in self.gates:
-            pauli_sum = self._apply_gate_to_pauli_with_error(gate, pauli_sum)
-            yield pauli_sum
+        return rho
 
     def __str__(self) -> str:
         """
@@ -325,22 +297,28 @@ Circuit:
             wrap=wrap)
 
 
-def pauli_to_rho(pauli: PauliSum) -> np.ndarray:
-    _, states = pauli.ordered_eigenspectrum()
-    ground_state = states[0]
-    d = ground_state.size
-    return np.kron(ground_state.conj(), ground_state).reshape(d, d)
-
-
 if __name__ == "__main__":
-    n_qudits = 4
+    n_qudits = 2
     gate_density = 4.5
     dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qudits
-    dimension = dimensions[0]
-    circuit = Circuit.from_tuples(dimensions, (GATES.S, 0))
+
+    noise_model = CompositeNoise.from_noise_models([DephasingNoise(0.05), DepolarizingNoise(0.05)])
+    noise_model = DephasingNoise(0.005)
     rmb = RMB.from_random(dimensions, gate_density,
-                          noise_model=DephasingNoise(0.25),
+                          noise_model=noise_model,
                           with_random_elimination=False,
                           rng=default_rng())
 
     print(rmb.gates_layout(with_qudit_indices=True))
+
+    ps = rmb._initial_state
+    print("Initital ps")
+    print(ps)
+    print("Fional ps")
+    print(rmb.act(ps))
+
+    rho = rmb._initial_state.stabilizer_to_hilbert_space()
+    print("Initital rho")
+    print(rho)
+    print("Fional rho")
+    print(rmb.act_in_hilbert_space(rho))

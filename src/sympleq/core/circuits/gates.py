@@ -4,11 +4,11 @@ import numpy as np
 from typing import TypeVar, Self
 import scipy.sparse as sp
 
-from sympleq.core.paulis import PauliObject
+from sympleq.core.paulis import PauliString, PauliObject
+from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.circuits.utils import embed_symplectic, transvection_matrix, symplectic_form
 from sympleq.core.circuits.random_symplectic import symplectic_random_transvection
 from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
-from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.circuits.target import get_phase_vector
 
 
@@ -155,7 +155,7 @@ class Gate(ABC):
     def symplectic(self) -> np.ndarray:
         return self._symplectic
 
-    def phase_vector(self, dimension: int = 0) -> np.ndarray:
+    def phase_vector(self, dimension: int | None = None) -> np.ndarray:
         """
         Get the phase vector for a given dimension.
 
@@ -303,7 +303,7 @@ class Gate(ABC):
 
         return _GenericGate(new_name, self._symplectic @ T, self._phase_vector.copy())
 
-    def full_symplectic(self, qudits: tuple[int, ...] | int, n_qudits: int, p: int) -> np.ndarray:
+    def full_symplectic(self, qudits: tuple[int, ...] | int, n_qudits: int, p: int | None = None) -> np.ndarray:
         """
         Get the full 2n x 2n symplectic matrix for a gate acting on specific qudits.
 
@@ -324,6 +324,8 @@ class Gate(ABC):
         if isinstance(qudits, int):
             qudits = (qudits,)
         F, _ = embed_symplectic(self.symplectic, self.phase_vector(p), qudits, n_qudits)
+        if p is None:
+            return F
         return F % p
 
     def __hash__(self):
@@ -538,6 +540,36 @@ class _CZ(Gate):
         return self
 
 
+class _Id(Gate):
+    """Identity gate: Id|j⟩ = |j⟩."""
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+        # NOTE: here we define the gate to be single-qudit, but overriding
+        # the act method makes it work for any number of qudits.
+        symplectic = np.eye(2, dtype=int)
+        phase_vector = np.array([0, 0], dtype=int)
+
+        super().__init__("Id", symplectic, phase_vector)
+
+    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        # X|j⟩ = |j+1 mod d⟩, X^{-1}|j⟩ = |j-1 mod d⟩
+        U = np.eye(d, dtype=complex)
+        return sp.csr_matrix(U)
+
+    to_local_hilbert_space = local_unitary
+
+    def inverse(self) -> _Id:
+        # Id is self-inverse
+        return self
+
+    def act(self, pauli: P, qudits: int | tuple[int, ...]) -> P:
+        return pauli
+
+
 class _X(Gate):
     """Generalized X gate (shift operator): X|j⟩ = |j+1 mod d⟩."""
 
@@ -555,11 +587,13 @@ class _X(Gate):
 
         super().__init__(name, symplectic)
 
-    def phase_vector(self, dimension: int) -> np.ndarray:
+    def phase_vector(self, dimension: int | None = None) -> np.ndarray:
         # h = 2 * Ω @ tableau, where Ω = [[0, 1], [-1, 0]]
         # Ω @ [x, 0] = [0, -x], so h = [0, -2x]
         x = self._tableau[0]
-        return np.array([0, -2 * x], dtype=int) % (2 * dimension)
+        if dimension is not None:
+            return np.array([0, -2 * x], dtype=int) % (2 * dimension)
+        return np.array([0, -2 * x], dtype=int)
 
     def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
         if dimension is None:
@@ -593,10 +627,12 @@ class _Y(Gate):
 
         super().__init__(name, symplectic)
 
-    def phase_vector(self, dimension: int) -> np.ndarray:
+    def phase_vector(self, dimension: int | None = None) -> np.ndarray:
         # h = 2 * Ω @ [x, z] = 2 * [z, -x]
         x, z = self._tableau
-        return np.array([2 * z, -2 * x], dtype=int) % (2 * dimension)
+        if dimension is not None:
+            return np.array([2 * z, -2 * x], dtype=int) % (2 * dimension)
+        return np.array([2 * z, -2 * x], dtype=int)
 
     def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
         if dimension is None:
@@ -611,7 +647,7 @@ class _Y(Gate):
                 U[(j - 1) % d, j] = omega ** (-(j - 1) % d)
             else:
                 U[(j + 1) % d, j] = omega ** j
-        return sp.csr_matrix(U)
+        return sp.csr_matrix(np.around(U, 10))
 
     to_local_hilbert_space = local_unitary
 
@@ -632,10 +668,12 @@ class _Z(Gate):
 
         super().__init__(name, symplectic)
 
-    def phase_vector(self, dimension: int) -> np.ndarray:
+    def phase_vector(self, dimension: int | None = None) -> np.ndarray:
         # h = 2 * Ω @ [0, z] = 2 * [z, 0]
         z = self._tableau[1]
-        return np.array([2 * z, 0], dtype=int) % (2 * dimension)
+        if dimension is not None:
+            return np.array([2 * z, 0], dtype=int) % (2 * dimension)
+        return np.array([2 * z, 0], dtype=int)
 
     def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
         if dimension is None:
@@ -647,7 +685,7 @@ class _Z(Gate):
             diag = [omega ** (-j % d) for j in range(d)]
         else:
             diag = [omega ** j for j in range(d)]
-        return sp.csr_matrix(np.diag(diag))
+        return sp.csr_matrix(np.around(np.diag(diag), 10))
 
     to_local_hilbert_space = local_unitary
 
@@ -683,6 +721,8 @@ class _Gates:
 
         self._CZ = _CZ()
         # CZ is self-inverse, already handled in the class
+
+        self._Id = _Id()
 
         # Pauli gates
         self._X = _X(is_inverse=False)
@@ -737,6 +777,11 @@ class _Gates:
     def CZ(self) -> _CZ:
         return self._CZ
 
+    # Identity
+    @property
+    def Id(self) -> _Id:
+        return self._Id
+
     # Pauli X
     @property
     def X(self) -> _X:
@@ -777,9 +822,7 @@ class PauliGate(Gate):
     The symplectic matrix is identity, and the phase vector encodes the Pauli conjugation effect.
     """
 
-    def __init__(self, pauli):
-        # Import here to avoid circular imports
-        from sympleq.core.paulis import PauliString
+    def __init__(self, pauli: PauliString):
 
         if not isinstance(pauli, PauliString):
             raise TypeError("PauliGate requires a PauliString")
@@ -789,7 +832,7 @@ class PauliGate(Gate):
         lcm = int(pauli.lcm)
 
         symplectic = np.eye(2 * n, dtype=int)
-        phase_vector = (2 * symplectic_form(n, lcm) @ np.concatenate([pauli.x_exp, pauli.z_exp])) % (2 * lcm)
+        phase_vector = (2 * symplectic_form(n) @ np.concatenate([pauli.x_exp, pauli.z_exp])) % (2 * lcm)
 
         # Store dimensions for this gate (needed for act method compatibility)
         self._dimensions = np.asarray(pauli.dimensions, dtype=int)
@@ -829,12 +872,3 @@ class PauliGate(Gate):
         if qudits is None:
             qudits = tuple(range(self._n_qudits))
         return super().act(pauli, qudits)
-
-
-# Convenience aliases for backward compatibility
-# These are the gate classes, not instances
-HADAMARD = _HADAMARD
-PHASE = _PHASE
-CX = _CX
-SWAP = _SWAP
-CZ = _CZ

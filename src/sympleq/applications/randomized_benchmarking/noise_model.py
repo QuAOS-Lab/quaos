@@ -28,8 +28,7 @@ The probability of each Kraus operator (used for quantum trajectory sampling) is
 
     p_i = Σ_j |α_{ij}|² = ||K_i||²
 
-    
-We take two simplofying assumptions:
+We take two simplifying assumptions:
 **Uncorrelated noise**
 For uncorrelated noise on multiple qudits, the multi-qudit quantities are
 tensor products of single-qudit quantities.
@@ -40,13 +39,14 @@ as they are basically Gates.
 """
 
 from __future__ import annotations
+from abc import ABC, abstractmethod
+import itertools
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
-from abc import ABC, abstractmethod
-from itertools import product
-import math
+import scipy.sparse as sp
 
-from sympleq.core.circuits.gates import Gate
+from sympleq.core.circuits.gates import GATES, Gate
+from sympleq.core.circuits.utils import embed_unitary
 from sympleq.core.paulis.pauli_sum import PauliSum
 
 
@@ -62,120 +62,129 @@ class NoiseModel(ABC):
     """
     def __init__(self, rng: RNGGenerator) -> None:
         self.rng = rng
-        # Initialize noise models probabilities.
-        # In principle, we don't know if there are gates with n_qudits larger than 2,
-        # good enough for now.
-        self.cached_probabilities = {}
 
-        for gate_n_qudits in (1, 2, 3):
-            probs = self.kraus_probabilities(gate_n_qudits)
-            # Given probabilities [p0, p1, p2, p3], cumsum gives [p0, p0+p1, p0+p1+p2, 1.0].
-            # This allows O(log n) sampling via searchsorted with a uniform random number
-            # in _apply_gate_to_pauli_with_error.
-            self.cached_probabilities[gate_n_qudits] = np.cumsum(probs)
-
-        self.cached_gates: dict = {}
-
-    @classmethod
     @abstractmethod
-    def kraus_operators(cls,
-                        dimensions: list[int] | np.ndarray,
-                        qudit_indices: list[int] | np.ndarray,
-                        weighted: bool = True) -> list[PauliSum]:
-        """"
-        K_i = sum_{j} alpha_{ij} sigma_j
-
-        The number of Kraus operators for a single qudit of dimensions d is d^2.
-        For multiple qudits is just the product prod(d**2 for d in dimensions).
-        We fix the order
-        """
+    def n_qudits(self) -> int:
         pass
 
-    @classmethod
     @abstractmethod
-    def kraus_gates(cls, dimension: int | None = None) -> list[Gate]:
+    def kraus_gates(self) -> list[Gate]:
         """"
         The gate corresponding to the Kraus operator, acting as ps1 = G_i.act(ps, qudit_indices)
         """
         pass
 
     @abstractmethod
-    def kraus_probabilities(self, n_qudits: int) -> np.ndarray:
+    def kraus_probabilities(self) -> list[float]:
         """
         Returns the Kraus probabilities for the noise channel.
 
         p_i = sum_j |α_{ij}|², i.e. the squared norm of each Kraus operator's coefficients.
-        Output is an array of length n^M where n = n_kraus_operators and M = n_qudits.
         The probabilities sum to 1.
-        """
-        return np.sum(self.process_matrix(n_qudits), axis=1)
-
-    @abstractmethod
-    def process_matrix(self, n_qudits: int) -> np.ndarray:
-        """"
-        Returns the full process matrix λ_{ij} of shape (n^M, n^M),
-        where n = n_kraus_operators and M = n_qudits.
-
-        lambda_{ij} = sum_k alpha_{ki} alpha^*_{kj} in Eq.(3), where i, j are multi-indices.
-
-        NOTE: For the moment we work with Clifford noise models only, and the process matrix is diagonal,
-        so that we could work with the probabilities directly. Nevertheless, this is a good starting point
-        for the future to generalize to non-Clifford noise.
         """
         pass
 
-    def act(self, pauli_sum: PauliSum, qudits: int | tuple[int, ...]) -> PauliSum:
-
-        if isinstance(qudits, int):
-            n_qudits = len(qudits)
-
-            qudits = (qudits, )
-        relevant_dimension = pauli_sum.dimensions[qudits]
-
+    def apply_quantum_trajectory(self, pauli_sum: PauliSum, qudits: tuple[int, ...]) -> PauliSum:
+        # NOTE: this default implementation is valid for uncorrelated noise acting on single qudits only
+        n_qudits = len(qudits)
+        kraus_n_qudits = self.n_qudits()
+        if n_qudits < kraus_n_qudits:
+            return pauli_sum
         # Get probabilities to select one possible quantum trajectory
-        if n_qudits not in self.cached_probabilities:
-            probs = self.kraus_probabilities(n_qudits)
-            # Given probabilities [p0, p1, p2, p3], cumsum gives [p0, p0+p1, p0+p1+p2, 1.0].
-            # This allows O(log n) sampling via searchsorted with a uniform random number
-            # in _apply_gate_to_pauli_with_error.
-            self.cached_probabilities[n_qudits] = np.cumsum(probs)
-
-        probs = self.cached_probabilities[n_qudits]
+        # Given probabilities [p0, p1, p2, p3], cumsum gives [p0, p0+p1, p0+p1+p2, 1.0].
+        # This allows O(log n) sampling via searchsorted with a uniform random number
+        # in _apply_gate_to_pauli_with_error.
+        probs = np.cumsum(self.kraus_probabilities())
         idx = int(np.searchsorted(probs, self.rng.random()))
+        kraus_gate = self.kraus_gates()[idx]
+        if kraus_gate.n_qudits == n_qudits:
+            pauli_sum = kraus_gate.act(pauli_sum, qudits)
+        elif kraus_gate.n_qudits == 1:
+            # Act independently on each qudit
+            for qudit in qudits:
+                pauli_sum = kraus_gate.act(pauli_sum, qudit)
+        # FIXME: handle generic case, else:...
 
-        key = (pauli_sum.dimensions.tobytes(), qudit_indices.tobytes())
-        if key not in self.cached_gates:
-            self.cached_gates[key] = self.kraus_gates()
+        return pauli_sum
 
-        gates = self.cached_gates[key]
-        gate = gates[idx]
-        return gate.act(pauli_sum, qudits)
+    def act_in_hilbert_space(self, rho: sp.csr_matrix,
+                             qudits: tuple[int, ...], dimensions: np.ndarray) -> sp.csr_matrix:
+
+        def _apply_unitary(output_rho: sp.csr_matrix | None, unitary: sp.csr_matrix,
+                           probability: float) -> sp.csr_matrix:
+            if output_rho is None:
+                output_rho = probability * (unitary @ rho @ unitary.conjugate().transpose())
+            else:
+                output_rho += probability * (unitary @ rho @ unitary.conjugate().transpose())
+            assert output_rho is not None
+            return output_rho
+
+        dimension = dimensions[qudits[0]]
+        n_qudits = len(qudits)
+
+        kraus_n_qudits = self.n_qudits()
+        if n_qudits < kraus_n_qudits:
+            return rho
+
+        output_rho: sp.csr_matrix | None = None
+
+        # E.g.: single qudit noise on single qudit gate
+        cum_prob = 0
+        if n_qudits == kraus_n_qudits:
+            for kraus_gate, probability in zip(self.kraus_gates(), self.kraus_probabilities()):
+                unitary = embed_unitary(kraus_gate.local_unitary(dimension), qudits, dimensions)
+                output_rho = _apply_unitary(output_rho, unitary, probability)
+                cum_prob += probability
+
+            assert cum_prob == 1.0
+            assert output_rho is not None
+            return output_rho
+
+        if kraus_n_qudits == 1:
+            # Act independently on each qudit.
+
+            # Get all gates combinations
+            all_gates_combinations = list(itertools.product(self.kraus_gates(), repeat=n_qudits))
+            # Pray the order is correct, like, do it
+            all_probabilities_combinations = list(itertools.product(self.kraus_probabilities(), repeat=n_qudits))
+            for kraus_gates, probabilities in zip(all_gates_combinations, all_probabilities_combinations):
+                unitary = embed_unitary(kraus_gates[0].local_unitary(dimension), (qudits[0],), dimensions)
+                for kraus_gate, qudit in zip(kraus_gates[1:], qudits[1:]):
+                    unitary = embed_unitary(kraus_gate.local_unitary(dimension), (qudit,), dimensions) @ unitary
+
+                probability = float(np.prod(probabilities))
+                output_rho = _apply_unitary(output_rho, unitary, probability)
+                cum_prob += probability
+
+            assert cum_prob == 1.0, f"cum prob {cum_prob}"
+            assert output_rho is not None
+            return output_rho
+
+        # FIXME: extend this for self.n_qudits > 1
+
+        return rho
 
 
 class Noiseless(NoiseModel):
     def __init__(self) -> None:
         super().__init__(rng=default_rng())
+        self._probabilities = [1.0]
 
-    def kraus_gates(cls, dimension: int | None = None) -> list[Gate]:
+    def n_qudits(self) -> int:
         return 1
 
-    def kraus_operators(self,
-                        dimensions: list[int] | np.ndarray,
-                        qudit_indices: list[int] | np.ndarray,
-                        weighted: bool = True) -> list[PauliSum]:
+    def kraus_gates(self) -> list[Gate]:
+        return [GATES.Id]
 
-        # The noiseless channel has a single Kraus operator (the identity), with probability 1.
-        tableau = np.zeros(2 * len(dimensions), dtype=int)
-        sigma_0 = PauliSum.from_tableau(tableau, dimensions)
-        return [sigma_0]
+    def kraus_probabilities(self) -> list[float]:
+        return self._probabilities
 
-    def process_matrix(self, n_qudits: int) -> np.ndarray:
-        """
-        Returns the process matrix for the noiseless channel.
-        Always a 1x1 matrix with value 1.0, since n_kraus_operators=1
-        and 1^M = 1 for any number of qudits M.
-        """
-        return np.array([[1.0]], dtype=float)
+    def apply_quantum_trajectory(self, pauli_sum: PauliSum, qudits: tuple[int, ...]) -> PauliSum:
+        return pauli_sum
+
+    def act_in_hilbert_space(self, rho: sp.csr_matrix,
+                             qudits: tuple[int, ...], dimensions: np.ndarray) -> sp.csr_matrix:
+        return rho
 
 
 class DephasingNoise(NoiseModel):
@@ -189,73 +198,25 @@ class DephasingNoise(NoiseModel):
         if error_rate > 1.0 or error_rate < 0.0:
             raise ValueError(f"Error rate should be between 0.0 and 1.0 (got {error_rate}).")
         self.p0 = 1.0 - error_rate
-        self.alpha_00 = math.sqrt(self.p0)
-        self.alpha_11 = math.sqrt(1.0 - self.p0)
+        self._probabilities = [self.p0, 1.0 - self.p0]
 
         if rng is None:
             rng = default_rng()
         super().__init__(rng)
 
-    def n_kraus_operators(self) -> int:
-        return 2
+    def n_qudits(self) -> int:
+        return 1
 
-    def kraus_operators(self,
-                        dimensions: list[int] | np.ndarray,
-                        qudit_indices: list[int] | np.ndarray,
-                        weighted: bool = True) -> list[PauliSum]:
+    def kraus_gates(self) -> list[Gate]:
+        return [GATES.Id, GATES.Z]
 
-        n_qudits = len(dimensions)
-        n_gate_qudits = len(qudit_indices)
-
-        # Get coefficients from probabilities (sqrt of probabilities)
-        if weighted:
-            probabilities = self.kraus_probabilities(n_gate_qudits)
-            coefficients = np.sqrt(probabilities)
-        else:
-            coefficients = [1 for _ in range(self.n_kraus_operators()**n_qudits)]
-
-        tableau = np.zeros(2 * n_qudits, dtype=int)
-        output = []
-
-        # Build all combinations of the Kraus operators for each qudit in qudit_indices
-        combinations = list(product(range(self.n_kraus_operators()), repeat=n_gate_qudits))
-        for i, comb in enumerate(combinations):
-            p_tableau = tableau.copy()
-            for idx, exp in zip(qudit_indices, comb):
-                # identity
-                if exp == 0:
-                    pass
-                # sigma-z
-                elif exp == 1:
-                    p_tableau[n_qudits + idx] = 1
-
-            sigma = PauliSum.from_tableau(p_tableau, dimensions)
-            output.append(coefficients[i] * sigma)
-
-        return output
-
-    def process_matrix(self, n_qudits: int) -> np.ndarray:
-        """
-        Returns the process matrix for the dephasing channel.
-        Shape is (2^M, 2^M) where M = n_qudits, since n_kraus_operators=2.
-        For uncorrelated noise, the multi-qudit matrix is the tensor product
-        of single-qudit process matrices.
-        """
-        single_qudit = np.array([
-            [np.abs(self.alpha_00)**2, 0.0],
-            [0.0, np.abs(self.alpha_11)**2]
-        ], dtype=float)
-
-        result = single_qudit
-        for _ in range(n_qudits - 1):
-            result = np.kron(result, single_qudit)
-
-        return result
+    def kraus_probabilities(self) -> list[float]:
+        return self._probabilities
 
 
 class DepolarizingNoise(NoiseModel):
     def __init__(self, error_rate: float, rng: RNGGenerator | None = None) -> None:
-        # The depolarizing channel has tow Klaus operators: the identity and Z.
+        # The depolarizing channel has four Klaus operators: the 4 paulis.
         # A single parameter p0 models the noise probability,
         # representing the probability of having no error.
         # Kraus operators:
@@ -264,78 +225,20 @@ class DepolarizingNoise(NoiseModel):
         if error_rate > 1.0 or error_rate < 0.0:
             raise ValueError(f"Error rate should be between 0.0 and 1.0 (got {error_rate}).")
         self.p0 = 1.0 - error_rate
-        self.alpha_00 = math.sqrt(self.p0)
-        self.alpha_ii = math.sqrt((1.0 - self.p0) / 3)
+        self._probabilities = [self.p0, (1.0 - self.p0) / 3, (1.0 - self.p0) / 3, (1.0 - self.p0) / 3]
 
         if rng is None:
             rng = default_rng()
         super().__init__(rng)
 
-    def n_kraus_operators(self) -> int:
-        return 4
+    def n_qudits(self) -> int:
+        return 1
 
-    def kraus_operators(self,
-                        dimensions: list[int] | np.ndarray,
-                        qudit_indices: list[int] | np.ndarray,
-                        weighted: bool = True) -> list[PauliSum]:
+    def kraus_gates(self) -> list[Gate]:
+        return [GATES.Id, GATES.X, GATES.Y, GATES.Z]
 
-        n_qudits = len(dimensions)
-        n_gate_qudits = len(qudit_indices)
-
-        # Get coefficients from probabilities (sqrt of probabilities)
-        if weighted:
-            probabilities = self.kraus_probabilities(n_gate_qudits)
-            coefficients = np.sqrt(probabilities)
-        else:
-            coefficients = [1 for _ in range(self.n_kraus_operators()**n_qudits)]
-
-        tableau = np.zeros(2 * n_qudits, dtype=int)
-        output = []
-
-        combinations = list(product(range(self.n_kraus_operators()), repeat=n_gate_qudits))
-        for i, comb in enumerate(combinations):
-            p_tableau = tableau.copy()
-            phases = np.zeros(1, dtype=int)
-            for idx, exp in zip(qudit_indices, comb):
-                # identity
-                if exp == 0:
-                    pass
-                # sigma-x
-                elif exp == 1:
-                    p_tableau[idx] = 1
-                # sigma-y
-                elif exp == 2:
-                    p_tableau[idx] = 1
-                    p_tableau[n_qudits + idx] = 1
-                    phases[0] = 1  # FIXME: generalize to qudit?
-                # sigma-z
-                elif exp == 3:
-                    p_tableau[n_qudits + idx] = 1
-
-            sigma = PauliSum.from_tableau(p_tableau, dimensions)
-            output.append(coefficients[i] * sigma)
-
-        return output
-
-    def process_matrix(self, n_qudits: int) -> np.ndarray:
-        """
-        Returns the process matrix for the depolarizing channel.
-        Shape is (4^M, 4^M) where M = n_qudits, since n_kraus_operators=4.
-        For uncorrelated noise, the multi-qudit matrix is the tensor product
-        of single-qudit process matrices.
-        """
-        single_qudit = np.diag([
-            np.abs(self.alpha_00)**2,
-            np.abs(self.alpha_ii)**2,
-            np.abs(self.alpha_ii)**2,
-            np.abs(self.alpha_ii)**2
-        ]).astype(float)
-
-        result = single_qudit
-        for _ in range(n_qudits - 1):
-            result = np.kron(result, single_qudit)
-
-        return result
+    def kraus_probabilities(self) -> list[float]:
+        return self._probabilities
 
 
 class CompositeNoise(NoiseModel):
@@ -349,6 +252,10 @@ class CompositeNoise(NoiseModel):
     def __init__(self, noise_models: list[NoiseModel], rng: RNGGenerator) -> None:
         self.noise_models = noise_models
         self._n_models = len(noise_models)
+        combined_gates: dict[Gate, float] = self._combine_gates()
+        self._probabilities = list(combined_gates.values())
+        self._gates = list(combined_gates.keys())
+
         super().__init__(rng)
 
     @classmethod
@@ -360,108 +267,40 @@ class CompositeNoise(NoiseModel):
             rng = default_rng()
         return cls(noise_models, rng)
 
-    @classmethod
-    def from_process_matrix(cls, noise_models: list[NoiseModel],
-                            rng: RNGGenerator | None = None) -> CompositeNoise:
-        if not noise_models:
-            raise ValueError("noise_models list cannot be empty")
-        if rng is None:
-            rng = default_rng()
-        return cls(noise_models, rng)
-
-    def n_kraus_operators(self) -> int:
-        # Return the number of unique Pauli operators across all models
-        # Use dummy dimensions to count unique operators
-        dimensions = [2]
-        qudit_indices = [0]
-        combined = self._combine_operators(dimensions, qudit_indices)
-        return len(combined)
-
-    def _combine_operators(self,
-                           dimensions: list[int] | np.ndarray,
-                           qudit_indices: list[int] | np.ndarray) -> dict[PauliSum, complex]:
+    def _combine_gates(self, compound_identity: bool = True) -> dict[Gate, float]:
         """
         Collect and combine Kraus operators from all underlying models.
 
-        Returns a dict mapping tableau bytes to combined PauliSum operators.
-        Operators with the same Pauli (tableau) have their weights summed and normalized.
+        Returns a dict mapping gates to combined probabilities:
+        Operators with the same gates have their probability summed and normalized.
         """
-        # Track weights and base operators separately
-        operator_weights: dict[PauliSum, complex] = {}
-
-        n_qudits = len(dimensions)
+        gates_probabilities: dict[Gate, float] = {}
 
         for model in self.noise_models:
-            operators = model.kraus_operators(dimensions, qudit_indices, weighted=False)
-            probs = model.kraus_probabilities(n_qudits)
-            weights = np.sqrt(probs)
-            for idx, op in enumerate(operators):
-                if op.is_identity:
+            for gate, probability in zip(model.kraus_gates(), model.kraus_probabilities()):
+                if not compound_identity and gate == GATES.Id:
                     continue
-                weight = weights[idx]
 
                 # If operator is unity, don't add to the weight.
                 # The noiseless channel will have a weight equal to 1 - Sum toher_channels
 
-                if op in operator_weights:
-                    operator_weights[op] += weight
+                if gate in gates_probabilities:
+                    gates_probabilities[gate] += probability
                 else:
-                    operator_weights[op] = weight
-
-        # Normalize by number of models
-        for op in operator_weights:
-            operator_weights[op] /= self._n_models
+                    gates_probabilities[gate] = probability
 
         # Normalize weights so probabilities (|w|^2) sum to 1
-        norm = np.sqrt(sum(np.abs(w)**2 for w in operator_weights.values()))
-        for op in operator_weights:
-            operator_weights[op] /= norm
+        norm = sum(gates_probabilities.values())
+        for gate in gates_probabilities:
+            gates_probabilities[gate] /= norm
 
-        return operator_weights
+        return gates_probabilities
 
-    def kraus_operators(self,
-                        dimensions: list[int] | np.ndarray,
-                        qudit_indices: list[int] | np.ndarray,
-                        weighted: bool = True) -> list[PauliSum]:
+    def n_qudits(self) -> int:
+        return 1
 
-        combined = self._combine_operators(dimensions, qudit_indices)
-        operators = []
-        for op, weight in combined.items():
-            if weighted:
-                operators.append(weight * op)
-            else:
-                operators.append(op)
+    def kraus_gates(self) -> list[Gate]:
+        return self._gates
 
-        return operators
-
-    def process_matrix(self, n_qudits: int) -> np.ndarray:
-        """
-        Returns the combined process matrix.
-
-        Averages the process matrices from all underlying models.
-        """
-        result = None
-        for model in self.noise_models:
-            matrix = model.process_matrix(n_qudits)
-            if result is None:
-                result = matrix
-            else:
-                # Matrices may have different sizes, need to handle that
-                if result.shape == matrix.shape:
-                    result = result + matrix
-                else:
-                    # Pad smaller matrix to match larger
-                    max_size = max(result.shape[0], matrix.shape[0])
-                    if result.shape[0] < max_size:
-                        new_result = np.zeros((max_size, max_size), dtype=float)
-                        new_result[:result.shape[0], :result.shape[1]] = result
-                        result = new_result
-                    if matrix.shape[0] < max_size:
-                        new_matrix = np.zeros((max_size, max_size), dtype=float)
-                        new_matrix[:matrix.shape[0], :matrix.shape[1]] = matrix
-                        matrix = new_matrix
-                    result = result + matrix
-
-        assert result is not None
-
-        return result / self._n_models
+    def kraus_probabilities(self) -> list[float]:
+        return self._probabilities
