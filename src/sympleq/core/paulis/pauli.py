@@ -109,6 +109,7 @@ class Pauli(PauliObject):
 
         return P
 
+    '''
     @classmethod
     def Xnd(cls, x_exp: int, dimension: int) -> Pauli:
         """
@@ -182,6 +183,7 @@ class Pauli(PauliObject):
             Identity Pauli (x_exp=0, z_exp=0).
         """
         return cls.from_exponents(0, 0, dimension)
+'''
 
     @property
     def dimension(self) -> int:

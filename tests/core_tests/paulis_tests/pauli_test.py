@@ -14,10 +14,14 @@ class TestPaulis:
 
     def test_pauli_multiplication(self):
         for dim in PRIME_LIST:
-            x1 = Pauli.Xnd(1, dim)
-            y1 = Pauli.Ynd(1, dim)
-            z1 = Pauli.Znd(1, dim)
-            id = Pauli.Idnd(dim)
+            # x1 = Pauli.Xnd(1, dim)
+            x1 = Pauli.from_string('x1z0', dim)
+            # y1 = Pauli.Ynd(1, dim)
+            y1 = Pauli.from_string('x1z1', dim)
+            # z1 = Pauli.Znd(1, dim)
+            z1 = Pauli.from_string('x0z1', dim)
+            # id = Pauli.Idnd(dim)
+            id = Pauli.from_string('x0z0', dim)
 
             # REMARK: phases do not matter, since these are Pauli objects
             assert x1 * z1 == y1, 'Error in Pauli multiplication (x * z = y) ' + (x1 * z1).__str__()
