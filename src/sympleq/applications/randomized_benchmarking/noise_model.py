@@ -136,7 +136,7 @@ class NoiseModel(ABC):
                 output_rho = _apply_unitary(output_rho, unitary, probability)
                 cum_prob += probability
 
-            assert cum_prob == 1.0
+            assert np.abs(cum_prob - 1.0) < 10**(-5), f"cum prob {cum_prob}"
             assert output_rho is not None
             return output_rho
 
@@ -156,7 +156,7 @@ class NoiseModel(ABC):
                 output_rho = _apply_unitary(output_rho, unitary, probability)
                 cum_prob += probability
 
-            assert cum_prob == 1.0, f"cum prob {cum_prob}"
+            assert np.abs(cum_prob - 1.0) < 10**(-5), f"cum prob {cum_prob}"
             assert output_rho is not None
             return output_rho
 
@@ -297,7 +297,7 @@ class CompositeNoise(NoiseModel):
         return gates_probabilities
 
     def n_qudits(self) -> int:
-        return 1
+        return self.noise_models[0].n_qudits()
 
     def kraus_gates(self) -> list[Gate]:
         return self._gates

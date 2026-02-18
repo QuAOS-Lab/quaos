@@ -203,6 +203,7 @@ class RMB:
         output = self.act(pauli_sum)
         for _ in range(n_runs - 1):
             output += self.act(pauli_sum)
+            output.combine_equivalent_paulis()
 
         output = output / n_runs
 
@@ -236,6 +237,7 @@ class RMB:
             rho = np.around(unitary @ rho @ unitary.conjugate().transpose(), 10)
             rho = self.noise_model.act_in_hilbert_space(rho, qudits, self.dimensions)
 
+        assert np.abs(np.sum(rho.diagonal()) - 1.0) < 10**(-5), f"{np.sum(rho.diagonal())}"
         return rho
 
     def __str__(self) -> str:
@@ -298,12 +300,12 @@ Circuit:
 
 
 if __name__ == "__main__":
-    n_qudits = 2
+    n_qudits = 4
     gate_density = 4.5
     dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qudits
 
-    noise_model = CompositeNoise.from_noise_models([DephasingNoise(0.05), DepolarizingNoise(0.05)])
-    noise_model = DephasingNoise(0.005)
+    noise_model = CompositeNoise.from_noise_models([DephasingNoise(0.05), DepolarizingNoise(0.005)])
+    noise_model = DepolarizingNoise(0.05)
     rmb = RMB.from_random(dimensions, gate_density,
                           noise_model=noise_model,
                           with_random_elimination=False,
@@ -312,13 +314,21 @@ if __name__ == "__main__":
     print(rmb.gates_layout(with_qudit_indices=True))
 
     ps = rmb._initial_state
-    print("Initital ps")
-    print(ps)
-    print("Fional ps")
-    print(rmb.act(ps))
+    scrambler = Circuit.from_random(50, rmb.dimensions)
+    ps = scrambler.act(ps)
 
-    rho = rmb._initial_state.stabilizer_to_hilbert_space()
-    print("Initital rho")
-    print(rho)
-    print("Fional rho")
-    print(rmb.act_in_hilbert_space(rho))
+    N = 5000
+    output_ps_rhos = []
+    for _ in range(N):
+        output_ps_rhos.append(rmb.act(ps).stabilizer_to_hilbert_space())
+
+    output_ps_rho = np.around(sum(output_ps_rhos), 10) / N
+
+    print(output_ps_rho)
+
+    # print(np.around(output_ps.stabilizer_to_hilbert_space(), 10))
+    rho = ps.stabilizer_to_hilbert_space()
+    output_rho = np.around(rmb.act_in_hilbert_space(rho), 10)
+    print(output_rho)
+
+    print(np.max(np.abs(output_rho - output_ps_rho)))
