@@ -27,7 +27,7 @@ from sympleq.core.symmetries.polynomials_fp import (
     poly_divmod,
     poly_gcd,
     poly_lcm,
-    poly_xgcd,
+    extended_euclidean,
     poly_pow,
     poly_reciprocal,
     poly_eval_matrix
@@ -59,7 +59,6 @@ import textwrap
 
 from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_paired import atomic_blocks_in_paired_sector
 from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_self import atomic_blocks_in_self_sector_nonunipotent
-
 
 
 # -----------------------
@@ -580,7 +579,7 @@ class TestPolynomialsFP:
                 a = np.array([1], dtype=np.int64)
             if poly_is_zero(b):
                 b = np.array([1], dtype=np.int64)
-            s, t, g = poly_xgcd(a, b, p)
+            s, t, g = extended_euclidean(a, b, p)
             lhs = poly_add(poly_mul(s, a, p), poly_mul(t, b, p), p)
             assert np.array_equal(poly_monic(lhs, p), poly_monic(g, p))
 
@@ -642,8 +641,8 @@ class TestMinPolyAndFactorization:
         # Column-action convention: w <- F w
         p = 5
         F = np.array([[0, 1, 0],
-                    [0, 0, 1],
-                    [0, 0, 0]], dtype=np.int64)
+                      [0, 0, 1],
+                      [0, 0, 0]], dtype=np.int64)
 
         # e2 has a length-3 chain: e2 -> e1 -> e0 -> 0, so m_v(x) = x^3
         v = np.array([0, 0, 1], dtype=np.int64)
@@ -654,7 +653,6 @@ class TestMinPolyAndFactorization:
         v0 = np.array([1, 0, 0], dtype=np.int64)
         mv0 = minimal_poly_for_vector(F, v0, p)
         assert np.array_equal(poly_monic(mv0, p), np.array([0, 1], dtype=np.int64))
-
 
     def test_minimal_polynomial_diagonal(self) -> None:
         p = 5
@@ -788,7 +786,6 @@ class TestRCFPrepass:
                     assert rank_mod(all_cols, p) == dims
                     assert rank_mod(all_cols, p) == 2 * n
 
-
     def test_rcf_prepass_sector_span_and_invariance_random(self) -> None:
         rng = np.random.default_rng()
         for p in [2, 3, 5]:
@@ -845,7 +842,6 @@ class TestRCFPrepass:
         assert sec["floor_certified"] is False
         assert "note" in sec
 
-    
     def test_rcf_prepass_primaries_direct_sum_and_span_random(self) -> None:
         """
         Stronger than sector-level checks:
@@ -884,8 +880,6 @@ class TestRCFPrepass:
                         for j in range(i + 1, len(V_list)):
                             Vij = np.concatenate([V_list[i], V_list[j]], axis=1)
                             assert rank_mod(Vij, p) == dims[i] + dims[j]
-
-
 
 
 class TestAtomicLinear:
@@ -943,7 +937,6 @@ class TestAtomicLinear:
         # and A X = 0
         assert np.array_equal(mod_p(A @ X, p), np.zeros((A.shape[0], X.shape[1]), dtype=np.int64))
 
-
     def test_darboux_basis_from_span_raises_on_degenerate(self) -> None:
         p = 5
         n = 2
@@ -953,7 +946,6 @@ class TestAtomicLinear:
         assert not is_nondegenerate(Ω, B, p)
         with pytest.raises(RuntimeError):
             darboux_basis_from_span(Ω, B, p)
-
 
     def test_darboux_basis_from_span_standard(self) -> None:
         p = 5
@@ -1026,7 +1018,6 @@ class TestAtomicLinear:
             T0 = np.eye(2 * n, dtype=np.int64)[:, [0, 1, n + 0, n + 1]]  # [x0,x1,z0,z1]
             G = rand_symplectic(rng, k, p, steps=6)                      # change of basis within subspace
             T = mod_p(T0 @ G, p)                                         # still Darboux, still invariant
-
 
             F_T = restrict_operator(F, T, p)     # coords on span(T)
 
@@ -1176,7 +1167,7 @@ class TestAtomicDecomposition:
                     lhs = mod_p(F @ B, p)
                     rhs = mod_p(B @ Sigma, p)
                     assert np.array_equal(lhs, rhs)
-    
+
     def test_atomic_block_decompose_each_atomic_block_is_invariant(self) -> None:
         """
         Uses info["atomic_half_dims"] to reconstruct each block basis T_blk from B,
@@ -1258,7 +1249,8 @@ class TestAtomicDecomposition:
 
                 # Q_opt and the multiset of block sizes should be conjugation-invariant
                 assert int(info1["Q_opt"]) == int(info2["Q_opt"])
-                assert sorted(int(x) for x in info1["atomic_half_dims"]) == sorted(int(x) for x in info2["atomic_half_dims"])
+                assert sorted(int(x) for x in info1["atomic_half_dims"]) == sorted(int(x)
+                                                                                   for x in info2["atomic_half_dims"])
 
 
 def _fmt_mat(A: np.ndarray) -> str:

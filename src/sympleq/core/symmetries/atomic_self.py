@@ -37,10 +37,10 @@ def _half_dim_floor_from_minpoly_factor(q: np.ndarray, e: int, p: int) -> int:
     return int(e) * deg
 
 
-def _compute_Lmin(sectors: list[dict], n: int) -> int:
+def _compute_Lmin_star(sectors: list[dict], n: int) -> int:
     """
     Global lower bound on the optimal qudit cost.
-    We deliberately keep this certified given the information rcf_prepass computes.
+    We deliberately keep this *certified* given the information rcf_prepass computes.
     """
     if not sectors:
         return 1
@@ -89,7 +89,7 @@ def _normalize_factorization_output(factors, p: int) -> List[Tuple[np.ndarray, i
 
 def primary_components_crt(F: np.ndarray, p: int) -> Dict:
     """
-    primary decomposition via Chinese Remainder Theorem (CRT) projectors.
+    Provably-correct primary decomposition via CRT projectors.
     """
     F = mod_p(F, p)
     n2 = F.shape[0]
@@ -116,7 +116,7 @@ def primary_components_crt(F: np.ndarray, p: int) -> Dict:
     primaries: Dict[Tuple[int, ...], Dict] = {}
 
     # CRT projector for each modulus fi:
-    # Let Mi = mF/fi. Find s,t with s*Mi + t*fi = 1. Then Pi = s(F) Mi(F) projects onto V_i = ker(fi(F)).
+    # Let Mi = mF/fi. Find s,t with s*Mi + t*fi = 1. Then Pi = s(F) Mi(F).
     for (q, e), fi in zip(factors, moduli):
         Mi, r = poly_divmod(mF, fi, p)
         if not poly_is_zero(r):
@@ -146,8 +146,6 @@ def primary_components_crt(F: np.ndarray, p: int) -> Dict:
         data["reciprocal_key"] = tuple(q_star.tolist())
         data["self_reciprocal"] = (data["reciprocal_key"] == key)
 
-    # Build sector bases W by combining V_basis of reciprocal pairs,
-    #  then independent_columns to clean up any linear dependencies.
     used = set()
     sectors = []
     for key, data in primaries.items():
@@ -206,7 +204,7 @@ def primary_components_crt(F: np.ndarray, p: int) -> Dict:
         raise RuntimeError("Primary sectorization failed: sectors do not span V.")
 
     n = n2 // 2
-    Lmin_star = _compute_Lmin(sectors, n)
+    Lmin_star = _compute_Lmin_star(sectors, n)
 
     return {
         "p": int(p),

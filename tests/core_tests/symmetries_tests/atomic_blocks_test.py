@@ -2,10 +2,11 @@ import numpy as np
 import pytest
 
 from sympleq.core.symmetries.atomic_decomposition import CertificationError
-from sympleq.core.symmetries.block_decomposition import atomic_block_decompose
+from sympleq.core.symmetries.block_decomposition import atomic_block_decompose, block_indexes
 from sympleq.core.symmetries.modular_helpers import inv_mod_mat, mod_p, rank_mod
 from sympleq.core.circuits.utils import is_symplectic
 from sympleq.core.circuits.random_symplectic import symplectic_random_transvection
+from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_linear import restrict_operator
 import pprint
 
 
@@ -254,7 +255,7 @@ class TestAtomicBlocks:
         assert sig1 == sig2
 
     def test_known_direct_sum_recovers_blocks(self):
-        p, n1, n2 = 3, 2, 3
+        p, n1, n2 = 3, 2, 10
         rng = np.random.default_rng()
         n_tests = 100
         for seed in range(n_tests):
@@ -271,3 +272,25 @@ class TestAtomicBlocks:
 
             _, _, info = atomic_block_decompose(Fh, p, mode="certified")
             assert np.all(tuple(sorted(info["atomic_half_dims"])) <= tuple(sorted([n1, n2]))), f'block sizes should be at most the original blocks; got {info["atomic_half_dims"]} vs {n1, n2}'
+
+    def test_each_atomic_block_is_indecomposable(self):
+        p, n = 2, 7
+        rng = np.random.default_rng()
+        n_tests = 100
+        for _ in range(n_tests):
+            F = symplectic_random_transvection(n, p, 250, rng)
+
+            Sigma, B, info = atomic_block_decompose(F, p, mode="certified")
+            blocks = block_indexes(Sigma)
+
+            for blk in blocks:
+                cols = np.array([*blk, *(q+n for q in blk)], dtype=int)
+                T = (np.eye(2 * n, dtype=int)[:, cols] % p)
+
+                # restrict Sigma to that block
+                Sig_blk = restrict_operator(Sigma, T, p)
+
+                Sig2, B2, info2 = atomic_block_decompose(Sig_blk, p, mode="certified")
+                blocks2 = block_indexes(Sig2)
+                assert len(blocks2) == 1
+            assert len(blocks2[0]) == len(blk)

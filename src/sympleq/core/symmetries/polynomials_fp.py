@@ -112,9 +112,10 @@ def poly_lcm(a, b, p: int) -> np.ndarray:
     return poly_monic(q, p)
 
 
-def poly_xgcd(a, b, p: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def extended_euclidean(a, b, p: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Extended gcd: returns (s,t,g) with s*a + t*b = g, g monic.
+    https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm
     """
     a = mod_p(poly_trim(a), p)
     b = mod_p(poly_trim(b), p)
@@ -173,14 +174,3 @@ def poly_eval_matrix(F: np.ndarray, poly: np.ndarray, p: int) -> np.ndarray:
             M = mod_p(M + aa * P, p)
         P = mod_p(P @ F, p)
     return M
-
-
-if __name__ == "__main__":
-    p = 2
-    a = np.array([1, 1, 1], dtype=np.int64)  # 1 + x + x^2
-    b = np.array([1, 1], dtype=np.int64)     # 1 + x
-    q, r = poly_divmod(a, b, p)
-    assert np.array_equal(poly_add(poly_mul(q, b, p), r, p), poly_monic(a, p))
-    g = poly_gcd(a, b, p)
-    assert np.array_equal(g, np.array([1], dtype=np.int64))
-    print("polynomials_fp.py tests passed")

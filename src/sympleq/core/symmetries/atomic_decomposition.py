@@ -67,10 +67,10 @@ def _verify_full_symplectic_basis(B: np.ndarray, p: int) -> None:
     if n2 % 2 != 0:
         raise RuntimeError(f"Global basis must have even dimension, got {n2}.")
     n = n2 // 2
-    Ω = omega_matrix(n, p)
-    G = mod_p(B.T @ Ω @ B, p)
-    if not np.array_equal(G % p, Ω % p):
-        raise RuntimeError("Global basis B is not symplectic (B^T Ω B != Ω).")
+    Omega = omega_matrix(n, p)
+    G = mod_p(B.T @ Omega @ B, p)
+    if not np.array_equal(G % p, Omega % p):
+        raise RuntimeError("Global basis B is not symplectic (B^T Omega B != Omega).")
 
 
 def _compute_sigma(F: np.ndarray, B: np.ndarray, p: int) -> np.ndarray:
@@ -93,7 +93,7 @@ def _sector_fallback_block(
     """
     W = mod_p(np.asarray(sec["W_basis"], dtype=np.int64), p)
     n2 = F.shape[0]
-    Ω_amb = omega_matrix(n2 // 2, p)
+    Omega_amb = omega_matrix(n2 // 2, p)
 
     if W.size == 0 or W.shape[1] == 0:
         key = tuple(sec.get("key", ()))
@@ -111,13 +111,13 @@ def _sector_fallback_block(
             f"type={sec.get('type')} key={sec.get('key')}"
         )
 
-    if not is_nondegenerate(Ω_amb, W, p):
+    if not is_nondegenerate(Omega_amb, W, p):
         raise RuntimeError(
             f"Best-effort fallback: sector span is degenerate (cannot build Darboux basis). "
             f"type={sec.get('type')} key={sec.get('key')}"
         )
 
-    T_blk = darboux_basis_from_span(Ω_amb, W, p)
+    T_blk = darboux_basis_from_span(Omega_amb, W, p)
 
     if sec.get("type") == "paired":
         key = tuple(sec["key"])
@@ -173,10 +173,10 @@ def _build_sector(
     # inside _build_sector, self sector branch, after p=2 unipotent special case:
 
     W = sec["W_basis"]                        # ambient basis spanning sector
-    Ω_amb = omega_matrix(F.shape[0] // 2, p)  # ambient standard Ω
+    Omega_amb = omega_matrix(F.shape[0] // 2, p)  # ambient standard Omega
 
     # build a symplectic basis for the sector in ambient coordinates
-    T_sec = darboux_basis_from_span(Ω_amb, W, p)
+    T_sec = darboux_basis_from_span(Omega_amb, W, p)
 
     # restrict F to sector coords
     F_sec = restrict_operator(F, T_sec, p)
@@ -216,7 +216,7 @@ def _complete_global_basis_from_blocks(
     """
     n2 = F.shape[0]
     n = n2 // 2
-    Ω = omega_matrix(n, p)
+    Omega = omega_matrix(n, p)
 
     T = _concat_blocks_to_partial_basis(blocks, n2, p)  # 2n × 2k
     if T.size == 0:
@@ -226,15 +226,15 @@ def _complete_global_basis_from_blocks(
         return mod_p(B, p), True
 
     # Ensure the frame is actually symplectic on its span:
-    # i.e. T^T Ω T == Ω_k. If not, that's a bug upstream (block builder)
+    # i.e. T^T Omega T == Omega_k. If not, that's a bug upstream (block builder)
     k2 = T.shape[1]
     if k2 % 2 != 0:
         raise RuntimeError(f"Partial basis has odd number of columns {k2}, cannot be a symplectic frame.")
     k = k2 // 2
-    Ωk = omega_matrix(k, p)
-    G = mod_p(T.T @ Ω @ T, p)
-    if not np.array_equal(G % p, Ωk % p):
-        raise RuntimeError("Partial basis T is not a Darboux frame: T^T Ω T != Ω_k. Upstream block bug?")
+    Omega_k = omega_matrix(k, p)
+    G = mod_p(T.T @ Omega @ T, p)
+    if not np.array_equal(G % p, Omega_k % p):
+        raise RuntimeError("Partial basis T is not a Darboux frame: T^T Omega T != Omega_k. Upstream block bug?")
 
     if k2 == n2:
         B = T
@@ -245,6 +245,22 @@ def _complete_global_basis_from_blocks(
     B = symplectic_completion_from_block(T, p)
     _verify_full_symplectic_basis(B, p)
     return mod_p(B, p), True
+
+
+def _first_nonorthogonal_pair(blocks, p):
+    """Return (i, j, Gij) where T_i^T Omega T_j != 0 for any i < j."""
+    if not blocks:
+        return None
+    n2 = blocks[0].T_blk.shape[0]
+    Omega = omega_matrix(n2 // 2, p)
+    for i in range(len(blocks)):
+        Ti = blocks[i].T_blk
+        for j in range(i + 1, len(blocks)):
+            Tj = blocks[j].T_blk
+            Gij = mod_p(Ti.T @ Omega @ Tj, p)
+            if np.any(Gij % p):
+                return (i, j, Gij)
+    return None
 
 
 def atomic_block_decompose_certified(F: np.ndarray, p: int) -> Tuple[np.ndarray, np.ndarray, Dict]:
@@ -331,6 +347,32 @@ def atomic_block_decompose_certified(F: np.ndarray, p: int) -> Tuple[np.ndarray,
                 "n2": int(n2),
                 "atomic_half_dims": [b.half_dim for b in blocks],
                 "rank_partial": int(rank_mod(T, p)) if T.size else 0,
+            },
+        )
+
+    pair = _first_nonorthogonal_pair(blocks, p)
+    if pair is not None:
+        i, j, Gij = pair
+        nz = np.argwhere(Gij % p)
+        nz_preview = [tuple(map(int, x)) for x in nz[:10]]  # first 10 positions
+
+        raise CertificationError(
+            "Certified decomposition failed: found non-orthogonal pair of atomic blocks.",
+            info={
+                "p": int(p),
+                "n2": int(n2),
+                "atomic_half_dims": [int(b.half_dim) for b in blocks],
+                "pair": {
+                    "i": int(i),
+                    "j": int(j),
+                    "half_dims": (int(blocks[i].half_dim), int(blocks[j].half_dim)),
+                    "sectors": (
+                        (blocks[i].sector_key, getattr(blocks[i], "sector_type", None)),
+                        (blocks[j].sector_key, getattr(blocks[j], "sector_type", None)),
+                    ),
+                    "Gij_nnz": int(nz.shape[0]),
+                    "Gij_nz_preview": nz_preview,
+                },
             },
         )
 

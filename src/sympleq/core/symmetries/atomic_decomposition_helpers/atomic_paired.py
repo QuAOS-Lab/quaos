@@ -4,9 +4,21 @@ from __future__ import annotations
 import numpy as np
 from typing import Any, Dict, List, Tuple
 
-from ..modular_helpers import mod_p, independent_columns, omega_matrix, inv_mod_mat, rank_mod
+from ..modular_helpers import (
+    mod_p,
+    independent_columns,
+    omega_matrix,
+    inv_mod_mat,
+    rank_mod,
+    nullspace_mod,
+    inv_mod_scalar,
+)
 from .atomic_types import AtomicBlock, AtomicInvariant
-from .atomic_linear import is_nondegenerate, darboux_basis_from_span
+from .atomic_linear import (
+    is_nondegenerate,
+    darboux_basis_from_span,
+    symplectic_orthogonal_complement_in_span,
+)
 from .module_invariants import (
     restrict_operator_invariant,
     q_of_F_restricted,
@@ -40,6 +52,23 @@ def _pairing_matrix_between(V_left: np.ndarray, V_right: np.ndarray, p: int) -> 
     n2 = V_left.shape[0]
     Ω = omega_matrix(n2 // 2, p)
     return mod_p(V_left.T @ Ω @ V_right, p)
+
+
+def _intersection_basis(A: np.ndarray, B: np.ndarray, p: int) -> np.ndarray:
+    """Return an independent column basis for span(A) ∩ span(B) over GF(p)."""
+    A = independent_columns(mod_p(A, p), p)
+    B = independent_columns(mod_p(B, p), p)
+    if A.size == 0 or B.size == 0:
+        return np.zeros((A.shape[0], 0), dtype=np.int64)
+
+    # Solve A x = B y  <=>  [A | -B] [x;y] = 0
+    M = np.concatenate([A, mod_p(-B, p)], axis=1)
+    N = nullspace_mod(M, p)  # (a+b)×k
+    if N.size == 0:
+        return np.zeros((A.shape[0], 0), dtype=np.int64)
+    X = N[: A.shape[1], :]
+    I = mod_p(A @ X, p)
+    return independent_columns(I, p)
 
 
 def _cyclic_module_has_full_rank(
@@ -187,13 +216,14 @@ def atomic_blocks_in_paired_sector(
         inv = AtomicInvariant(sector_key=key, sector_type="paired", poly_key=key, data=inv_data)
         return [], inv
 
-    # Restrict F to each invariant subspace (coordinates in the given bases)
-    Fq = restrict_operator_invariant(F, Vq, p)
-    Fqs = restrict_operator_invariant(F, Vqs, p)
+    # --- Certified-by-construction algorithm (extract-and-remove) ---
+    # The previous "bulk" builder can produce invariant nondegenerate summands that are not
+    # symplectically orthogonal to each other, which later makes the global basis non-symplectic.
+    # Here we instead extract one atomic block at a time and remove its symplectic orthogonal
+    # complement inside the paired sector. This guarantees pairwise orthogonality of blocks.
 
-    # Nilpotent parts
-    Nq = q_of_F_restricted(Fq, q, p)
-    Nqs = q_of_F_restricted(Fqs, qstar, p)
+    n2 = F.shape[0]
+    Ω_amb = omega_matrix(n2 // 2, p)
 
     max_exp = int(primaries[key]["exponent"])
     deg_q = int(primaries[key]["deg"])
@@ -201,124 +231,173 @@ def atomic_blocks_in_paired_sector(
     if deg_q != deg_qs:
         raise RuntimeError("Paired sector: deg(q) != deg(q*) (unexpected).")
 
-    # Jordan chain-top representatives by length on each side
-    tops_left = jordan_chain_tops_nilpotent(Nq, max_exp, p)
-    tops_right = jordan_chain_tops_nilpotent(Nqs, max_exp, p)
+    # The full paired sector span W = Vq ⊕ Vq*
+    W_sector = independent_columns(np.concatenate([Vq, Vqs], axis=1), p)
+    if not is_nondegenerate(Ω_amb, W_sector, p):
+        raise RuntimeError("Paired sector: sector span is degenerate (unexpected).")
 
-    # Semisimple fallback (exp=1) sometimes yields {}, treat as tops at L=1 spanning whole space.
-    if not tops_left and max_exp >= 1:
-        tops_left = {1: np.eye(Fq.shape[0], dtype=np.int64)}
-    if not tops_right and max_exp >= 1:
-        tops_right = {1: np.eye(Fqs.shape[0], dtype=np.int64)}
-
-    lengths = sorted(set(tops_left.keys()) | set(tops_right.keys()))
-    if not lengths and max_exp >= 1:
-        lengths = [1]
-
-    # Ambient pairing between the two primary bases
-    P = _pairing_matrix_between(Vq, Vqs, p)
-
-    n2 = F.shape[0]
-    Ω_amb = omega_matrix(n2 // 2, p)
+    inv_data.setdefault("progress", [])  # list of dicts per extracted block
 
     blocks: List[AtomicBlock] = []
-    built_cols: List[np.ndarray] = []
 
     try:
-        for L in lengths:
-            A_raw = tops_left.get(L,  np.zeros((Fq.shape[0], 0), dtype=np.int64))
-            B_raw = tops_right.get(L, np.zeros((Fqs.shape[0], 0), dtype=np.int64))
+        rem = W_sector
+        rem_dim = rank_mod(rem, p)
 
-            # Select left module generators (one per indecomposable q^L block)
-            A = _select_module_generators_from_top_space(Fq, Nq, A_raw, deg_q, int(L), p)
-            a_mult = int(A.shape[1])
+        # Safety: prevent infinite loops if something goes wrong.
+        max_iters = rem_dim // (2 * deg_q) + 5
+        it = 0
 
-            # Build a pool of right-side candidate generators FROM THE RIGHT TOP SPACE
-            # (not forced to match left yet).
-            pool = _candidate_generators_from_top_space(Fqs, Nqs, B_raw, deg_q, int(L), p)
+        while rem_dim > 0:
+            it += 1
+            if it > max_iters:
+                raise RuntimeError("Paired sector: extraction stuck (too many iterations).")
 
-            inv_data["length_multiplicities"][int(L)] = (a_mult, int(pool.shape[1]))
+            # Recompute the current left/right parts inside the remaining invariant subspace.
+            Vq_r = _intersection_basis(Vq, rem, p)
+            Vqs_r = _intersection_basis(Vqs, rem, p)
+            if Vq_r.shape[1] == 0 or Vqs_r.shape[1] == 0:
+                raise RuntimeError("Paired sector: remaining subspace lost one side (unexpected).")
 
-            if a_mult == 0:
-                continue
-            if pool.shape[1] == 0:
-                raise RuntimeError(f"Paired sector: no valid right generators at length L={L}.")
+            # Restrict to each side in its own coordinates.
+            Fq = restrict_operator_invariant(F, Vq_r, p)
+            Fqs = restrict_operator_invariant(F, Vqs_r, p)
+            Nq = q_of_F_restricted(Fq, q, p)
+            Nqs = q_of_F_restricted(Fqs, qstar, p)
 
-            # Chain-level left transform
-            Npow = _mat_pow_mod(Nq, int(L) - 1, p)
-            NA = mod_p(Npow @ A, p)  # (dimVq × a_mult)
+            tops_left = jordan_chain_tops_nilpotent(Nq, max_exp, p)
+            tops_right = jordan_chain_tops_nilpotent(Nqs, max_exp, p)
+            if not tops_left and max_exp >= 1:
+                tops_left = {1: np.eye(Fq.shape[0], dtype=np.int64)}
+            if not tops_right and max_exp >= 1:
+                tops_right = {1: np.eye(Fqs.shape[0], dtype=np.int64)}
 
-            # Choose right generators with full-rank pairing, then dualize them to get identity pairing
-            W, M = _select_right_generators_with_full_pairing(NA=NA, P=P, right_pool=pool, p=p)
-            rM = rank_mod(M, p)
-            inv_data["pairing_rank"][int(L)] = int(rM)
-            if rM != a_mult:
-                raise RuntimeError(
-                    f"Paired sector: chain-level top pairing singular at length {L}. "
-                    f"rank={rM}, expected={a_mult}."
-                )
+            lengths = sorted(set(tops_left.keys()) | set(tops_right.keys()), reverse=True)
+            if not lengths and max_exp >= 1:
+                lengths = [1]
 
-            Minv = inv_mod_mat(M, p)
-            B_dual = mod_p(W @ Minv, p)  # ensures NA^T P B_dual = I
+            # Pairing between current left/right bases.
+            P = _pairing_matrix_between(Vq_r, Vqs_r, p)
 
-            # Now build one atomic block per paired top
-            for j in range(a_mult):
-                v_top = A[:, j:j + 1]        # coords in Vq basis
-                w_top = B_dual[:, j:j + 1]   # coords in Vqs basis
+            extracted = False
+            last_err: str | None = None
+            for L in lengths:
+                A_raw = tops_left.get(L, np.zeros((Fq.shape[0], 0), dtype=np.int64))
+                B_raw = tops_right.get(L, np.zeros((Fqs.shape[0], 0), dtype=np.int64))
 
-                # Cyclic submodule bases in sector coordinates
-                C_left = cyclic_submodule_basis(Fq,  Nq,  v_top, deg_q, int(L), p)
+                A = _select_module_generators_from_top_space(Fq, Nq, A_raw, deg_q, int(L), p)
+                pool = _candidate_generators_from_top_space(Fqs, Nqs, B_raw, deg_q, int(L), p)
+
+                # Bookkeeping only (not used by the algorithm)
+                inv_data["length_multiplicities"][int(L)] = (int(A.shape[1]), int(pool.shape[1]))
+
+                if A.shape[1] == 0 or pool.shape[1] == 0:
+                    continue
+
+                # Pick a single generator pair (v,w) with nonzero chain-level top pairing.
+                Npow = _mat_pow_mod(Nq, int(L) - 1, p)
+                v_top = None
+                w_top = None
+                s_val = 0
+
+                for ai in range(A.shape[1]):
+                    v_cand = A[:, ai:ai + 1]
+                    Nv = mod_p(Npow @ v_cand, p)
+                    for j in range(pool.shape[1]):
+                        w_cand = pool[:, j:j + 1]
+                        s = int(mod_p(Nv.T @ (P @ w_cand), p).reshape(())) % p
+                        if s != 0:
+                            v_top = v_cand
+                            w_top = w_cand
+                            s_val = s
+                            break
+                    if w_top is not None:
+                        break
+
+                if w_top is None or v_top is None:
+                    last_err = f"no generator pair with nonzero top pairing at L={L}"
+                    continue
+
+                # Normalize so that Nv^T P w = 1.
+                w_top = mod_p(w_top * inv_mod_scalar(s_val, p), p)
+
+                # Build the cyclic submodules and lift to ambient.
+                C_left = cyclic_submodule_basis(Fq, Nq, v_top, deg_q, int(L), p)
                 C_right = cyclic_submodule_basis(Fqs, Nqs, w_top, deg_q, int(L), p)
-
                 C_left = independent_columns(mod_p(C_left, p), p)
                 C_right = independent_columns(mod_p(C_right, p), p)
 
-                # Lift to ambient
-                W_left = mod_p(Vq @ C_left, p)
-                W_right = mod_p(Vqs @ C_right, p)
-
+                W_left = mod_p(Vq_r @ C_left, p)
+                W_right = mod_p(Vqs_r @ C_right, p)
                 span = independent_columns(np.concatenate([W_left, W_right], axis=1), p)
 
                 if not is_nondegenerate(Ω_amb, span, p):
-                    raise RuntimeError(f"Paired sector: constructed atomic span is degenerate (L={L}, j={j}).")
+                    last_err = f"constructed span degenerate at L={L}"
+                    continue
+
+                # Ensure span is inside rem.
+                if rank_mod(np.concatenate([rem, span], axis=1), p) != rem_dim:
+                    last_err = f"constructed span not contained in remaining subspace at L={L}"
+                    continue
 
                 T_blk = darboux_basis_from_span(Ω_amb, span, p)
-                blocks.append(AtomicBlock(T_blk=mod_p(T_blk, p), half_dim=int(T_blk.shape[1] // 2), sector_key=key, inv=None))
-                built_cols.append(T_blk)
+                blocks.append(
+                    AtomicBlock(
+                        T_blk=mod_p(T_blk, p),
+                        half_dim=int(T_blk.shape[1] // 2),
+                        sector_key=key,
+                        inv=None,
+                    )
+                )
 
-        # Global paired-sector span check: blocks should span W = Vq ⊕ Vqs and lie inside it.
-        W_sector = independent_columns(np.concatenate([Vq, Vqs], axis=1), p)
-        dim_sector = rank_mod(W_sector, p)
+                # Remove its symplectic orthogonal complement within the remaining subspace.
+                rem2 = symplectic_orthogonal_complement_in_span(Ω_amb, span, rem, p)
+                rem2 = independent_columns(mod_p(rem2, p), p)
+                rem2_dim = rank_mod(rem2, p)
+                drop = rem_dim - rem2_dim
+                if drop != span.shape[1]:
+                    raise RuntimeError(
+                        f"Paired sector: rank-drop mismatch when removing block (expected {span.shape[1]}, got {drop})."
+                    )
+                inv_data["progress"].append(
+                    {
+                        "L": int(L),
+                        "block_dim": int(span.shape[1]),
+                        "rem_dim_before": int(rem_dim),
+                        "rem_dim_after": int(rem2_dim),
+                    }
+                )
 
-        if built_cols:
-            all_cols = np.concatenate(built_cols, axis=1)
-            if rank_mod(np.concatenate([W_sector, all_cols], axis=1), p) != dim_sector:
-                raise RuntimeError("Paired sector: some constructed block columns lie outside W = Vq ⊕ Vq*.")
-            dim_blocks = rank_mod(all_cols, p)
-        else:
-            dim_blocks = 0
+                rem = rem2
+                rem_dim = rem2_dim
+                extracted = True
+                break
 
-        if dim_blocks != dim_sector:
-            raise RuntimeError(
-                f"Paired sector: constructed blocks do not span the paired sector subspace "
-                f"(dim_blocks={dim_blocks}, dim_sector={dim_sector})."
-            )
+            if not extracted:
+                raise RuntimeError(
+                    "Paired sector: could not extract a valid block from remaining subspace"
+                    + (f" (last_err={last_err})" if last_err else "")
+                )
 
-        inv_data["checks_passed"].append("per-length chain pairing nonsingular (constructed)")
+        # Final span check
+        all_cols = np.concatenate([b.T_blk for b in blocks], axis=1) if blocks else np.zeros((n2, 0), dtype=np.int64)
+        if rank_mod(np.concatenate([W_sector, all_cols], axis=1), p) != rank_mod(W_sector, p):
+            raise RuntimeError("Paired sector: some constructed block columns lie outside W = Vq ⊕ Vq*.")
+        if rank_mod(all_cols, p) != rank_mod(W_sector, p):
+            raise RuntimeError("Paired sector: constructed blocks do not span the paired sector.")
+
+        inv_data["checks_passed"].append("extract-and-remove guarantees orthogonality")
         inv_data["checks_passed"].append("each block nondegenerate")
         inv_data["checks_passed"].append("blocks span paired sector")
         inv_data["status"] = "OK"
 
     except Exception as e:
         if not allow_fallback:
-            # In certified mode, fail loudly.
             raise
         inv_data["status"] = "DEGRADED"
         inv_data["note"] = f"fallback: {type(e).__name__}: {e}"
 
-        W_sector = independent_columns(np.concatenate([Vq, Vqs], axis=1), p)
-        if not is_nondegenerate(Ω_amb, W_sector, p):
-            raise RuntimeError("Paired sector fallback: sector span is degenerate (unexpected).") from e
+        # Single-block fallback spanning the whole paired sector.
         T_blk = darboux_basis_from_span(Ω_amb, W_sector, p)
         blocks = [AtomicBlock(mod_p(T_blk, p), int(T_blk.shape[1] // 2), key, None)]
 

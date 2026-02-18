@@ -166,7 +166,8 @@ class _SpanBasisWithCombo:
                 a = int(self.vecs[i][piv] % p)
                 if a:
                     self.vecs[i] = mod_p(self.vecs[i] - a * v, p)
-                    self.combos[i][: self.gen_dim] = mod_p(self.combos[i][: self.gen_dim] - a * combo[: self.gen_dim], p)
+                    self.combos[i][: self.gen_dim] = mod_p(self.combos[i][: self.gen_dim] - a * combo[: self.gen_dim],
+                                                           p)
 
         # insert by pivot order
         ins = 0
@@ -389,7 +390,6 @@ def _distinct_degree_factorization(f: np.ndarray, p: int) -> List[Tuple[np.ndarr
     return res
 
 
-
 def _random_poly(deg_bound: int, p: int, rng: np.random.Generator) -> np.ndarray:
     """
     Random polynomial of degree < deg_bound (coeffs in 0..p-1), not identically zero.
@@ -442,15 +442,15 @@ def _equal_degree_factorization(f: np.ndarray, d: int, p: int, rng: np.random.Ge
         if not poly_is_zero(r):
             continue
 
-        return _equal_degree_factorization(poly_monic(g, p), d, p, rng) + \
-               _equal_degree_factorization(poly_monic(q, p), d, p, rng)
+        return _equal_degree_factorization(poly_monic(g, p),
+                                           d, p, rng) + _equal_degree_factorization(poly_monic(q, p), d, p, rng)
 
     raise RuntimeError("equal_degree_factorization: exceeded max_tries (odd characteristic splitter)")
 
 
 def _equal_degree_factorization_char2(f: np.ndarray, d: int, rng: np.random.Generator) -> List[np.ndarray]:
     """
-    Cantor–Zassenhaus equal-degree factorization for p=2.
+    Cantor-Zassenhaus equal-degree factorization for p=2.
 
     Split using the trace map:
       Tr_{GF(2^d)/GF(2)}(a) = a + a^{2} + a^{2^2} + ... + a^{2^{d-1}}
@@ -579,26 +579,3 @@ def _poly_eval_at(f: np.ndarray, x: int, p: int) -> int:
     for a in reversed(poly_trim(f)):
         acc = (acc * x + int(a)) % p
     return acc
-
-
-if __name__ == "__main__":
-    # Basic tests
-
-    p = 2
-    # f = (x+1)^3 * (x^2+x+1)
-    x1 = np.array([1, 1], dtype=np.int64)              # x+1
-    q2 = np.array([1, 1, 1], dtype=np.int64)           # x^2+x+1 irreducible over GF(2)
-    f = poly_mul(poly_mul(poly_mul(x1, x1, p), x1, p), q2, p)
-    facs = factor_poly_over_fp(f, p)
-    # check multiplicities
-    keys = [tuple(poly_monic(g, p).tolist()) for g in facs]
-    assert keys.count(tuple(x1.tolist())) == 3
-    assert keys.count(tuple(poly_monic(q2, p).tolist())) == 1
-    print("factor_poly_over_fp tests passed")
-
-    p = 2
-    F = np.eye(4, dtype=np.int64)
-    mF = minimal_polynomial(F, p)
-    # identity has minimal polynomial (x-1) = x+1 in p=2 => coeffs [1,1]
-    assert np.array_equal(mF, np.array([1, 1], dtype=np.int64))
-    print("minpoly.py tests passed")
