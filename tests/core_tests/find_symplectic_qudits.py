@@ -2,7 +2,7 @@ import numpy as np
 import galois
 from sympleq.core.circuits.utils import symplectic_product_arrays
 from sympleq.core.circuits.find_symplectic_qudits import build_symplectic_for_transvection, \
-    check_mappable_via_clifford, intermediate_transvection_solve, Find_transvection_map, Find_transvection_map_solve, \
+    check_mappable_via_clifford, intermediate_transvection_solve, find_transvection_map, find_transvection_map_solve, \
     map_paulisum_to_target_paulisum
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 from sympleq.models import random_hamiltonian
@@ -72,7 +72,7 @@ class TestSymplecticSolverQudits:
                 # Zero vector case - correctly identified as impossible
                 continue
 
-            F_h = Find_transvection_map(u, v, p)
+            F_h = find_transvection_map(u, v, p)
             assert (u @ F_h % p == v).all(), (f"Mapping failed for u={u},'\
                                                     ' v={v}, w={p}: ")
 
@@ -110,7 +110,7 @@ class TestSymplecticSolverQudits:
             if is_zero_case:
                 continue
 
-            F_h = Find_transvection_map_solve(u, v, p)
+            F_h = find_transvection_map_solve(u, v, p)
             assert (u @ F_h % p == v).all(), (f"Mapping failed for u={u},'\
                                                     ' v={v}, w={p}: ")
 
