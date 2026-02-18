@@ -268,7 +268,7 @@ class TestPaulis:
             x1 = Pauli.from_string(f'x{x_exp}z0', dimension=d)
             z1 = Pauli.from_string(f'x0z{z_exp}', dimension=d)
             y1 = Pauli.from_string(f'x{x_exp}z{z_exp}', dimension=d)
-            id = Pauli.Idnd(dimension=d)
+            id = Pauli.from_string('x0z0', dimension=d)
 
             assert x1 * z1 == y1, f'Error in Pauli multiplication for d={d}'
             assert x1**d == id, f'Error in Pauli exponentiation (x**{d} = id) for d={d}'
@@ -967,7 +967,7 @@ class TestPaulis:
         assert not psum1.is_close(psum2, literal=False)
 
     def test_pauli_object_invalid_setters(self):
-        p = Pauli.Xnd(1, 2)
+        p = Pauli.from_string('x1z0', dimension=2)
         with pytest.raises(Exception):
             p.lcm = 2
         with pytest.raises(Exception):
@@ -1008,7 +1008,7 @@ class TestPaulis:
     def test_pauli_object_sum(self):
         dimension = 4
         pauli_objects = [
-            Pauli.Xnd(1, dimension),
+            Pauli.from_string('x1z0', dimension=dimension),
             PauliString.from_string('x2z3', dimension),
             PauliSum.from_random(3, dimensions=dimension)
         ]
