@@ -303,22 +303,26 @@ def _mixed_radix_strides(dims: np.ndarray) -> np.ndarray:
     return strides
 
 
+'''
+# This one we should keep for later
 def _int_to_digits(i: int, dims: np.ndarray, strides: np.ndarray) -> np.ndarray:
     """Decode linear index i to mixed-radix digits using the given strides."""
     # digits[k] = (i // strides[k]) % dims[k]
     return (i // strides) % dims
 
 
+# This one we should keep for later
 def _digits_to_int(digits: np.ndarray, strides: np.ndarray) -> int:
     """Encode mixed-radix digits to linear index using the given strides."""
     return int(np.dot(digits, strides))
 
 
-'''
+# This one can go
 def I_mat(d: int) -> sp.csr_matrix:
     return sp.csr_matrix(np.diag([1] * d))
 
 
+# This one can go
 def SWAP_func(i: int, a0: int, a1: int, dims: np.ndarray) -> int:
     """
     Map a basis index i -> f(i) by swapping qudit positions a0 <-> a1
@@ -334,6 +338,7 @@ def SWAP_func(i: int, a0: int, a1: int, dims: np.ndarray) -> int:
     return _digits_to_int(digits, strides)
 
 
+# This one can go
 def CX_func(i, a0, a1, dims):
     aa = int_to_bases(i, dims)
     aa[a1] = (aa[a1] + aa[a0]) % dims[a1]
