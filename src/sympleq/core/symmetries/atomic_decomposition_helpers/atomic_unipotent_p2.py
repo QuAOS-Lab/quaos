@@ -130,7 +130,6 @@ def _find_partner_in_top_span_p2(
 
     return None
 
-
 def _beta_from_top_generators_p2(
     gens: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int
 ) -> int:
@@ -171,6 +170,116 @@ def _beta_from_top_generators_p2(
         return (qv & qw)  # product in GF(2)
 
     return 0
+
+
+
+def _p2_hyperbolic_pairs_from_alternating_form(B: np.ndarray, p: int = 2) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]:
+    """
+    Deterministic Gram–Schmidt for an alternating form B over GF(2).
+
+    Returns (e_list, f_list, rad_list), where each entry is a *coefficient vector*
+    (length m) in the original coordinate basis such that:
+      - e_i^T B f_i = 1, and e_i,f_i are mutually orthogonal to all other pairs
+      - rad_list spans the radical {v: v^T B = 0}
+    """
+    if p != 2:
+        raise ValueError("_p2_hyperbolic_pairs_from_alternating_form is p=2 only")
+    B = mod_p(np.asarray(B, dtype=np.int64), 2)
+    m = B.shape[0]
+    R = [np.eye(m, dtype=np.int64)[:, i] for i in range(m)]  # remaining vectors (standard basis), as 1D arrays
+
+    e_list: List[np.ndarray] = []
+    f_list: List[np.ndarray] = []
+    rad_list: List[np.ndarray] = []
+
+    def pair(u: np.ndarray, v: np.ndarray) -> int:
+        return int((u.reshape(1, -1) @ B @ v.reshape(-1, 1)) % 2)
+
+    # Work on a mutable list of remaining vectors, orthogonalizing as we go
+    while R:
+        a = R.pop(0)
+        # find b with <a,b>=1
+        found = None
+        for idx, cand in enumerate(R):
+            if pair(a, cand) == 1:
+                found = idx
+                break
+
+        if found is None:
+            # a is radical (w.r.t. current remaining set, which is already orthogonal to previous pairs)
+            rad_list.append(a.copy())
+            continue
+
+        b = R.pop(found)
+
+        # Orthogonalize remaining vectors to the new pair (a,b)
+        newR = []
+        for x in R:
+            ax = pair(x, b)  # <x,b>
+            bx = pair(x, a)  # <x,a>
+            if ax:
+                x = (x ^ a)  # x <- x + <x,b> a
+            if bx:
+                x = (x ^ b)  # x <- x + <x,a> b
+            newR.append(x)
+        R = newR
+
+        e_list.append(a.copy())
+        f_list.append(b.copy())
+
+    return e_list, f_list, rad_list
+
+
+def _p2_length_form_invariants(A_top, Omega, N, L):
+    p = 2
+    A_top = independent_columns(mod_p(A_top, p), p)
+    m = int(A_top.shape[1])
+    if m == 0:
+        return {
+            "top_dim": 0, "B_rank": 0, "rad_dim": 0,
+            "B_sym_ok": True, "B_alt_ok": True,
+            "q_defined": False, "q_mid_polar_ok": None, "q_witness_polar_ok": True,
+            "arf": None,
+        }
+
+    Nr = np.eye(N.shape[0], dtype=np.int64) if (L - 1) == 0 else mat_pow_mod(N, L - 1, p)
+    B = mod_p(A_top.T @ Omega @ (Nr @ A_top), p)
+    B_rank = int(rank_mod(B, p))
+    rad_dim = int(m - B_rank)
+
+    B_sym_ok = bool(np.array_equal(B, B.T))
+    B_alt_ok = bool(np.all(np.diag(B) % 2 == 0))
+
+    # "mid" q: the one you were *trying* to use (debug only)
+    q_defined = bool(L > 1)
+    q_mid_polar_ok = None
+    if q_defined:
+        if L % 2 == 0:
+            exp = L // 2          # IMPORTANT: don't use k-1 if you intend L=2 to be meaningful
+        else:
+            exp = (L - 1) // 2
+        Nm = np.eye(N.shape[0], dtype=np.int64) if exp == 0 else mat_pow_mod(N, exp, p)
+        Q_mid = mod_p(A_top.T @ Omega @ (Nm @ A_top), p)
+        Bq_mid = mod_p(Q_mid + Q_mid.T, p)
+        q_mid_polar_ok = bool(np.array_equal(Bq_mid, B))
+
+    # "witness" quadratic refinement: always exists when B is alternating.
+    # Choose Q_wit as strict upper-triangular part of B so that Q_wit + Q_wit^T = B (diag=0).
+    q_witness_polar_ok = bool(B_alt_ok)
+    # (We don't compute Arf from this witness: it isn't canonical.)
+
+    return {
+        "top_dim": int(m),
+        "B_rank": int(B_rank),
+        "rad_dim": int(rad_dim),
+        "B_sym_ok": bool(B_sym_ok),
+        "B_alt_ok": bool(B_alt_ok),
+        "q_defined": bool(q_defined),
+        "q_mid_polar_ok": q_mid_polar_ok,
+        "q_witness_polar_ok": bool(q_witness_polar_ok),
+        "arf": None,  # leave None unless/until you implement the *canonical* quadratic
+    }
+
 
 
 # ----------------------------
@@ -227,18 +336,36 @@ def atomic_blocks_in_unipotent_self_sector_p2(
     # -------------------------
     tops_full = jordan_chain_tops_nilpotent(N, max_exp, p)
 
+    # Conjugacy-invariant kernel profile for nilpotent N (dims of ker N^k)
+    kernel_profile = [
+        int((2 * m) - rank_mod(mat_pow_mod(N, k, p), p)) for k in range(1, int(max_exp0) + 1)
+    ]
+
     length_summary: Dict[int, Dict[str, Any]] = {}
+    length_invariants: Dict[int, Dict[str, Any]] = {}
+
     for L, Araw in tops_full.items():
         Araw = independent_columns(mod_p(Araw, p), p)
+        invL = _p2_length_form_invariants(Araw, Ω, N, int(L))
+        length_invariants[int(L)] = invL
+
+        # Deterministic selection of genuine module generators (guardrail).
         A = _select_module_generators_from_top_space(F_sec, N, Araw, deg_q, int(L), p)
+
+        q1_count = 0
+        for j in range(A.shape[1]):
+            q1_count += (_beta_from_top_generators_p2(A[:, j:j + 1], Ω, N, int(L)) & 1)
+
         length_summary[int(L)] = {
-            "mult": int(A.shape[1]),
-            # diagnostic: how many of these tops have q_L(v)=1
-            "q1_count": int(sum(_beta_from_top_generators_p2(A[:, j:j + 1], Ω, N, int(L)) for j in range(A.shape[1]))),
+            "mult": int(invL["top_dim"]),
+            "gen_dim": int(A.shape[1]),
+            "gen_dim_ok": bool(int(A.shape[1]) == int(invL["top_dim"])),
+            "q1_count": int(q1_count),
+            **invL,
         }
 
     # -------------------------
-    # Deterministic atomic extraction (sector coords)
+    # Deterministic atomic extraction (sector coords) (sector coords)
     # -------------------------
     blocks: List[AtomicBlock] = []
     blocks_meta: List[Dict[str, Any]] = []
@@ -287,11 +414,8 @@ def atomic_blocks_in_unipotent_self_sector_p2(
                 typ = "V_alpha" if beta == 1 else "V"
 
                 T_blk_amb = mod_p(T_sec @ T_blk, p)
-                blocks.append(AtomicBlock(T_blk=T_blk_amb, half_dim=int(T_blk_amb.shape[1] // 2),
-                                          sector_key=key, inv=None))
-                blocks_meta.append({"type": typ, "L": int(L),
-                                    "half_dim": int(T_blk_amb.shape[1] // 2),
-                                    "beta": int(beta)})
+                blocks.append(AtomicBlock(T_blk=T_blk_amb, half_dim=int(T_blk_amb.shape[1] // 2), sector_key=key, inv=None))
+                blocks_meta.append({"type": typ, "L": int(L), "half_dim": int(T_blk_amb.shape[1] // 2), "beta": int(beta)})
 
                 space_basis = rem
                 progressed = True
@@ -366,14 +490,56 @@ def atomic_blocks_in_unipotent_self_sector_p2(
         if rank_mod(all_cols_sec, p) != all_cols_sec.shape[1]:
             raise RuntimeError("Unipotent p=2 self sector: extracted block bases overlap (not a direct sum).")
 
+    # Kernel profile cross-check: sum of block-restricted profiles must match the whole-sector profile.
+    N_blks = [restrict_operator(N, T_blk, p) for T_blk in built_cols_sec] if built_cols_sec else []
+    kernel_profile_blocks: List[int] = []
+    for k in range(1, int(max_exp0) + 1):
+        tot = 0
+        for Nb in N_blks:
+            Nk = mat_pow_mod(Nb, k, p)
+            tot += int(Nb.shape[0] - rank_mod(Nk, p))
+        kernel_profile_blocks.append(int(tot))
+
+    if kernel_profile_blocks != kernel_profile:
+        raise RuntimeError(
+            "Unipotent p=2 self sector: kernel profile mismatch (block sum != sector). "
+            f"key={key}, profile={kernel_profile}, block_profile={kernel_profile_blocks}"
+        )
+
+    # Beta bookkeeping: counts by length and type.
+    beta_counts_by_L: Dict[int, Dict[str, int]] = {}
+    for bm in blocks_meta:
+        L_raw = bm.get("L")
+        if L_raw is None:
+            raise RuntimeError("Missing 'L' in unipotent block metadata.")
+        L = int(L_raw)
+
+        beta_raw = bm.get("beta", 0)
+        beta = int(0 if beta_raw is None else beta_raw) & 1
+
+        typ_raw = bm.get("type", "")
+        typ = "" if typ_raw is None else str(typ_raw)
+        d = beta_counts_by_L.setdefault(L, {"V0": 0, "V1": 0, "W0": 0, "W1": 0})
+        if typ.startswith("V"):
+            d["V1" if beta else "V0"] += 1
+        else:
+            d["W1" if (typ.endswith("alpha") or beta) else "W0"] += 1
+
     inv_data: Dict[str, Any] = {
         "status": "OK",
         "deg": int(deg_q),
         "exponent": int(max_exp0),
         "length_summary": length_summary,
         "blocks": blocks_meta,
+        "p2_unipotent": {
+            "kernel_profile": kernel_profile,
+            "kernel_profile_blocks": kernel_profile_blocks,
+            "length_invariants": length_invariants,          # per-L top-space invariants (Arf, ranks, ...)
+            "beta_counts_by_L": beta_counts_by_L,            # per-L V/W beta splits as extracted
+        },
     }
 
     inv = AtomicInvariant(sector_key=key, sector_type="self", poly_key=key, data=inv_data)
+
     blocks = [AtomicBlock(b.T_blk, b.half_dim, key, inv) for b in blocks]
     return blocks, inv
