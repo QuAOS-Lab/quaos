@@ -1,12 +1,11 @@
-from typing import Any
 import numpy as np
-import re
+from .pauli_object import PauliObject
 from .pauli_sum import PauliSum
-import networkx as nx
 from itertools import product
 import sympy as sp
 
 
+'''
 def string_to_symplectic(string: str
                          ) -> tuple[np.ndarray, int]:
     """
@@ -38,6 +37,7 @@ def string_to_symplectic(string: str
 
     symplectic = np.array(local_symplectics).T
     return symplectic.flatten(), sum(phases)
+'''
 
 
 def check_mappable_via_clifford(PauliSum: PauliSum,
@@ -110,6 +110,10 @@ def are_subsets_equal(PauliSum_1: PauliSum,
     return True
 
 
+'''
+Duplicate - we should use only the one in AQUIRE, `sympleq.applications.measurement.covariance_graph.py`
+
+
 def commutation_graph(PauliSum: PauliSum,
                       axis: Any | None = None):
     """
@@ -142,6 +146,26 @@ def commutation_graph(PauliSum: PauliSum,
 
     nx.draw(gr, pos1, node_size=900, with_labels=True, ax=axis)
     return gr
+'''
+
+
+'''
+Duplicate - we should use only the one in AQUIRE, `sympleq.applications.measurement.covariance_graph.py`
+
+def commutation_graph(P: PauliSum) -> np.ndarray:
+    """
+    Computes the commutation graph for a given set of Pauli operators.
+
+    Args:
+        P (PauliSum): A set of Pauli operators represented as a PauliSum object.
+
+    Returns:
+        np.ndarray: A 2D numpy array representing the commutation graph. Each element [i, j] is 1 if the i-th and
+                    j-th Pauli operators commute, otherwise 0.
+    """
+    p = P.n_paulis()
+    return np.array([[int(P[i0, :].commute(P[i1, :])) for i1 in range(p)] for i0 in range(p)])
+'''
 
 
 def mod_inv(a: int,
@@ -309,3 +333,70 @@ def solve_mod_d(A: np.ndarray,
             break
 
     return solutions
+
+
+# PHYSICS FUNCTIONS
+def hamiltonian_mean(P: PauliObject, psi: np.ndarray) -> float:
+    """Returns the mean of a Hamiltonian with a given state.
+
+    Args:
+        P: pauli, Paulis of Hamiltonian
+        psi: numpy.array, state for mean
+
+    Returns:
+        numpy.float64, mean sum(c*<psi|P|psi>)
+    """
+    mu = np.real(np.transpose(np.conjugate(psi)) @ P.to_hilbert_space() @ psi)
+    # FIXME: better modify the input, saying psi is complex array?
+    return float(mu)
+
+
+def covariance_matrix(P: PauliObject, psi: np.ndarray, include_weights: bool = False) -> np.ndarray:
+    """
+    Computes the covariance matrix for a given set of Pauli operators and a quantum state.
+
+    Args:
+        P (PauliSum): The set of Pauli operators, represented as a PauliSum object, with associated weights.
+        psi (np.ndarray): The state vector for which the covariance matrix is computed.
+        include_weights (bool): If True, the covariance values are multiplied
+        by the corresponding weights of the Pauli operators.
+
+    Returns:
+        np.ndarray: A 2D numpy array representing the covariance matrix of the Pauli operators with respect to
+                    the given state. Each element [i, j] corresponds to the covariance between the i-th and j-th
+                    Pauli operators.
+    """
+    n_paulis = P.n_paulis()
+    if include_weights:
+        P = P.copy()
+        P.phase_to_weight()
+        weights = P.weights
+    else:
+        weights = np.ones(n_paulis)
+    pauli_strings = [P.to_hilbert_space(i) for i in range(n_paulis)]
+    psi_dag = psi.conj().T
+    covariance_matrix = np.array(
+        [
+            [
+                np.conj(weights[i0]) * weights[i1] * (
+                    (psi_dag @ pauli_strings[i0].conj().T @ pauli_strings[i1] @ psi) -
+                    (psi_dag @ pauli_strings[i0].conj().T @ psi) * (psi_dag @ pauli_strings[i1] @ psi)
+                )
+                for i1 in range(n_paulis)]
+            for i0 in range(n_paulis)]
+    )
+    return covariance_matrix
+
+
+def complex_phase_value(phase, dimension):
+    """
+    Computes the a-th eigenvalue of a pauli with dimension d.
+
+    Args:
+        phase (int): The integer to compute the eigenvalue for.
+        dimension (int): The dimension of the pauli to use.
+
+    Returns:
+        complex: The computed eigenvalue.
+    """
+    return np.exp(2 * np.pi * 1j * phase / dimension)
