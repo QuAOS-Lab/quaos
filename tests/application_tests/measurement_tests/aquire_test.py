@@ -233,6 +233,7 @@ class TestAquire:
             mean_distance = np.abs(model.true_mean_value - model.estimated_mean[-1])
             distance_in_sigma = mean_distance / np.sqrt(model.statistical_variance[-1])
             assert distance_in_sigma < 5, f"Mean estimate too far from true value for dims {dims}"
+            assert distance_in_sigma > 0.001, f"Error bar too large for {dims}"
 
     @pytest.mark.system
     def test_aquire_mean_distance_with_noise(self):
@@ -249,6 +250,8 @@ class TestAquire:
             model.config.set_params(commutation_mode='general',
                                     calculate_true_values=True,
                                     enable_simulated_hardware_noise=True,
+                                    noise_probability_function_kwargs={
+                                        "p_entangling": 0.75, "p_local": 0.5, "p_measurement": 0.25},
                                     enable_diagnostics=True,
                                     save_covariance_graph_checkpoints=False,
                                     auto_update_covariance_graph=True,
@@ -259,8 +262,8 @@ class TestAquire:
             mean_distance = np.abs(model.true_mean_value - model.estimated_mean[-1])
             error = np.sqrt(model.statistical_variance[-1] + model.systematic_variance[-1])
             distance_in_sigma = mean_distance / error
-            assert distance_in_sigma - 1 < 5, f"Mean estimate too far from true value for dims {dims}"
-
+            assert distance_in_sigma < 5, f"Mean estimate too far from true value for dims {dims}"
+            assert distance_in_sigma > 0.001, f"Error bar too large for {dims}"
     # AQUIRE CONFIG TESTS
     def test_aquire_state_hamiltonian_mismatch_validation(self):
         # check that the function that compares state and hamiltonian dimension raises an error correctly
