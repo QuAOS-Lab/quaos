@@ -1,7 +1,7 @@
 import numpy as np
 from sympleq.core.paulis import PauliSum
 
-
+'''
 def true_mean(H: PauliSum, psi) -> float:
     """
     Calculate the true mean of a Hamiltonian given a PauliSum object and a state vector.
@@ -39,3 +39,4 @@ def true_covariance_graph(H: PauliSum, psi) -> np.ndarray:
             cov = (psi_dag @ mm[i0].conj().T @ mm[i1] @ psi) - cc2[i0] * cc1[i1]
             cm[i0, i1] = cov
     return cm
+'''
