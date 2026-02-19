@@ -196,6 +196,7 @@
         "randn",
         "requests",
         "rref",
+        "rtol",
         "sanitised",
         "scalings",
         "scipy",

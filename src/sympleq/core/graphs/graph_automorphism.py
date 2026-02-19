@@ -6,7 +6,7 @@ from typing import Any, cast
 from sympleq.core.graphs.graph_coloring import _build_base_partition
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 from sympleq.core.circuits.target import find_map_to_target_pauli_sum, get_phase_vector
-from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
+# from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 from sympleq.core.finite_field_solvers import _select_row_basis_indices
 from sympleq.core.paulis import PauliSum
 from sympleq.core.circuits import Gate
