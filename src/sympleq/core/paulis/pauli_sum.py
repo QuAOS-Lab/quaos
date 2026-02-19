@@ -1213,7 +1213,7 @@ class PauliSum(PauliObject):
         m = self.to_hilbert_space().toarray()
 
         # Get eigenvalues and eigenvectors
-        val, vec = np.linalg.eigh(m)
+        val, vec = np.linalg.eig(m)
         vec = np.transpose(vec)
 
         # Ordering
@@ -1223,7 +1223,10 @@ class PauliSum(PauliObject):
         normalized_states = (states / np.linalg.norm(states, axis=1, keepdims=True))
 
         # Check normalization
-        assert np.allclose(np.linalg.norm(normalized_states, axis=0), 1.0)
+        assert np.allclose(np.linalg.norm(normalized_states, axis=0), 1.0,
+                           rtol=1e-10), "Eigenvectors are not normalized."
+        # Check eigenvalues are real - Hermitian matrix!
+        assert np.allclose(np.imag(energies), 0.0, rtol=1e-10), "Energies are not real, but the matrix is Hermitian."
 
         return (energies, normalized_states)
 
@@ -1262,6 +1265,11 @@ class PauliSum(PauliObject):
                 Warning("The stabilizer state is not uniquely defined, " +
                         f"as the number of PauliStrings {self.n_paulis()} is less than the number " +
                         f"of qudits {self.n_qudits()}.")
+
+        # TODO: generalize to all dimensions, not just qubits
+        if not np.all(self.dimensions == 2):
+            raise NotImplementedError(
+                "Stabilizer to Hilbert space conversion is currently only implemented for qubits.")
 
         _, states = self.ordered_eigenspectrum()
         ground_state = states[0]
