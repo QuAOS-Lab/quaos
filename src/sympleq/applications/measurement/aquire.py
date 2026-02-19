@@ -13,9 +13,10 @@ from sympleq.applications.measurement.aquire_utils import (calculate_mean_estima
                                                            calculate_statistical_variance_estimate,
                                                            calculate_systematic_variance_estimate,
                                                            true_statistical_variance, config_params, aquire_params)
-from sympleq.core.statistic_utils import true_mean
+# from sympleq.core.statistic_utils import true_mean
 from sympleq.core.circuits import Circuit
 from sympleq.utils import int_to_bases
+from sympleq.core.paulis.utils import hamiltonian_mean
 from typing import Callable
 import pickle
 import matplotlib.pyplot as plt
@@ -521,7 +522,7 @@ class Aquire:
         # Comparison values: not used in the algorithm
         # initially set to None, can be set later if desired and H not too large
         if self.config.calculate_true_values and self.config.psi is not None:
-            self.true_mean_value = true_mean(self._H, self.config.psi)
+            self.true_mean_value = hamiltonian_mean(self._H, self.config.psi)
             self.true_statistical_variance_value = []
         else:
             pass
