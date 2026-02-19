@@ -241,7 +241,7 @@ class AquireConfig:
         None
         """
 
-        for i in range(10):
+        for _ in range(10):
             test_circuit = Circuit.from_random(n_gates=np.random.randint(1, 6),
                                                dimensions=self.Hamiltonian.dimensions)
 
@@ -249,7 +249,7 @@ class AquireConfig:
                 test_circuit, *self.noise_probability_args, **self.noise_kwargs)
             if noise_prob > 1 or noise_prob < 0:
                 raise ValueError(f"Noise probability function gives erroneous values. It must be between 0 and 1."
-                                 f"Wrong values where found for circuit: \n {test_circuit}.")
+                                 f"Wrong values were found for circuit: \n {test_circuit}.")
 
             test_result = [np.random.randint(dim) for dim in self.Hamiltonian.dimensions]
             error_test_result = self.error_function(test_result, *self.error_function_args,
@@ -257,10 +257,10 @@ class AquireConfig:
             for i0, j in enumerate(error_test_result):
                 if j > self.Hamiltonian.dimensions[i0] or j < 0:
                     raise ValueError(f"Error function gives erroneous values. It must be between 0 and qudit dimension."
-                                     f"Wrong values where found for measurement outcome: \n {test_result}.")
+                                     f"Wrong values were found for measurement outcome: \n {test_result}.")
                 elif not isinstance(j, (int, np.integer)):
                     raise ValueError(f"Error function gives erroneous values. It must return integers."
-                                     f"Wrong values where found for measurement outcome: \n {error_test_result}.")
+                                     f"Wrong values were found for measurement outcome: \n {error_test_result}.")
 
     # @classmethod
     # def from_json(cls, path):
