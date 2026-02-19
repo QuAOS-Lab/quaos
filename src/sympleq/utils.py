@@ -140,30 +140,13 @@ def complex_phase_value(phase, dimension):
     Computes the a-th eigenvalue of a pauli with dimension d.
 
     Args:
-        a (int): The integer to compute the eigenvalue for.
-        d (int): The dimension of the pauli to use.
+        phase (int): The integer to compute the eigenvalue for.
+        dimension (int): The dimension of the pauli to use.
 
     Returns:
         complex: The computed eigenvalue.
     """
     return np.exp(2 * np.pi * 1j * phase / dimension)
-
-
-def rand_state(dimension):
-    """
-    Generate a random quantum state vector for a system of dimension d.
-
-    Args:
-        d (int): Dimension of the quantum system.
-
-    Returns:
-        np.ndarray: A normalized random state vector in the complex space of size d.
-    """
-    gamma_sample = np.random.gamma(1, 1, int(dimension))
-    phases = np.random.uniform(0, 2 * np.pi, int(dimension))
-    normalized_state = np.sqrt(
-        gamma_sample / np.sum(gamma_sample)) * np.exp(1j * phases)
-    return normalized_state
 
 
 def get_linearly_independent_rows(A: np.ndarray, d: int) -> list[int]:
@@ -186,3 +169,22 @@ def get_linearly_independent_rows(A: np.ndarray, d: int) -> list[int]:
         if nz_indices.size > 0:
             pivots.append(nz_indices[0])
     return pivots
+
+
+'''
+def rand_state(dimension):
+    """
+    Generate a random quantum state vector for a system of dimension d.
+
+    Args:
+        d (int): Dimension of the quantum system.
+
+    Returns:
+        np.ndarray: A normalized random state vector in the complex space of size d.
+    """
+    gamma_sample = np.random.gamma(1, 1, int(dimension))
+    phases = np.random.uniform(0, 2 * np.pi, int(dimension))
+    normalized_state = np.sqrt(
+        gamma_sample / np.sum(gamma_sample)) * np.exp(1j * phases)
+    return normalized_state
+'''
