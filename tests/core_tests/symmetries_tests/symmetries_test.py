@@ -10,9 +10,9 @@ class TestSymmetryFinder:
     def test_random_SWAP_symmetry(self):
         n_tests = 30
         dimension = 2
-        n_qudits = 15
+        n_qudits = 10
         # Need enough terms to determine a non-trivial automorphism robustly.
-        n_paulis = 6
+        n_paulis = 50
         for _ in range(n_tests):
             qudit_indices = (0, 1)
             all_qudit_indices = tuple(range(n_qudits))
