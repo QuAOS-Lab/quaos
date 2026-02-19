@@ -8,7 +8,8 @@ from sympleq.applications.measurement.aquire import Aquire, AquireConfig, simula
 from sympleq.core.paulis import PauliSum, PauliString
 from sympleq.applications.measurement.covariance_graph import commutation_graph, all_maximal_cliques
 from sympleq.applications.measurement.allocation import construct_circuit_list
-from sympleq.core.statistic_utils import true_covariance_graph
+from sympleq.core.paulis.utils import covariance_matrix
+# from sympleq.core.statistic_utils import true_covariance_graph
 
 
 class TestAquire:
@@ -33,7 +34,7 @@ class TestAquire:
                 assert list(gate_qudit_indices) == comp_c[j][1], \
                     f"Circuit {i} qudit indices do not match: {gate_qudit_indices} and {comp_c[j][1]}"
 
-        true_cov_graph = true_covariance_graph(P, psi) * com_graph.adj
+        true_cov_graph = covariance_matrix(P, psi) * com_graph.adj
         assert np.allclose(true_cov_graph, true_variance_graph, atol=10**(-6)), "true covariance graphs do not match"
 
         for i, aa in enumerate(xxx):
@@ -264,6 +265,7 @@ class TestAquire:
             distance_in_sigma = mean_distance / error
             assert distance_in_sigma < 5, f"Mean estimate too far from true value for dims {dims}"
             assert distance_in_sigma > 0.001, f"Error bar too large for {dims}"
+
     # AQUIRE CONFIG TESTS
     def test_aquire_state_hamiltonian_mismatch_validation(self):
         # check that the function that compares state and hamiltonian dimension raises an error correctly
