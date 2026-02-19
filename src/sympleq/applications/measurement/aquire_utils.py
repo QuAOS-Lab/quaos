@@ -2,7 +2,8 @@ import numpy as np
 from sympleq.core.paulis import PauliSum
 from sympleq.applications.measurement.allocation import scale_variances
 from sympleq.applications.measurement.covariance_graph import graph
-from sympleq.core.statistic_utils import true_covariance_graph
+from sympleq.core.paulis.utils import covariance_matrix
+# from sympleq.core.statistic_utils import true_covariance_graph
 
 
 def calculate_mean_estimate(data: np.ndarray, weights: np.ndarray) -> float:
@@ -125,7 +126,7 @@ def true_statistical_variance(H: PauliSum, psi: np.ndarray, S: np.ndarray) -> fl
     float
         The true statistical variance of the Hamiltonian/observable.
     """
-    sigma = np.sum(scale_variances(graph(true_covariance_graph(H, psi)), S).adj).real
+    sigma = np.sum(scale_variances(graph(covariance_matrix(H, psi)), S).adj).real
     return sigma
 
 
