@@ -288,6 +288,7 @@ def pauli_unitary_from_tableau(
     return sp.csr_matrix(U)
 
 
+'''
 def _mixed_radix_strides(dims: np.ndarray) -> np.ndarray:
     """
     strides[k] = product of dims[k+1:], with strides[-1] = 1.
@@ -303,15 +304,14 @@ def _mixed_radix_strides(dims: np.ndarray) -> np.ndarray:
     return strides
 
 
-'''
-# This one we should keep for later
+# This one we may keep for later - what's the difference with int_to_bases? What do the `strides` do?
 def _int_to_digits(i: int, dims: np.ndarray, strides: np.ndarray) -> np.ndarray:
     """Decode linear index i to mixed-radix digits using the given strides."""
     # digits[k] = (i // strides[k]) % dims[k]
     return (i // strides) % dims
 
 
-# This one we should keep for later
+# This one we may keep for later
 def _digits_to_int(digits: np.ndarray, strides: np.ndarray) -> int:
     """Encode mixed-radix digits to linear index using the given strides."""
     return int(np.dot(digits, strides))
