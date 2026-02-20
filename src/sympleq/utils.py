@@ -103,6 +103,23 @@ def get_linearly_independent_rows(A: np.ndarray, d: int) -> list[int]:
     return pivots
 
 
+def complex_phase_value(phase: int, dimension: int, full: bool = True) -> complex:
+    """
+    Computes the a-th eigenvalue of a pauli with dimension d.
+
+    Args:
+        phase (int): The integer to compute the eigenvalue for.
+        dimension (int): The dimension of the pauli to use.
+
+    Returns:
+        complex: The computed eigenvalue.
+    """
+    if full:
+        return np.exp(2 * np.pi * 1j * phase / (2 * dimension))
+    else:
+        return np.exp(2 * np.pi * 1j * phase / dimension)
+
+
 '''
 def rand_state(dimension):
     """
