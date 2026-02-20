@@ -2,7 +2,7 @@ import numpy as np
 from sympleq.core.paulis import PauliSum
 from sympleq.applications.measurement.allocation import scale_variances
 from sympleq.applications.measurement.covariance_graph import graph
-from sympleq.core.paulis.utils import covariance_matrix
+from sympleq.core.paulis.utils import complex_phase_value, covariance_matrix
 # from sympleq.core.statistic_utils import true_covariance_graph
 
 
@@ -29,7 +29,7 @@ def calculate_mean_estimate(data: np.ndarray, weights: np.ndarray) -> float:
         total_counts = sum(data[i0, i0, i1] for i1 in range(d))
         if total_counts > 0:
             weighted_sum = sum(
-                data[i0, i0, i1] * np.exp(2j * np.pi * i1 / d)
+                data[i0, i0, i1] * complex_phase_value(i1, d, full=False)
                 for i1 in range(d))
             mean += weights[i0] * (weighted_sum / total_counts)
         else:
