@@ -388,7 +388,7 @@ def covariance_matrix(P: PauliObject, psi: np.ndarray, include_weights: bool = F
     return covariance_matrix
 
 
-def complex_phase_value(phase, dimension):
+def complex_phase_value(phase: int, dimension: int, full: bool = True) -> complex:
     """
     Computes the a-th eigenvalue of a pauli with dimension d.
 
@@ -399,4 +399,7 @@ def complex_phase_value(phase, dimension):
     Returns:
         complex: The computed eigenvalue.
     """
-    return np.exp(2 * np.pi * 1j * phase / dimension)
+    if full:
+        return np.exp(2 * np.pi * 1j * phase / (2 * dimension))
+    else:
+        return np.exp(2 * np.pi * 1j * phase / dimension)
