@@ -15,12 +15,24 @@ from sympleq.core.symmetries.phase_correction import solve_phase_vector_h_from_r
 from sympleq.core.graphs.dynamic_refine_search import dynamic_refine_individualized
 
 @njit(cache=True, fastmath=True)
-def _consistent_numba(S_mod: np.ndarray, phi: np.ndarray, mapped_idx: np.ndarray, i: int, y: int) -> bool:
+def _consistent_numba(S_mod: np.ndarray,
+                      phi: np.ndarray,
+                      mapped_stack: np.ndarray,
+                      mapped_len: int,
+                      i: int,
+                      y: int) -> bool:
     """
     Require S[i, j] == S[y, phi[j]] and S[j, i] == S[phi[j], y] for all mapped j.
+
+    Parameters
+    ----------
+    mapped_stack : np.ndarray
+        Stack of mapped domain indices; valid entries are in mapped_stack[:mapped_len].
+    mapped_len : int
+        Number of currently mapped indices in mapped_stack.
     """
-    for t in range(mapped_idx.size):
-        j = mapped_idx[t]
+    for t in range(mapped_len):
+        j = mapped_stack[t]
         yj = phi[j]
         if S_mod[i, j] != S_mod[y, yj]:
             return False
@@ -45,12 +57,24 @@ def _build_bitrows_binary(S_mod: np.ndarray) -> tuple[np.ndarray, int]:
 
 
 @njit(cache=True, fastmath=True)
-def _consistent_bitset(bits: np.ndarray, phi: np.ndarray, mapped_idx: np.ndarray, i: int, y: int) -> bool:
+def _consistent_bitset(bits: np.ndarray,
+                       phi: np.ndarray,
+                       mapped_stack: np.ndarray,
+                       mapped_len: int,
+                       i: int,
+                       y: int) -> bool:
     """
     Same logic as _consistent_numba but reading single bits from packed rows.
+
+    Parameters
+    ----------
+    mapped_stack : np.ndarray
+        Stack of mapped domain indices; valid entries are in mapped_stack[:mapped_len].
+    mapped_len : int
+        Number of currently mapped indices in mapped_stack.
     """
-    for t in range(mapped_idx.size):
-        j = mapped_idx[t]
+    for t in range(mapped_len):
+        j = mapped_stack[t]
         yj = phi[j]
         # read bit S[i,j]
         bi = (bits[i, j >> 6] >> (j & 63)) & 1
@@ -77,14 +101,29 @@ class _ConsistencyChecker:
         else:
             self._fn = self._direct
 
-    def __call__(self, phi: np.ndarray, mapped_idx: np.ndarray, i: int, y: int) -> bool:
-        return self._fn(phi, mapped_idx, int(i), int(y))
+    def __call__(self,
+                 phi: np.ndarray,
+                 mapped_stack: np.ndarray,
+                 mapped_len: int,
+                 i: int,
+                 y: int) -> bool:
+        return self._fn(phi, mapped_stack, int(mapped_len), int(i), int(y))
 
-    def _bitset(self, phi: np.ndarray, mapped_idx: np.ndarray, i: int, y: int) -> bool:
-        return _consistent_bitset(self.bits, phi, mapped_idx, i, y)
+    def _bitset(self,
+                phi: np.ndarray,
+                mapped_stack: np.ndarray,
+                mapped_len: int,
+                i: int,
+                y: int) -> bool:
+        return _consistent_bitset(self.bits, phi, mapped_stack, mapped_len, i, y)
 
-    def _direct(self, phi: np.ndarray, mapped_idx: np.ndarray, i: int, y: int) -> bool:
-        return _consistent_numba(self.S_mod, phi, mapped_idx, i, y)
+    def _direct(self,
+                phi: np.ndarray,
+                mapped_stack: np.ndarray,
+                mapped_len: int,
+                i: int,
+                y: int) -> bool:
+        return _consistent_numba(self.S_mod, phi, mapped_stack, mapped_len, i, y)
 
 
 def _gf2_inv(M: np.ndarray) -> np.ndarray:
@@ -329,8 +368,8 @@ def _check_leaf(pi: np.ndarray,
 def clifford_graph_automorphism_search(
     pauli_sum: PauliSum,
     k_wanted: int,
-    dynamic_refine_every: int = 0,
-    extra_column_invariants: str = "hist",
+    dynamic_refine_every: int = 0,  # usually useless - kept only because it may help for some model
+    extra_column_invariants: str = "lc",  # "none" | "hist" | "lc" | "hist+lc"   hist IS HEURISTIC!! May miss syms
     p2_bitset: str | bool = "auto",
     color_mode: str = "wl",   # "wl" | "coeffs_only" | "none"
     max_wl_rounds: int = 10,
@@ -508,10 +547,14 @@ def clifford_graph_automorphism_search(
 
     phi = -np.ones(n, dtype=np.int64)
     used = np.zeros(n, dtype=bool)
+
+    # Maintain the set of mapped domain indices incrementally (avoid O(n) scans of `phi`).
+    mapped_stack = np.empty(n, dtype=np.int64)
+    mapped_len = 0
+
     identity_perm = np.arange(pauli.n_paulis(), dtype=np.int64)
 
     steps = 0
-    cur_colors = base_colors.copy()
 
     def _dec_count(y_idx: int):
         if coeffs is None:
@@ -582,9 +625,9 @@ def clifford_graph_automorphism_search(
         if dynamic_refine_every <= 0:
             return
         # augment anchors with up to K mapped domain vertices (individualization)
-        mapped = np.where(phi >= 0)[0]
+        mapped = mapped_stack[:mapped_len]
         K = 16  # add at most 16 individualized anchors per refresh
-        extra = mapped[:K].astype(np.int64, copy=False)
+        extra = mapped[:K]
         anchors_new = np.unique(np.concatenate([anchors, extra]))
         # cap total anchors
         Amax = 64
@@ -597,16 +640,24 @@ def clifford_graph_automorphism_search(
     class _DFSFrame:
         i: int
         bi: int
-        mapped_idx: np.ndarray
+        mapped_len: int
         candidate: list[int]
         branch_leaf_mass: int = 0
         idx: int = 0  # next candidate index to try
         assigned_y: int = -1  # -1 means "unassigned"
 
     def _undo_assignment(frame: _DFSFrame) -> None:
+        nonlocal mapped_len
         y = int(frame.assigned_y)
         if y < 0:
             return
+
+        # Pop the most recent mapped domain index (LIFO invariant).
+        mapped_len -= 1
+        # Optional sanity check (remove if you want absolute max speed):
+        # if mapped_stack[mapped_len] != frame.i:
+        #     raise RuntimeError("mapped_stack desynchronised")
+
         phi[frame.i] = -1
         used[y] = False
         _inc_count(y)
@@ -626,7 +677,7 @@ def clifford_graph_automorphism_search(
             return None
         bi = int(base_colors[i])
         bkey = _bucket_key(i)
-        mapped_idx = np.where(phi >= 0)[0].astype(np.int64)
+        frame_mapped_len = mapped_len
 
         candidate = [y for y in base_classes[bi] if not used[y]]
         if coeffs is not None:
@@ -647,7 +698,7 @@ def clifford_graph_automorphism_search(
         return _DFSFrame(
             i=i,
             bi=bi,
-            mapped_idx=mapped_idx,
+            mapped_len=int(frame_mapped_len),
             candidate=candidate,
             branch_leaf_mass=int(branch_leaf_mass),
         )
@@ -708,7 +759,7 @@ def clifford_graph_automorphism_search(
                 break
 
             # Leaf check
-            if np.all(phi >= 0):
+            if mapped_len == n:
                 leaves_checked += 1
                 if progress_enabled:
                     explored_leaf_space += 1
@@ -743,7 +794,7 @@ def clifford_graph_automorphism_search(
                 frame.idx += 1
                 if used[y]:
                     continue
-                if not consistency(phi, frame.mapped_idx, frame.i, y):
+                if not consistency(phi, mapped_stack, frame.mapped_len, frame.i, y):
                     if progress_enabled and frame.branch_leaf_mass > 0:
                         explored_leaf_space += frame.branch_leaf_mass
                     continue
@@ -752,6 +803,8 @@ def clifford_graph_automorphism_search(
                 used[y] = True
                 _dec_count(y)
                 frame.assigned_y = y
+                mapped_stack[mapped_len] = frame.i
+                mapped_len += 1
                 assigned = True
                 break
 
