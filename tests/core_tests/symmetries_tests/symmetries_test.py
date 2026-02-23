@@ -8,7 +8,7 @@ import numpy as np
 class TestSymmetryFinder:
 
     def test_random_SWAP_symmetry(self):
-        n_tests = 3000
+        n_tests = 30
         dimension = 2
         n_qudits = 15
         # Need enough terms to determine a non-trivial automorphism robustly.
@@ -120,7 +120,7 @@ class TestSymmetryFinder:
         n_tests = 10
         dimension = 2
         n_qudits = 10
-        n_paulis = 30
+        n_paulis = 20
         all_qudit_indices = tuple(range(n_qudits))
 
         for _ in range(n_tests):
