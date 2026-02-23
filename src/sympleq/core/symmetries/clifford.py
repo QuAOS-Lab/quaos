@@ -6,7 +6,7 @@ from sympleq.core.symmetries.phase_correction import clifford_phase_decompositio
 from sympleq.core.symmetries.block_decomposition import block_decompose_optimal, ordered_block_sizes
 
 
-def min_qudit_clifford_symmetry(pauli_sum: PauliSum, talk: bool = False
+def min_qudit_clifford_symmetry(pauli_sum: PauliSum, talk: bool = False, progress: bool = False
                                 ) -> tuple[Gate, Gate, Gate]:
     """
     Find a single Clifford symmetry g of the given PauliSum, and decompose it into blocks with a minimal qudit cost
@@ -19,7 +19,7 @@ def min_qudit_clifford_symmetry(pauli_sum: PauliSum, talk: bool = False
     """
 
     G = find_clifford_symmetries(pauli_sum, num_symmetries=1,
-                                 dynamic_refine_every=0)
+                                 dynamic_refine_every=0, progress=progress)
     if len(G) == 0:
         # save pauli_sum to file for debugging, tableau, weights, phases
         raise RuntimeError("No non-trivial Clifford symmetry found for the given PauliSum.")
@@ -69,10 +69,6 @@ def qudit_cost(gate: Gate, lcm: int):
     return int(max(block_structure(gate, lcm)))
 
 
-def _labels_union(independent: list[int], dependencies: dict[int, list[tuple[int, int]]]) -> list[int]:
-    return sorted(set(independent) | set(dependencies.keys()))
-
-
 def find_clifford_symmetries(
     pauli_sum: PauliSum,
     num_symmetries: int = 1,
@@ -82,6 +78,8 @@ def find_clifford_symmetries(
     p2_bitset: str = "auto",
     color_mode: str = "wl",
     max_wl_rounds: int = 10,
+    progress: bool = False,
+    progress_every: int = 2048,
 ) -> list[Gate]:
     """
     Return up to k automorphisms preserving S and the vector set. See flags above.
@@ -93,5 +91,7 @@ def find_clifford_symmetries(
         p2_bitset=p2_bitset,
         color_mode=color_mode,
         max_wl_rounds=max_wl_rounds,
-        dynamic_refine_every=int(dynamic_refine_every)
+        dynamic_refine_every=int(dynamic_refine_every),
+        progress=progress,
+        progress_every=int(progress_every),
     )

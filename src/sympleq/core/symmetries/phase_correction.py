@@ -46,9 +46,7 @@ def solve_phase_vector_h_from_residual(
     if dims.size and np.all(dims == dims[0]):
         p_uni = int(dims[0])
 
-        # -------------------------
-        # QUBITS: modulus=4 but only even changes possible, so solve in GF(2) on delta/2
-        # -------------------------
+        # QUBITS: modulus=4 but only even changes possible by Pauli conjugation, so solve in GF(2) on delta/2
         if p_uni == 2:
             # delta must be even for a Pauli-frame correction to exist
             if np.any(b & 1):
@@ -216,8 +214,8 @@ def clifford_phase_decomposition(F: np.ndarray, h_F: np.ndarray,
                                  l_T: np.ndarray | None = None):
     """
     Inputs:
-      F,h_F : target Clifford (symplectic F, phase vector h_F) with phases mod 2d
-      S,T   : symplectics satisfying F = T S T^{-1}
+      F, h_F : target Clifford (symplectic F, phase vector h_F) with phases mod 2d
+      S, T   : symplectics satisfying F = T S T^{-1}
       d     : qudit dimension
       l_T   : optional gauge vector added to h_T (default 0)
 

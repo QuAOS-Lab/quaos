@@ -12,7 +12,7 @@ from sympleq.core.paulis import PauliSum
 from sympleq.core.circuits import Gate
 from sympleq.core.graphs.graph_coloring import _wl_colors_from_S
 from sympleq.core.symmetries.phase_correction import solve_phase_vector_h_from_residual
-
+from sympleq.core.graphs.dynamic_refine_search import dynamic_refine_individualized
 
 @njit(cache=True, fastmath=True)
 def _consistent_numba(S_mod: np.ndarray, phi: np.ndarray, mapped_idx: np.ndarray, i: int, y: int) -> bool:
@@ -146,6 +146,60 @@ def _check_code_automorphism(
         Gp = G[:, pi]
         return np.array_equal(U @ Gp, G)
 
+def _coeff_ids(coeffs: np.ndarray | None) -> np.ndarray | None:
+    if coeffs is None:
+        return None
+    # map arbitrary coefficient objects -> stable small ints
+    _, ids = np.unique(coeffs, return_inverse=True)
+    return ids.astype(np.int64)
+
+def _choose_base_anchors(base_classes: dict[int, list[int]], max_anchors: int) -> list[int]:
+    """
+    Choose anchors from *small* color classes first (most discriminative).
+    """
+    anchors = []
+    # colors sorted by class size ascending
+    for c in sorted(base_classes.keys(), key=lambda cc: len(base_classes[cc])):
+        if not base_classes[c]:
+            continue
+        anchors.append(int(base_classes[c][0]))
+        if len(anchors) >= max_anchors:
+            break
+    return anchors
+
+def _compute_anchor_hash(
+    S_mod: np.ndarray,
+    anchors: np.ndarray,          # shape (A,)
+    base_colors: np.ndarray,      # shape (M,)
+    coeff_id: np.ndarray | None,  # shape (M,) or None
+    seed: int = 0,
+) -> np.ndarray:
+    """
+    Compute a 64-bit hash per vertex from (base_color, coeff_id, S[v,anchors], S[anchors,v]).
+    This is for ordering only; collisions are fine.
+    Cost: O(M*A).
+    """
+    M = S_mod.shape[0]
+    A = anchors.size
+    # features: [base_color, coeff_id?, S_v_to_a..., S_a_to_v...]
+    width = 1 + (1 if coeff_id is not None else 0) + 2 * A
+    feats = np.empty((M, width), dtype=np.int16)
+
+    col = 0
+    feats[:, col] = base_colors.astype(np.int16, copy=False); col += 1
+    if coeff_id is not None:
+        feats[:, col] = coeff_id.astype(np.int16, copy=False); col += 1
+
+    feats[:, col:col + A] = S_mod[:, anchors].astype(np.int16, copy=False); col += A
+    feats[:, col:col + A] = S_mod[anchors, :].T.astype(np.int16, copy=False); col += A
+
+    rng = np.random.default_rng(seed)
+    w = rng.integers(1, np.iinfo(np.uint64).max, size=width, dtype=np.uint64)
+    # 64-bit dot product hash
+    h = (feats.astype(np.uint64) * w).sum(axis=1, dtype=np.uint64)
+    return h
+
+
 
 @dataclass
 class _LeafContext:
@@ -259,7 +313,9 @@ def _check_leaf(pi: np.ndarray,
         return None
     if not np.all(np.isclose(H_out_cf.weights, ctx.ref_weights, atol=1e-8, rtol=0)):
         return None
-    # Omega = np.zeros((2 * nq, 2 * nq), dtype=int)   # This has caused rare failures on known symmetries ... ???
+
+    # unnecessary to check this separately since it's implied by the tableau and phase checks
+    # Omega = np.zeros((2 * nq, 2 * nq), dtype=int)
     # Omega[:nq, nq:] = np.eye(nq, dtype=int)
     # Omega[nq:, :nq] = -np.eye(nq, dtype=int)
     # if np.all(((ctx.p - 1) * np.diag(F @ Omega @ F.T) + h_tot % 2) != 0):
@@ -274,10 +330,12 @@ def clifford_graph_automorphism_search(
     pauli_sum: PauliSum,
     k_wanted: int,
     dynamic_refine_every: int = 0,
-    extra_column_invariants: str = "none",
+    extra_column_invariants: str = "hist",
     p2_bitset: str | bool = "auto",
     color_mode: str = "wl",   # "wl" | "coeffs_only" | "none"
     max_wl_rounds: int = 10,
+    progress: bool = False,
+    progress_every: int = 2048,
 ) -> list[Gate]:
     """
     Find up to k automorphisms preserving S and the vector set.
@@ -303,18 +361,76 @@ def clifford_graph_automorphism_search(
     p = int(pauli.lcm)
     n = len(labels)
 
+    G_mod2: np.ndarray | None = None
+    if p == 2:
+        G_mod2 = (np.asarray(G, dtype=np.uint8) & 1)
     col_invariants = None
     if extra_column_invariants != "none":
-        G_for_inv = G.copy()
-        if extra_column_invariants == "hist":
-            inv = np.zeros((n, min(p, 16)), dtype=np.int64)
+        # parse tokens like "hist+lc" or "hist,lc"
+        toks = {t.strip().lower() for t in extra_column_invariants.replace(",", "+").split("+") if t.strip()}
+        if "none" in toks:
+            toks.remove("none")
+
+        feats: list[np.ndarray] = []
+
+        if "hist" in toks:
+            inv_hist = np.zeros((n, min(p, 16)), dtype=np.int64)
+            # Use an int view for bincount
+            if p == 2 and G_mod2 is not None:
+                G_for_hist = G_mod2
+            else:
+                G_for_hist = (np.asarray(G, dtype=int) % p)
             for j in range(n):
-                col = np.array([int(x) for x in G_for_inv[:, j]])
+                col = np.asarray(G_for_hist[:, j], dtype=int)
                 cnt = np.bincount(col, minlength=p)
-                inv[j, :min(p, 16)] = cnt[:min(p, 16)]
-            col_invariants = inv
-        else:
-            raise ValueError("extra_column_invariants must be 'none' or 'hist'.")
+                inv_hist[j, :min(p, 16)] = cnt[:min(p, 16)]
+            feats.append(inv_hist)
+
+        if ("lc" in toks) or ("loop_coloop" in toks) or ("loops_coloops" in toks):
+            # loop: column is zero
+            if p == 2 and G_mod2 is not None:
+                is_loop = np.all(G_mod2 == 0, axis=0)
+            else:
+                G_int = (np.asarray(G, dtype=int) % p)
+                is_loop = np.all(G_int == 0, axis=0)
+
+            # coloop: only defined meaningfully relative to the chosen basis_order
+            # We compute it cheaply via X = C^{-1} G in basis coordinates.
+            is_coloop = np.zeros(n, dtype=bool)
+            try:
+                lab_to_idx = {lab: i for i, lab in enumerate(labels)}
+                B_cols = np.array([lab_to_idx[b] for b in basis_order], dtype=int)
+                B_mask = np.zeros(n, dtype=bool)
+                B_mask[B_cols] = True
+                nonB = np.where(~B_mask)[0]
+
+                if p == 2 and G_mod2 is not None:
+                    C = G_mod2[:, B_cols]
+                    C_inv = _gf2_inv(C)
+                    X = (C_inv @ G_mod2) & 1
+                    # basis element is a coloop iff its row is zero on all non-basis columns
+                    basis_row_used = np.any(X[:, nonB] != 0, axis=1) if nonB.size else np.zeros(X.shape[0], dtype=bool)
+                else:
+                    C = G[:, B_cols]
+                    U = np.linalg.inv(C)  # works for galois.FieldArray
+                    X = U @ G
+                    X_np = np.asarray(X, dtype=int) % p
+                    basis_row_used = np.any(X_np[:, nonB] != 0, axis=1) if nonB.size else np.zeros(X_np.shape[0], dtype=bool)
+
+                is_coloop[B_cols] = ~basis_row_used
+            except Exception:
+                # If anything goes wrong (should be rare), fall back to "unknown" (no pruning).
+                # This preserves correctness; it just weakens early pruning.
+                pass
+
+            inv_lc = np.stack([is_loop.astype(np.int64), is_coloop.astype(np.int64)], axis=1)
+            feats.append(inv_lc)
+
+        if toks - {"hist", "lc", "loop_coloop", "loops_coloops"}:
+            raise ValueError("extra_column_invariants must be 'none', 'hist', 'lc', or 'hist+lc'.")
+
+        if feats:
+            col_invariants = np.hstack(feats) if len(feats) > 1 else feats[0]
 
     base_colors, base_classes = _build_base_partition(
         S_mod, p,
@@ -323,6 +439,11 @@ def clifford_graph_automorphism_search(
         max_rounds=max_wl_rounds,
         color_mode=color_mode,
     )
+
+    coeff_id = _coeff_ids(coeffs)
+    base_anchors = _choose_base_anchors(base_classes, max_anchors=32)  # tune 16–64
+    anchors = np.array(base_anchors, dtype=np.int64)
+    key_hash = _compute_anchor_hash(S_mod, anchors, base_colors, coeff_id, seed=0)
 
     use_bitset = (p == 2 and (p2_bitset is True or (p2_bitset == "auto" and n <= 256)))
 
@@ -406,6 +527,11 @@ def clifford_graph_automorphism_search(
             key = (int(base_colors[y_idx]), coeffs[y_idx])
             rem_counts[key] += 1
 
+    def _bucket_key(idx: int) -> Any:
+        if coeffs is None:
+            return int(base_colors[idx])
+        return (int(base_colors[idx]), coeffs[idx])
+
     def select_next() -> int:
         # MRV measured against remaining count in the relevant color/coeff bucket
         best_i, best_rem = -1, 10**9
@@ -452,11 +578,20 @@ def clifford_graph_automorphism_search(
     )
 
     def dynamic_refine():
-        nonlocal cur_colors
+        nonlocal anchors, key_hash
         if dynamic_refine_every <= 0:
             return
-        # 1-WL just to order
-        cur_colors = _wl_colors_from_S(S_mod, int(2), coeffs=coeffs, col_invariants=None, max_rounds=1)
+        # augment anchors with up to K mapped domain vertices (individualization)
+        mapped = np.where(phi >= 0)[0]
+        K = 16  # add at most 16 individualized anchors per refresh
+        extra = mapped[:K].astype(np.int64, copy=False)
+        anchors_new = np.unique(np.concatenate([anchors, extra]))
+        # cap total anchors
+        Amax = 64
+        if anchors_new.size > Amax:
+            anchors_new = anchors_new[:Amax]
+        anchors = anchors_new
+        key_hash = _compute_anchor_hash(S_mod, anchors, base_colors, coeff_id, seed=0)
 
     @dataclass
     class _DFSFrame:
@@ -464,6 +599,7 @@ def clifford_graph_automorphism_search(
         bi: int
         mapped_idx: np.ndarray
         candidate: list[int]
+        branch_leaf_mass: int = 0
         idx: int = 0  # next candidate index to try
         assigned_y: int = -1  # -1 means "unassigned"
 
@@ -489,72 +625,155 @@ def clifford_graph_automorphism_search(
         if i < 0:
             return None
         bi = int(base_colors[i])
+        bkey = _bucket_key(i)
         mapped_idx = np.where(phi >= 0)[0].astype(np.int64)
 
         candidate = [y for y in base_classes[bi] if not used[y]]
         if coeffs is not None:
             candidate = [y for y in candidate if coeffs[i] == coeffs[y]]
-        candidate.sort(key=lambda y: cur_colors[y])
+        cand = np.array(candidate, dtype=np.int64)
+        cand = cand[np.argsort(key_hash[cand], kind="mergesort")]
+        candidate = cand.tolist()
 
-        return _DFSFrame(i=i, bi=bi, mapped_idx=mapped_idx, candidate=candidate)
+        branch_leaf_mass = 0
+        if progress_enabled:
+            rem_i = int(rem_counts.get(bkey, 0))
+            if rem_i > 0:
+                state_leaf_mass = 1
+                for cnt in rem_counts.values():
+                    state_leaf_mass *= factorials[int(cnt)]
+                branch_leaf_mass = state_leaf_mass // rem_i
+
+        return _DFSFrame(
+            i=i,
+            bi=bi,
+            mapped_idx=mapped_idx,
+            candidate=candidate,
+            branch_leaf_mass=int(branch_leaf_mass),
+        )
 
     # Iterative DFS
+    progress_bar = None
+    pending_progress = 0
+    leaves_checked = 0
+    progress_enabled = bool(progress)
+    factorials: list[int] = []
+    total_leaf_space = 0
+    explored_leaf_space = 0
+    if progress_enabled:
+        factorials = [1] * (n + 1)
+        for i in range(2, n + 1):
+            factorials[i] = factorials[i - 1] * i
+        total_leaf_space = 1
+        for cnt in rem_counts.values():
+            total_leaf_space *= factorials[int(cnt)]
+
+    def _progress_pct_string() -> str:
+        if total_leaf_space <= 0:
+            return "0.00%"
+        pct_x100 = (int(explored_leaf_space) * 10000) // int(total_leaf_space)
+        return f"{pct_x100 / 100:.2f}%"
+
+    if progress_enabled:
+        try:
+            from tqdm.auto import tqdm
+            progress_bar = tqdm(
+                total=None,
+                desc="Clifford automorphism search",
+                unit="node",
+                leave=False,
+                dynamic_ncols=True,
+                mininterval=0.2,
+            )
+            progress_bar.set_postfix(found=0, leaves=0, searched="0.00%", refresh=False)
+        except Exception:
+            progress_bar = None
+
     stack: list[_DFSFrame] = []
-    while True:
-        if len(results) >= k_wanted:
-            break
+    try:
+        while True:
+            if progress_bar is not None:
+                pending_progress += 1
+                if pending_progress >= progress_every:
+                    progress_bar.update(pending_progress)
+                    pending_progress = 0
+                    progress_bar.set_postfix(
+                        found=len(results),
+                        leaves=leaves_checked,
+                        searched=_progress_pct_string(),
+                        refresh=False,
+                    )
 
-        # Leaf check
-        if np.all(phi >= 0):
-            pi = phi.copy()
-            leaf = _check_leaf(pi, leaf_ctx)
-            if leaf is not None:
-                results.append(leaf)
-                break  # match previous behavior: stop after the first found symmetry
-            # leaf failed -> backtrack one level
-            if not stack:
+            if len(results) >= k_wanted:
                 break
-            _undo_assignment(stack[-1])
-            continue
 
-        # Ensure there's a frame for the next variable.
-        if not stack or stack[-1].assigned_y >= 0:
-            fr = _make_frame()
-            if fr is None:
-                # No variable to assign or no candidates: fail this branch.
+            # Leaf check
+            if np.all(phi >= 0):
+                leaves_checked += 1
+                if progress_enabled:
+                    explored_leaf_space += 1
+                pi = phi.copy()
+                leaf = _check_leaf(pi, leaf_ctx)
+                if leaf is not None:
+                    results.append(leaf)
+                    break  # match previous behavior: stop after the first found symmetry
+                # leaf failed -> backtrack one level
                 if not stack:
                     break
                 _undo_assignment(stack[-1])
                 continue
-            stack.append(fr)
 
-        frame = stack[-1]
+            # Ensure there's a frame for the next variable.
+            if not stack or stack[-1].assigned_y >= 0:
+                fr = _make_frame()
+                if fr is None:
+                    # No variable to assign or no candidates: fail this branch.
+                    if not stack:
+                        break
+                    _undo_assignment(stack[-1])
+                    continue
+                stack.append(fr)
 
-        # Try candidates for this frame's variable i.
-        assigned = False
-        while frame.idx < len(frame.candidate):
-            y = int(frame.candidate[frame.idx])
-            frame.idx += 1
-            if used[y]:
+            frame = stack[-1]
+
+            # Try candidates for this frame's variable i.
+            assigned = False
+            while frame.idx < len(frame.candidate):
+                y = int(frame.candidate[frame.idx])
+                frame.idx += 1
+                if used[y]:
+                    continue
+                if not consistency(phi, frame.mapped_idx, frame.i, y):
+                    if progress_enabled and frame.branch_leaf_mass > 0:
+                        explored_leaf_space += frame.branch_leaf_mass
+                    continue
+
+                phi[frame.i] = y
+                used[y] = True
+                _dec_count(y)
+                frame.assigned_y = y
+                assigned = True
+                break
+
+            if assigned:
+                # descend; next loop iteration will create/advance the next frame
                 continue
-            if not consistency(phi, frame.mapped_idx, frame.i, y):
-                continue
 
-            phi[frame.i] = y
-            used[y] = True
-            _dec_count(y)
-            frame.assigned_y = y
-            assigned = True
-            break
-
-        if assigned:
-            # descend; next loop iteration will create/advance the next frame
-            continue
-
-        # No candidates left for this variable -> pop frame (no assignment) and backtrack.
-        stack.pop()
-        if not stack:
-            break
-        _undo_assignment(stack[-1])
+            # No candidates left for this variable -> pop frame (no assignment) and backtrack.
+            stack.pop()
+            if not stack:
+                break
+            _undo_assignment(stack[-1])
+    finally:
+        if progress_bar is not None:
+            if pending_progress:
+                progress_bar.update(pending_progress)
+            progress_bar.set_postfix(
+                found=len(results),
+                leaves=leaves_checked,
+                searched=_progress_pct_string(),
+                refresh=False,
+            )
+            progress_bar.close()
 
     return results[:k_wanted]
