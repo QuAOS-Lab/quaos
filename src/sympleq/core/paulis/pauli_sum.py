@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import overload, Sequence, TYPE_CHECKING, Union
+from typing import overload, Sequence, TYPE_CHECKING, Union, Optional
 import numpy as np
 import math
 import scipy.sparse as sp
@@ -23,9 +23,9 @@ class PauliSum(PauliObject):
     @classmethod
     def from_tableau(cls,
                      tableau: TableauType,
-                     dimensions: DimensionsVariant | None = None,
-                     weights: WeightsVariant | None = None,
-                     phases: PhasesVariant | None = None
+                     dimensions: Optional[DimensionsVariant],
+                     weights: Optional[WeightsVariant],
+                     phases: Optional[PhasesVariant]
                      ) -> PauliSum:
         """
         Create a PauliSum instance from a tableau.

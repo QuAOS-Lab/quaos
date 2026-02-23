@@ -4,10 +4,10 @@ import numpy as np
 import re
 import scipy.sparse as sp
 
-from sympleq.utils import bases_to_int
 from .pauli_object import PauliObject
 from .pauli import Pauli
 from .constants import DEFAULT_QUDIT_DIMENSION
+from .bases_manipulation import bases_to_int
 
 if TYPE_CHECKING:
     from .pauli_sum import PauliSum
@@ -15,9 +15,7 @@ if TYPE_CHECKING:
 
 class PauliString(PauliObject):
     @classmethod
-    def from_exponents(cls,
-                       x_exp: list[int] | np.ndarray | int,
-                       z_exp: list[int] | np.ndarray | int,
+    def from_exponents(cls, x_exp: list[int] | np.ndarray | int, z_exp: list[int] | np.ndarray | int,
                        dimensions: list[int] | np.ndarray | int | None = None) -> PauliString:
         """
         Create a PauliString instance from X and Z exponents.
