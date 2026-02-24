@@ -3,7 +3,7 @@ from sympleq import complex_phase_value
 from sympleq.core.paulis import PauliSum
 from sympleq.applications.measurement.allocation import scale_variances
 from sympleq.applications.measurement.covariance_graph import graph
-from sympleq.core.paulis.utils import covariance_matrix
+from sympleq.core.paulis import covariance_matrix
 # from sympleq.core.statistic_utils import true_covariance_graph
 
 
