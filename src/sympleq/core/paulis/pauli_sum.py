@@ -7,7 +7,7 @@ import galois
 import warnings
 from pathlib import Path
 
-from sympleq.utils import int_to_bases
+from sympleq import complex_phase_value, int_to_bases
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 from .pauli_object import PauliObject
 from .pauli_string import PauliString
@@ -75,7 +75,10 @@ class PauliSum(PauliObject):
         return P
 
     @classmethod
-    def from_hilbert_space(cls, matrix: np.ndarray, dimensions: list[int] | np.ndarray, threshold: int = 9) -> PauliSum:
+    # FIXME: matrix should be sparse to speed up everything!
+    def from_hilbert_space(cls, matrix: np.ndarray,
+                           dimensions: list[int] | np.ndarray,
+                           threshold: int = 12) -> PauliSum:
         """
         Create a PauliSum instance from its Hilbert space matrix representation.
 
@@ -1145,7 +1148,7 @@ class PauliSum(PauliObject):
                 h_next = self.xz_mat(dim, X, Z)
                 h = sp.csr_matrix(sp.kron(h, h_next, format="csr"))
 
-            e = np.exp(phase * 2 * np.pi * 1j / (2 * self.lcm)) * self.weights[i]
+            e = complex_phase_value(phase, self.lcm) * self.weights[i]
             list_of_pauli_matrices.append(e * h)
 
         h = list_of_pauli_matrices[0]
@@ -1453,15 +1456,13 @@ class PauliSum(PauliObject):
         scipy.sparse.csr_matrix
             Generalized Pauli matrix
         """
-        omega = np.exp(2 * np.pi * 1j / d)
-        aa0 = np.array([1 for i in range(d)])
+        omega = complex_phase_value(2 * 1, d)
+        aa0 = np.array([1 for _ in range(d)])
         aa1 = np.array([i for i in range(d)])
         aa2 = np.array([(i - aX) % d for i in range(d)])
+        aa3 = np.array([omega**(i * aZ) for i in range(d)])
         X = sp.csr_matrix((aa0, (aa1, aa2)))
-        aa0 = np.array([omega**(i * aZ) for i in range(d)])
-        aa1 = np.array([i for i in range(d)])
-        aa2 = np.array([i for i in range(d)])
-        Z = sp.csr_matrix((aa0, (aa1, aa2)))
+        Z = sp.csr_matrix((aa3, (aa1, aa1)))
         # if (d == 2) and (aX % 2 == 1) and (aZ % 2 == 1):
         #    return 1j * (X @ Z)
         return X @ Z
