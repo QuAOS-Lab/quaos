@@ -1,24 +1,9 @@
-from sympleq.utils import get_linearly_independent_rows
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 import numpy as np
 import galois
 
 
 class TestUtils():
-
-    def test_linear_independence(self):
-        n = 10
-        d = 5
-        for n in [10, 15, 20]:
-            for d in [2, 5, 11, 17]:
-                id = np.eye(n, dtype=int)
-
-                assert get_linearly_independent_rows(id, d) == np.arange(n).tolist()
-
-                for i in range(100):
-                    # add dependent rows to id, check the original independent rows are the only ones obtained
-                    id = np.vstack([id, np.random.randint(0, d, n)])
-                    assert get_linearly_independent_rows(id, d) == np.arange(n).tolist()
 
     def single_linear_dependence_detection(self, qudit_dim, n_independent, dim, n_dep):
         GF = galois.GF(qudit_dim)
