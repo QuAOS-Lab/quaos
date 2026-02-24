@@ -1,25 +1,30 @@
-from sympleq._typing import ScalarType, IntNDArray, ComplexNDArray, IntArrayVariant, ComplexArrayVariant
+from sympleq._typing import (
+    ScalarType, IntNDArray, ComplexNDArray, IntArrayLike, ComplexArrayLike, ComplexSparseMatrix, ComplexSparseMatrixLike
+)
 
 __all__ = [
     'ScalarType',
     'TableauType',
-    'TableauVariant',
+    'TableauLike',
     'PhasesType',
-    'PhasesVariant',
+    'PhasesLike',
     'DimensionsType',
-    'DimensionsVariant',
+    'DimensionsLike',
     'WeightsType',
-    'WeightsVariant'
+    'WeightsLike'
 ]
 
 TableauType = IntNDArray
-TableauVariant = IntArrayVariant
+TableauLike = IntArrayLike
 
 PhasesType = IntNDArray
-PhasesVariant = IntArrayVariant
+PhasesLike = IntArrayLike
 
 DimensionsType = IntNDArray
-DimensionsVariant = IntArrayVariant
+DimensionsLike = IntArrayLike
 
 WeightsType = ComplexNDArray
-WeightsVariant = ComplexArrayVariant
+WeightsLike = ComplexArrayLike
+
+HilbertOperator = ComplexSparseMatrix
+HilbertOperatorLike = ComplexSparseMatrixLike

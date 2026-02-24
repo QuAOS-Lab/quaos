@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import overload, Sequence, TYPE_CHECKING, Union, Optional
+from typing import overload, Sequence, TYPE_CHECKING, Union
 import numpy as np
 import math
 import scipy.sparse as sp
@@ -12,7 +12,7 @@ from sympleq.core.finite_field_solvers import get_linear_dependencies
 from .pauli_object import PauliObject
 from .pauli_string import PauliString
 from .pauli import Pauli
-from ._typing import ScalarType, TableauType, DimensionsVariant, PhasesVariant, WeightsVariant
+from ._typing import ScalarType, TableauType, DimensionsLike, PhasesLike, WeightsLike
 from .constants import DEFAULT_QUDIT_DIMENSION
 
 if TYPE_CHECKING:
@@ -23,9 +23,9 @@ class PauliSum(PauliObject):
     @classmethod
     def from_tableau(cls,
                      tableau: TableauType,
-                     dimensions: Optional[DimensionsVariant],
-                     weights: Optional[WeightsVariant],
-                     phases: Optional[PhasesVariant]
+                     dimensions: DimensionsLike | None = None,
+                     weights: WeightsLike | None = None,
+                     phases: PhasesLike | None = None
                      ) -> PauliSum:
         """
         Create a PauliSum instance from a tableau.

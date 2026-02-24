@@ -2,12 +2,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import functools
 import numpy as np
-from typing import Self, Union, TYPE_CHECKING, Optional
+from typing import Self, Union, TYPE_CHECKING
 if TYPE_CHECKING:
     from .pauli_sum import PauliSum
 
 from .constants import DEFAULT_QUDIT_DIMENSION
-from ._typing import ScalarType, TableauType, DimensionsVariant, PhasesVariant, WeightsVariant
+from ._typing import ScalarType, TableauType, DimensionsLike, PhasesLike, WeightsLike
 
 PauliOrScalarType = Union['PauliObject', ScalarType]
 
@@ -16,9 +16,9 @@ PauliOrScalarType = Union['PauliObject', ScalarType]
 class PauliObject(ABC):
     def __init__(self,
                  tableau: TableauType,
-                 dimensions: Optional[DimensionsVariant],
-                 weights: Optional[WeightsVariant],
-                 phases: Optional[PhasesVariant]):
+                 dimensions: DimensionsLike | None = None,
+                 weights: WeightsLike | None = None,
+                 phases: PhasesLike | None = None):
         """
         Initialize a PauliObject represented in symplectic tableau form.
 
