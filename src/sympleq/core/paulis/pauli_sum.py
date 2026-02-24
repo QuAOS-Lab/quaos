@@ -1226,7 +1226,7 @@ class PauliSum(PauliObject):
         normalized_states = (states / np.linalg.norm(states, axis=1, keepdims=True))
 
         # Check normalization
-        assert np.allclose(np.linalg.norm(normalized_states, axis=0), 1.0,
+        assert np.allclose(np.linalg.norm(normalized_states, axis=1), 1.0,
                            rtol=1e-10), "Eigenvectors are not normalized."
         # Check eigenvalues are real - Hermitian matrix!
         assert np.allclose(np.imag(energies), 0.0, rtol=1e-10), "Energies are not real, but the matrix is Hermitian."

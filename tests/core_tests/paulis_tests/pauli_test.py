@@ -1188,7 +1188,7 @@ class TestPaulis:
 
             m = p.to_hilbert_space().toarray()
             assert np.allclose(m - m.conj().T, np.zeros(m.shape)), \
-                f"Matrix should be Hermitian for ordered_eigenspectrum test."
+                "Matrix should be Hermitian for ordered_eigenspectrum test."
             energies, states = p.ordered_eigenspectrum()
 
             assert len(energies) == len(states)
