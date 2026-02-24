@@ -1,6 +1,6 @@
-from sympleq.core.finite_field_solvers import get_linear_dependencies
 import numpy as np
 import galois
+from sympleq.core.finite_field_solvers import get_linear_dependencies
 
 
 class TestUtils():
