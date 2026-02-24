@@ -372,8 +372,6 @@ def covariance_matrix(P: PauliObject, psi: np.ndarray) -> np.ndarray:
     Args:
         P (PauliSum): The set of Pauli operators, represented as a PauliSum object, with associated weights.
         psi (np.ndarray): The state vector for which the covariance matrix is computed.
-        include_weights (bool): If True, the covariance values are multiplied
-        by the corresponding weights of the Pauli operators.
 
     Returns:
         np.ndarray: A 2D numpy array representing the covariance matrix of the Pauli operators with respect to
