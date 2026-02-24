@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import pytest
+from numpy.random import Generator as RNGGenerator, default_rng
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.paulis import PauliSum, PauliString, Pauli
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
@@ -9,6 +10,7 @@ from tests import PRIME_LIST, choose_random_dimensions
 
 
 N_tests = 30
+rng = default_rng()
 
 
 class TestPaulis:
@@ -1181,7 +1183,7 @@ class TestPaulis:
     def test_ordered_eigenspectrum(self):
         for _ in range(N_tests):
             dimensions = choose_random_dimensions(250)
-            n_paulis = random.randint(1, 100)
+            n_paulis = rng.integers(1, 100)
 
             p = PauliSum.from_random(n_paulis, dimensions, rand_weights=False).make_hermitian()
             assert p.is_hermitian(), "PauliSum should be Hermitian for ordered_eigenspectrum test."
@@ -1215,7 +1217,7 @@ class TestPaulis:
     @pytest.mark.skip()
     def test_stabilizer_to_hilbert_space(self):
         for _ in range(N_tests):
-            dimensions = [2] * random.randint(1, 5)
+            dimensions = [2] * rng.integers(1, 5)
             n_qubits = len(dimensions)
 
             # P = PauliSum.from_random(n_paulis, dimensions, rand_weights=False).make_hermitian()
