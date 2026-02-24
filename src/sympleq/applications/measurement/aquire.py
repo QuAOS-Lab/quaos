@@ -13,7 +13,6 @@ from sympleq.applications.measurement.aquire_utils import (calculate_mean_estima
                                                            calculate_statistical_variance_estimate,
                                                            calculate_systematic_variance_estimate,
                                                            true_statistical_variance, config_params, aquire_params)
-# from sympleq.core.statistic_utils import true_mean
 from sympleq.core.circuits import Circuit
 from sympleq.utils import int_to_bases
 from sympleq.core.paulis.utils import hamiltonian_mean

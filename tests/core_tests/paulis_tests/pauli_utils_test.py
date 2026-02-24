@@ -1,13 +1,13 @@
 import numpy as np
-import random
 import pytest
+from numpy.random import Generator as RNGGenerator, default_rng
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.paulis import PauliSum, check_mappable_via_clifford, mod_inv, hamiltonian_mean, covariance_matrix
-# from sympleq.core.paulis.utils import row_reduce_mod_d
 from tests import choose_random_dimensions
 
 
 N_tests = 30
+rng = default_rng()
 
 
 class TestUtils:
@@ -16,19 +16,19 @@ class TestUtils:
         for _ in range(N_tests):
             dimensions = choose_random_dimensions(250)
             n_qudits = len(dimensions)
-            n_paulis = random.randint(1, max(2, 2 * n_qudits ** 2))
+            n_paulis = rng.integers(1, max(2, 2 * n_qudits ** 2))
 
-            P1 = PauliSum.from_random(n_paulis=n_paulis, dimensions=dimensions)
-            C = Circuit.from_random(n_gates=10 * n_qudits ** 2, dimensions=dimensions)
-            P2 = C.act(P1)
+            p1 = PauliSum.from_random(n_paulis=n_paulis, dimensions=dimensions)
+            c = Circuit.from_random(n_gates=10 * n_qudits ** 2, dimensions=dimensions)
+            p2 = c.act(p1)
 
-            assert check_mappable_via_clifford(P1, P2), (
-                f"Expected mapped PauliSum to be Clifford-mappable.\nP1:\n{P1}\nP2:\n{P2}"
+            assert check_mappable_via_clifford(p1, p2), (
+                f"Expected mapped PauliSum to be Clifford-mappable.\nP1:\n{p1}\nP2:\n{p2}"
             )
 
             # Build a modified target by adding a new PauliString that is not
             # already in P2; this should break mappability.
-            existing_tableau = P2.tableau
+            existing_tableau = p2.tableau
             while True:
                 candidate = PauliSum.from_random(1, dimensions)
                 candidate_tableau = candidate.tableau
@@ -36,17 +36,17 @@ class TestUtils:
                     extra_pauli = candidate
                     break
 
-            P2_not_mappable = P2 + extra_pauli
+            p2_not_mappable = p2 + extra_pauli
 
-            assert not check_mappable_via_clifford(P1, P2_not_mappable), (
-                "Expected non-mappability after adding a new PauliString to P2. "
+            assert not check_mappable_via_clifford(p1, p2_not_mappable), (
+                "Expected non-mappability after adding a new PauliString to p2. "
                 f"Added: {extra_pauli}"
             )
 
     def test_mod_inv(self):
         for _ in range(N_tests):
-            d = random.randint(2, 250)
-            a = random.randint(1, d - 1)
+            d = rng.integers(2, 250)
+            a = rng.integers(1, d - 1)
             inv_1 = None
             for i in range(1, d):
                 if (a * i) % d == 1:
@@ -67,13 +67,13 @@ class TestUtils:
             dimensions = choose_random_dimensions(25)
             m_size = int(np.prod(dimensions))
 
-            matrix = np.random.rand(m_size, m_size) + 1j * np.random.rand(m_size, m_size) + \
+            matrix = rng.random([m_size, m_size]) + 1j * rng.random([m_size, m_size]) + \
                 - (1 / 2) * (1 + 1j) * np.ones((m_size, m_size))
             matrix = matrix + matrix.conj().T
 
             P = PauliSum.from_hilbert_space(matrix, dimensions=dimensions)
 
-            state = np.random.rand(m_size) + 1j * np.random.rand(m_size) + \
+            state = rng.random(m_size) + 1j * rng.random(m_size) + \
                 - (1 / 2) * (1 + 1j) * np.ones((m_size))
             state /= np.linalg.norm(state)
 
@@ -91,22 +91,22 @@ class TestUtils:
             dimensions = choose_random_dimensions(25)
             m_size = int(np.prod(dimensions))
 
-            matrix = np.random.rand(m_size, m_size) + 1j * np.random.rand(m_size, m_size) + \
+            matrix = rng.random([m_size, m_size]) + 1j * rng.random([m_size, m_size]) + \
                 - (1 / 2) * (1 + 1j) * np.ones((m_size, m_size))
             matrix = matrix + matrix.conj().T
 
-            P = PauliSum.from_hilbert_space(matrix, dimensions=dimensions)
+            p = PauliSum.from_hilbert_space(matrix, dimensions=dimensions)
 
-            state = np.random.rand(m_size) + 1j * np.random.rand(m_size) + \
+            state = rng.random(m_size) + 1j * rng.random(m_size) + \
                 - (1 / 2) * (1 + 1j) * np.ones((m_size))
             state /= np.linalg.norm(state)
             state_dag = state.conj().T
 
             cov_1 = state_dag @ matrix @ matrix @ state - (state_dag @ matrix @ state) ** 2
-            cov_mat = covariance_matrix(P, state)
+            cov_mat = covariance_matrix(p, state)
             cov_2 = np.sum(cov_mat)
 
             assert np.isclose(cov_1, cov_2), (
                 f"Expected covariance matrix to match direct computation. "
-                f"Got {cov_1} vs {cov_2} for state {state} and PauliSum:\n{P}"
+                f"Got {cov_1} vs {cov_2} for state {state} and PauliSum:\n{p}"
             )

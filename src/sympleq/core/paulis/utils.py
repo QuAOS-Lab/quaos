@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.typing import NDArray
 from .pauli_object import PauliObject
 from .pauli_sum import PauliSum
 
@@ -30,8 +31,8 @@ def check_mappable_via_clifford(PauliSum: PauliSum,
     return bool(np.all(source_symplectic == target_symplectic))
 
 
-def mod_inv(a: int,
-            d: int
+def mod_inv(a: int | np.int64 | NDArray | np.integer,
+            d: int | np.int64 | NDArray | np.integer
             ) -> int:
     """
     Compute the modular multiplicative inverse of an integer.
@@ -63,6 +64,10 @@ def mod_inv(a: int,
     >>> mod_inv(10, 17)
     12
     """
+    if not isinstance(a, int):
+        a = int(a)
+    if not isinstance(d, int):
+        d = int(d)
     inv = pow(a, -1, d)
 
     return inv

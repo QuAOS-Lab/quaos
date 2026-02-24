@@ -69,7 +69,6 @@ class TestPauliSumFactories:
     def test_pauli_sum_from_pauli_objects(self):
         ps = PauliSum.from_random(3, 3, rand_phases=True)
         pauli_objects = [
-            # Pauli.Xnd(1, 3),
             Pauli.from_string('x1z0', 3),
             PauliString.from_string('x1z2', dimensions=3),
             ps
