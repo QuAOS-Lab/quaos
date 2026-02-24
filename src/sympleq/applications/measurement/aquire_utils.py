@@ -30,7 +30,7 @@ def calculate_mean_estimate(data: np.ndarray, weights: np.ndarray) -> float:
         total_counts = sum(data[i0, i0, i1] for i1 in range(d))
         if total_counts > 0:
             weighted_sum = sum(
-                data[i0, i0, i1] * complex_phase_value(i1, d, full=False)
+                data[i0, i0, i1] * complex_phase_value(2 * i1, d)
                 for i1 in range(d))
             mean += weights[i0] * (weighted_sum / total_counts)
         else:
