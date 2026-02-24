@@ -58,13 +58,17 @@ def check_mappable_via_clifford(PauliSum: PauliSum,
     bool
         True if the PauliSum can be mapped to the target PauliSum, False otherwise.
     """
-    return bool(
-        np.all(
-            PauliSum.symplectic_product_matrix() == target_PauliSum.symplectic_product_matrix()
-        )
-    )
+    source_symplectic = PauliSum.symplectic_product_matrix()
+    target_symplectic = target_PauliSum.symplectic_product_matrix()
+
+    if source_symplectic.shape != target_symplectic.shape:
+        return False
+
+    return bool(np.all(source_symplectic == target_symplectic))
 
 
+'''
+Seems this function is conflicting with the new definition of __get__ and is never used...
 def are_subsets_equal(PauliSum_1: PauliSum,
                       PauliSum_2: PauliSum,
                       subset_1: list[tuple[int, int]],
@@ -108,6 +112,7 @@ def are_subsets_equal(PauliSum_1: PauliSum,
         if PauliSum_1[subset_1[i]] != PauliSum_2[subset_2[i]]:
             return False
     return True
+'''
 
 
 '''
@@ -201,10 +206,14 @@ def mod_inv(a: int,
     >>> mod_inv(10, 17)
     12
     """
-    for i in range(1, d):
-        if (a * i) % d == 1:
-            return i
-    raise ValueError(f"No inverse for {a} mod {d}")
+    inv = pow(a, -1, d)
+
+    return inv
+
+
+'''
+IMPORTANT! This is something we may actually need.
+Right now the test for this function does not work. I may have messed up the test though...
 
 
 def row_reduce_mod_d(A: np.ndarray,
@@ -262,7 +271,11 @@ def row_reduce_mod_d(A: np.ndarray,
         pivots.append(col)
         rank += 1
     return A, pivots, rank
+'''
 
+
+'''
+Seems currently unused
 
 def solve_mod_d(A: np.ndarray,
                 b: np.ndarray,
@@ -333,6 +346,7 @@ def solve_mod_d(A: np.ndarray,
             break
 
     return solutions
+'''
 
 
 # PHYSICS FUNCTIONS
@@ -351,7 +365,7 @@ def hamiltonian_mean(P: PauliObject, psi: np.ndarray) -> float:
     return float(mu)
 
 
-def covariance_matrix(P: PauliObject, psi: np.ndarray, include_weights: bool = False) -> np.ndarray:
+def covariance_matrix(P: PauliObject, psi: np.ndarray) -> np.ndarray:
     """
     Computes the covariance matrix for a given set of Pauli operators and a quantum state.
 
@@ -367,21 +381,14 @@ def covariance_matrix(P: PauliObject, psi: np.ndarray, include_weights: bool = F
                     Pauli operators.
     """
     n_paulis = P.n_paulis()
-    if include_weights:
-        P = P.copy()
-        P.phase_to_weight()
-        weights = P.weights
-    else:
-        weights = np.ones(n_paulis)
+    # Recall that weights and phases are already included into the elements of pauli_strings!
     pauli_strings = [P.to_hilbert_space(i) for i in range(n_paulis)]
     psi_dag = psi.conj().T
     covariance_matrix = np.array(
         [
             [
-                np.conj(weights[i0]) * weights[i1] * (
-                    (psi_dag @ pauli_strings[i0].conj().T @ pauli_strings[i1] @ psi) -
-                    (psi_dag @ pauli_strings[i0].conj().T @ psi) * (psi_dag @ pauli_strings[i1] @ psi)
-                )
+                (psi_dag @ pauli_strings[i0].conj().T @ pauli_strings[i1] @ psi) -
+                (psi_dag @ pauli_strings[i0].conj().T @ psi) * (psi_dag @ pauli_strings[i1] @ psi)
                 for i1 in range(n_paulis)]
             for i0 in range(n_paulis)]
     )
