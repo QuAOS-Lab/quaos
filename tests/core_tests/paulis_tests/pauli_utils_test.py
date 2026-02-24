@@ -43,24 +43,6 @@ class TestUtils:
                 f"Added: {extra_pauli}"
             )
 
-    '''
-    def test_are_subset_equal(self):
-        for _ in range(N_tests):
-            dimensions = choose_random_dimensions(250)
-            n_qudits = len(dimensions)
-            n_paulis = random.randint(2, max(2, 2 * n_qudits ** 2))
-
-            P = PauliSum.from_random(n_paulis=n_paulis, dimensions=dimensions)
-
-            subset = [(random.randint(0, n_paulis - 1), random.randint(0, n_qudits - 1))
-                      for _ in range(random.randint(1, n_paulis - 1))
-                      for _ in range(random.randint(0, n_qudits - 1))]
-
-            subset = list(set(subset))  # Remove duplicates
-
-            assert are_subsets_equal(P, P, subset, subset), "Expected identical subsets to be equal."
-    '''
-
     def test_mod_inv(self):
         for _ in range(N_tests):
             d = random.randint(2, 250)
@@ -78,47 +60,6 @@ class TestUtils:
                 inv_2 = mod_inv(a, d)
                 assert inv_1 == inv_2, (f"Expected modular inverse to yield "
                                         f"{inv_1}, yet we got {inv_2} for a={a}, d={d}.")
-
-    '''
-    This test fails, but `row_reduce_mod_d` is currently unused.
-    The function is actually important, so we may want to keep that function and have more proper testing...
-
-    def test_row_reduce_mod_d(self):
-        prime_moduli = [2, 3, 5, 7, 11]
-
-        for _ in range(N_tests):
-            d = random.choice(prime_moduli)
-            m = random.randint(2, 5)
-            n = random.randint(2, 5)
-            target_rank = random.randint(1, min(m, n))
-
-            # Build M_0 already in reduced row-echelon form with known rank.
-            M_0 = np.zeros((m, n), dtype=int)
-            for pivot_row in range(target_rank):
-                M_0[pivot_row, pivot_row] = 1
-                if pivot_row + 1 < n:
-                    M_0[pivot_row, pivot_row + 1:] = np.random.randint(0, d, size=n - (pivot_row + 1))
-
-            # Create M_1 by applying random rank-preserving row operations modulo d.
-            M_1 = M_0.copy()
-            n_ops = random.randint(0, max(m, n) ** 2)
-            for _ in range(n_ops):
-                op_type = random.choice(["swap", "add"])
-
-                if op_type == "swap":
-                    r1, r2 = random.sample(range(m), 2)
-                    M_1[[r1, r2]] = M_1[[r2, r1]]
-
-                elif op_type == "add":
-                    src, dst = random.sample(range(m), 2)
-                    M_1[dst] = (M_1[dst] + M_1[src]) % d
-
-            _, _, rank_1 = row_reduce_mod_d(M_1, d)
-
-            assert rank_1 == target_rank, (
-                f"Rank mismatch after modular row operations. d={d}, expected rank={target_rank}, got rank={rank_1}."
-            )
-    '''
 
     def test_hamiltonian_mean(self):
         for _ in range(N_tests):

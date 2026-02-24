@@ -1,7 +1,6 @@
 from __future__ import annotations
 import numpy as np
 import scipy.sparse as sp
-from sympleq.utils import int_to_bases, bases_to_int
 from functools import reduce
 
 
@@ -286,61 +285,3 @@ def pauli_unitary_from_tableau(
     # Tensor product (left-to-right order matches locals_ order)
     U = reduce(lambda A, B: sp.kron(A, B, format="csr"), locals_)
     return sp.csr_matrix(U)
-
-
-'''
-def _mixed_radix_strides(dims: np.ndarray) -> np.ndarray:
-    """
-    strides[k] = product of dims[k+1:], with strides[-1] = 1.
-    Convention: linear index i = sum_k digits[k] * strides[k],
-    where digits[k] in [0, dims[k]-1], qudit 0 is most significant.
-    """
-    dims = np.asarray(dims, dtype=int)
-    q = len(dims)
-    strides = np.empty(q, dtype=int)
-    strides[-1] = 1
-    for k in range(q - 2, -1, -1):
-        strides[k] = strides[k + 1] * dims[k + 1]
-    return strides
-
-
-# This one we may keep for later - what's the difference with int_to_bases? What do the `strides` do?
-def _int_to_digits(i: int, dims: np.ndarray, strides: np.ndarray) -> np.ndarray:
-    """Decode linear index i to mixed-radix digits using the given strides."""
-    # digits[k] = (i // strides[k]) % dims[k]
-    return (i // strides) % dims
-
-
-# This one we may keep for later
-def _digits_to_int(digits: np.ndarray, strides: np.ndarray) -> int:
-    """Encode mixed-radix digits to linear index using the given strides."""
-    return int(np.dot(digits, strides))
-
-
-# This one can go
-def I_mat(d: int) -> sp.csr_matrix:
-    return sp.csr_matrix(np.diag([1] * d))
-
-
-# This one can go
-def SWAP_func(i: int, a0: int, a1: int, dims: np.ndarray) -> int:
-    """
-    Map a basis index i -> f(i) by swapping qudit positions a0 <-> a1
-    in a mixed-radix register with local dimensions `dims`.
-    """
-    dims = np.asarray(dims, dtype=int)
-    q = len(dims)
-    if not (0 <= a0 < q and 0 <= a1 < q and a0 != a1):
-        raise ValueError("Invalid swap positions a0, a1.")
-    strides = _mixed_radix_strides(dims)
-    digits = _int_to_digits(i, dims, strides).astype(int)
-    digits[a0], digits[a1] = digits[a1], digits[a0]
-    return _digits_to_int(digits, strides)
-
-
-# This one can go
-def CX_func(i, a0, a1, dims):
-    aa = int_to_bases(i, dims)
-    aa[a1] = (aa[a1] + aa[a0]) % dims[a1]
-    return bases_to_int(aa, dims)
-'''

@@ -1,13 +1,6 @@
 from __future__ import annotations
 import numpy as np
 import galois
-# from typing import TYPE_CHECKING
-
-'''
-if TYPE_CHECKING:
-    from sympleq.core.paulis import PauliSum
-    from sympleq.core.paulis import PauliObject
-'''
 
 
 def bases_to_int(base, dimensions) -> int:
@@ -115,22 +108,3 @@ def complex_phase_value(phase: int, dimension: int) -> complex:
         complex: The computed eigenvalue.
     """
     return np.exp(2 * np.pi * 1j * phase / (2 * dimension))
-
-
-'''
-def rand_state(dimension):
-    """
-    Generate a random quantum state vector for a system of dimension d.
-
-    Args:
-        d (int): Dimension of the quantum system.
-
-    Returns:
-        np.ndarray: A normalized random state vector in the complex space of size d.
-    """
-    gamma_sample = np.random.gamma(1, 1, int(dimension))
-    phases = np.random.uniform(0, 2 * np.pi, int(dimension))
-    normalized_state = np.sqrt(
-        gamma_sample / np.sum(gamma_sample)) * np.exp(1j * phases)
-    return normalized_state
-'''
