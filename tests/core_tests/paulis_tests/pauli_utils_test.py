@@ -46,7 +46,7 @@ class TestUtils:
     def test_mod_inv(self):
         for _ in range(N_tests):
             d = rng.integers(2, 250)
-            a = rng.integers(1, d - 1)
+            a = rng.integers(0, d)
             inv_1 = None
             for i in range(1, d):
                 if (a * i) % d == 1:
