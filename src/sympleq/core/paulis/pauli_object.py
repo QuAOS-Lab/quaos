@@ -813,7 +813,7 @@ class PauliObject(ABC):
         new_weights = np.zeros(self.n_paulis(), dtype=np.complex128)
         for i in range(self.n_paulis()):
             phase = self.phases[i]
-            omega = complex_phase_value(phase, self.lcm, full=True)
+            omega = complex_phase_value(phase, self.lcm)
             new_weights[i] = self.weights[i] * omega
         self._phases = np.zeros(self.n_paulis(), dtype=int)
         self._weights = new_weights
