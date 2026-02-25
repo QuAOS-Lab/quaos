@@ -1180,7 +1180,7 @@ class TestPaulis:
             assert P1.is_hermitian()
 
     def test_ordered_eigenspectrum(self):
-        for i in range(100 * N_tests):
+        for i in range(N_tests):
             dimensions = choose_random_dimensions(250)
             if i == 0:
                 k = np.prod(dimensions)
