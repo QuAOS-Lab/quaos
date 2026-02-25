@@ -1182,8 +1182,6 @@ class TestPaulis:
     def test_ordered_eigenspectrum(self):
         for i in range(N_tests):
             dimensions = choose_random_dimensions(250)
-            print(i)
-            print(np.prod(dimensions))
             if i == 0:
                 k = np.prod(dimensions)
             elif i == 1:
