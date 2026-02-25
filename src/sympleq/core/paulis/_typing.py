@@ -1,5 +1,5 @@
 from sympleq._typing import (
-    ScalarType, IntNDArray, ComplexNDArray, IntArrayLike, ComplexArrayLike, ComplexSparseMatrix, ComplexSparseMatrixLike
+    ScalarType, IntNDArray, ComplexNDArray, IntArrayLike, ComplexArrayLike, ComplexSparseMatrix
 )
 
 __all__ = [
@@ -27,4 +27,3 @@ WeightsType = ComplexNDArray
 WeightsLike = ComplexArrayLike
 
 HilbertOperator = ComplexSparseMatrix
-HilbertOperatorLike = ComplexSparseMatrixLike
