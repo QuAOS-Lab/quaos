@@ -1193,10 +1193,15 @@ class PauliSum(PauliObject):
             new_phases = (self.phases + np.array(phases)) % (2 * self.lcm)
             self._phases = new_phases
 
-    def ordered_eigenspectrum(self) -> tuple[np.ndarray, np.ndarray]:
+    def ordered_eigenspectrum(self, k: int | None = None) -> tuple[np.ndarray, np.ndarray]:
         """
-        Compute eigenvalues/eigenvectors of the PauliSum and (by default) pick
-        the ground-state energy (`only_gs` = `True`).
+        Compute the eigenvalues/eigenvectors of the PauliSum; by default it returns all eigenvectors,
+        but it can be restricted to the lowest `k` eigenvalues/eigenvectors by setting `k` to an integer.
+
+        Parameters
+        ----------
+        k : int
+            The number of eigenvalues and eigenvectors to return.
 
         Returns
         -------
@@ -1210,10 +1215,18 @@ class PauliSum(PauliObject):
             raise ValueError("Cannot find ground state for non-Hermitian PauliSum.")
 
         # Convert PauliSum to matrix form
-        m = self.to_hilbert_space().toarray()
+        m = self.to_hilbert_space()
+
+        if k is None:
+            k = m.shape[0]
 
         # Get eigenvalues and eigenvectors
-        val, vec = np.linalg.eigh(m)
+        if k >= m.shape[0] - 2:
+            val, vec = np.linalg.eigh(m.toarray())
+            val = val[:k]
+            vec = vec[:, :k]
+        else:
+            val, vec = sp.linalg.eigsh(m, k=k, which='SA')
         vec = np.transpose(vec)
 
         # Ordering
@@ -1223,7 +1236,7 @@ class PauliSum(PauliObject):
         normalized_states = (states / np.linalg.norm(states, axis=1, keepdims=True))
 
         # Check normalization
-        assert np.allclose(np.linalg.norm(normalized_states, axis=0), 1.0)
+        assert np.allclose(np.linalg.norm(normalized_states, axis=1), 1.0)
 
         return (energies, normalized_states)
 
