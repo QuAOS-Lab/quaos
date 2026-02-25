@@ -1215,18 +1215,18 @@ class PauliSum(PauliObject):
             raise ValueError("Cannot find ground state for non-Hermitian PauliSum.")
 
         # Convert PauliSum to matrix form
-        m = self.to_hilbert_space()
+        sparse_matrix = self.to_hilbert_space()
 
         if num_eigens is None:
-            num_eigens = m.shape[0]
+            num_eigens = sparse_matrix.shape[0]
 
         # Get eigenvalues and eigenvectors
-        if num_eigens >= m.shape[0] - 2:
-            val, vec = np.linalg.eigh(m.toarray())
+        if num_eigens >= sparse_matrix.shape[0] - 2:
+            val, vec = np.linalg.eigh(sparse_matrix.toarray())
             val = val[:num_eigens]
             vec = vec[:, :num_eigens]
         else:
-            val, vec = sp.linalg.eigsh(m, k=num_eigens, which='SA')
+            val, vec = sp.linalg.eigsh(sparse_matrix, k=num_eigens, which='SA')
         vec = np.transpose(vec)
 
         # Ordering
