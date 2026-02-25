@@ -7,7 +7,7 @@ import galois
 import warnings
 from pathlib import Path
 
-from sympleq.utils import int_to_bases
+from sympleq.utils import bases_to_int, int_to_bases
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 from .pauli_object import PauliObject
 from .pauli_string import PauliString
@@ -1229,11 +1229,11 @@ class PauliSum(PauliObject):
 
     def stabilizer_to_hilbert_space(self) -> sp.csr_matrix:
         """
-        Yield a sparse vector in the Hilbert space representation of the given stabilizer state written as a PauliSum.
+        Yield a sparse matrix in the Hilbert space representation of the given stabilizer state written as a PauliSum.
 
         Returns
         -------
-        sparse csr vector representing the stabilizer state.
+        sparse csr matrix representing the density matrix stabilizer state.
 
         Raises
         ------
@@ -1243,7 +1243,7 @@ class PauliSum(PauliObject):
         AssertionError
             If the PauliStrings in the PauliSum are not all-to-all commuting.
 
-        Warning
+        AssertionError
             If the number of PauliStrings is not equal to the number of qudits.
         """
 
@@ -1257,17 +1257,31 @@ class PauliSum(PauliObject):
 
         # Sanity check 3: number of PauliStrings may be equal to number of qudits
         if self.n_paulis() != self.n_qudits():
-            Warning("The number of PauliStrings is not equal to the number of qudits.")
-            if self.n_paulis() < self.n_qudits():
-                Warning("The stabilizer state is not uniquely defined, " +
-                        f"as the number of PauliStrings {self.n_paulis()} is less than the number " +
-                        f"of qudits {self.n_qudits()}.")
+            raise AssertionError("The number of PauliStrings is not equal to the number of qudits. "
+                                 "You may complete the stabilizer state by adding more PauliStrings to the PauliSum.")
 
-        _, states = self.ordered_eigenspectrum()
-        ground_state = states[0]
-        d = ground_state.size
+        # TODO: Find Clifford that maps the PauliSum to the computational basis and
+        #       generalize this function accordingly
+        n_qudits = self.n_qudits()
+        expected_tableau = np.zeros((n_qudits, 2 * n_qudits), dtype=int)
+        expected_tableau[:, n_qudits:] = np.eye(n_qudits, dtype=int)
+        if not np.array_equal(self.tableau, expected_tableau):
+            raise NotImplementedError(
+                "stabilizer_to_hilbert_space is currently implemented only for 0|1 tableau "
+                "(all-zero X block followed by identity Z block)."
+            )
 
-        return sp.csr_matrix(np.kron(ground_state.conj(), ground_state).reshape(d, d))
+        # the phases of the stabilizer state identify the computational state
+        phases = self.phases
+        dims = self.dimensions
+        # Find the corresponding index
+        base = [phase / (2 * self.lcm) * dims[idx] for idx, phase in enumerate(phases)]
+        index = bases_to_int(base, dims)
+        hilbert_dim = int(np.prod(dims))
+        # Generate the density matrix - as we are using density matrices rather than arrays (for the noise)
+        state = sp.csr_matrix(([1], ([index], [index])), shape=(hilbert_dim, hilbert_dim), dtype=complex)
+
+        return state
 
     def make_hermitian(self, in_place: bool = False) -> PauliSum:
         """

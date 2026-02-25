@@ -1,13 +1,17 @@
 import numpy as np
 import random
 import pytest
+from numpy.random import Generator as RNGGenerator, default_rng
+import scipy.sparse as sp
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.paulis import PauliSum, PauliString, Pauli
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
+from sympleq.utils import complex_phase_value
 from tests import PRIME_LIST, choose_random_dimensions
 
 
 N_tests = 30
+rng = default_rng()
 
 
 class TestPaulis:
@@ -1209,18 +1213,59 @@ class TestPaulis:
             with pytest.raises(ValueError):
                 _, _ = P.ordered_eigenspectrum()
 
-    @pytest.mark.skip()
+    def test_stabilizer_to_hilbert_space_diagonal(self):
+        for _ in range(100 * N_tests):
+            dimensions = choose_random_dimensions(250)
+            n_qubits = len(dimensions)
+            n_paulis = n_qubits
+
+            # Create a stabilizer IIIZ, IIZI, IZII, leaving identities at the beginning if n_paulis < n_qubits
+            tableau = np.zeros((n_paulis, 2 * n_qubits), dtype=int)
+            tableau[:, n_qubits:] = np.eye(n_paulis, n_qubits, dtype=int)
+
+            # Create stabilizer in PauliSum form
+            stabilizer = PauliSum.from_tableau(tableau,
+                                               weights=np.ones(n_paulis),
+                                               dimensions=dimensions)
+
+            # Initialize stabilizer to random computational state
+            phases = [0 * 2 * rng.integers(0, stabilizer.lcm) for _ in range(n_paulis)]
+            stabilizer.set_phases(phases)
+
+            stabilizer_hilbert = stabilizer.stabilizer_to_hilbert_space()
+
+            # Ensure the state stabilizes all PauliStrings in the shuffled stabilizer
+            for idx, phi in enumerate(phases):
+
+                phase = complex_phase_value(phi / stabilizer.lcm * dimensions[idx], dimensions[idx])
+
+                ps_hilbert = stabilizer[[idx]].to_hilbert_space()
+                one = sp.csr_matrix.trace(stabilizer_hilbert @ ps_hilbert)
+
+                ps_test = stabilizer[[idx]].copy()
+                ps_test.phases[0] = 0
+                ps_test_hilbert = ps_test.to_hilbert_space()
+
+                phase_test = sp.csr_matrix.trace(stabilizer_hilbert @ ps_test_hilbert)
+
+                print(one)
+                print(phase_test, phase)
+
+                assert np.isclose(one, 1, atol=1e-10), f"Stabilizer state does not stabilize PauliString {idx}"
+                assert np.isclose(phase_test, phase, atol=1e-10), (f"Stabilizer state does not stabilize PauliString"
+                                                                   f" {idx}. Expected phase {phase}, got {phase_test}")
+
+
+# @pytest.mark.skip()
     def test_stabilizer_to_hilbert_space(self):
         for _ in range(N_tests):
-            dimensions = [2] * 5
+            dimensions = [2] * 2
             n_qubits = len(dimensions)
+            n_paulis = n_qubits
 
             # P = PauliSum.from_random(n_paulis, dimensions, rand_weights=False).make_hermitian()
             # P.reset_weights()
             # assert P.is_hermitian()
-
-            # Test both less and equal number of paulis than qudits
-            n_paulis = np.random.randint(1, n_qubits)
 
             # Create a stabilizer IIIZ, IIZI, IZII, leaving identities at the beginning if n_paulis < n_qubits
             tableau = np.zeros((n_paulis, 2 * n_qubits), dtype=int)

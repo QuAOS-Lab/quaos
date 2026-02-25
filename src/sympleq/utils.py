@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from sympleq.core.paulis import PauliObject
 
 
-def bases_to_int(base, dimensions) -> int:
+def bases_to_int(base: list[int] | np.ndarray, dimensions: int | list[int] | np.ndarray) -> int:
     """
     Converts a list of integers (base) given the dimensions to an integer. Base can be thought of as a number
     in basis of the dimensions which is converted to a number in base 10.
@@ -33,6 +33,9 @@ def bases_to_int(base, dimensions) -> int:
         The integer that corresponds to the input base in the given
         dimensions.
     """
+    if isinstance(dimensions, int):
+        dimensions = [dimensions]
+
     # FIXME: maybe there is a way to avoid flipping twice?
     dimensions = np.flip(dimensions)
     base = np.flip(base)
