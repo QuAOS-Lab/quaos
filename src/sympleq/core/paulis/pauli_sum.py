@@ -1216,7 +1216,7 @@ class PauliSum(PauliObject):
         m = self.to_hilbert_space().toarray()
 
         # Get eigenvalues and eigenvectors
-        val, vec = np.linalg.eig(m)
+        val, vec = np.linalg.eigh(m)
         vec = np.transpose(vec)
 
         # Ordering
