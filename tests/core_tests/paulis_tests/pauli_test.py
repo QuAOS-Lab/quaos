@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import pytest
+from numpy.random import Generator as RNGGenerator, default_rng
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.paulis import PauliSum, PauliString, Pauli
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
@@ -8,6 +9,7 @@ from tests import PRIME_LIST, choose_random_dimensions
 
 
 N_tests = 30
+rng = default_rng()
 
 
 class TestPaulis:
@@ -1187,8 +1189,8 @@ class TestPaulis:
             elif i == 1:
                 k = np.prod(dimensions) - 1
             else:
-                k = random.randint(1, np.prod(dimensions) - 2)
-            n_paulis = random.randint(1, 5 * len(dimensions) ** 2)
+                k = rng.integers(1, np.prod(dimensions) - 2)
+            n_paulis = rng.integers(1, 5 * len(dimensions) ** 2)
 
             p = PauliSum.from_random(n_paulis, dimensions, rand_weights=True).make_hermitian()
             assert p.is_hermitian(), f"PauliSum {p} is not hermitian."
