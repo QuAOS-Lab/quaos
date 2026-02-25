@@ -1276,7 +1276,7 @@ class PauliSum(PauliObject):
                         f"as the number of PauliStrings {self.n_paulis()} is less than the number " +
                         f"of qudits {self.n_qudits()}.")
 
-        _, states = self.ordered_eigenspectrum()
+        _, states = self.ordered_eigenspectrum(k=1)
         ground_state = states[0]
         d = ground_state.size
 
