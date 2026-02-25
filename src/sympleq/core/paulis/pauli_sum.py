@@ -1193,7 +1193,7 @@ class PauliSum(PauliObject):
             new_phases = (self.phases + np.array(phases)) % (2 * self.lcm)
             self._phases = new_phases
 
-    def ordered_eigenspectrum(self, k: int | None = None) -> tuple[np.ndarray, np.ndarray]:
+    def ordered_eigenspectrum(self, num_eigens: int | None = None) -> tuple[np.ndarray, np.ndarray]:
         """
         Compute the eigenvalues/eigenvectors of the PauliSum; by default it returns all eigenvectors,
         but it can be restricted to the lowest `k` eigenvalues/eigenvectors by setting `k` to an integer.
@@ -1217,16 +1217,16 @@ class PauliSum(PauliObject):
         # Convert PauliSum to matrix form
         m = self.to_hilbert_space()
 
-        if k is None:
-            k = m.shape[0]
+        if num_eigens is None:
+            num_eigens = m.shape[0]
 
         # Get eigenvalues and eigenvectors
-        if k >= m.shape[0] - 2:
+        if num_eigens >= m.shape[0] - 2:
             val, vec = np.linalg.eigh(m.toarray())
-            val = val[:k]
-            vec = vec[:, :k]
+            val = val[:num_eigens]
+            vec = vec[:, :num_eigens]
         else:
-            val, vec = sp.linalg.eigsh(m, k=k, which='SA')
+            val, vec = sp.linalg.eigsh(m, k=num_eigens, which='SA')
         vec = np.transpose(vec)
 
         # Ordering
