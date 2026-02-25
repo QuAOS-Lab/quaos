@@ -1219,11 +1219,9 @@ class TestPaulis:
             n_qubits = len(dimensions)
             n_paulis = n_qubits
 
-            # Create a stabilizer IIIZ, IIZI, IZII, leaving identities at the beginning if n_paulis < n_qubits
+            # Create a stabilizer
             tableau = np.zeros((n_paulis, 2 * n_qubits), dtype=int)
             tableau[:, n_qubits:] = np.eye(n_paulis, n_qubits, dtype=int)
-
-            # Create stabilizer in PauliSum form
             stabilizer = PauliSum.from_tableau(tableau,
                                                weights=np.ones(n_paulis),
                                                dimensions=dimensions)
@@ -1231,6 +1229,8 @@ class TestPaulis:
             # Initialize stabilizer to random computational state
             phases = [0 * 2 * rng.integers(0, stabilizer.lcm) for _ in range(n_paulis)]
             stabilizer.set_phases(phases)
+
+            # Apply random Clifford gates to shuffle the stabilizer
 
             stabilizer_hilbert = stabilizer.stabilizer_to_hilbert_space()
 
