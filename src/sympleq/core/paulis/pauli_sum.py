@@ -1196,7 +1196,7 @@ class PauliSum(PauliObject):
     def ordered_eigenspectrum(self, num_eigens: int | None = None) -> tuple[np.ndarray, np.ndarray]:
         """
         Compute the eigenvalues/eigenvectors of the PauliSum; by default it returns all eigenvectors,
-        but it can be restricted to the lowest `num_eigens` eigenvalues/eigenvectors by setting `num_eigens` 
+        but it can be restricted to the lowest `num_eigens` eigenvalues/eigenvectors by setting `num_eigens`
         to an integer.
 
         Parameters
