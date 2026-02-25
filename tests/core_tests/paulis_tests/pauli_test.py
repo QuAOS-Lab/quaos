@@ -1180,7 +1180,7 @@ class TestPaulis:
             assert P1.is_hermitian()
 
     def test_ordered_eigenspectrum(self):
-        for i in range(N_tests):
+        for i in range(100 * N_tests):
             dimensions = choose_random_dimensions(250)
             if i == 0:
                 k = np.prod(dimensions)
@@ -1194,7 +1194,7 @@ class TestPaulis:
             assert p.is_hermitian(), f"PauliSum {p} is not hermitian."
 
             m = p.to_hilbert_space()
-            energies, states = p.ordered_eigenspectrum(k=k)
+            energies, states = p.ordered_eigenspectrum(num_eigens=k)
 
             assert len(energies) == len(states), f"Expected {k} eigenvalues and eigenvectors, " \
                 f"got {len(energies)} and {len(states)}."
