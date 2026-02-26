@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import pytest
+from numpy.random import Generator as RNGGenerator, default_rng
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.paulis import PauliSum, PauliString, Pauli
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
@@ -8,6 +9,7 @@ from tests import PRIME_LIST, choose_random_dimensions
 
 
 N_tests = 30
+rng = default_rng()
 
 
 class TestPaulis:
@@ -1178,22 +1180,32 @@ class TestPaulis:
             assert P1.is_hermitian()
 
     def test_ordered_eigenspectrum(self):
-        for _ in range(N_tests):
-            dimensions = [2, 3, 5, 7]
-            n_paulis = len(dimensions)
+        for i in range(N_tests):
+            dimensions = choose_random_dimensions(250)
+            if i == 0:
+                k = None
+            elif i == 1:
+                k = np.prod(dimensions) - 1
+            else:
+                k = rng.integers(1, np.prod(dimensions) - 2)
+            n_paulis = rng.integers(1, 5 * len(dimensions) ** 2)
 
-            P = PauliSum.from_random(n_paulis, dimensions, rand_weights=False).make_hermitian()
-            assert P.is_hermitian()
+            p = PauliSum.from_random(n_paulis, dimensions, rand_weights=True).make_hermitian()
+            assert p.is_hermitian(), f"PauliSum {p} is not hermitian."
 
-            m = np.around(P.to_hilbert_space().toarray(), 10)
-            energies, states = P.ordered_eigenspectrum()
+            m = p.to_hilbert_space()
+            energies, states = p.ordered_eigenspectrum(num_eigens=k)
+            if k is None:
+                k = np.prod(dimensions)
 
-            assert len(energies) == len(states)
-            assert len(states) == np.prod(dimensions)
+            assert len(energies) == len(states), f"Expected {k} eigenvalues and eigenvectors, " \
+                f"got {len(energies)} and {len(states)}."
+            assert len(states) == k, f"Expected {k} eigenvalues and eigenvectors, " \
+                f"got {len(energies)} and {len(states)}."
 
             # Check: the eigenvectors give raise to the correct eigenvalues
             for energy, state in zip(energies, states):
-                check_energy = np.around(state.conjugate().transpose() @ m @ state, 10)
+                check_energy = state.conjugate().transpose() @ m @ state
                 assert np.isclose(
                     check_energy, energy), f"eigenvalue mismatch for state {state}: {energy} vs {check_energy}."
 
