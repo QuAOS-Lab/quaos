@@ -1227,7 +1227,9 @@ class PauliSum(PauliObject):
             val = val[:num_eigens]
             vec = vec[:, :num_eigens]
         else:
-            val, vec = sp.linalg.eigsh(sparse_matrix, k=num_eigens, which='SA')
+            weights = np.abs(self.weights)
+            total_weights = np.sum(weights)
+            val, vec = sp.linalg.eigsh(sparse_matrix, k=num_eigens, sigma=-1.1 * total_weights)
         vec = np.transpose(vec)
 
         # Ordering
