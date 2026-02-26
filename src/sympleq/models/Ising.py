@@ -151,6 +151,71 @@ def ising_2d_hamiltonian(n_x: int, n_y: int, J_zz: float, h_x: float, periodic: 
     return PauliSum.from_pauli_strings(paulis, weights=weights, phases=None)
 
 
+def ising_lower_triangular_hamiltonian(L: int, J_zz: float, h_x: float) -> PauliSum:
+    """
+    Construct a transverse-field Ising Hamiltonian on the lower-triangular half
+    of an L x L square lattice (including the diagonal).
+
+    Geometry:
+      - Sites are integer coordinates (x, y) with 0 <= y <= x < L.
+      - Nearest-neighbor ZZ couplings are added along +x and +y lattice edges
+        whenever both endpoints are in the triangular region.
+      - Uniform transverse X field is added on every site.
+
+    Parameters
+    ----------
+    L : int
+        Side length of the parent square. Must satisfy L >= 1.
+    J_zz : float
+        Coupling strength of nearest-neighbor ZZ terms.
+    h_x : float
+        Transverse-field strength for single-site X terms.
+
+    Returns
+    -------
+    PauliSum
+        The Hamiltonian as a PauliSum object on N = L*(L+1)/2 qubits.
+    """
+    if int(L) < 1:
+        raise ValueError("L must be at least 1.")
+
+    # Deterministic indexing of triangular sites in row-major order by x then y.
+    coords: list[tuple[int, int]] = []
+    for x in range(int(L)):
+        for y in range(x + 1):
+            coords.append((x, y))
+
+    site_to_idx = {c: i for i, c in enumerate(coords)}
+    n_spins = len(coords)
+    dims = [2 for _ in range(n_spins)]
+
+    paulis: list[PauliString] = []
+    weights: list[float] = []
+    z0 = np.zeros(n_spins, dtype=int)
+    x0 = np.zeros(n_spins, dtype=int)
+
+    # ZZ terms along lattice edges internal to the triangular domain.
+    for (x, y), i in site_to_idx.items():
+        for xn, yn in ((x + 1, y), (x, y + 1)):
+            j = site_to_idx.get((xn, yn))
+            if j is None:
+                continue
+            zz = z0.copy()
+            zz[i] = 1
+            zz[j] = 1
+            paulis.append(PauliString.from_exponents(z0, zz, dims))
+            weights.append(J_zz)
+
+    # X terms (transverse field)
+    for i in range(n_spins):
+        x = x0.copy()
+        x[i] = 1
+        paulis.append(PauliString.from_exponents(x, z0, dims))
+        weights.append(h_x)
+
+    return PauliSum.from_pauli_strings(paulis, weights=weights, phases=None)
+
+
 def heuristic_clifford_symmetry(n_spins: int, periodic: bool = False) -> Gate:
     A = np.zeros((n_spins, n_spins), dtype=int)
     B = np.ones((n_spins, n_spins), dtype=int)
