@@ -1183,7 +1183,7 @@ class TestPaulis:
         for i in range(N_tests):
             dimensions = choose_random_dimensions(250)
             if i == 0:
-                k = np.prod(dimensions)
+                k = None
             elif i == 1:
                 k = np.prod(dimensions) - 1
             else:
@@ -1195,6 +1195,8 @@ class TestPaulis:
 
             m = p.to_hilbert_space()
             energies, states = p.ordered_eigenspectrum(num_eigens=k)
+            if k is None:
+                k = np.prod(dimensions)
 
             assert len(energies) == len(states), f"Expected {k} eigenvalues and eigenvectors, " \
                 f"got {len(energies)} and {len(states)}."
