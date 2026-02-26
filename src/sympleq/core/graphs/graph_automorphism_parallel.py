@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, cast
 import os
 import queue
+import time
 import multiprocessing as mp
 
 import numpy as np
@@ -80,11 +81,12 @@ def _worker(task_q: Any, result_q: Any, found_event: Any) -> None:
 
 def clifford_graph_automorphism_search_random_restarts(
     pauli_sum,
+    *,
     k_wanted: int = 1,
     n_restarts: int = 8,
     n_jobs: int | None = None,
     base_seed: int = 0,
-    start_method: str = "fork",
+    start_method: str = "fork",  # 'spawn' if on Windows - not yet tested
     warmup: bool = True,
     # parameters forwarded to prepare/search
     dynamic_refine_every: int = 0,
@@ -92,6 +94,9 @@ def clifford_graph_automorphism_search_random_restarts(
     p2_bitset: str | bool = "auto",
     color_mode: str = "wl",
     max_wl_rounds: int = 10,
+    # toggles forwarded to search
+    use_basis_first_ordering: bool = False,
+    use_code_induced_completion: bool = False,
 ) -> list:
     """Parallel random-restart search for a *single* symmetry.
 
@@ -112,6 +117,7 @@ def clifford_graph_automorphism_search_random_restarts(
     # Precompute the expensive invariants once.
     prepared = prepare_clifford_ga_search(
         pauli_sum,
+        dynamic_refine_every=dynamic_refine_every,
         extra_column_invariants=extra_column_invariants,
         p2_bitset=p2_bitset,
         color_mode=color_mode,
@@ -127,6 +133,8 @@ def clifford_graph_automorphism_search_random_restarts(
             shuffle_domain_order=True,
             progress=False,
             dynamic_refine_every=dynamic_refine_every,
+            use_basis_first_ordering=use_basis_first_ordering,
+            use_code_induced_completion=use_code_induced_completion,
         )
 
     if n_jobs is None:
@@ -143,6 +151,8 @@ def clifford_graph_automorphism_search_random_restarts(
                 shuffle_domain_order=True,
                 progress=False,
                 dynamic_refine_every=dynamic_refine_every,
+                use_basis_first_ordering=use_basis_first_ordering,
+                use_code_induced_completion=use_code_induced_completion,
             )
             if out:
                 return out
@@ -161,6 +171,8 @@ def clifford_graph_automorphism_search_random_restarts(
                 shuffle_domain_order=True,
                 progress=False,
                 dynamic_refine_every=dynamic_refine_every,
+                use_basis_first_ordering=use_basis_first_ordering,
+                use_code_induced_completion=use_code_induced_completion,
             )
             if out:
                 return out
@@ -172,7 +184,11 @@ def clifford_graph_automorphism_search_random_restarts(
     # Set globals for forked workers.
     global _PAR_PREPARED, _PAR_KWARGS, _PAR_BASE_SEED
     _PAR_PREPARED = prepared
-    _PAR_KWARGS = dict(dynamic_refine_every=dynamic_refine_every)
+    _PAR_KWARGS = dict(
+        dynamic_refine_every=dynamic_refine_every,
+        use_basis_first_ordering=use_basis_first_ordering,
+        use_code_induced_completion=use_code_induced_completion,
+    )
     _PAR_BASE_SEED = int(base_seed)
     ctx_any = cast(Any, ctx)
     found_event = ctx_any.Event()

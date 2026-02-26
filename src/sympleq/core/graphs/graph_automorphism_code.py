@@ -3,7 +3,11 @@ from __future__ import annotations
 import numpy as np
 import galois
 
-from sympleq.core.finite_field_solvers import gf2_inv
+# gf2 inverse may live either in this package (older layout) or in the shared solvers
+try:  # pragma: no cover
+    from sympleq.core.finite_field_solvers import gf2_inv  # type: ignore
+except Exception:  # pragma: no cover
+    from .graph_automorphism_gf2 import gf2_inv  # type: ignore
 
 
 def check_code_automorphism(
@@ -46,3 +50,30 @@ def check_code_automorphism(
         return False
     Gp = G[:, pi]
     return np.array_equal(U @ Gp, G)
+
+
+def compute_induced_completion_matrix_gf2(
+    G_mod2: np.ndarray,
+    B_cols: np.ndarray,
+    pi: np.ndarray,
+) -> np.ndarray | None:
+    """Return C = G[:, pi(B)] if invertible, else None.
+
+    For GF(2) code automorphisms we require existence of U with U G P = G.
+    Fixing the images of the basis columns B determines
+        C := G[:, P(B)]   (k x k)
+        U := C^{-1}.
+
+    Once C is known and invertible, the automorphism condition implies
+        g_{P(i)} = C g_i  for all i.
+
+    This helper validates invertibility (by attempting gf2_inv) and returns C
+    for use in induced-completion pruning.
+    """
+    PB = pi[B_cols]
+    C = G_mod2[:, PB]
+    try:
+        _ = gf2_inv(C)
+    except np.linalg.LinAlgError:
+        return None
+    return C

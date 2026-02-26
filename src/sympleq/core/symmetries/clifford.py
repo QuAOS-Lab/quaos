@@ -74,6 +74,7 @@ def find_clifford_symmetries(
     num_symmetries: int = 1,
     # Strategy
     dynamic_refine_every: int = 0,
+    use_code_induced_completion: bool = True,
     extra_column_invariants: str = "none",
     p2_bitset: str = "auto",
     color_mode: str = "wl",
@@ -87,6 +88,7 @@ def find_clifford_symmetries(
     return clifford_graph_automorphism_search(
         pauli_sum,
         k_wanted=num_symmetries,
+        use_code_induced_completion=bool(use_code_induced_completion),
         extra_column_invariants=extra_column_invariants,
         p2_bitset=p2_bitset,
         color_mode=color_mode,
