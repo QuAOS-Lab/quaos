@@ -1410,14 +1410,6 @@ class TestAtomicDecompositionFuzz:
             assert np.array_equal(recon, mod_p(F, p))
 
 class TestAtomicDecompositionCertifiedAPI:
-    # def test_certified_raises_when_uncertified(self) -> None:
-    #     rng = np.random.default_rng(0)
-    #     p = 2
-    #     n = 4
-    #     F = rand_symplectic(rng, n, p, steps=20)
-
-    #     with pytest.raises(Exception):  # ideally CertificationError
-    #         _ = atomic_block_decompose(F, p, mode="certified")
 
     def test_best_effort_always_returns_valid(self) -> None:
         rng = np.random.default_rng(1)

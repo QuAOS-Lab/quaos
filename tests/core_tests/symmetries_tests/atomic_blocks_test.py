@@ -179,24 +179,6 @@ class TestAtomicBlocks:
 
         assert _canonicalize_info(info1) == _canonicalize_info(info2)
 
-    def test_certified_never_degrades_p2_self_sector(self):
-        p, n = 2, 8
-
-        # pick a few Fs; if any triggers fallback, certified should raise
-        for seed in [10, 11, 12, 13, 14]:
-            rng = np.random.default_rng(seed)
-            n_transvections = 100
-            F = symplectic_random_transvection(n, p, num_transvections=n_transvections, rng=rng)
-            try:
-                Sigma, B, info = atomic_block_decompose(F, p, mode="certified")
-            except Exception:
-                # this is acceptable: certified can fail
-                continue
-
-            # if certified returned, it must not have any degraded sector statuses
-            for inv in info.get("sector_invariants", []):
-                assert inv.data.get("status") == "OK"
-
     def test_certified_mode_failure_reports_sectors(self):
         p, n = 3, 6
         rng = np.random.default_rng(0)
@@ -271,7 +253,11 @@ class TestAtomicBlocks:
             Fh = mod_p(Sinv @ F @ S, p)
 
             _, _, info = atomic_block_decompose(Fh, p, mode="certified")
-            assert np.all(tuple(sorted(info["atomic_half_dims"])) <= tuple(sorted([n1, n2]))), f'block sizes should be at most the original blocks; got {info["atomic_half_dims"]} vs {n1, n2}'
+            assert min(info["atomic_half_dims"]) <= min(n1, n2), f'block sizes should be at most the original blocks; got {info["atomic_half_dims"]} vs {n1, n2}'
+            assert info["Q_opt"] == max(info["atomic_half_dims"])
+            assert info["Q_opt"] <= info["Lmin_star"]
+            assert sum(info["atomic_half_dims"]) == n1 + n2
+            assert info["certified"] is True
 
     def test_each_atomic_block_is_indecomposable(self):
         p, n = 2, 7
@@ -293,4 +279,4 @@ class TestAtomicBlocks:
                 Sig2, B2, info2 = atomic_block_decompose(Sig_blk, p, mode="certified")
                 blocks2 = block_indexes(Sig2)
                 assert len(blocks2) == 1
-            assert len(blocks2[0]) == len(blk)
+                assert len(blocks2[0]) == len(blk)

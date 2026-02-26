@@ -48,11 +48,12 @@ def _canon_length_invariants(payload: dict) -> tuple:
             int(d.get("top_dim", 0)),
             int(d.get("B_rank", 0)),
             int(d.get("rad_dim", 0)),
-            bool(d.get("q_polar_ok", False)),
-            d.get("arf", None),
+            bool(d.get("B_sym_ok", True)),
+            bool(d.get("B_alt_ok", True)),
+            bool(d.get("q_witness_polar_ok", True)),
+            d.get("arf", None),   # fine to keep None for now
         ))
-    items.sort()
-    return tuple(items)
+    return tuple(sorted(items))
 
 
 class TestP2UnipotentBookkeeping:

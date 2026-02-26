@@ -13,7 +13,7 @@ from sympleq.core.symmetries.dynamics.krylov_time_evolve import (
     krylov_observable_dynamics_plain,
 )
 from sympleq.core.states.state import State
-from sympleq.core.circuits.gates import Hadamard as H_gate
+from sympleq.core.circuits.gates import GATES
 
 
 def _ising_X0_observable(N: int) -> PauliSum:
