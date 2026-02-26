@@ -266,7 +266,7 @@ def Find_transvection_map(input_ps, output_ps, p):
         ainv = modinv(a, p)
         h=(-input_ps + output_ps) % p
         F_h= transvection_matrix(h, p, multiplier=ainv)
-        if (input_ps @ F_h % p != output_ps).all():
+        if not np.array_equal((input_ps @ F_h) % p, output_ps):
             raise ValueError("Failed to construct valid transvection for nonzero symplectic product")
 
     elif a == 0:
@@ -275,16 +275,16 @@ def Find_transvection_map(input_ps, output_ps, p):
         a_w_inv = modinv(a_w, p)
         h = (-input_ps + w) % p
         F_h_1 = transvection_matrix(h, p, multiplier=a_w_inv)
-        if (input_ps @ F_h_1 % p != w).all():
+        if not np.array_equal((input_ps @ F_h_1) % p, w):
             raise ValueError("Failed to construct valid transvection for u->w")
         b_w = symplectic_product_arrays(w, output_ps, p)
         b_w_inv = modinv(b_w, p)
         h = (-w + output_ps) % p
         F_h_2 = transvection_matrix(h, p, multiplier=b_w_inv)
-        if (w @ F_h_2 % p != output_ps).all():
+        if not np.array_equal((w @ F_h_2) % p, output_ps):
             raise ValueError("Failed to construct valid transvection for w->v")
         F_h = F_h_1 @ F_h_2 %p
-        if (input_ps @ F_h %p != output_ps).all():
+        if not np.array_equal((input_ps @ F_h) % p, output_ps):
             raise ValueError("Failed to construct valid transvection map: for u->v")
 
     return F_h
@@ -349,7 +349,7 @@ def Find_transvection_map_solve(input_ps, output_ps, p):
         ainv = modinv(a, p)
         h=(-input_ps + output_ps) % p
         F_h= transvection_matrix(h, p, multiplier=ainv)
-        if (input_ps @ F_h % p != output_ps).all():
+        if not np.array_equal((input_ps @ F_h) % p, output_ps):
             raise ValueError("Failed to construct valid transvection for nonzero symplectic product")
 
     elif a == 0:
@@ -358,16 +358,16 @@ def Find_transvection_map_solve(input_ps, output_ps, p):
         a_w_inv = modinv(a_w, p)
         h=(-input_ps + w) % p
         F_h_1= transvection_matrix(h, p, multiplier=a_w_inv)
-        if (input_ps @ F_h_1 % p != w).all():
+        if not np.array_equal((input_ps @ F_h_1) % p, w):
             raise ValueError("Failed to construct valid transvection for u->w")
         b_w= symplectic_product_arrays(w, output_ps, p)
         b_w_inv = modinv(b_w, p)
         h=(-w + output_ps) % p
         F_h_2= transvection_matrix(h, p, multiplier=b_w_inv)
-        if (w @ F_h_2 % p != output_ps).all():
+        if not np.array_equal((w @ F_h_2) % p, output_ps):
             raise ValueError("Failed to construct valid transvection for w->v")
         F_h= F_h_1 @ F_h_2 %p
-        if (input_ps @ F_h %p != output_ps).all():
+        if not np.array_equal((input_ps @ F_h) % p, output_ps):
             raise ValueError("Failed to construct valid transvection map: for u->v")
 
     return F_h
@@ -455,7 +455,7 @@ def Find_transvection_map_solve_extended(input_ps, output_ps, constraints=[], sp
         ainv = modinv(a, p)
         h=(-input_ps + output_ps) % p
         F_h= transvection_matrix(h, p, multiplier=ainv)
-        if (input_ps @ F_h % p != output_ps).all():
+        if not np.array_equal((input_ps @ F_h) % p, output_ps):
             raise ValueError("Failed to construct valid transvection for nonzero symplectic product")
 
     elif a == 0:
@@ -468,16 +468,16 @@ def Find_transvection_map_solve_extended(input_ps, output_ps, constraints=[], sp
             a_w_inv = modinv(a_w, p)
             h=(-input_ps + w) % p
             F_h_1= transvection_matrix(h, p, multiplier=a_w_inv)
-            if (input_ps @ F_h_1 % p != w).all():
+            if not np.array_equal((input_ps @ F_h_1) % p, w):
                 raise ValueError("Failed to construct valid transvection for u->w")
             b_w= symplectic_product_arrays(w, output_ps, p)
             b_w_inv = modinv(b_w, p)
             h=(-w + output_ps) % p
             F_h_2= transvection_matrix(h, p, multiplier=b_w_inv)
-            if (w @ F_h_2 % p != output_ps).all():
+            if not np.array_equal((w @ F_h_2) % p, output_ps):
                 raise ValueError("Failed to construct valid transvection for w->v")
             F_h= F_h_1 @ F_h_2 %p
-            if (input_ps @ F_h %p != output_ps).all():
+            if not np.array_equal((input_ps @ F_h) % p, output_ps):
                 raise ValueError("Failed to construct valid transvection map: for u->v")
 
     return F_h
