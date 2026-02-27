@@ -268,6 +268,7 @@ class PauliSum(PauliObject):
                     dimensions: int | list[int] | np.ndarray,
                     rand_weights: bool = True,
                     rand_phases: bool = False,
+                    stabilizer: bool = False,
                     seed: int | None = None) -> 'PauliSum':
         """
         Create a random PauliSum object.
@@ -284,6 +285,8 @@ class PauliSum(PauliObject):
             Whether to use random weights for the Pauli operators.
         rand_phases : bool
             Whether to use random phases for the Pauli operators.
+        stabilizer : bool
+            Whether to create a random stabilizer state.
 
         Returns
         -------
@@ -303,6 +306,28 @@ class PauliSum(PauliObject):
 
         if seed is not None:
             np.random.seed(seed)
+
+        if stabilizer:
+            if n_paulis != len(dimensions):
+                raise ValueError("For stabilizer states, the number of Paulis must equal the number of qudits.")
+            if rand_weights or rand_phases:
+                warnings.warn("Random weights and phases are disregarded for stabilizer states.")
+            n_qudits = len(dimensions)
+            # Generate the tableau for a diagonal stabilizer
+            tableau = np.zeros((n_paulis, 2 * n_qudits), dtype=int)
+            tableau[:, n_qudits:] = np.eye(n_paulis, n_qudits, dtype=int)
+            # Generate random phases
+            lcm = np.lcm.reduce(dimensions)
+            phases = [2 * np.random.choice([i for i in range(d)]) * lcm / d for d in dimensions]
+            stabilizer_out = cls.from_tableau(tableau, weights=np.ones(n_paulis), phases=phases, dimensions=dimensions)
+
+            # TODO: apply a circuit to randomize the stabilizer? Cannot do now due to circular import
+            # Random circuit to shuffle the stabilizer:
+            # rand_circ = Circuit.from_random(10 * n_qudits ** 4, dimensions=dimensions, two_qudit_gate_ratio=0.8)
+            # stabilizer_out = rand_circ.act(stabilizer_out)
+
+            assert stabilizer_out.is_stabilizer(), "The generated stabilizer state does not pass the sanity checks."
+            return stabilizer_out
 
         # For large max_n_paulis we accept that we may have repetitions,
         # especially if n_paulis is large.
@@ -1227,6 +1252,58 @@ class PauliSum(PauliObject):
 
         return (energies, normalized_states)
 
+    def is_stabilizer(self) -> bool:
+        """
+        Checks whether the PauliSum is a stabilizer state.
+
+        Returns
+        -------
+        bool
+            True if the PauliSum is a stabilizer state, False otherwise.
+        """
+        n_qudits = self.n_qudits()
+
+        # Sanity check 1: weights must be one
+        if not np.allclose(self.weights, np.ones_like(self.weights), atol=1e-10):
+            warnings.warn("Not all weights of the stabilizer state are one.")
+            return False
+        # Sanity check 2: PauliStrings must be all-to-all commuting
+        if not self.is_commuting():
+            warnings.warn("The PauliStrings in the PauliSum are not all-to-all commuting.")
+            return False
+        # Sanity check 3: number of PauliStrings may be equal to number of qudits
+        if self.n_paulis() != n_qudits:
+            warnings.warn("The number of PauliStrings is not equal to the number of qudits.")
+            return False
+
+        # TODO: Not sure about this last check... It works for diagonal stabilizers but maybe not for non-diagonal?
+
+        # Sanity check 4: the phases of the stabilizer state must be consistent with the computational basis state
+        phases = self.phases
+        dims = self.dimensions
+        lcm = self.lcm
+        tableau = self.tableau
+
+        lcm_per_qudit = np.zeros(n_qudits, dtype=int)  # lcm of the dimensions of the non-identity Paulis
+        for i in range(n_qudits):
+            non_id_indices = []
+            for j in range(n_qudits):
+                if tableau[i, j] != 0 or tableau[i, j + n_qudits] != 0:
+                    non_id_indices.append(j)
+            if len(non_id_indices) == 0:
+                # Sanity check 5: if there are non-identity Paulis, it's not a stabilizer state
+                warnings.warn("There are identities in the stabilizer state.")
+                return False
+            lcm_per_qudit[i] = np.lcm.reduce(dims[non_id_indices])
+
+        effective_phases = phases * lcm_per_qudit / lcm  # these must be integers
+
+        if not np.allclose(effective_phases % 1, np.zeros_like(effective_phases), atol=1e-10):
+            warnings.warn("The phases of the stabilizer state are not consistent.")
+            return False
+
+        return True
+
     def stabilizer_to_hilbert_space(self) -> sp.csr_matrix:
         """
         Yield a sparse matrix in the Hilbert space representation of the given stabilizer state written as a PauliSum.
@@ -1247,18 +1324,7 @@ class PauliSum(PauliObject):
             If the number of PauliStrings is not equal to the number of qudits.
         """
 
-        # Sanity check 1: weights must be one
-        if not np.allclose(self.weights, np.ones_like(self.weights), atol=1e-10):
-            raise AssertionError("Not all weights of the stabilizer state are one.")
-
-        # Sanity check 2: PauliStrings must be all-to-all commuting
-        if not self.is_commuting():
-            raise AssertionError("The PauliStrings in the PauliSum are not all-to-all commuting.")
-
-        # Sanity check 3: number of PauliStrings may be equal to number of qudits
-        if self.n_paulis() != self.n_qudits():
-            raise AssertionError("The number of PauliStrings is not equal to the number of qudits. "
-                                 "You may complete the stabilizer state by adding more PauliStrings to the PauliSum.")
+        assert self.is_stabilizer(), "Not a stabilizer state."
 
         # TODO: Find Clifford that maps the PauliSum to the computational basis and
         #       generalize this function accordingly
@@ -1271,11 +1337,13 @@ class PauliSum(PauliObject):
                 "(all-zero X block followed by identity Z block)."
             )
 
-        # the phases of the stabilizer state identify the computational state
-        phases = self.phases
         dims = self.dimensions
-        # Find the corresponding index
-        base = [phase / (2 * self.lcm) * dims[idx] for idx, phase in enumerate(phases)]
+        lcm = np.lcm.reduce(dims)
+        phases = self.phases
+        effective_phases = phases * dims / lcm
+
+        # Find the corresponding index of the array in Hilbert space
+        base = effective_phases / 2
         index = bases_to_int(base, dims)
         hilbert_dim = int(np.prod(dims))
         # Generate the density matrix - as we are using density matrices rather than arrays (for the noise)

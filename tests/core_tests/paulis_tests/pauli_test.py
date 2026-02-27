@@ -1214,33 +1214,21 @@ class TestPaulis:
                 _, _ = P.ordered_eigenspectrum()
 
     def test_stabilizer_to_hilbert_space(self):
-        for _ in range(N_tests):
-            dimensions = choose_random_dimensions(250)
-            n_qubits = len(dimensions)
-            n_paulis = n_qubits
+        for _ in range(50 * N_tests):
+            dimensions = choose_random_dimensions(2500)
+            n_qudits = len(dimensions)
+            n_paulis = n_qudits
 
-            # Create a stabilizer
-            tableau = np.zeros((n_paulis, 2 * n_qubits), dtype=int)
-            tableau[:, n_qubits:] = np.eye(n_paulis, n_qubits, dtype=int)
-            stabilizer = PauliSum.from_tableau(tableau,
-                                               weights=np.ones(n_paulis),
-                                               dimensions=dimensions)
-
-            # Initialize stabilizer to random computational state
-            phases = [0 * 2 * rng.integers(0, stabilizer.lcm) for _ in range(n_paulis)]
-            stabilizer.set_phases(phases)
-
-            # Apply random Clifford gates to shuffle the stabilizer
+            stabilizer = PauliSum.from_random(n_paulis, dimensions, rand_weights=False, stabilizer=True)
+            phases = stabilizer.phases.copy()
+            lcm = stabilizer.lcm
 
             stabilizer_hilbert = stabilizer.stabilizer_to_hilbert_space()
 
             # Ensure the state stabilizes all PauliStrings in the shuffled stabilizer
             for idx, phi in enumerate(phases):
 
-                phase = complex_phase_value(phi / stabilizer.lcm * dimensions[idx], dimensions[idx])
-
-                ps_hilbert = stabilizer[[idx]].to_hilbert_space()
-                one = sp.csr_matrix.trace(stabilizer_hilbert @ ps_hilbert)
+                phase = complex_phase_value(phi / 2, lcm)
 
                 ps_test = stabilizer[[idx]].copy()
                 ps_test.phases[0] = 0
@@ -1248,9 +1236,6 @@ class TestPaulis:
 
                 phase_test = sp.csr_matrix.trace(stabilizer_hilbert @ ps_test_hilbert)
 
-                print(one)
-                print(phase_test, phase)
-
-                assert np.isclose(one, 1, atol=1e-10), f"Stabilizer state does not stabilize PauliString {idx}"
-                assert np.isclose(phase_test, phase, atol=1e-10), (f"Stabilizer state does not stabilize PauliString"
-                                                                   f" {idx}. Expected phase {phase}, got {phase_test}")
+                assert np.isclose(
+                    phase_test, phase, atol=1e-10), (f"Stabilizer state does not stabilize {stabilizer[[idx]]}. "
+                                                     f"Expected phase {phase}, got {phase_test}")
