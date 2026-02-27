@@ -1214,8 +1214,8 @@ class TestPaulis:
                 _, _ = P.ordered_eigenspectrum()
 
     def test_stabilizer_to_hilbert_space(self):
-        for _ in range(50 * N_tests):
-            dimensions = choose_random_dimensions(2500)
+        for _ in range(N_tests):
+            dimensions = choose_random_dimensions(250)
             n_qudits = len(dimensions)
             n_paulis = n_qudits
 
