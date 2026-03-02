@@ -4,7 +4,7 @@ from sympleq.core.paulis import PauliSum
 from sympleq.core.circuits import Circuit, GATES
 
 
-def number_of_SUM_X(r_control: int, r_target: int, d: int):
+def number_of_SUM_X(r_control: int, r_target: int, d: int) -> int:
     """
     Return the number of SUM gates needed to cancel out the X part of a Pauli operator.
 
@@ -31,7 +31,7 @@ def number_of_SUM_X(r_control: int, r_target: int, d: int):
     return N
 
 
-def number_of_SUM_Z(s_control: int, s_target: int, d: int):
+def number_of_SUM_Z(s_control: int, s_target: int, d: int) -> int:
     """
     Return the number of SUM gates needed to cancel out the Z part of a Pauli operator.
 
@@ -58,7 +58,7 @@ def number_of_SUM_Z(s_control: int, s_target: int, d: int):
     return N
 
 
-def number_of_S(x_exp: int, z_exp: int, d: int):
+def number_of_S(x_exp: int, z_exp: int, d: int) -> int:
     """
     Return the number of PHASE gates needed to cancel out the Z part of a Pauli operator.
 
@@ -85,7 +85,7 @@ def number_of_S(x_exp: int, z_exp: int, d: int):
     return N
 
 
-def cancel_X(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit, q_max: int):
+def cancel_X(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit, q_max: int) -> tuple[PauliSum, Circuit]:
     """
     Cancel out the X part of a Pauli operator.
 
@@ -120,7 +120,7 @@ def cancel_X(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit, q_ma
     return pauli_sum, C
 
 
-def cancel_Z(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit, q_max: int):
+def cancel_Z(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit, q_max: int) -> tuple[PauliSum, Circuit]:
     """
     Cancel out the Z part of a Pauli operator.
 
@@ -159,7 +159,7 @@ def cancel_Z(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit, q_ma
     return pauli_sum, C
 
 
-def cancel_Y(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit):
+def cancel_Y(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit) -> tuple[PauliSum, Circuit]:
     """
     Cancel out the Y part of a Pauli operator.
 
@@ -189,7 +189,8 @@ def cancel_Y(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit):
     return pauli_sum, C
 
 
-def cancel_pauli(P: PauliSum, current_qudit: int, pauli_index: int, circuit: Circuit, n_q_max: int):
+def cancel_pauli(P: PauliSum, current_qudit: int,
+                 pauli_index: int, circuit: Circuit, n_q_max: int) -> tuple[PauliSum, Circuit]:
     """
     Cancel out all non-zero X and Z parts of a Pauli operator.
 
@@ -228,7 +229,7 @@ def cancel_pauli(P: PauliSum, current_qudit: int, pauli_index: int, circuit: Cir
     return P, circuit
 
 
-def symplectic_reduction_qudit(P):
+def symplectic_reduction_qudit(P) -> tuple[Circuit, list]:
     """
     Applies the symplectic reduction algorithm to a PauliSum.
 
@@ -269,7 +270,7 @@ def symplectic_reduction_qudit(P):
     return C, sorted(pivots, key=lambda x: x[1])
 
 
-def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
+def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit) -> tuple[Circuit, list]:
     """
     Applies one iteration of the symplectic reduction algorithm to a PauliSum.
 
@@ -326,24 +327,6 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
     return C, pivots
 
 
-def symplectic_pauli_reduction(hamiltonian: PauliSum) -> Circuit:
-    """
-    Applies the symplectic reduction algorithm to a PauliSum and returns the resulting Circuit.
-
-    Parameters
-    ----------
-    hamiltonian : PauliSum
-        The PauliSum that we are applying the symplectic reduction algorithm to.
-
-    Returns
-    -------
-    Circuit
-        The Circuit that implements the symplectic reduction algorithm.
-    """
-    C, pivots = symplectic_reduction_qudit(hamiltonian)
-    return C
-
-
 def pauli_reduce(hamiltonian: PauliSum) -> tuple[PauliSum, list[PauliSum], Circuit, list]:
     """
     Applies the symplectic reduction algorithm to a PauliSum and returns the reduced hamiltonian and the
@@ -365,7 +348,7 @@ def pauli_reduce(hamiltonian: PauliSum) -> tuple[PauliSum, list[PauliSum], Circu
     all_phases : list
         The list of all possible phases of the conditioned hamiltonians.
     """
-    C = symplectic_pauli_reduction(hamiltonian)
+    C, _ = symplectic_reduction_qudit(hamiltonian)
 
     h_red = C.act(hamiltonian)
     # first we remove any qudits with only identities
