@@ -13,9 +13,9 @@ from sympleq.applications.measurement.aquire_utils import (calculate_mean_estima
                                                            calculate_statistical_variance_estimate,
                                                            calculate_systematic_variance_estimate,
                                                            true_statistical_variance, config_params, aquire_params)
-from sympleq.core.statistic_utils import true_mean
 from sympleq.core.circuits import Circuit
 from sympleq.utils import int_to_bases
+from sympleq.core.paulis.utils import hamiltonian_mean
 from typing import Callable
 import pickle
 import matplotlib.pyplot as plt
@@ -241,7 +241,7 @@ class AquireConfig:
         None
         """
 
-        for i in range(10):
+        for _ in range(10):
             test_circuit = Circuit.from_random(n_gates=np.random.randint(1, 6),
                                                dimensions=self.Hamiltonian.dimensions)
 
@@ -249,7 +249,7 @@ class AquireConfig:
                 test_circuit, *self.noise_probability_args, **self.noise_kwargs)
             if noise_prob > 1 or noise_prob < 0:
                 raise ValueError(f"Noise probability function gives erroneous values. It must be between 0 and 1."
-                                 f"Wrong values where found for circuit: \n {test_circuit}.")
+                                 f"Wrong values were found for circuit: \n {test_circuit}.")
 
             test_result = [np.random.randint(dim) for dim in self.Hamiltonian.dimensions]
             error_test_result = self.error_function(test_result, *self.error_function_args,
@@ -257,10 +257,10 @@ class AquireConfig:
             for i0, j in enumerate(error_test_result):
                 if j > self.Hamiltonian.dimensions[i0] or j < 0:
                     raise ValueError(f"Error function gives erroneous values. It must be between 0 and qudit dimension."
-                                     f"Wrong values where found for measurement outcome: \n {test_result}.")
+                                     f"Wrong values were found for measurement outcome: \n {test_result}.")
                 elif not isinstance(j, (int, np.integer)):
                     raise ValueError(f"Error function gives erroneous values. It must return integers."
-                                     f"Wrong values where found for measurement outcome: \n {error_test_result}.")
+                                     f"Wrong values were found for measurement outcome: \n {error_test_result}.")
 
     # @classmethod
     # def from_json(cls, path):
@@ -521,7 +521,7 @@ class Aquire:
         # Comparison values: not used in the algorithm
         # initially set to None, can be set later if desired and H not too large
         if self.config.calculate_true_values and self.config.psi is not None:
-            self.true_mean_value = true_mean(self._H, self.config.psi)
+            self.true_mean_value = hamiltonian_mean(self._H, self.config.psi)
             self.true_statistical_variance_value = []
         else:
             pass

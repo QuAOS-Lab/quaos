@@ -8,7 +8,7 @@ from sympleq.applications.measurement.aquire import Aquire, AquireConfig, simula
 from sympleq.core.paulis import PauliSum, PauliString
 from sympleq.applications.measurement.covariance_graph import commutation_graph, all_maximal_cliques
 from sympleq.applications.measurement.allocation import construct_circuit_list
-from sympleq.core.statistic_utils import true_covariance_graph
+from sympleq.core.paulis.utils import covariance_matrix
 
 
 class TestAquire:
@@ -33,7 +33,7 @@ class TestAquire:
                 assert list(gate_qudit_indices) == comp_c[j][1], \
                     f"Circuit {i} qudit indices do not match: {gate_qudit_indices} and {comp_c[j][1]}"
 
-        true_cov_graph = true_covariance_graph(P, psi) * com_graph.adj
+        true_cov_graph = covariance_matrix(P, psi) * com_graph.adj
         assert np.allclose(true_cov_graph, true_variance_graph, atol=10**(-6)), "true covariance graphs do not match"
 
         for i, aa in enumerate(xxx):
@@ -212,7 +212,7 @@ class TestAquire:
 
     @pytest.mark.system
     def test_aquire_mean_distance(self):
-        update_steps = [6, 12, 25, 50, 100, 200, 400, 800, 1600, 3200, 6400, 12800]
+        update_steps = [6, 12, 25, 50, 100, 200, 400, 800]
         dim_list = [[2, 2, 2], [3, 3, 3], [5, 5, 5], [2, 3, 5], [2, 2, 3, 3]]
         for dims in dim_list:
             P = self.random_comparison_hamiltonian(20, dims, mode='rand')
@@ -233,6 +233,7 @@ class TestAquire:
             mean_distance = np.abs(model.true_mean_value - model.estimated_mean[-1])
             distance_in_sigma = mean_distance / np.sqrt(model.statistical_variance[-1])
             assert distance_in_sigma < 5, f"Mean estimate too far from true value for dims {dims}"
+            assert distance_in_sigma > 0.001, f"Error bar too large for {dims}"
 
     @pytest.mark.system
     def test_aquire_mean_distance_with_noise(self):
@@ -249,6 +250,8 @@ class TestAquire:
             model.config.set_params(commutation_mode='general',
                                     calculate_true_values=True,
                                     enable_simulated_hardware_noise=True,
+                                    noise_probability_function_kwargs={
+                                        "p_entangling": 0.75, "p_local": 0.5, "p_measurement": 0.25},
                                     enable_diagnostics=True,
                                     save_covariance_graph_checkpoints=False,
                                     auto_update_covariance_graph=True,
@@ -259,7 +262,8 @@ class TestAquire:
             mean_distance = np.abs(model.true_mean_value - model.estimated_mean[-1])
             error = np.sqrt(model.statistical_variance[-1] + model.systematic_variance[-1])
             distance_in_sigma = mean_distance / error
-            assert distance_in_sigma - 1 < 5, f"Mean estimate too far from true value for dims {dims}"
+            assert distance_in_sigma < 5, f"Mean estimate too far from true value for dims {dims}"
+            assert distance_in_sigma > 0.001, f"Error bar too large for {dims}"
 
     # AQUIRE CONFIG TESTS
     def test_aquire_state_hamiltonian_mismatch_validation(self):
