@@ -1,6 +1,6 @@
 import numpy as np
 
-from sympleq.core.circuits import Circuit, GATES
+from sympleq.core.circuits import Circuit, GATES, PauliGate
 from sympleq.core.circuits.utils import is_symplectic
 from sympleq.core.circuits.circuits import GateSpec
 from sympleq.core.circuits.gate_decomposition_to_circuit import (inv_gfp, mod_p, ensure_invertible_A_circuit, blocks,
@@ -11,7 +11,7 @@ from sympleq.core.circuits.gate_decomposition_to_circuit import (inv_gfp, mod_p,
                                                                  decompose_symplectic_to_circuit,
                                                                  _compose_symp, _full_from_lower, gate_to_circuit)
 
-from sympleq.core.paulis import PauliSum
+from sympleq.core.paulis import PauliSum, PauliString
 
 # Convenience aliases for singleton gates
 CX = GATES.CX
@@ -419,6 +419,9 @@ class TestDecomposition:
         for p in (2, 3, 5):
             for _ in range(num_trials):
                 C_in = Circuit.from_random(n_gates=12, dimensions=[p] * n)
+                pauli_string = PauliString.from_random(dimensions=[p] * n)
+                pauli_gate = PauliGate(pauli_string)
+                C_in.add_gate(pauli_gate, *tuple(range(n)))
                 G_in = C_in.composite_gate()
 
                 C_out = gate_to_circuit(G_in, dimensions=[p] * n)
