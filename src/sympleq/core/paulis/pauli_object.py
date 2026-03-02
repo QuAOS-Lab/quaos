@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 import functools
 import numpy as np
 from typing import Self, Union, TYPE_CHECKING
+
+from sympleq import complex_phase_value
 if TYPE_CHECKING:
     from .pauli_sum import PauliSum
 
