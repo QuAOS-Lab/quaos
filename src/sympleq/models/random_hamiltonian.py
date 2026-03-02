@@ -384,7 +384,7 @@ def random_gate_symmetric_hamiltonian(G: Gate,
       - Uses the library's projective action as-is: we keep term.weights/phases from G.act.
     """
     if n_qudits is None:
-        n_qudits = len(G.qudit_indices)
+        n_qudits = len(qudit_indices)
     if n_paulis is None:
         n_paulis = 2 * n_qudits
 
@@ -413,7 +413,7 @@ def random_gate_symmetric_hamiltonian(G: Gate,
                 break
             seen.add(key)
             out.append(term)
-            term = G.act(term, qudit_indices).to_standard_form()
+            term = G.act(pauli=term, qudits=qudit_indices).to_standard_form()
         return out
 
     # ---- Phase 1: add orbits for the 2n basis seeds ----
