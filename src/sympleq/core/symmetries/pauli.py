@@ -1,7 +1,7 @@
 import numpy as np
 import itertools
 from sympleq.core.paulis import PauliSum
-from sympleq.core.circuits import Circuit, HADAMARD as H, CX, PHASE as S
+from sympleq.core.circuits import Circuit, GATES
 
 
 def number_of_SUM_X(r_control: int, r_target: int, d: int):
@@ -115,8 +115,8 @@ def cancel_X(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit, q_ma
                                               pauli_sum.x_exp[pauli_index, i],
                                               pauli_sum.dimensions[i])
             for _ in range(number_of_sum_x):
-                C.add_gate(CX(), qudit, i)
-                pauli_sum = CX().act(pauli_sum, (qudit, i))
+                C.add_gate(GATES.CX, qudit, i)
+                pauli_sum = GATES.CX.act(pauli_sum, (qudit, i))
     return pauli_sum, C
 
 
@@ -144,18 +144,18 @@ def cancel_Z(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit, q_ma
     C : Circuit
         The circuit after the gates have been added to cancel out the Z part of the Pauli operator.
     """
-    C.add_gate(H(), qudit)
-    pauli_sum = H().act(pauli_sum, qudit)
+    C.add_gate(GATES.H, qudit)
+    pauli_sum = GATES.H.act(pauli_sum, qudit)
     for i in range(qudit + 1, q_max):
         if pauli_sum.z_exp[pauli_index, i]:
             number_of_sum_z = number_of_SUM_Z(pauli_sum.z_exp[pauli_index, i],
                                               pauli_sum.z_exp[pauli_index, qudit],
                                               pauli_sum.dimensions[i])
             for _ in range(number_of_sum_z):
-                C.add_gate(CX(), i, qudit)
-                pauli_sum = CX().act(pauli_sum, (i, qudit))
-    C.add_gate(H(), qudit)
-    pauli_sum = H().act(pauli_sum, qudit)
+                C.add_gate(GATES.CX, i, qudit)
+                pauli_sum = GATES.CX.act(pauli_sum, (i, qudit))
+    C.add_gate(GATES.H, qudit)
+    pauli_sum = GATES.H.act(pauli_sum, qudit)
     return pauli_sum, C
 
 
@@ -184,8 +184,8 @@ def cancel_Y(pauli_sum: PauliSum, qudit: int, pauli_index: int, C: Circuit):
     number_of_phase = number_of_S(pauli_sum.x_exp[pauli_index, qudit], pauli_sum.z_exp[pauli_index, qudit],
                                   pauli_sum.dimensions[qudit])
     for _ in range(number_of_phase):
-        C.add_gate(S(), qudit)
-        pauli_sum = S().act(pauli_sum, qudit)
+        C.add_gate(GATES.S, qudit)
+        pauli_sum = GATES.S.act(pauli_sum, qudit)
     return pauli_sum, C
 
 
@@ -264,8 +264,8 @@ def symplectic_reduction_qudit(P):
     conditional_qubits = sorted(set(range(q)) - removable_qubits - pivot_qudits)
     if len(conditional_qubits) > 0:
         for cq in conditional_qubits:
-            C.add_gate(H(), cq)
-        P1 = H().act(P1, cq)
+            C.add_gate(GATES.H, cq)
+        P1 = GATES.H.act(P1, cq)
     return C, sorted(pivots, key=lambda x: x[1])
 
 
@@ -303,8 +303,8 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
     # does the current qudit have any X or Z components?
     if any(P.x_exp[:, current_qudit]) or any(P.z_exp[:, current_qudit]):
         if not any(P.x_exp[:, current_qudit]):  # If it is z we need to add a Hadamard gate to make it an X
-            C.add_gate(H(), current_qudit)
-            P = H().act(P, current_qudit)
+            C.add_gate(GATES.H, current_qudit)
+            P = GATES.H.act(P, current_qudit)
 
         current_pauli = min(i for i in range(n_p) if P.x_exp[i, current_qudit])  # first Pauli that has an x-component
         pivots.append((current_pauli, current_qudit, 'X'))
@@ -316,13 +316,13 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit):
         current_pauli = min(i for i in range(n_p) if P.z_exp[i, current_qudit])  # first Pauli that has a z-component
         pivots.append((current_pauli, current_qudit, 'Z'))
 
-        C.add_gate(H(), current_qudit)
-        P = H().act(P, current_qudit)
+        C.add_gate(GATES.H, current_qudit)
+        P = GATES.H.act(P, current_qudit)
 
         P, C = cancel_pauli(P, current_qudit, current_pauli, C, n_q_max)
 
-        C.add_gate(H(), current_qudit)
-        P = H().act(P, current_qudit)
+        C.add_gate(GATES.H, current_qudit)
+        P = GATES.H.act(P, current_qudit)
     return C, pivots
 
 
