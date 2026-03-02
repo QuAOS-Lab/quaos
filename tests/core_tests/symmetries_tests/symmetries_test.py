@@ -4,6 +4,9 @@ from sympleq.core.symmetries.clifford import find_clifford_symmetries  # , qudit
 from sympleq.core.symmetries.pauli import pauli_reduce
 from sympleq.core.circuits import Circuit
 import numpy as np
+from numpy.random import default_rng
+
+rng = default_rng()
 
 
 class TestSymmetryFinder:
@@ -163,8 +166,8 @@ class TestSymmetryFinder:
 
     def test_random_pauli_symmetry(self):
         n_tests = 10
-        n_qudits = 10
-        n_paulis = 50
+        n_qudits = rng.integers(5, 20)
+        n_paulis = rng.integers(5 * n_qudits, 10 * n_qudits ** 2)
 
         for _ in range(n_tests):
             n_redundant = np.random.randint(0, n_qudits - 3)
