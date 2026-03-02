@@ -628,10 +628,6 @@ class Circuit:
         index_map = {old: new for new, old in enumerate(indices)}
 
         def _remap_gate(gate: Gate, gate_indices: tuple[int, ...]):
-            # Skip gates that touch qudits outside the requested subset
-            if not all(idx in index_map for idx in gate_indices):
-                return None
-
             # Handle PauliGate separately to keep its pauli_string consistent with the new local qudit ordering
             if isinstance(gate, PauliGate):
                 ps = gate.pauli_string
@@ -644,10 +640,14 @@ class Circuit:
                     dims_local.append(int(ps.dimensions[old_idx]))
                 ps_local = PauliString.from_exponents(x_local, z_local, dims_local)
                 try:
-                    return (PauliGate(ps_local), np.asarray([index_map[idx] for idx in gate_indices], dtype=int))
+                    return (PauliGate(ps_local), np.asarray([index_map[idx] for idx in indices], dtype=int))
                 except ValueError:
                     # PauliGate requires at least one non-trivial component; skip if trivial on this subset.
                     return None
+
+            # Skip gates that touch qudits outside the requested subset
+            if not all(idx in index_map for idx in gate_indices):
+                return None
 
             # Generic gate: copy and remap indices/dimensions to the local numbering
             new_indices = np.asarray([index_map[idx] for idx in gate_indices], dtype=int)
