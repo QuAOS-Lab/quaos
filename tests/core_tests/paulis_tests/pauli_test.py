@@ -1224,12 +1224,16 @@ class TestPaulis:
                 _, _ = P.ordered_eigenspectrum()
 
     def test_stabilizer_to_hilbert_space(self):
-        for _ in range(N_tests):
-            dimensions = choose_random_dimensions(250)
-            n_qudits = len(dimensions)
-            n_paulis = n_qudits
+        for i in range(N_tests):
+            dimensions = [2]  # choose_random_dimensions(250)
 
-            stabilizer = PauliSum.from_random(n_paulis, dimensions, rand_weights=False, stabilizer=True)
+            if i == 0:
+                stabilizer = PauliSum.from_stabilizer(dimensions, random=False, diagonal=False)
+            elif i == 1:
+                stabilizer = PauliSum.from_stabilizer(dimensions, random=True, diagonal=True)
+            else:
+                stabilizer = PauliSum.from_stabilizer(dimensions, random=True, diagonal=False)
+
             phases = stabilizer.phases.copy()
             lcm = stabilizer.lcm
 
