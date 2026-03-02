@@ -2,23 +2,23 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import functools
 import numpy as np
-from typing import TypeVar, Self, Union, TYPE_CHECKING
+from typing import Self, Union, TYPE_CHECKING
 if TYPE_CHECKING:
     from .pauli_sum import PauliSum
 
 from .constants import DEFAULT_QUDIT_DIMENSION
+from ._typing import ScalarType, TableauType, DimensionsLike, PhasesLike, WeightsLike
 
-P = TypeVar("P", bound="PauliObject")
-
-ScalarType = Union[float, complex, int]
 PauliOrScalarType = Union['PauliObject', ScalarType]
 
 
 @functools.total_ordering
 class PauliObject(ABC):
-    def __init__(self, tableau: np.ndarray, dimensions: int | list[int] | np.ndarray | None = None,
-                 weights: int | float | complex | list[int] | list[float] | list[complex] | np.ndarray | None = None,
-                 phases: int | list[int] | np.ndarray | None = None):
+    def __init__(self,
+                 tableau: TableauType,
+                 dimensions: DimensionsLike | None = None,
+                 weights: WeightsLike | None = None,
+                 phases: PhasesLike | None = None):
         """
         Initialize a PauliObject represented in symplectic tableau form.
 
@@ -56,7 +56,6 @@ class PauliObject(ABC):
         lcm : int
             Least common multiple of all qudit dimensions.
         """
-
         if tableau.ndim == 1:
             tableau = tableau.reshape(1, -1)
 
@@ -67,34 +66,32 @@ class PauliObject(ABC):
         n_qudits = tableau.shape[1] // 2
 
         if dimensions is None:
-            dimensions = np.ones(n_qudits, dtype=int) * DEFAULT_QUDIT_DIMENSION
+            self._dimensions = np.ones(n_qudits, dtype=int) * DEFAULT_QUDIT_DIMENSION
         else:  # Catches int but also list and arrays of length 1
-            dimensions = np.asarray(dimensions, dtype=int)
-            if dimensions.ndim == 0:
-                dimensions = np.full(n_qudits, dimensions.item(), dtype=int)
+            self._dimensions = np.asarray(dimensions, dtype=int)
+            if self._dimensions.ndim == 0:
+                self._dimensions = np.full(n_qudits, self._dimensions.item(), dtype=int)
 
-        self._dimensions = dimensions
         # Dimensions is read-only, so any type of assignment will fail.
         self._dimensions.setflags(write=False)
-        self._lcm = int(np.lcm.reduce(self.dimensions))
+        self._lcm = int(np.lcm.reduce(self._dimensions))
 
-        self._tableau = tableau % np.tile(self.dimensions, 2)
+        self._tableau = tableau % np.tile(self._dimensions, 2)
 
         if weights is None:
-            weights = np.ones(n_pauli_strings, dtype=complex)
+            self._weights = np.ones(n_pauli_strings, dtype=complex)
         else:  # Catches scalars but also list and arrays of length 1
-            weights = np.asarray(weights, dtype=complex)
-            if weights.ndim == 0:
-                weights = np.full(n_pauli_strings, weights.item(), dtype=complex)
-        self._weights = weights
+            self._weights = np.asarray(weights, dtype=complex)
+            if self._weights.ndim == 0:
+                self._weights = np.full(n_pauli_strings, self._weights, dtype=complex)
 
         if phases is None:
-            phases = np.zeros(n_pauli_strings, dtype=int)
+            self._phases = np.zeros(n_pauli_strings, dtype=int)
         else:  # Catches scalars but also list and arrays of length 1
-            phases = np.asarray(phases, dtype=int)
-            if phases.ndim == 0:
-                phases = np.full(n_pauli_strings, phases.item(), dtype=int)
-        self._phases = phases % (2 * self.lcm)
+            self._phases = np.asarray(phases, dtype=int)
+            if self._phases.ndim == 0:
+                self._phases = np.full(n_pauli_strings, self._phases.item(), dtype=int)
+        self._phases = self._phases % (2 * self.lcm)
 
     @property
     def tableau(self) -> np.ndarray:
