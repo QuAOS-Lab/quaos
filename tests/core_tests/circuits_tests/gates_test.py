@@ -274,8 +274,8 @@ class TestGates():
 
         # Test multiple Pauli string mapping (2 qubits)
         # This requires compatible symplectic product matrices
-        for _ in range(10):
-            n = 2
+        for _ in range(100):
+            n = np.random.randint(1, 25)  # number of qubits
             # Generate random input
             input_tableau = np.random.randint(0, 2, size=(2, 2 * n))
             # Apply a random symplectic to get a valid target
@@ -285,6 +285,12 @@ class TestGates():
             gate = Gate.solve_from_target(input_tableau, target_tableau)
             result = (input_tableau @ gate.symplectic) % 2
             assert np.array_equal(result, target_tableau), "Multi-Pauli mapping failed"
+
+            input_paulisum = PauliSum.from_tableau(input_tableau)
+            target_paulisum = PauliSum.from_tableau(target_tableau)
+            result_paulisum = gate.act(input_paulisum, tuple(range(n)))
+
+            assert result_paulisum.has_equal_tableau(target_paulisum), "Gate action on PauliSum failed"
 
     @pytest.mark.parametrize("d", [2, 3, 5])
     @pytest.mark.parametrize("n", [1, 2, 3])
