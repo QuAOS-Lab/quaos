@@ -268,7 +268,6 @@ class PauliSum(PauliObject):
                     dimensions: int | list[int] | np.ndarray,
                     rand_weights: bool = True,
                     rand_phases: bool = False,
-                    stabilizer: bool = False,
                     seed: int | None = None) -> 'PauliSum':
         """
         Create a random PauliSum object.
@@ -306,28 +305,6 @@ class PauliSum(PauliObject):
 
         if seed is not None:
             np.random.seed(seed)
-
-        if stabilizer:
-            if n_paulis != len(dimensions):
-                raise ValueError("For stabilizer states, the number of Paulis must equal the number of qudits.")
-            if rand_weights or rand_phases:
-                warnings.warn("Random weights and phases are disregarded for stabilizer states.")
-            n_qudits = len(dimensions)
-            # Generate the tableau for a diagonal stabilizer
-            tableau = np.zeros((n_paulis, 2 * n_qudits), dtype=int)
-            tableau[:, n_qudits:] = np.eye(n_paulis, n_qudits, dtype=int)
-            # Generate random phases
-            lcm = np.lcm.reduce(dimensions)
-            phases = [2 * np.random.choice([i for i in range(d)]) * lcm / d for d in dimensions]
-            stabilizer_out = cls.from_tableau(tableau, weights=np.ones(n_paulis), phases=phases, dimensions=dimensions)
-
-            # TODO: apply a circuit to randomize the stabilizer? Cannot do now due to circular import
-            # Random circuit to shuffle the stabilizer:
-            # rand_circ = Circuit.from_random(10 * n_qudits ** 4, dimensions=dimensions, two_qudit_gate_ratio=0.8)
-            # stabilizer_out = rand_circ.act(stabilizer_out)
-
-            assert stabilizer_out.is_stabilizer(), "The generated stabilizer state does not pass the sanity checks."
-            return stabilizer_out
 
         # For large max_n_paulis we accept that we may have repetitions,
         # especially if n_paulis is large.
@@ -1268,6 +1245,73 @@ class PauliSum(PauliObject):
 
         return (energies, normalized_states)
 
+    @classmethod
+    def from_stabilizer(cls,
+                        dimensions: int | list[int] | np.ndarray,
+                        random: bool = False,
+                        diagonal: bool = False,
+                        seed: int | None = None) -> PauliSum:
+        """
+        Create a PauliSum instance representing a stabilizer state.
+
+        Parameters
+        ----------
+        dimensions : int | list[int] | np.ndarray
+            The dimensions of the qudits in the stabilizer state.
+        random : bool
+            Whether to generate a random stabilizer state.
+        diagonal : bool
+            If random is True, whether to generate a diagonal stabilizer state.
+        seed : int | None
+            The seed to use for random number generation.
+
+        Returns
+        -------
+        PauliSum
+            A PauliSum instance representing the stabilizer state.
+        """
+
+        if isinstance(dimensions, int):
+            dimensions = [dimensions]
+
+        n_qudits = len(dimensions)
+
+        # Generate the tableau for a diagonal stabilizer
+        tableau = np.zeros((n_qudits, 2 * n_qudits), dtype=int)
+        tableau[:, n_qudits:] = np.eye(n_qudits, n_qudits, dtype=int)
+
+        # Initialize the stabilizer with uniform weights and zero phases ( |0...0> state )
+        stabilizer_out = cls.from_tableau(tableau, weights=np.ones(
+            n_qudits), phases=np.zeros(n_qudits), dimensions=dimensions)
+
+        # If not random, we just return the |0...0> state.
+        if not random:
+            assert stabilizer_out.is_stabilizer(), "The generated stabilizer state does not pass the sanity checks."
+            return stabilizer_out
+
+        if random:
+            if seed is not None:
+                np.random.seed(seed)
+
+        # Generate random phases for the stabilizer
+        lcm = np.lcm.reduce(dimensions)
+        phases = [2 * np.random.choice([i for i in range(d)]) * lcm / d for d in dimensions]
+        stabilizer_out.set_phases(phases)
+
+        # If random and diagonal we just return the random diagonal stabilizer.
+        if diagonal:
+            assert stabilizer_out.is_stabilizer(), "The generated stabilizer state does not pass the sanity checks."
+            return stabilizer_out
+
+        else:
+            # Apply a random circuit to the stabilizer
+            from sympleq.core.circuits.circuits import Circuit
+            rand_circ = Circuit.from_random(10 * n_qudits ** 4, dimensions=dimensions, two_qudit_gate_ratio=0.8)
+            stabilizer_out = rand_circ.act(stabilizer_out)
+
+            assert stabilizer_out.is_stabilizer(), "The generated stabilizer state does not pass the sanity checks."
+            return stabilizer_out
+
     def is_stabilizer(self) -> bool:
         """
         Checks whether the PauliSum is a stabilizer state.
@@ -1277,7 +1321,6 @@ class PauliSum(PauliObject):
         bool
             True if the PauliSum is a stabilizer state, False otherwise.
         """
-        n_qudits = self.n_qudits()
 
         # Sanity check 1: weights must be one
         if not np.allclose(self.weights, np.ones_like(self.weights), atol=1e-10):
@@ -1288,19 +1331,20 @@ class PauliSum(PauliObject):
             warnings.warn("The PauliStrings in the PauliSum are not all-to-all commuting.")
             return False
         # Sanity check 3: number of PauliStrings may be equal to number of qudits
-        if self.n_paulis() != n_qudits:
+        if self.n_paulis() != self.n_qudits():
             warnings.warn("The number of PauliStrings is not equal to the number of qudits.")
             return False
 
         # TODO: Not sure about this last check... It works for diagonal stabilizers but maybe not for non-diagonal?
 
         # Sanity check 4: the phases of the stabilizer state must be consistent with the computational basis state
+        n_qudits = self.n_qudits()
         phases = self.phases
         dims = self.dimensions
         lcm = self.lcm
         tableau = self.tableau
 
-        lcm_per_qudit = np.zeros(n_qudits, dtype=int)  # lcm of the dimensions of the non-identity Paulis
+        lcm_per_pauli = np.zeros(n_qudits, dtype=int)  # lcm of the dimensions of the non-identity Paulis
         for i in range(n_qudits):
             non_id_indices = []
             for j in range(n_qudits):
@@ -1310,11 +1354,11 @@ class PauliSum(PauliObject):
                 # Sanity check 5: if there are non-identity Paulis, it's not a stabilizer state
                 warnings.warn("There are identities in the stabilizer state.")
                 return False
-            lcm_per_qudit[i] = np.lcm.reduce(dims[non_id_indices])
+            lcm_per_pauli[i] = np.lcm.reduce(dims[non_id_indices])
 
-        effective_phases = phases * lcm_per_qudit / lcm  # these must be integers
+        effective_phases = phases * lcm_per_pauli / lcm  # these must be integers
 
-        if not np.allclose(effective_phases % 1, np.zeros_like(effective_phases), atol=1e-10):
+        if not np.allclose(effective_phases % 1, np.zeros(effective_phases.shape), atol=1e-10):
             warnings.warn("The phases of the stabilizer state are not consistent.")
             return False
 
@@ -1342,20 +1386,26 @@ class PauliSum(PauliObject):
 
         assert self.is_stabilizer(), "Not a stabilizer state."
 
-        # TODO: Find Clifford that maps the PauliSum to the computational basis and
-        #       generalize this function accordingly
-        n_qudits = self.n_qudits()
-        expected_tableau = np.zeros((n_qudits, 2 * n_qudits), dtype=int)
-        expected_tableau[:, n_qudits:] = np.eye(n_qudits, dtype=int)
-        if not np.array_equal(self.tableau, expected_tableau):
-            raise NotImplementedError(
-                "stabilizer_to_hilbert_space is currently implemented only for 0|1 tableau "
-                "(all-zero X block followed by identity Z block)."
-            )
+        # Find Clifford that maps the PauliSum to the computational basis
+        from sympleq.core.circuits import Gate
+        from sympleq.core.circuits.gate_decomposition_to_circuit import gate_to_circuit
+        stabilizer_input = self.copy()
+        n_qudits = stabilizer_input.n_qudits()
+        dims = stabilizer_input.dimensions
 
-        dims = self.dimensions
+        # Find the Clifford that maps the stabilizer to the diagonal stabilizer (if not already diagonal)
+        desired_tableau = np.zeros((n_qudits, 2 * n_qudits), dtype=int)
+        desired_tableau[:, n_qudits:] = np.eye(n_qudits, dtype=int)
+
+        #  F, h, qudit_indices, gate_dimension = find_map_to_target_pauli_sum(stabilizer_input.tableau, desired_tableau)
+
+        gate = Gate.solve_from_target(stabilizer_input.tableau, desired_tableau)
+
+        # Apply that circuit to the input stabilizer
+        stabilizer_diagonalized = gate.act(stabilizer_input, tuple(range(n_qudits)))
+
         lcm = np.lcm.reduce(dims)
-        phases = self.phases
+        phases = stabilizer_diagonalized.phases
         effective_phases = phases * dims / lcm
 
         # Find the corresponding index of the array in Hilbert space
@@ -1364,6 +1414,22 @@ class PauliSum(PauliObject):
         hilbert_dim = int(np.prod(dims))
         # Generate the density matrix - as we are using density matrices rather than arrays (for the noise)
         state = sp.csr_matrix(([1], ([index], [index])), shape=(hilbert_dim, hilbert_dim), dtype=complex)
+
+        # Apply back the Clifford that diagonalized the input stabilizer
+        circuit = gate_to_circuit(gate, dims)
+        circuit_hilbert = circuit.to_hilbert_space()
+        state = circuit_hilbert.conj().T @ state @ circuit_hilbert  # notice the order of hermitian (<= inverse)
+        #  state = sp.around(state, decimals=14)  # remove numerical noise
+
+        print("banana")
+        print(stabilizer_input)
+        print(stabilizer_diagonalized)
+        print("input tableau", stabilizer_input.tableau)
+        print("desired tableau", desired_tableau)
+        print("obtained tableau", stabilizer_diagonalized.tableau)
+        print("state", state)
+        print(circuit)
+        print(circuit_hilbert)
 
         return state
 
