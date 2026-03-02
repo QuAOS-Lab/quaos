@@ -6,8 +6,8 @@ from itertools import product
 from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 
 
-def find_map_to_target_pauli_sum(input_pauli: PauliSum, target_pauli: PauliSum) -> tuple[np.ndarray, np.ndarray,
-                                                                                         list[int], int]:
+def find_map_to_target_pauli_sum(input_pauli: PauliSum,
+                                 target_pauli: PauliSum) -> tuple[np.ndarray, np.ndarray, list[int], int]:
     """
     TODO: For efficiency improvement act only on target qudits
 
