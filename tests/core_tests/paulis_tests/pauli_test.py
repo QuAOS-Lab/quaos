@@ -1181,26 +1181,46 @@ class TestPaulis:
             assert P1.is_hermitian()
 
     def test_ordered_eigenspectrum(self):
-        for _ in range(N_tests):
+        for i in range(N_tests):
             dimensions = choose_random_dimensions(250)
-            n_paulis = rng.integers(1, 100)
+            if i == 0:
+                k = None
+            elif i == 1:
+                k = np.prod(dimensions) - 1
+            else:
+                k = rng.integers(1, np.prod(dimensions) - 2)
+            n_paulis = rng.integers(1, 10 * len(dimensions) ** 2)
 
-            p = PauliSum.from_random(n_paulis, dimensions, rand_weights=False).make_hermitian()
-            assert p.is_hermitian(), "PauliSum should be Hermitian for ordered_eigenspectrum test."
+            p = PauliSum.from_random(n_paulis, dimensions, rand_weights=True).make_hermitian()
+            assert p.is_hermitian(), f"PauliSum {p} is not hermitian."
 
-            m = p.to_hilbert_space().toarray()
-            assert np.allclose(m - m.conj().T, np.zeros(m.shape)), \
-                "Matrix should be Hermitian for ordered_eigenspectrum test."
-            energies, states = p.ordered_eigenspectrum()
+            m = p.to_hilbert_space()
+            energies, states = p.ordered_eigenspectrum(num_eigens=k)
+            if k is None:
+                k = np.prod(dimensions)
 
-            assert len(energies) == len(states)
-            assert len(states) == np.prod(dimensions)
+            assert len(energies) == len(states), f"Expected {k} eigenvalues and eigenvectors, " \
+                f"got {len(energies)} and {len(states)}."
+            assert len(states) == k, f"Expected {k} eigenvalues and eigenvectors, " \
+                f"got {len(energies)} and {len(states)}."
 
             # Check: the eigenvectors give raise to the correct eigenvalues
             for energy, state in zip(energies, states):
                 check_energy = state.conjugate().transpose() @ m @ state
                 assert np.isclose(
                     check_energy, energy), f"eigenvalue mismatch for state {state}: {energy} vs {check_energy}."
+
+            # Check: the ground state is always there
+            all_energies, all_states = p.ordered_eigenspectrum(num_eigens=None)
+
+            assert np.isclose(energies[0], all_energies[0]), (f"Ground state energy mismatch: "
+                                                              f"{energies[0]} vs {all_energies[0]}.")
+
+            # Check: the ground state is always the same
+            if all_energies[1] - all_energies[0] > 1e-6:  # if ground state is non-degenerate, check fidelity
+                fidelity = np.abs(np.dot(states[0].conjugate().transpose(), all_states[0])) ** 2
+                assert np.isclose(fidelity, 1), (f"Ground state mismatch: "
+                                                 f"Fidelity is {fidelity}.")
 
     def test_ordered_eigenspectrum_raise_non_hermitian(self):
         for _ in range(N_tests):

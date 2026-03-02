@@ -12,10 +12,8 @@ from sympleq.core.finite_field_solvers import get_linear_dependencies
 from .pauli_object import PauliObject
 from .pauli_string import PauliString
 from .pauli import Pauli
+from ._typing import ScalarType, TableauType, DimensionsLike, PhasesLike, WeightsLike
 from .constants import DEFAULT_QUDIT_DIMENSION
-
-
-ScalarType = Union[float, complex, int]
 
 if TYPE_CHECKING:
     PauliOrScalarType = Union[PauliObject, ScalarType]
@@ -23,9 +21,11 @@ if TYPE_CHECKING:
 
 class PauliSum(PauliObject):
     @classmethod
-    def from_tableau(cls, tableau: np.ndarray, dimensions: int | list[int] | np.ndarray | None = None,
-                     weights: ScalarType | list[ScalarType] | np.ndarray | None = None,
-                     phases: int | list[int] | np.ndarray | None = None
+    def from_tableau(cls,
+                     tableau: TableauType,
+                     dimensions: DimensionsLike | None = None,
+                     weights: WeightsLike | None = None,
+                     phases: PhasesLike | None = None
                      ) -> PauliSum:
         """
         Create a PauliSum instance from a tableau.
@@ -1196,10 +1196,16 @@ class PauliSum(PauliObject):
             new_phases = (self.phases + np.array(phases)) % (2 * self.lcm)
             self._phases = new_phases
 
-    def ordered_eigenspectrum(self) -> tuple[np.ndarray, np.ndarray]:
+    def ordered_eigenspectrum(self, num_eigens: int | None = None) -> tuple[np.ndarray, np.ndarray]:
         """
-        Compute eigenvalues/eigenvectors of the PauliSum and (by default) pick
-        the ground-state energy (`only_gs` = `True`).
+        Compute the eigenvalues/eigenvectors of the PauliSum; by default it returns all eigenvectors,
+        but it can be restricted to the lowest `num_eigens` eigenvalues/eigenvectors by setting `num_eigens`
+        to an integer.
+
+        Parameters
+        ----------
+        num_eigens : int | None
+            The number of eigenvalues and eigenvectors to return. If None, all are returned.
 
         Returns
         -------
@@ -1213,10 +1219,20 @@ class PauliSum(PauliObject):
             raise ValueError("Cannot find ground state for non-Hermitian PauliSum.")
 
         # Convert PauliSum to matrix form
-        m = self.to_hilbert_space().toarray()
+        sparse_matrix = self.to_hilbert_space()
+
+        if num_eigens is None:
+            num_eigens = sparse_matrix.shape[0]
 
         # Get eigenvalues and eigenvectors
-        val, vec = np.linalg.eigh(m)
+        if num_eigens >= sparse_matrix.shape[0] - 2:
+            val, vec = np.linalg.eigh(sparse_matrix.toarray())
+            val = val[:num_eigens]
+            vec = vec[:, :num_eigens]
+        else:
+            weights = np.abs(self.weights)
+            total_weights = np.sum(weights)
+            val, vec = sp.linalg.eigsh(sparse_matrix, k=num_eigens, sigma=-1.1 * total_weights)
         vec = np.transpose(vec)
 
         # Ordering
