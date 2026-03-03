@@ -6,7 +6,7 @@ import scipy.sparse as sp
 
 from sympleq.core.paulis import PauliString, PauliObject
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
-from sympleq.core.circuits.utils import embed_symplectic, transvection_matrix, symplectic_form
+from sympleq.core.circuits.utils import embed_symplectic, embed_unitary, transvection_matrix, symplectic_form
 from sympleq.core.circuits.random_symplectic import symplectic_random_transvection
 from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 from sympleq.core.circuits.target import get_phase_vector
@@ -224,6 +224,14 @@ class Gate(ABC):
 
         return pauli.__class__(tableau=new_tableau, dimensions=pauli.dimensions,
                                weights=pauli.weights, phases=new_phases)
+
+    def act_in_hilbert_space(self, rho: sp.csr_matrix,
+                             qudits: tuple[int, ...], dimensions: np.ndarray) -> sp.csr_matrix:
+
+        dimension = dimensions[qudits[0]]
+        unitary = embed_unitary(self.local_unitary(dimension), qudits, dimensions)
+
+        return unitary @ rho @ unitary.conjugate().transpose()
 
     def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
         """

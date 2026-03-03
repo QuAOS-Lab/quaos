@@ -9,7 +9,9 @@ from sympleq.core.circuits.utils import embed_unitary
 from sympleq.core.circuits.gates import GATES, Gate
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis.pauli_sum import PauliSum
-from sympleq.applications.randomized_benchmarking.noise_model import CompositeNoise, DephasingNoise, DepolarizingNoise, NoiseModel, Noiseless
+from sympleq.applications.randomized_benchmarking.noise_model import \
+    CompositeNoise, DephasingNoise, DepolarizingNoise, NoiseModel, Noiseless
+from sympleq.core.statistic_utils import BayesianEstimation
 
 
 class RMB:
@@ -52,11 +54,13 @@ class RMB:
 
     @classmethod
     def initial_state(cls,
-                      dimensions: list[int] | np.ndarray | None = None,
+                      dimensions: list[int] | np.ndarray,
                       random_phases: bool = False,
                       rng: RNGGenerator | None = None) -> PauliSum:
         if rng is None:
             rng = default_rng()
+
+        n_qudits = len(dimensions)
 
         pauli_strings = []
         for p_idx in range(n_qudits):
@@ -231,13 +235,20 @@ class RMB:
             yield pauli
 
     def act_in_hilbert_space(self, rho: sp.csr_matrix) -> sp.csr_matrix:
-        for gate, qudits in zip(self.gates, self.qudit_indices):
-            dimension = self.dimensions[qudits[0]]
-            unitary = embed_unitary(gate.local_unitary(dimension), qudits, self.dimensions)
-            rho = np.around(unitary @ rho @ unitary.conjugate().transpose(), 10)
-            rho = self.noise_model.act_in_hilbert_space(rho, qudits, self.dimensions)
+        dims = self.dimensions
+        cache: dict[tuple, tuple[sp.csr_matrix, sp.csr_matrix]] = {}
 
-        assert np.abs(np.sum(rho.diagonal()) - 1.0) < 10**(-5), f"{np.sum(rho.diagonal())}"
+        for gate, qudits in zip(self.gates, self.qudit_indices):
+            key = (gate, qudits)
+            if key not in cache:
+                U = embed_unitary(gate.local_unitary(dims[qudits[0]]), qudits, dims)
+                cache[key] = (U, U.conj().T)
+            U, U_dag = cache[key]
+
+            rho = U @ rho @ U_dag
+            rho = self.noise_model.act_in_hilbert_space(rho, qudits, dims)
+
+        assert np.abs(rho.diagonal().sum() - 1.0) < 1e-5, f"{rho.diagonal().sum()}"
         return rho
 
     def __str__(self) -> str:
@@ -300,13 +311,14 @@ Circuit:
 
 
 if __name__ == "__main__":
-    n_qudits = 4
+    n_qudits = 2
     gate_density = 4.5
     dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qudits
 
     noise_model = CompositeNoise.from_noise_models([DephasingNoise(0.05), DepolarizingNoise(0.005)])
     noise_model = DepolarizingNoise(0.05)
     rmb = RMB.from_random(dimensions, gate_density,
+                          random_initial_state=False,
                           noise_model=noise_model,
                           with_random_elimination=False,
                           rng=default_rng())
@@ -317,18 +329,35 @@ if __name__ == "__main__":
     scrambler = Circuit.from_random(50, rmb.dimensions)
     ps = scrambler.act(ps)
 
-    N = 5000
-    output_ps_rhos = []
-    for _ in range(N):
-        output_ps_rhos.append(rmb.act(ps).stabilizer_to_hilbert_space())
+    # \mathcal{S}_1 = |ps><ps|
 
-    output_ps_rho = np.around(sum(output_ps_rhos), 10) / N
+    # <ps|ps2>
+
+    N = 10000
+    output_ps_rhos: list[sp.csr_matrix] = []
+    for _ in range(N - 1):
+        output_ps_rhos.append(rmb.act(ps).stabilizer_to_hilbert_space(check=False))
+    output_ps_rho = np.around(sum(output_ps_rhos), 10) / N  # type: ignore
+
+    counts = {}
+    for r in output_ps_rhos:
+        key = r.toarray().tobytes()
+        if key not in counts:
+            counts[key] = 1
+        else:
+            counts[key] += 1
 
     print(output_ps_rho)
 
-    # print(np.around(output_ps.stabilizer_to_hilbert_space(), 10))
+    estimation = BayesianEstimation(list(counts.values()))
+    for idx in range(len(counts)):
+        print(estimation.probability(idx), estimation.variance(idx))
+
     rho = ps.stabilizer_to_hilbert_space()
-    output_rho = np.around(rmb.act_in_hilbert_space(rho), 10)
+    output_rho = rmb.act_in_hilbert_space(rho)
+    output_rho.data = np.around(output_rho.data, 10)
     print(output_rho)
+
+    print(np.around(np.abs(output_ps_rho - output_rho), 10))
 
     print(np.max(np.abs(output_rho - output_ps_rho)))

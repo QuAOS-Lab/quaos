@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Generator, overload, TypeVar, TypeAlias
+from typing import Generator, Self, overload, TypeVar, TypeAlias
 import json
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
@@ -7,6 +7,7 @@ import scipy.sparse as sp
 from pathlib import Path
 from collections import defaultdict
 
+from sympleq.core.noise.noise_model import NoiseModel
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis import PauliSum, PauliString, Pauli, PauliObject
 from .utils import embed_unitary, embed_symplectic
@@ -55,6 +56,10 @@ class Circuit:
 
         self._gates = gates
         self._qudit_indices = [tuple([int(idx) for idx in idxs]) for idxs in qudit_indices]
+
+        self.noise_model = None
+
+        self._unitary_cache: dict[tuple, tuple[sp.csr_matrix, sp.csr_matrix]] = {}
 
     @property
     def gates(self) -> list[Gate]:
@@ -280,6 +285,13 @@ class Circuit:
         with open(file_path, 'r') as f:
             return cls.from_string(f.read())
 
+    def with_noise(self, noise_model: NoiseModel) -> Self:
+        self.noise_model = noise_model
+        return self
+
+    def add_noise(self, noise_model: NoiseModel):
+        self.noise_model = noise_model
+
     def _sanity_check(self):
         """
         Validate internal consistency of the Circuitt.
@@ -413,7 +425,25 @@ class Circuit:
         """Apply all gates in the circuit to a Pauli object."""
         for gate, qudits in zip(self._gates, self._qudit_indices):
             pauli = gate.act(pauli, qudits)
+            if self.noise_model is not None:
+                pauli = self.noise_model.apply_quantum_trajectory(pauli, qudits)
+
         return pauli
+
+    def act_in_hilbert_space(self, rho: sp.csr_matrix) -> sp.csr_matrix:
+        """Apply all gates in the circuit in Hilbert space."""
+        for gate, qudits in zip(self._gates, self._qudit_indices):
+            key = (gate, qudits)
+            if key not in self._unitary_cache:
+                U = embed_unitary(gate.local_unitary(self.dimensions[qudits[0]]), qudits, self.dimensions)
+                self._unitary_cache[key] = (U, U.conj().T)
+            U, U_dag = self._unitary_cache[key]
+
+            rho = U @ rho @ U_dag
+            if self.noise_model is not None:
+                rho = self.noise_model.act_in_hilbert_space(rho, qudits, self.dimensions)
+
+        return rho
 
     @overload
     def act_iter(self, pauli: Pauli) -> Generator[Pauli, None, None]:
@@ -431,6 +461,8 @@ class Circuit:
         """Yields the Pauli object after each gate application."""
         for gate, qudits in zip(self._gates, self._qudit_indices):
             pauli = gate.act(pauli, qudits)
+            if self.noise_model is not None:
+                pauli = self.noise_model.apply_quantum_trajectory(pauli, qudits)
             yield pauli
 
     def copy(self) -> Circuit:

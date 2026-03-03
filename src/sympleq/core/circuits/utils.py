@@ -157,37 +157,28 @@ def embed_unitary(U_local: sp.csr_matrix,
     Returns:
         Full unitary of shape (D_total, D_total) with D_total = prod(total_dimensions).
     """
-    qudit_indices = list(map(int, qudit_indices))
-    dims = list(map(int, total_dimensions))
+    dims = np.asarray(total_dimensions)
     N = len(dims)
-    sel = qudit_indices
+    sel = list(qudit_indices)
     rest = [k for k in range(N) if k not in sel]
+    perm_order = sel + rest
 
-    # Validate local size matches product of selected dims
-    D_loc_expected = int(np.prod([dims[k] for k in sel]))
-    if U_local.shape != (D_loc_expected, D_loc_expected):
-        raise ValueError(
-            f"U_local shape {U_local.shape} doesn't match selected dims product {D_loc_expected}"
-        )
-
-    D_rest = int(np.prod([dims[k] for k in rest]) if rest else 1)
+    D_rest = int(np.prod(dims[rest])) if rest else 1
     D_total = int(np.prod(dims))
 
-    # Build permutation matrix P that reorders tensor factors to [sel..., rest...]
-    dims_perm = [dims[k] for k in sel + rest]
-    P = sp.csr_matrix(np.zeros((D_loc_expected * D_rest, D_total), dtype=complex))
+    # Vectorized permutation: decompose all linear indices into multi-indices,
+    # permute the qudit axes, then recompute linear indices
+    all_idx = np.arange(D_total)
+    multi = np.array(np.unravel_index(all_idx, tuple(dims)))  # (N, D_total)
+    dims_perm = tuple(dims[perm_order])
+    new_idx = np.ravel_multi_index(tuple(multi[perm_order]), dims_perm)
 
-    # Iterate over all basis states
-    for q in np.ndindex(*dims):
-        q = list(q)
-        old_idx = _multi_index_to_linear(q, dims)
-        q_perm = [q[k] for k in (sel + rest)]
-        new_idx = _multi_index_to_linear(q_perm, dims_perm)
-        P[new_idx, old_idx] = 1.0
+    # Sparse permutation matrix (real-valued, D_total nonzeros): P[new, old] = 1
+    P = sp.csc_matrix((np.ones(D_total), (new_idx, all_idx)), shape=(D_total, D_total))
 
-    # Construct full operator: P^T (U_local ⊗ I_rest) P
-    U_kron = sp.kron(U_local, sp.eye(D_rest))
-    return P.conj().T @ U_kron @ P
+    # P^T @ (U_local ⊗ I_rest) @ P
+    U_kron = sp.kron(U_local, sp.eye(D_rest, format='csr'), format='csr')
+    return P.T @ U_kron @ P
 
 
 def tensor(mm: list[sp.csr_matrix]) -> sp.csr_matrix:

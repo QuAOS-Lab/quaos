@@ -1,8 +1,12 @@
 import pytest
 import numpy as np
 
+from sympleq.applications.randomized_benchmarking import RMB
+from sympleq.applications.randomized_benchmarking.noise_model import DepolarizingNoise
 from sympleq.core.circuits.circuits import Circuit
-from sympleq.core.circuits.gates import GATES
+from sympleq.core.circuits.gates import GATES, Gate
+from sympleq.core.circuits.utils import embed_unitary
+from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis.pauli_string import PauliString
 from sympleq.core.paulis.pauli_sum import PauliSum
 
@@ -108,3 +112,36 @@ def test_circuit_composite_gate(benchmark, n_qudits: int, n_gates: int):
         _ = circuit.composite_gate()
 
     benchmark(comp_gate)
+
+
+@pytest.mark.benchmark(group="Circuit")
+@pytest.mark.parametrize("gate", [GATES.H, GATES.S, GATES.CX])
+@pytest.mark.parametrize("dimension", [2, 3, 5])
+@pytest.mark.parametrize("n_qudits", [2, 3, 5])
+def test_embed_unitary(benchmark, gate: Gate, dimension: int, n_qudits: int):
+    local_unitary = gate.local_unitary(dimension)
+
+    def comp_unitary():
+        _ = embed_unitary(local_unitary, tuple(range(gate.n_qudits)), [dimension] * n_qudits)
+
+    benchmark(comp_unitary)
+
+
+@pytest.mark.benchmark(group="RMB")
+@pytest.mark.parametrize("n_qudits", [2, 3, 5, 11])
+def test_rmb_act(benchmark, n_qudits: int):
+    gate_density = 4.5
+    dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qudits
+    noise_model = DepolarizingNoise(0.05)
+    rmb = RMB.from_random(dimensions, gate_density,
+                          noise_model=noise_model,
+                          with_random_elimination=False)
+
+    ps = rmb._initial_state
+    scrambler = Circuit.from_random(50, rmb.dimensions)
+    ps = scrambler.act(ps)
+
+    def comp_act():
+        _ = rmb.act(ps).stabilizer_to_hilbert_space(check=True)
+
+    benchmark(comp_act)

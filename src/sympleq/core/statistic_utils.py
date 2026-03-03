@@ -1,4 +1,5 @@
 import numpy as np
+import math
 from sympleq.core.paulis import PauliSum
 
 
@@ -39,3 +40,27 @@ def true_covariance_graph(H: PauliSum, psi) -> np.ndarray:
             cov = (psi_dag @ mm[i0].conj().T @ mm[i1] @ psi) - cc2[i0] * cc1[i1]
             cm[i0, i1] = cov
     return cm
+
+
+class BayesianEstimation:
+    def __init__(self, counts: list[int] = []) -> None:
+        self.counts = counts
+        self.counts_tot = sum(counts)
+        self.a = [1] * len(counts)
+        self.a_tot = sum(self.a)
+        self._probs = [(counts[idx] + self.a[idx]) / (self.counts_tot + self.a_tot)
+                       for idx in range(len(counts))]
+        self._probs_squared = [(counts[idx] + self.a[idx]) / (self.counts_tot + self.a_tot) *
+                               (counts[idx] + self.a[idx] + 1) / (self.counts_tot + self.a_tot + 1)
+                               for idx in range(len(counts))]
+
+        self._variances = [math.sqrt(self._probs_squared[idx] - self._probs[idx]**2) for idx in range(len(counts))]
+
+    def probability(self, idx: int) -> float:
+        return self._probs[idx]
+
+    def variance(self, idx: int) -> float:
+        return self._variances[idx]
+
+    def interval(self, idx: int) -> tuple[float, float]:
+        return self._probs[idx] - self._variances[idx], self._probs[idx] + self._variances[idx]
