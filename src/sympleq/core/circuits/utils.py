@@ -1,11 +1,14 @@
 from __future__ import annotations
 import numpy as np
 import scipy.sparse as sp
+from sympleq._typing import IntNDArray
 from sympleq.utils import int_to_bases, bases_to_int
 from functools import reduce
 
+from sympleq.core.paulis._typing import TableauType, PhasesType, HilbertOperator, DimensionsType
 
-def is_symplectic(F, p: int) -> bool:
+
+def is_symplectic(F: TableauType, p: int) -> bool:
     """
     Check if matrix F is symplectic over GF(p).
 
@@ -27,7 +30,7 @@ def is_symplectic(F, p: int) -> bool:
     return np.array_equal(lhs, Omega)
 
 
-def symplectic_product_arrays(u: np.ndarray, v: np.ndarray, p: int = 2) -> int:
+def symplectic_product_arrays(u: TableauType, v: TableauType, p: int = 2) -> int:
     """
     Compute the symplectic inner product of two binary vectors.
 
@@ -38,10 +41,10 @@ def symplectic_product_arrays(u: np.ndarray, v: np.ndarray, p: int = 2) -> int:
         Symplectic inner product modulo p
     """
     n = len(u) // 2
-    return (np.sum(u[:n] * v[n:] - u[n:] * v[:n])) % p
+    return int(np.sum(u[:n] * v[n:] - u[n:] * v[:n])) % p
 
 
-def symplectic_product_matrix(pauli_sum_tableau: np.ndarray, p: int = 2) -> np.ndarray:
+def symplectic_product_matrix(pauli_sum_tableau: TableauType, p: int = 2) -> TableauType:
     m = len(pauli_sum_tableau)
     spm = np.zeros((m, m), dtype=int)
 
@@ -52,7 +55,7 @@ def symplectic_product_matrix(pauli_sum_tableau: np.ndarray, p: int = 2) -> np.n
     return spm
 
 
-def symplectic_form(n: int, p: int = 2) -> np.ndarray:
+def symplectic_form(n: int, p: int = 2) -> TableauType:
     """
     Construct the symplectic matrix Omega for a given dimension n over GF(p).
 
@@ -72,7 +75,7 @@ def symplectic_form(n: int, p: int = 2) -> np.ndarray:
         return np.block([[Z, Id], [-Id, Z]])
 
 
-def transvection_matrix(h: np.ndarray, p=2, multiplier=1):
+def transvection_matrix(h: IntNDArray, p: int = 2, multiplier: int = 1) -> TableauType:
     """
     Compute the transvection matrix corresponding to the vector h.
 
@@ -94,12 +97,15 @@ def transvection(h, x, p=2):
     return (x + symplectic_product_arrays(x, h.T, p) * h) % p
 
 
-def embed_symplectic(symplectic_local, phase_vector_local, qudit_indices, n_qudits):
+def embed_symplectic(symplectic_local: TableauType, phase_vector_local: PhasesType,
+                     qudit_indices: tuple[int, ...] | list[int] | int, n_qudits: int) -> tuple[TableauType, PhasesType]:
     """
     Embed a local Clifford (F_local, h_local) into a larger 2n-dimensional space,
     correctly handling arbitrary qudit index ordering.
     """
-    m = len(qudit_indices)
+    _qudit_indices = np.asarray(qudit_indices, dtype=int).reshape(-1)
+
+    m = len(_qudit_indices)
     if symplectic_local.shape != (2 * m, 2 * m):
         raise ValueError("symplectic_local must be 2m x 2m")
     if len(phase_vector_local) != 2 * m:
@@ -109,12 +115,10 @@ def embed_symplectic(symplectic_local, phase_vector_local, qudit_indices, n_qudi
     F_full = np.eye(2 * n_qudits, dtype=int)
     h_full = np.zeros(2 * n_qudits, dtype=int)
 
-    qudit_indices = np.array(qudit_indices, dtype=int)
-
     # Build row/column index mapping for the full space
     # First X rows/columns
-    row_indices = np.concatenate([qudit_indices, n_qudits + qudit_indices])
-    col_indices = np.concatenate([qudit_indices, n_qudits + qudit_indices])
+    row_indices = np.concatenate([_qudit_indices, n_qudits + _qudit_indices])
+    col_indices = np.concatenate([_qudit_indices, n_qudits + _qudit_indices])
 
     # Place the full local symplectic block into the full system
     F_full[np.ix_(row_indices, col_indices)] = symplectic_local
@@ -141,9 +145,9 @@ def _multi_index_to_linear(index: list[int] | np.ndarray, dims: list[int] | np.n
     return idx
 
 
-def embed_unitary(U_local: sp.csr_matrix,
+def embed_unitary(U_local: HilbertOperator,
                   qudit_indices: list[int] | np.ndarray,
-                  total_dimensions: list[int] | np.ndarray) -> sp.csr_matrix:
+                  total_dimensions: DimensionsType) -> HilbertOperator:
     """
     Embed a local unitary acting on a subset of qudits into the full Hilbert space.
 
@@ -193,7 +197,7 @@ def embed_unitary(U_local: sp.csr_matrix,
     return P.conj().T @ U_kron @ P
 
 
-def tensor(mm: list[sp.csr_matrix]) -> sp.csr_matrix:
+def tensor(mm: list[HilbertOperator]) -> HilbertOperator:
     # Inputs:
     #     mm - (list{scipy.sparse.csr_matrix}) - matrices to tensor
     # Outputs:
@@ -207,16 +211,16 @@ def tensor(mm: list[sp.csr_matrix]) -> sp.csr_matrix:
     return sp.csr_matrix(sp.kron(mm[0], tensor(mm[1:]), format="csr"))
 
 
-def I_mat(d: int) -> sp.csr_matrix:
+def I_mat(d: int) -> HilbertOperator:
     return sp.csr_matrix(np.diag([1] * d))
 
 
-def H_mat(d: int) -> sp.csr_matrix:
+def H_mat(d: int) -> HilbertOperator:
     omega = np.exp(2 * np.pi * 1j / d)
     return sp.csr_matrix(1 / np.sqrt(d) * np.array([[omega ** (i0 * i1) for i0 in range(d)] for i1 in range(d)]))
 
 
-def S_mat(d: int) -> sp.csr_matrix:
+def S_mat(d: int) -> HilbertOperator:
     if d == 2:
         return sp.csr_matrix(np.diag([1, 1j]))
 
@@ -224,7 +228,7 @@ def S_mat(d: int) -> sp.csr_matrix:
     return sp.csr_matrix(np.diag([omega ** (i * (i - 1) / 2) for i in range(d)]))
 
 
-def _X_power(d: int, a: int) -> sp.csr_matrix:
+def _X_power(d: int, a: int) -> HilbertOperator:
     """
     Sparse X^a on a single qudit (dimension d).
     Places ones at rows ((j + a) % d) and columns j.
@@ -236,7 +240,7 @@ def _X_power(d: int, a: int) -> sp.csr_matrix:
     return sp.csr_matrix((data, (rows, cols)), shape=(d, d))
 
 
-def _Z_power(d: int, b: int) -> sp.csr_matrix:
+def _Z_power(d: int, b: int) -> HilbertOperator:
     """
     Sparse Z^b on a single qudit (dimension d).
     Diagonal with entries ω^{b*j}, ω = exp(2πi/d).
@@ -248,7 +252,7 @@ def _Z_power(d: int, b: int) -> sp.csr_matrix:
     return sp.csr_matrix(sp.diags(diag, offsets=0, dtype=complex, format="csr"))
 
 
-def pauli_unitary_qudit(d: int, x: int, z: int, convention: str = "bare") -> sp.csr_matrix:
+def pauli_unitary_qudit(d: int, x: int, z: int, convention: str = "bare") -> HilbertOperator:
     """
     Sparse unitary for single-qudit Pauli specified by tableau [x | z] over Z_d.
 
@@ -270,8 +274,8 @@ def pauli_unitary_qudit(d: int, x: int, z: int, convention: str = "bare") -> sp.
 
 
 def pauli_unitary_from_tableau(
-    d: int, x: np.ndarray, z: np.ndarray, convention: str = "bare"
-) -> sp.csr_matrix:
+    d: int, x: TableauType, z: TableauType, convention: str = "bare"
+) -> HilbertOperator:
     """
     Sparse multi-qudit unitary. x, z are length-n integer arrays (mod d),
     representing a tableau row [x0..x_{n-1} | z0..z_{n-1}] on n qudits.
