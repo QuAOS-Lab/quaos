@@ -1,8 +1,8 @@
 import numpy as np
 from sympleq.core.circuits import Gate  # , Circuit
+from sympleq.core.circuits.phase_correction import clifford_phase_decomposition
 from sympleq.core.paulis import PauliSum
 from sympleq.core.graphs.graph_automorphism_search import clifford_graph_automorphism_search
-from sympleq.core.symmetries.phase_correction import clifford_phase_decomposition
 from sympleq.core.symmetries.block_decomposition import block_decompose_optimal, ordered_block_sizes
 
 

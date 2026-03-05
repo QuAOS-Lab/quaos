@@ -371,25 +371,32 @@ def random_gate_symmetric_hamiltonian(G: Gate,
                                       n_paulis: int | None = None,
                                       weight_mode: str = 'uniform',
                                       scrambled: bool = False,
-                                        # generation controls
+                                      # generation controls
                                       extra_orbit_budget: int = 10_000,   # how many extra random orbit seeds to add after basis orbits
                                       avoid_rounding: bool = True,        # recommended True for rank robustness
+                                      target_count_tolerance: float = 0.10,  # acceptable relative deviation from n_paulis
                                       ) -> PauliSum:
     """
-    Symmetric Hamiltonian generator that is full-rank (rank 2n) by construction
-    (before any combining/cancellation), using the 2n canonical basis seeds.
+    Generate a gate-symmetric Hamiltonian while enforcing Hermiticity.
 
     Notes:
-      - Returns >= n_paulis terms (because we add whole orbits).
-      - Uses the library's projective action as-is: we keep term.weights/phases from G.act.
+      - The final number of terms is targeted to be close to `n_paulis` within
+        `target_count_tolerance` when feasible.
+      - Each added orbit block is Hermitized before accumulation, so the final
+        Hamiltonian is guaranteed Hermitian (up to numerical tolerance).
     """
     if n_qudits is None:
         n_qudits = len(G.qudit_indices)
     if n_paulis is None:
         n_paulis = 2 * n_qudits
+    if target_count_tolerance < 0:
+        raise ValueError("target_count_tolerance must be >= 0.")
 
     rng = np.random.default_rng()
     all_indices = tuple(range(n_qudits))
+    target_terms = max(1, int(n_paulis))
+    lower_target = max(1, int(np.floor((1.0 - float(target_count_tolerance)) * target_terms)))
+    upper_target = max(lower_target, int(np.ceil((1.0 + float(target_count_tolerance)) * target_terms)))
 
     def new_seed_weight() -> complex:
         if weight_mode == "random":
@@ -416,14 +423,80 @@ def random_gate_symmetric_hamiltonian(G: Gate,
             term = G.act(term, qudit_indices).to_standard_form()
         return out
 
+    def compact_pauli_sum(P: PauliSum, do_rounding: bool = False) -> PauliSum:
+        """
+        Canonicalise and combine terms in a phase-safe way.
+        """
+        out = P.copy()
+        out.phase_to_weight()
+        out.combine_equivalent_paulis()
+        out.standardise()
+        if do_rounding:
+            out.set_weights(np.around(out.weights, decimals=10))
+        out.remove_zero_weight_paulis()
+        out.weight_to_phase()
+        out.standardise()
+        return out
+
+    def hermitize(P: PauliSum) -> PauliSum:
+        """
+        Hermitize while preserving symmetry under linear operations.
+        """
+        return compact_pauli_sum(0.5 * (P + P.hermitian_conjugate()), do_rounding=False)
+
+    def build_orbit_block(seed: PauliSum) -> PauliSum:
+        """
+        Build one symmetry orbit block from a seed and Hermitize that block.
+        """
+        blk = orbit(seed)
+        tab_rows = [t.tableau[0] for t in blk]
+        phs = [int(t.phases[0]) for t in blk]
+        wts = [complex(t.weights[0]) for t in blk]
+        block = PauliSum.from_tableau(
+            np.vstack(tab_rows),
+            dimensions=[dimension] * n_qudits,
+            weights=np.array(wts, dtype=complex),
+            phases=np.array(phs, dtype=int),
+        )
+        block = hermitize(block)
+        return block
+
+    def add_block(current: PauliSum | None, block: PauliSum) -> PauliSum:
+        if current is None:
+            candidate = block.copy()
+        else:
+            candidate = current + block
+        candidate = compact_pauli_sum(candidate, do_rounding=False)
+        if not candidate.is_hermitian():
+            candidate = hermitize(candidate)
+        return candidate
+
+    def update_best(cand: PauliSum,
+                    best: PauliSum | None,
+                    best_diff: int | None,
+                    best_in_band: PauliSum | None,
+                    best_in_band_diff: int | None
+                    ) -> tuple[PauliSum | None, int | None, PauliSum | None, int | None]:
+        n_terms = int(cand.n_paulis())
+        diff = abs(n_terms - target_terms)
+        if best is None or best_diff is None or diff < best_diff:
+            best = cand.copy()
+            best_diff = diff
+        if lower_target <= n_terms <= upper_target:
+            if best_in_band is None or best_in_band_diff is None or diff < best_in_band_diff:
+                best_in_band = cand.copy()
+                best_in_band_diff = diff
+        return best, best_diff, best_in_band, best_in_band_diff
+
     # ---- Phase 1: add orbits for the 2n basis seeds ----
     basis_rows = tableau_basis_seeds(n_qudits)  # shape (2n, 2n)
-
-    orbit_blocks = []  # each block: (tableau_rows, phases, weights)
-    total_terms = 0
+    P_sym: PauliSum | None = None
+    best: PauliSum | None = None
+    best_diff: int | None = None
+    best_in_band: PauliSum | None = None
+    best_in_band_diff: int | None = None
 
     for row in basis_rows:
-        # Make a 1-term PauliSum for this basis tableau row
         w0 = new_seed_weight()
         seed = PauliSum.from_tableau(
             row[None, :],
@@ -431,59 +504,48 @@ def random_gate_symmetric_hamiltonian(G: Gate,
             weights=np.array([w0], dtype=complex),
             phases=np.array([0], dtype=int),
         ).to_standard_form()
+        block = build_orbit_block(seed)
+        if block.n_paulis() == 0:
+            continue
+        P_sym = add_block(P_sym, block)
 
-        blk = orbit(seed)
+    if P_sym is None:
+        raise RuntimeError("Failed to construct a non-empty symmetric Hamiltonian from basis orbits.")
+    best, best_diff, best_in_band, best_in_band_diff = update_best(
+        P_sym, best, best_diff, best_in_band, best_in_band_diff
+    )
 
-        tab_rows = [t.tableau[0] for t in blk]
-        phs = [int(t.phases[0]) for t in blk]
-        wts = [complex(t.weights[0]) for t in blk]  # keep projective factors as represented
-
-        orbit_blocks.append((np.vstack(tab_rows), np.array(phs, dtype=int), np.array(wts, dtype=complex)))
-        total_terms += len(blk)
-
-    # ---- Phase 2: add extra orbit blocks until we have >= n_paulis ----
-    # (These can be dependent; they just fill out the Hamiltonian.)
+    # ---- Phase 2: add extra orbit blocks until the target-count window is reached ----
     seeds_used = 0
-    while total_terms < n_paulis and seeds_used < extra_orbit_budget:
+    while P_sym.n_paulis() < lower_target and seeds_used < extra_orbit_budget:
         seeds_used += 1
         seed = PauliSum.from_random(1, [dimension] * n_qudits, rand_weights=False, rand_phases=False)
         seed.weights = np.array([new_seed_weight()], dtype=complex)
         seed = seed.to_standard_form()
+        block = build_orbit_block(seed)
+        if block.n_paulis() == 0:
+            continue
+        P_sym = add_block(P_sym, block)
+        best, best_diff, best_in_band, best_in_band_diff = update_best(
+            P_sym, best, best_diff, best_in_band, best_in_band_diff
+        )
 
-        blk = orbit(seed)
+    # Pick the best candidate: prefer within tolerance band, otherwise closest to target.
+    if best_in_band is not None:
+        P_sym = best_in_band
+    elif best is not None:
+        P_sym = best
 
-        tab_rows = [t.tableau[0] for t in blk]
-        phs = [int(t.phases[0]) for t in blk]
-        wts = [complex(t.weights[0]) for t in blk]
-
-        orbit_blocks.append((np.vstack(tab_rows), np.array(phs, dtype=int), np.array(wts, dtype=complex)))
-        total_terms += len(blk)
-
-    # ---- Build PauliSum from blocks ----
-    all_tableau = np.vstack([b[0] for b in orbit_blocks])
-    all_phases = np.concatenate([b[1] for b in orbit_blocks])
-    all_weights = np.concatenate([b[2] for b in orbit_blocks])
-
-    P_sym = PauliSum.from_tableau(all_tableau, dimensions=[dimension] * n_qudits, weights=all_weights, phases=all_phases)
-
-    # Make combining safe: absorb phases into weights before combine if combine ignores phases.
-    P_sym.phase_to_weight()
-
-    # Combine/standardise. Avoid rounding here (rounding can induce exact cancellation).
-    P_sym.combine_equivalent_paulis()
-    P_sym.standardise()
-
+    # Optional rounding pass.
     if not avoid_rounding:
-        P_sym.set_weights(np.around(P_sym.weights, decimals=10))
-
-    P_sym.remove_zero_weight_paulis()
-
-    # If your downstream expects phases explicitly, you can move them back out:
-    P_sym.weight_to_phase()
-    P_sym.standardise()
+        P_sym = compact_pauli_sum(P_sym, do_rounding=True)
 
     if scrambled:
         g = Gate.from_random(n_qudits, dimension)
         P_sym = g.act(P_sym, all_indices)
+        P_sym = compact_pauli_sum(P_sym, do_rounding=False)
+
+    if not P_sym.is_hermitian():
+        P_sym = hermitize(P_sym)
 
     return P_sym

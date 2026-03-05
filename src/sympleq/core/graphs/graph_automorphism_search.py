@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any, cast
 
 import numpy as np
@@ -334,6 +335,17 @@ def clifford_ga_search_from_prepared(
             key = (int(base_colors[idx]), coeffs[idx])
             rem_counts[key] = rem_counts.get(key, 0) + 1
 
+    # Progress-space size: number of candidate bijections consistent with
+    # the base partition (color/coeff buckets), before consistency pruning.
+    if progress:
+        search_space_total = 1
+        for count in rem_counts.values():
+            search_space_total *= math.factorial(int(count))
+    else:
+        search_space_total = 0
+    search_space_done = 0
+    search_space_here = int(search_space_total)
+
     # state
     phi = -np.ones(n, dtype=np.int64)
     used = np.zeros(n, dtype=bool)
@@ -490,14 +502,19 @@ def clifford_ga_search_from_prepared(
         bi: int
         mapped_len: int
         candidate: list[int]
+        mass_here: int
+        mass_per_candidate: int
         idx: int = 0
         assigned_y: int = -1
+        assigned_mass: int = 0
 
     def _undo_assignment(frame: _DFSFrame) -> None:
-        nonlocal mapped_len, basis_mapped_count, code_C, code_C_u16
+        nonlocal mapped_len, basis_mapped_count, code_C, code_C_u16, search_space_here
         y = int(frame.assigned_y)
         if y < 0:
             return
+        _advance_progress_mass(int(frame.assigned_mass))
+        search_space_here = int(frame.mass_here)
         mapped_len -= 1
         phi[frame.i] = -1
         used[y] = False
@@ -508,6 +525,7 @@ def clifford_ga_search_from_prepared(
             code_C = None
             code_C_u16 = None
         frame.assigned_y = -1
+        frame.assigned_mass = 0
 
     def _make_frame() -> _DFSFrame | None:
         nonlocal steps, key_hash
@@ -522,43 +540,68 @@ def clifford_ga_search_from_prepared(
         if i < 0:
             return None
         bi = int(base_colors[i])
+        bucket_key = _bucket_key(i)
         frame_mapped_len = mapped_len
 
         candidate = [y for y in base_classes[bi] if not used[y]]
         if coeffs is not None:
             candidate = [y for y in candidate if coeffs[i] == coeffs[y]]
 
+        r_bucket = int(rem_counts.get(bucket_key, 0))
+        mass_per_candidate = (int(search_space_here) // r_bucket) if r_bucket > 0 else 0
+
         # If induced completion is active, restrict candidates by code target.
+        candidate_before_code = len(candidate)
         if use_code_induced_completion and (code_C_u16 is not None) and (col_keys is not None):
             tgt = _code_target_key(i)
             candidate = [y for y in candidate if col_keys[y] == tgt]
+            if mass_per_candidate > 0:
+                pruned = candidate_before_code - len(candidate)
+                if pruned > 0:
+                    _advance_progress_mass(int(pruned * mass_per_candidate))
 
         cand = np.array(candidate, dtype=np.int64)
         if cand.size:
             cand = cand[np.argsort(key_hash[cand], kind="mergesort")]
             candidate = cand.tolist()
 
-        return _DFSFrame(i=i, bi=bi, mapped_len=int(frame_mapped_len), candidate=candidate)
+        return _DFSFrame(
+            i=i,
+            bi=bi,
+            mapped_len=int(frame_mapped_len),
+            candidate=candidate,
+            mass_here=int(search_space_here),
+            mass_per_candidate=int(mass_per_candidate),
+        )
 
     # progress bar (optional)
     progress_bar = None
     pending_progress = 0
+    pending_nodes = 0
     leaves_checked = 0
     if progress:
         try:
             from tqdm.auto import tqdm
 
             progress_bar = tqdm(
-                total=None,
+                total=max(1, int(search_space_total)),
                 desc="Clifford automorphism search",
-                unit="node",
+                unit="branch",
                 leave=False,
                 dynamic_ncols=True,
                 mininterval=0.2,
             )
-            progress_bar.set_postfix(found=0, leaves=0, refresh=False)
+            progress_bar.set_postfix(found=0, leaves=0, depth=f"0/{n}", refresh=False)
         except Exception:
             progress_bar = None
+
+    def _advance_progress_mass(mass: int) -> None:
+        nonlocal search_space_done, pending_progress
+        if progress_bar is None or mass <= 0:
+            return
+        new_done = min(search_space_total, search_space_done + int(mass))
+        pending_progress += int(new_done - search_space_done)
+        search_space_done = new_done
 
     stack: list[_DFSFrame] = []
     loop_iters = 0
@@ -576,11 +619,21 @@ def clifford_ga_search_from_prepared(
                     pass
 
             if progress_bar is not None:
-                pending_progress += 1
+                pending_nodes += 1
                 if pending_progress >= progress_every:
-                    progress_bar.update(pending_progress)
+                    remaining = int(progress_bar.total) - int(progress_bar.n)
+                    delta = int(min(max(remaining, 0), pending_progress))
+                    if delta > 0:
+                        progress_bar.update(delta)
                     pending_progress = 0
-                    progress_bar.set_postfix(found=len(results), leaves=leaves_checked, refresh=False)
+                if pending_nodes >= progress_every:
+                    pending_nodes = 0
+                    progress_bar.set_postfix(
+                        found=len(results),
+                        leaves=leaves_checked,
+                        depth=f"{mapped_len}/{n}",
+                        refresh=False,
+                    )
 
             if len(results) >= k_wanted:
                 break
@@ -617,17 +670,21 @@ def clifford_ga_search_from_prepared(
                 if used[y]:
                     continue
                 if not consistency(phi, mapped_stack, frame.mapped_len, frame.i, y):
+                    _advance_progress_mass(int(frame.mass_per_candidate))
                     continue
 
                 # If induced completion is active, reject y that violates the induced target.
                 if use_code_induced_completion and (code_C_u16 is not None) and (col_keys is not None):
                     if col_keys[y] != _code_target_key(frame.i):
+                        _advance_progress_mass(int(frame.mass_per_candidate))
                         continue
 
                 phi[frame.i] = y
                 used[y] = True
                 _dec_count(y)
                 frame.assigned_y = y
+                frame.assigned_mass = int(frame.mass_per_candidate)
+                search_space_here = int(frame.mass_per_candidate)
 
                 # update basis bookkeeping and maybe activate induced completion
                 if bool(is_basis[frame.i]):
@@ -649,7 +706,10 @@ def clifford_ga_search_from_prepared(
                         phi[frame.i] = -1
                         used[y] = False
                         _inc_count(y)
+                        _advance_progress_mass(int(frame.mass_per_candidate))
                         frame.assigned_y = -1
+                        frame.assigned_mass = 0
+                        search_space_here = int(frame.mass_here)
                         if bool(is_basis[frame.i]):
                             basis_mapped_count -= 1
                         continue
@@ -674,7 +734,10 @@ def clifford_ga_search_from_prepared(
                             phi[frame.i] = -1
                             used[y] = False
                             _inc_count(y)
+                            _advance_progress_mass(int(frame.mass_per_candidate))
                             frame.assigned_y = -1
+                            frame.assigned_mass = 0
+                            search_space_here = int(frame.mass_here)
                             if bool(is_basis[frame.i]):
                                 basis_mapped_count -= 1
                             continue
@@ -701,8 +764,16 @@ def clifford_ga_search_from_prepared(
     finally:
         if progress_bar is not None:
             if pending_progress:
-                progress_bar.update(pending_progress)
-            progress_bar.set_postfix(found=len(results), leaves=leaves_checked, refresh=False)
+                remaining = int(progress_bar.total) - int(progress_bar.n)
+                delta = int(min(max(remaining, 0), pending_progress))
+                if delta > 0:
+                    progress_bar.update(delta)
+            progress_bar.set_postfix(
+                found=len(results),
+                leaves=leaves_checked,
+                depth=f"{mapped_len}/{n}",
+                refresh=False,
+            )
             progress_bar.close()
 
     return results[:k_wanted]

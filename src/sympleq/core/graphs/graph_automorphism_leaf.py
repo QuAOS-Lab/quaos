@@ -8,7 +8,8 @@ import galois
 from sympleq.core.circuits.target import find_map_to_target_pauli_sum, get_phase_vector
 from sympleq.core.paulis import PauliSum
 from sympleq.core.circuits import Gate
-from sympleq.core.symmetries.phase_correction import solve_phase_vector_h_from_residual
+from sympleq.core.circuits.phase_correction import solve_phase_vector_h_from_residual
+from sympleq.core.finite_field_solvers import solve_gf2
 
 from .graph_automorphism_code import check_code_automorphism
 
@@ -39,6 +40,40 @@ class LeafContext:
     row_basis_cache: dict[str, np.ndarray]
 
 
+def _solve_qubit_phase_family_correction(base_tableau: np.ndarray, delta: np.ndarray) -> np.ndarray | None:
+    """
+    Complete phase-correction solve for qubits (fixed symplectic F, fixed reference h0).
+
+    We solve over the full admissible family h = h0 + 2u (mod 4), i.e.
+        P (2u) = delta (mod 4)
+    which is equivalent to:
+        P u = delta/2 (mod 2)
+    after checking that delta is even entrywise mod 4.
+
+    Returns
+    -------
+    h_lin : np.ndarray | None
+        A phase correction vector h_lin = 2u (mod 4), or None if no solution exists.
+    """
+    delta4 = np.asarray(delta, dtype=int).reshape(-1) % 4
+
+    # Necessary and sufficient divisibility condition for 2u-correction in Z_4
+    if np.any(delta4 % 2 != 0):
+        return None
+
+    # Reduce to GF(2) system: P u = (delta/2) mod 2
+    A2 = (np.asarray(base_tableau, dtype=np.uint8) & 1)
+    b2 = ((delta4 // 2) % 2).astype(np.uint8)
+
+    u = solve_gf2(A2, b2)
+    if u is None:
+        return None
+
+    # Lift back to a valid linear phase correction mod 4
+    h_lin = (2 * np.asarray(u, dtype=int)) % 4
+    return h_lin
+
+
 def check_leaf(pi: np.ndarray, ctx: LeafContext) -> Gate | None:
     """Run all structural and phase-correction checks for a candidate permutation.
 
@@ -51,7 +86,7 @@ def check_leaf(pi: np.ndarray, ctx: LeafContext) -> Gate | None:
     if not np.array_equal(ctx.S_mod[np.ix_(pi, pi)], ctx.S_mod):
         return None
 
-    # (2) Linear code (matroid) constraint.
+    # (2) Linear code  constraint.
     if not check_code_automorphism(ctx.G, ctx.basis_order, ctx.labels, pi, ctx.G_mod2):
         return None
 
@@ -91,30 +126,19 @@ def check_leaf(pi: np.ndarray, ctx: LeafContext) -> Gate | None:
     H_full_tg = pauli.copy()[pi]
     H_full_F = SG_F.act(pauli, tuple(range(nq)))
 
-    delta = (H_full_tg.phases - H_full_F.phases) % (2 * int(ctx.pauli_sum.lcm))
+    delta = (H_full_tg.phases - H_full_F.phases) % ctx.two_lcm
 
-    # For qubits, the quadratic part is not unique; if odd residuals appear, try a standard diagonal lift.
-    if ctx.p == 2 and np.any(delta % 2 != 0):
-        F2 = F % 2
-        A, B = F2[:nq, :nq], F2[:nq, nq:]
-        C, D = F2[nq:, :nq], F2[nq:, nq:]
-        hx0 = np.diag((A @ B.T) % 2) % 2
-        hz0 = np.diag((C @ D.T) % 2) % 2
-        h0_alt = np.concatenate([hx0, hz0]).astype(int)
-
-        SG_F_alt = Gate('Symmetry', F.T, h0_alt)
-        H_full_Fa = SG_F_alt.act(pauli, tuple(range(nq)))
-        delta_alt = (H_full_tg.phases - H_full_Fa.phases) % 4
-        if (delta_alt % 2).sum() < (delta % 2).sum():
-            h0, SG_F, H_full_F, delta = h0_alt, SG_F_alt, H_full_Fa, delta_alt
-
-    h_lin = solve_phase_vector_h_from_residual(
-        ctx.base_tableau,
-        delta,
-        ctx.pauli_sum.dimensions,
-        debug=False,
-        row_basis_cache=ctx.row_basis_cache,
-    )
+    # Complete qubit phase correction (fixed F): solve over the full family h = h0 + 2u (mod 4)
+    if ctx.p == 2:
+        h_lin = _solve_qubit_phase_family_correction(ctx.base_tableau, delta)
+    else:
+        h_lin = solve_phase_vector_h_from_residual(
+            ctx.base_tableau,
+            delta,
+            ctx.pauli_sum.dimensions,
+            debug=False,
+            row_basis_cache=ctx.row_basis_cache,
+        )
     if h_lin is None:
         return None
 
