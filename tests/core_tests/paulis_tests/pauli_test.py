@@ -5,7 +5,6 @@ from numpy.random import Generator as RNGGenerator, default_rng
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.paulis import PauliSum, PauliString, Pauli
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
-from sympleq import complex_phase_value
 from tests import PRIME_LIST, choose_random_dimensions
 
 
@@ -17,10 +16,10 @@ class TestPaulis:
 
     def test_pauli_multiplication(self):
         for dim in PRIME_LIST:
-            x1 = Pauli.from_string('x1z0', dim)
-            y1 = Pauli.from_string('x1z1', dim)
-            z1 = Pauli.from_string('x0z1', dim)
-            id = Pauli.from_string('x0z0', dim)
+            x1 = Pauli.Xnd(1, dim)
+            y1 = Pauli.Ynd(1, dim)
+            z1 = Pauli.Znd(1, dim)
+            id = Pauli.Idnd(dim)
 
             # REMARK: phases do not matter, since these are Pauli objects
             assert x1 * z1 == y1, 'Error in Pauli multiplication (x * z = y) ' + (x1 * z1).__str__()
@@ -267,7 +266,7 @@ class TestPaulis:
             x1 = Pauli.from_string(f'x{x_exp}z0', dimension=d)
             z1 = Pauli.from_string(f'x0z{z_exp}', dimension=d)
             y1 = Pauli.from_string(f'x{x_exp}z{z_exp}', dimension=d)
-            id = Pauli.from_string('x0z0', dimension=d)
+            id = Pauli.Idnd(dimension=d)
 
             assert x1 * z1 == y1, f'Error in Pauli multiplication for d={d}'
             assert x1**d == id, f'Error in Pauli exponentiation (x**{d} = id) for d={d}'
@@ -966,7 +965,7 @@ class TestPaulis:
         assert not psum1.is_close(psum2, literal=False)
 
     def test_pauli_object_invalid_setters(self):
-        p = Pauli.from_string('x1z0', dimension=2)
+        p = Pauli.Xnd(1, 2)
         with pytest.raises(Exception):
             p.lcm = 2
         with pytest.raises(Exception):
@@ -1007,7 +1006,7 @@ class TestPaulis:
     def test_pauli_object_sum(self):
         dimension = 4
         pauli_objects = [
-            Pauli.from_string('x1z0', dimension=dimension),
+            Pauli.Xnd(1, dimension),
             PauliString.from_string('x2z3', dimension),
             PauliSum.from_random(3, dimensions=dimension)
         ]
@@ -1227,17 +1226,17 @@ class TestPaulis:
             dimensions = [2, 3, 5, 7]
             n_paulis = len(dimensions)
 
-            p = PauliSum.from_random(n_paulis, dimensions)
-            if p.is_hermitian():
+            P = PauliSum.from_random(n_paulis, dimensions)
+            if P.is_hermitian():
                 continue
 
             with pytest.raises(ValueError):
-                _, _ = p.ordered_eigenspectrum()
+                _, _ = P.ordered_eigenspectrum()
 
     @pytest.mark.skip()
     def test_stabilizer_to_hilbert_space(self):
         for _ in range(N_tests):
-            dimensions = [2] * rng.integers(1, 5)
+            dimensions = [2] * 5
             n_qubits = len(dimensions)
 
             # P = PauliSum.from_random(n_paulis, dimensions, rand_weights=False).make_hermitian()
@@ -1245,7 +1244,7 @@ class TestPaulis:
             # assert P.is_hermitian()
 
             # Test both less and equal number of paulis than qudits
-            n_paulis = n_qubits  # np.random.randint(1, n_qubits)
+            n_paulis = np.random.randint(1, n_qubits)
 
             # Create a stabilizer IIIZ, IIZI, IZII, leaving identities at the beginning if n_paulis < n_qubits
             tableau = np.zeros((n_paulis, 2 * n_qubits), dtype=int)
@@ -1257,7 +1256,7 @@ class TestPaulis:
                                                dimensions=dimensions)
 
             # Initialize stabilizer to random computational state
-            phases = [2 * np.random.randint(0, stabilizer.lcm) for _ in range(n_paulis)]
+            phases = [2 * np.random.randint(0, stabilizer.lcm - 1) for _ in range(n_paulis)]
             stabilizer.set_phases(phases)
 
             # Random Clifford circuit
@@ -1279,17 +1278,14 @@ class TestPaulis:
                 ps = stabilizer_shuffled[[idx]]
                 ps_hilbert = ps.to_hilbert_space()
 
-                lhs = complex_phase_value(phase_to_test, stabilizer.lcm)
+                lhs = np.exp(
+                    (1j * 2 * np.pi * phase_to_test) / (2 * stabilizer.lcm)
+                )
 
                 rhs = (
-                    ps_hilbert @ stabilizer_shuffled_hilbert
+                    stabilizer_shuffled_hilbert @ ps_hilbert @ stabilizer_shuffled_hilbert.T
                 ).trace()
 
-                print(lhs, rhs)
-                print(ps)
-                print(ps_hilbert.toarray())
-                print(stabilizer_shuffled_hilbert.toarray())
+                print(np.around(lhs - rhs, 10))
 
-                assert np.isclose(lhs - rhs, 0, atol=1e-10), \
-                    f"Stabilizer state does not stabilize PauliString {ps} " \
-                    f"with phase {phase_to_test} (lhs={lhs}, rhs={rhs})"
+                assert np.around(lhs - rhs, 10) == 0
