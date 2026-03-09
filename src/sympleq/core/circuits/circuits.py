@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Generator, overload, TypeVar, TypeAlias
+from typing import Generator, overload
 import json
 import numpy as np
 import scipy.sparse as sp
@@ -15,11 +15,7 @@ from sympleq.core.paulis import PauliSum, PauliString, Pauli, PauliObject
 
 
 # Type alias for from_tuples input: (Gate, qudit_idx1, qudit_idx2, ...)
-GateSpec: TypeAlias = tuple[Gate, *tuple[int, ...]]
-
-# We define a type using TypeVar to let the type checker know that
-# the input and output of the `act` function share the same type.
-P = TypeVar("P", bound="PauliObject")
+GateSpec = tuple[Gate, *tuple[int, ...]]
 
 
 class Circuit:
@@ -403,7 +399,7 @@ class Circuit:
     def act(self, pauli: PauliSum) -> PauliSum:
         ...
 
-    def act(self, pauli: P) -> P:
+    def act(self, pauli: PauliObject) -> PauliObject:
         """Apply all gates in the circuit to a Pauli object."""
         for gate, qudits in zip(self._gates, self._qudit_indices):
             pauli = gate.act(pauli, qudits)
@@ -421,7 +417,7 @@ class Circuit:
     def act_iter(self, pauli: PauliSum) -> Generator[PauliSum, None, None]:
         ...
 
-    def act_iter(self, pauli: P) -> Generator[P, None, None]:
+    def act_iter(self, pauli: PauliObject) -> Generator[PauliObject, None, None]:
         """Yields the Pauli object after each gate application."""
         for gate, qudits in zip(self._gates, self._qudit_indices):
             pauli = gate.act(pauli, qudits)

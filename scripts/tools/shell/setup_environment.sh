@@ -8,7 +8,7 @@ source env.sh
 cd "$PROJECT_ROOT"
 
 # Initializing virtual environment...
-if [ ! -d "$SRC_VENV" ]; then
+if [[ ! -d "$SRC_VENV" ]]; then
     echo "Creating virtual environment $SRC_VENV..."
     python -m venv "$SRC_VENV"
     source "$SRC_VENV/bin/activate"
@@ -24,7 +24,7 @@ deactivate
 # Generating unversioned folders...
 folders="$PERSONAL_FOLDER"
 for folder in $folders; do
-    if [ ! -d "$folder" ]; then
+    if [[ ! -d "$folder" ]]; then
         mkdir -p "$folder"
         echo "Created folder: $folder"
     fi

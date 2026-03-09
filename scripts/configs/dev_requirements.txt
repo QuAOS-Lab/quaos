@@ -7,3 +7,4 @@ pytest-benchmark==5.1.0
 pytest-cov==7.0.0
 snakeviz==2.2.2
 tqdm>=4.67.1,<5.0.0
+vulture==2.14

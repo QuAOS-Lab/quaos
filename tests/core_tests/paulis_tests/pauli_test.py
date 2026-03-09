@@ -1190,7 +1190,7 @@ class TestPaulis:
                 k = np.prod(dimensions) - 1
             else:
                 k = rng.integers(1, np.prod(dimensions) - 2)
-            n_paulis = rng.integers(1, 5 * len(dimensions) ** 2)
+            n_paulis = rng.integers(1, 10 * len(dimensions) ** 2)
 
             p = PauliSum.from_random(n_paulis, dimensions, rand_weights=True).make_hermitian()
             assert p.is_hermitian(), f"PauliSum {p} is not hermitian."
@@ -1210,6 +1210,18 @@ class TestPaulis:
                 check_energy = state.conjugate().transpose() @ m @ state
                 assert np.isclose(
                     check_energy, energy), f"eigenvalue mismatch for state {state}: {energy} vs {check_energy}."
+
+            # Check: the ground state is always there
+            all_energies, all_states = p.ordered_eigenspectrum(num_eigens=None)
+
+            assert np.isclose(energies[0], all_energies[0]), (f"Ground state energy mismatch: "
+                                                              f"{energies[0]} vs {all_energies[0]}.")
+
+            # Check: the ground state is always the same
+            if all_energies[1] - all_energies[0] > 1e-6:  # if ground state is non-degenerate, check fidelity
+                fidelity = np.abs(np.dot(states[0].conjugate().transpose(), all_states[0])) ** 2
+                assert np.isclose(fidelity, 1), (f"Ground state mismatch: "
+                                                 f"Fidelity is {fidelity}.")
 
     def test_ordered_eigenspectrum_raise_non_hermitian(self):
         for _ in range(N_tests):

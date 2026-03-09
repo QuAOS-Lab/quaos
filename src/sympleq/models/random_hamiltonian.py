@@ -90,7 +90,7 @@ def random_pauli_hamiltonian(num_paulis, qudit_dims, mode='rand'):
 
 
 def random_pauli_symmetry_hamiltonian(n_qudits: int, n_paulis: int, n_redundant=0,
-                                      n_conditional=0, weight_mode='uniform', phase_mode='zero'):
+                                      n_conditional=0, weight_mode='uniform', phase_mode='zero', shuffle=True):
     # 0: I, 1: X, 2: Z, 3: Y
     """
     Generate a random Pauli Hamiltonian with n_qudits qudits and n_paulis Pauli strings,
@@ -126,7 +126,6 @@ def random_pauli_symmetry_hamiltonian(n_qudits: int, n_paulis: int, n_redundant=
     """
     # TODO: Implementation for Qudits
     # TODO: Make sure that remaining paulis are always unique
-
     n_rest = n_qudits - n_redundant - n_conditional
     if n_paulis < 2 * n_rest:
         raise ValueError('Too few paulis for full basis with this number of independent qubits')
@@ -135,8 +134,8 @@ def random_pauli_symmetry_hamiltonian(n_qudits: int, n_paulis: int, n_redundant=
     P = np.zeros((n_paulis, n_qudits), dtype=int)
 
     # conditional qubits
-    for i in range(n_conditional - n_redundant):
-        q = np.arange(n_redundant, n_conditional)[i]
+    for i in range(n_conditional):
+        q = np.arange(n_redundant, n_redundant + n_conditional)[i]
         P[2 * n_rest + i, q] = 2  # Z
         for j in range(1, n_paulis - (2 * n_rest + i)):
             P[2 * n_rest + i + j, q] = np.random.choice([0, 2])  # I, Z
@@ -181,8 +180,9 @@ def random_pauli_symmetry_hamiltonian(n_qudits: int, n_paulis: int, n_redundant=
 
     P = PauliSum.from_string(pauli_strings, dimensions=[2] * n_qudits, weights=weights, phases=phases)
 
-    g = Gate.from_random(n_qudits, 2)
-    P = g.act(P, 2)
+    if shuffle:
+        g = Gate.from_random(n_qudits, 2)
+        P = g.act(P, tuple(np.arange(n_qudits)))
 
     return P
 
