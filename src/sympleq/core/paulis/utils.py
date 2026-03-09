@@ -86,6 +86,7 @@ def hamiltonian_mean(P: PauliObject, psi: np.ndarray) -> float:
     """
     mu = np.real(np.transpose(np.conjugate(psi)) @ P.to_hilbert_space() @ psi)
     # FIXME: better modify the input, saying psi is complex array?
+    # FIXME: should not be necessary to specify float, should be fixed with new formatting PR.
     return float(mu)
 
 
