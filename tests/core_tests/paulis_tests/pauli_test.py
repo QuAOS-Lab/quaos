@@ -1285,11 +1285,6 @@ class TestPaulis:
                     ps_hilbert @ stabilizer_shuffled_hilbert
                 ).trace()
 
-                print(lhs, rhs)
-                print(ps)
-                print(ps_hilbert.toarray())
-                print(stabilizer_shuffled_hilbert.toarray())
-
                 assert np.isclose(lhs - rhs, 0, atol=1e-10), \
                     f"Stabilizer state does not stabilize PauliString {ps} " \
                     f"with phase {phase_to_test} (lhs={lhs}, rhs={rhs})"
