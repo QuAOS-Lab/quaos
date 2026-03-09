@@ -98,7 +98,10 @@ def get_linearly_independent_rows(A: np.ndarray, d: int) -> list[int]:
 
 def complex_phase_value(phase: int, dimension: int) -> complex:
     """
-    Computes the a-th eigenvalue of a pauli with dimension d.
+    Roots of unity (varying `phase`) with respect to (twice a) chosen dimension `dimension`.
+    The "twice" is for taking into account the qubit case (`dimension = 2`), where X*Z = i Y. For details, see:
+    `IEEE International Symposium on Information Theory (ISIT), pp. 791-795. IEEE (2018)
+    <https://doi.org/10.1109/ISIT.2018.8437652>`_
 
     Args:
         phase (int): The integer to compute the eigenvalue for.
