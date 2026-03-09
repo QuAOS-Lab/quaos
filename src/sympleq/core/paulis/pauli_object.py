@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 import functools
 import numpy as np
 from typing import Self, Union, TYPE_CHECKING
+
+from sympleq import complex_phase_value
 if TYPE_CHECKING:
     from .pauli_sum import PauliSum
 
@@ -808,7 +810,7 @@ class PauliObject(ABC):
         new_weights = np.zeros(self.n_paulis(), dtype=np.complex128)
         for i in range(self.n_paulis()):
             phase = self.phases[i]
-            omega = np.exp(2 * np.pi * 1j * phase / (2 * self.lcm))
+            omega = complex_phase_value(phase, self.lcm)
             new_weights[i] = self.weights[i] * omega
         self._phases = np.zeros(self.n_paulis(), dtype=int)
         self._weights = new_weights
