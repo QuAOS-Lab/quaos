@@ -1389,6 +1389,8 @@ class PauliSum(PauliObject):
         # Find Clifford that maps the PauliSum to the computational basis
         from sympleq.core.circuits import Gate
         from sympleq.core.circuits.gate_decomposition_to_circuit import gate_to_circuit
+        from sympleq.core.circuits.target import find_map_to_target_pauli_sum
+
         stabilizer_input = self.copy()
         n_qudits = stabilizer_input.n_qudits()
         dims = stabilizer_input.dimensions
@@ -1396,13 +1398,16 @@ class PauliSum(PauliObject):
         # Find the Clifford that maps the stabilizer to the diagonal stabilizer (if not already diagonal)
         desired_tableau = np.zeros((n_qudits, 2 * n_qudits), dtype=int)
         desired_tableau[:, n_qudits:] = np.eye(n_qudits, dtype=int)
+        desired_stabilizer = PauliSum.from_tableau(desired_tableau, weights=np.ones(
+            n_qudits), phases=np.zeros(n_qudits), dimensions=dims)
 
-        #  F, h, qudit_indices, gate_dimension = find_map_to_target_pauli_sum(stabilizer_input.tableau, desired_tableau)
+        F, h, qudit_indices, gate_dimension = find_map_to_target_pauli_sum(stabilizer_input, desired_stabilizer)
 
-        gate = Gate.solve_from_target(stabilizer_input.tableau, desired_tableau)
+        diagonalizing_gate = Gate("custom", F, h)
+        # gate = Gate.solve_from_target(stabilizer_input.tableau, desired_tableau)
 
         # Apply that circuit to the input stabilizer
-        stabilizer_diagonalized = gate.act(stabilizer_input, tuple(range(n_qudits)))
+        stabilizer_diagonalized = diagonalizing_gate.act(stabilizer_input, tuple(qudit_indices))
 
         lcm = np.lcm.reduce(dims)
         phases = stabilizer_diagonalized.phases
@@ -1416,7 +1421,7 @@ class PauliSum(PauliObject):
         state = sp.csr_matrix(([1], ([index], [index])), shape=(hilbert_dim, hilbert_dim), dtype=complex)
 
         # Apply back the Clifford that diagonalized the input stabilizer
-        circuit = gate_to_circuit(gate, dims)
+        circuit = gate_to_circuit(diagonalizing_gate, dims)
         circuit_hilbert = circuit.to_hilbert_space()
         state = circuit_hilbert.conj().T @ state @ circuit_hilbert  # notice the order of hermitian (<= inverse)
         #  state = sp.around(state, decimals=14)  # remove numerical noise

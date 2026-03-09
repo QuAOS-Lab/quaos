@@ -240,6 +240,7 @@ def map_single_pauli_string_to_target(pauli_string_tableau: np.ndarray, target_p
         raise Exception(f'sp = {sp}...This should never happen')
 
 
+# TODO: check redundancy with find_map_to_target_pauli_sum
 def map_pauli_sum_to_target_tableau(pauli_sum_tableau: np.ndarray, target_pauli_sum_tableau: np.ndarray) -> np.ndarray:
     """
     Map a Pauli sum to a target Pauli sum using symplectic transvections.
