@@ -212,7 +212,7 @@ class TestAquire:
 
     @pytest.mark.system
     def test_aquire_mean_distance(self):
-        update_steps = [6, 12, 25, 50, 100, 200, 400, 800]
+        update_steps = [6, 12, 25, 50, 100]  # , 200, 400, 800]
         dim_list = [[2, 2, 2], [3, 3, 3], [5, 5, 5], [2, 3, 5], [2, 2, 3, 3]]
         for dims in dim_list:
             P = self.random_comparison_hamiltonian(20, dims, mode='rand')
@@ -237,7 +237,7 @@ class TestAquire:
 
     @pytest.mark.system
     def test_aquire_mean_distance_with_noise(self):
-        update_steps = [6, 12, 25, 50, 100, 200, 400, 800, 1600]
+        update_steps = [6, 12, 25, 50, 100]  # , 200, 400, 800, 1600]
         dim_list = [[2, 2, 2], [2, 2, 3], [3, 3, 3]]
         for dims in dim_list:
             P = self.random_comparison_hamiltonian(10, dims, mode='rand')

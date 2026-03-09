@@ -6,7 +6,6 @@ import scipy.sparse as sp
 
 from sympleq import bases_to_int
 from .pauli_object import PauliObject
-from .pauli import Pauli
 from .constants import DEFAULT_QUDIT_DIMENSION
 
 if TYPE_CHECKING:
@@ -73,27 +72,6 @@ class PauliString(PauliObject):
         tableau[len(dimensions):] = z_exp % dimensions
 
         P = cls(tableau, dimensions)
-        P._sanity_check()
-
-        return P
-
-    @classmethod
-    def from_pauli(cls, pauli: Pauli) -> PauliString:
-        """
-        Create a PauliString instance from a single Pauli.
-
-        Parameters
-        ----------
-        pauli : Pauli
-            The Pauli to convert into a PauliString.
-
-        Returns
-        -------
-        PauliString
-            A PauliString instance representing the given Pauli operator.
-        """
-
-        P = cls(pauli.tableau, pauli.dimensions)
         P._sanity_check()
 
         return P
@@ -265,42 +243,6 @@ class PauliString(PauliObject):
         dimensions[self.n_qudits():] = A.dimensions
         return PauliString(tableau, dimensions)
 
-    def __rmatmul__(self, A: Pauli) -> PauliString:
-        """
-        Implements the tensor product between a PauliString (`self`) and a Pauli (`A`) objects.
-        It corresponds to operator tensor product (`@`).
-        The resulting PauliString has the exponents of both strings concatenated.
-
-        Parameters
-        ----------
-        A : Pauli
-            The Pauli to be right-multiplied with this PauliString.
-
-        Returns
-        -------
-        PauliString
-            A new PauliString instance with updated `x_exp`, `z_exp`, and `dimensions` arrays,
-            resulting from concatenating the corresponding attributes of the operands.
-
-        Examples
-        --------
-        >>> ps = PauliString(...)
-        >>> p = Pauli(...)
-        >>> result = p @ ps
-        """
-
-        new_n_qudits = self.n_qudits() + A.n_qudits()
-        tableau = np.empty(2 * new_n_qudits, dtype=int)
-        tableau[:self.n_qudits()] = self.x_exp
-        tableau[self.n_qudits():new_n_qudits] = A.x_exp
-        tableau[new_n_qudits:new_n_qudits + self.n_qudits()] = self.z_exp
-        tableau[new_n_qudits + self.n_qudits():] = A.z_exp
-
-        dimensions = np.empty(new_n_qudits, dtype=int)
-        dimensions[:self.n_qudits()] = self.dimensions
-        dimensions[self.n_qudits():] = A.dimensions
-        return PauliString(tableau, dimensions)
-
     def __mul__(self, A: PauliString) -> PauliString:
         """
         Multiply two PauliString objects element-wise. It corresponds to operator multiplication (`*`).
@@ -398,7 +340,7 @@ class PauliString(PauliObject):
         """
         return np.sum(np.logical_and(self.x_exp == 0, self.z_exp == 0))
 
-    def get_pauli(self, index: int) -> Pauli:
+    def get_pauli(self, index: int) -> PauliString:
         """
         Returns a Pauli at the input index.
 
@@ -409,21 +351,21 @@ class PauliString(PauliObject):
 
         Returns
         -------
-        Pauli
-            The Pauli at the given index.
+        PauliString
+            The Pauli at the given index, in form of PauliString.
         """
 
         tableau = np.asarray([self.x_exp[index], self.z_exp[index]], dtype=int)
-        return Pauli(tableau, int(self.dimensions[index]))
+        return PauliString(tableau, int(self.dimensions[index]))
 
-    def get_paulis(self) -> list[Pauli]:
+    def get_paulis(self) -> list[PauliString]:
         """
         Returns a list of Paulis corresponding to the PauliString tableau.
 
         Returns
         -------
-        list[Pauli]
-            A list of Pauli.
+        list[PauliString]
+            A list of Pauli in form of PauliStrings.
         """
         return [self.get_pauli(i) for i in range(self.n_qudits())]
 
@@ -611,15 +553,7 @@ class PauliString(PauliObject):
         self._lcm = np.lcm.reduce(dimensions)
         return self
 
-    @overload
-    def __getitem__(self, key: int) -> Pauli:
-        ...
-
-    @overload
-    def __getitem__(self, key: slice | np.ndarray | list[int]) -> PauliString:
-        ...
-
-    def __getitem__(self, key: int | slice | np.ndarray | list[int]) -> PauliString | Pauli:
+    def __getitem__(self, key: int | slice | np.ndarray | list[int]) -> PauliString:
         """
         Retrieve a Pauli or a (smaller) PauliString from the PauliString.
 
@@ -631,7 +565,7 @@ class PauliString(PauliObject):
 
         Returns
         -------
-        PauliString or Pauli
+        PauliString
             The selected Pauli operator(s). Returns a single Pauli if `key` is an int, otherwise returns a PauliString.
 
         Raises
@@ -662,7 +596,7 @@ class PauliString(PauliObject):
 
         raise ValueError(f"Cannot get item with key {key}. Key must be aof type int, slice, np.ndarray, or list[int].")
 
-    def __setitem__(self, key: int | slice | np.ndarray | list[int], value: Pauli | PauliString):
+    def __setitem__(self, key: int | slice | np.ndarray | list[int], value: PauliString):
         """
         Set the value(s) of the PauliString at the specified index or slice.
 
@@ -683,13 +617,7 @@ class PauliString(PauliObject):
         # FIXME: merge this with PauliSum __setitem__ into PauliObject
         # TODO: is it necessary to distinguish the two cases in the if... elif... loop?
 
-        if isinstance(key, int) and isinstance(value, Pauli):
-            self._tableau[key] = value.x_exp
-            self._tableau[key + self.n_qudits()] = value.z_exp
-            self._dimensions[key] = value.dimensions[0]
-            self._lcm = np.lcm.reduce(self.dimensions)
-
-        elif isinstance(value, PauliString):
+        if isinstance(value, PauliString):
             if isinstance(key, slice):
                 # Trick to convert slice to NumPy array.
                 # This is necessary to be able to get the number of items in the slice.

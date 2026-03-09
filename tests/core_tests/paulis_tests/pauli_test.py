@@ -3,8 +3,9 @@ import random
 import pytest
 from numpy.random import Generator as RNGGenerator, default_rng
 from sympleq.core.circuits.circuits import Circuit
-from sympleq.core.paulis import PauliSum, PauliString, Pauli
+from sympleq.core.paulis import PauliSum, PauliString
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
+from sympleq.models.symmetric_hamiltonian import int_to_bases
 from tests import PRIME_LIST, choose_random_dimensions
 
 
@@ -16,35 +17,17 @@ class TestPaulis:
 
     def test_pauli_multiplication(self):
         for dim in PRIME_LIST:
-            x1 = Pauli.Xnd(1, dim)
-            y1 = Pauli.Ynd(1, dim)
-            z1 = Pauli.Znd(1, dim)
-            id = Pauli.Idnd(dim)
-
-            # REMARK: phases do not matter, since these are Pauli objects
-            assert x1 * z1 == y1, 'Error in Pauli multiplication (x * z = y) ' + (x1 * z1).__str__()
-            assert x1**dim == id, 'Error in Pauli exponentiation (x**dim = id) ' + (x1**dim).__str__()
-            assert y1**dim == id, 'Error in Pauli exponentiation (y**dim = id) ' + (y1**dim).__str__()
-            assert z1**dim == id, 'Error in Pauli exponentiation (z**dim = id)  ' + (z1**dim).__str__()
-            assert x1 * y1 == x1**2 * z1, 'Error in Pauli multiplication (x * y = x**2 * z) ' + (x1 * y1).__str__()
-            assert y1 * z1 == x1 * z1**2, 'Error in Pauli multiplication (y * z = x**2 * z) ' + (y1 * z1).__str__()
-            assert z1 * x1 == y1, 'Error in Pauli multiplication (z * x = y) ' + (z1 * x1).__str__()
-            assert x1 * id == x1, 'Error in Pauli multiplication (x * id = x) ' + (x1 * id).__str__()
-            assert y1 * id == y1, 'Error in Pauli multiplication (y * id = y) ' + (y1 * id).__str__()
-            assert z1 * id == z1, 'Error in Pauli multiplication (z * id = z) ' + (z1 * id).__str__()
-
-        for dim in PRIME_LIST:
             for _ in range(N_tests):
                 s1 = np.random.randint(0, dim)
                 r1 = np.random.randint(0, dim)
                 s2 = np.random.randint(0, dim)
                 r2 = np.random.randint(0, dim)
-                p1 = Pauli.from_exponents(r1, s1, dim)
-                p2 = Pauli.from_exponents(r2, s2, dim)
+                p1 = PauliString.from_exponents(r1, s1, dim)
+                p2 = PauliString.from_exponents(r2, s2, dim)
                 p3 = p1 * p2
                 assert p3.x_exp == (p1.x_exp + p2.x_exp) % dim, 'Error in Pauli multiplication (x_exp)'
                 assert p3.z_exp == (p1.z_exp + p2.z_exp) % dim, 'Error in Pauli multiplication (z_exp)'
-                assert p3.dimension == dim, 'Error in Pauli multiplication (dimension)'
+                assert p3.dimensions == dim, 'Error in Pauli multiplication (dimension)'
 
     def test_pauli_string_multiplication(self):
         for dim in PRIME_LIST:
@@ -107,8 +90,8 @@ class TestPaulis:
                 s2 = np.random.randint(0, dim)
 
                 p_string1 = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2}", dimensions=[dim, dim])
-                ps0 = Pauli.from_string(f"x{r1}z{s1}", dimension=dim)
-                ps1 = Pauli.from_string(f"x{r2}z{s2}", dimension=dim)
+                ps0 = PauliString.from_string(f"x{r1}z{s1}", dimensions=dim)
+                ps1 = PauliString.from_string(f"x{r2}z{s2}", dimensions=dim)
 
                 assert p_string1[0] == ps0, 'Error in PauliString indexing (first PauliString)'
                 assert p_string1[1] == ps1, 'Error in PauliString indexing'
@@ -263,10 +246,10 @@ class TestPaulis:
         for d in PRIME_LIST:
             x_exp = random.randint(1, d - 1)
             z_exp = random.randint(1, d - 1)
-            x1 = Pauli.from_string(f'x{x_exp}z0', dimension=d)
-            z1 = Pauli.from_string(f'x0z{z_exp}', dimension=d)
-            y1 = Pauli.from_string(f'x{x_exp}z{z_exp}', dimension=d)
-            id = Pauli.Idnd(dimension=d)
+            x1 = PauliString.from_string(f'x{x_exp}z0', dimensions=d)
+            z1 = PauliString.from_string(f'x0z{z_exp}', dimensions=d)
+            y1 = PauliString.from_string(f'x{x_exp}z{z_exp}', dimensions=d)
+            id = PauliString.from_string('x0z0', dimensions=d)
 
             assert x1 * z1 == y1, f'Error in Pauli multiplication for d={d}'
             assert x1**d == id, f'Error in Pauli exponentiation (x**{d} = id) for d={d}'
@@ -965,7 +948,7 @@ class TestPaulis:
         assert not psum1.is_close(psum2, literal=False)
 
     def test_pauli_object_invalid_setters(self):
-        p = Pauli.Xnd(1, 2)
+        p = PauliString.from_exponents([1], [2], dimensions=[3])
         with pytest.raises(Exception):
             p.lcm = 2
         with pytest.raises(Exception):
@@ -1006,8 +989,8 @@ class TestPaulis:
     def test_pauli_object_sum(self):
         dimension = 4
         pauli_objects = [
-            Pauli.Xnd(1, dimension),
-            PauliString.from_string('x2z3', dimension),
+            PauliString.from_string("x1z0", dimensions=dimension),
+            PauliString.from_string('x2z3', dimensions=dimension),
             PauliSum.from_random(3, dimensions=dimension)
         ]
         P = sum(pauli_objects, start=PauliSum.from_random(1, dimensions=dimension))
@@ -1035,9 +1018,23 @@ class TestPaulis:
             _ = P - PauliString.from_exponents([2, 3], [0, 0], dimensions=[4, 5])
 
     def test_pauli_ordering(self):
-        p1 = Pauli.from_string("x0z1")
-        p2 = Pauli.from_string("x1z0")
-        assert p1 > p2
+        # TODO: CHECK THE ORDERING LOGIC AND MAKE SURE IT IS ALIGNED WITH `INT_TO_BASES` AND `BASES_TO_INT`
+        for i in range(N_tests):
+            if i < N_tests / 3:
+                dims = random.choices(PRIME_LIST, k=1)
+            else:
+                dims = choose_random_dimensions(max_product=30)
+
+            idx_1, idx_2 = random.sample(range(np.prod(dims)), 2)
+            base_1 = int_to_bases(idx_1, dims)
+            base_2 = int_to_bases(idx_2, dims)
+
+            p1 = PauliString.from_exponents(x_exp=[0 for _ in range(len(dims))], z_exp=base_1, dimensions=dims)
+            p2 = PauliString.from_exponents(x_exp=[0 for _ in range(len(dims))], z_exp=base_2, dimensions=dims)
+            if idx_1 < idx_2:
+                assert p1 > p2
+            else:
+                assert p1 < p2
 
         ps1 = PauliString.from_string("x1z0 x0z1")
         ps2 = PauliString.from_string("x0z1 x1z0")
@@ -1063,10 +1060,10 @@ class TestPaulis:
             assert ps1 < ps2
 
     def test_pauli_phase_setters(self):
-        p1 = Pauli.from_string("x0z1")
-        p2 = Pauli.from_string("x0z1")
-        p3 = Pauli.from_string("x0z1")
-        p4 = Pauli.from_string("x0z1")
+        p1 = PauliString.from_string("x0z1")
+        p2 = PauliString.from_string("x0z1")
+        p3 = PauliString.from_string("x0z1")
+        p4 = PauliString.from_string("x0z1")
 
         p1.phases[0] = 1.9
         p2.set_phases([1])
@@ -1109,10 +1106,10 @@ class TestPaulis:
         assert psum2 != psum3
 
     def test_pauli_weight_setters(self):
-        p1 = Pauli.from_string("x0z1")
-        p2 = Pauli.from_string("x0z1")
-        p3 = Pauli.from_string("x0z1")
-        p4 = Pauli.from_string("x0z1")
+        p1 = PauliString.from_string("x0z1")
+        p2 = PauliString.from_string("x0z1")
+        p3 = PauliString.from_string("x0z1")
+        p4 = PauliString.from_string("x0z1")
 
         p1.weights[0] = 1.9 + 2j
         p2.set_weights([1.9 + 2j])
