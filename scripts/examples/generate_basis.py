@@ -1,11 +1,11 @@
 import sys
 import numpy as np
 sys.path.append("./")
-from sympleq.paulis import PauliString, PauliSum
-from sympleq.circuits import Circuit
-from sympleq.circuits.utils import solve_modular_linear
-from sympleq.circuits.known_circuits import to_x, to_ix
-from sympleq.hamiltonian import random_pauli_hamiltonian, pauli_reduce
+from sympleq.core.paulis import PauliString, PauliSum
+from sympleq.core.circuits import Circuit
+from sympleq.core import solve_modular_linear
+from sympleq.models.random_hamiltonian import random_pauli_hamiltonian
+from sympleq.core.symmetries.pauli import pauli_reduce
 
 
 def find_anticommuting_pairs(pauli_sum: PauliSum) -> list[tuple[int, int]]:
@@ -217,8 +217,6 @@ def is_basis(pauli_sum: PauliSum) -> tuple[bool, list[int]]:
 
 
 if __name__ == "__main__":
-    from sympleq.paulis import commutation_graph
-    import matplotlib.pyplot as plt
     n_qudits = 7
     dims = [2] * n_qudits
     n_paulis = 10
