@@ -3,7 +3,6 @@ import numpy as np
 import scipy.sparse as sp
 from functools import reduce
 from sympleq._typing import IntNDArray
-from sympleq.utils import int_to_bases, bases_to_int
 from sympleq.core.paulis._typing import TableauType, PhasesType, HilbertOperator, DimensionsType
 
 
