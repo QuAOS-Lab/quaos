@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import overload, TYPE_CHECKING
+from typing import TYPE_CHECKING
 import numpy as np
 import re
 import scipy.sparse as sp
