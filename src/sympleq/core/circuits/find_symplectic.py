@@ -3,21 +3,29 @@ This module uses arXiv:1803.06987 to find symplectic solutions.
 
 So far it only works for GF(2), as in the original paper. It could be extended to GF(p).
 """
+from __future__ import annotations
 
 import numpy as np
 from sympleq.core.finite_field_solvers import solve_gf2
 from sympleq.core.circuits.utils import transvection_matrix, symplectic_product_arrays, symplectic_product_matrix
+from sympleq._typing import IntNDArray
+from sympleq.core.paulis._typing import TableauType
 
 
-def find_symplectic_solution(u: np.ndarray, v: np.ndarray) -> np.ndarray:
+def find_symplectic_solution(u: IntNDArray, v: IntNDArray) -> IntNDArray:
     """
     Find a binary vector w such that <u,w> = <v,w> = 1 in symplectic inner product.
 
     Args:
-        u, v: Binary vectors of length 2n representing Pauli strings
+        u: Binary vector of length 2n.
+        v: Binary vector of length 2n.
 
     Returns:
-        Binary vector w of length 2n, or None if no solution exists
+        Binary vector w of length 2n.
+
+    Raises:
+        ValueError: If u or v is the zero vector.
+        Exception: If no solution exists in GF(2).
     """
     n = len(u) // 2
 
@@ -37,7 +45,7 @@ def find_symplectic_solution(u: np.ndarray, v: np.ndarray) -> np.ndarray:
         return solve_general_system(u, v)
 
 
-def direct_construction(u: np.ndarray, v: np.ndarray) -> np.ndarray:
+def direct_construction(u: IntNDArray, v: IntNDArray) -> IntNDArray:
     """
     Direct construction when u and v are symplectically independent (<u,v> = 1).
 
@@ -45,10 +53,11 @@ def direct_construction(u: np.ndarray, v: np.ndarray) -> np.ndarray:
     solving a linear system.
 
     Args:
-        u, v: Symplectically independent binary vectors
+        u: Binary vector of length 2n.
+        v: Binary vector of length 2n, symplectically independent from u.
 
     Returns:
-        Solution vector w
+        Binary vector w of length 2n such that <u,w> = <v,w> = 1.
     """
     n = len(u) // 2
 
@@ -102,15 +111,19 @@ def direct_construction(u: np.ndarray, v: np.ndarray) -> np.ndarray:
     return solution
 
 
-def solve_general_system(u: np.ndarray, v: np.ndarray) -> np.ndarray:
+def solve_general_system(u: IntNDArray, v: IntNDArray) -> IntNDArray:
     """
     Solve the general case when u and v are symplectically orthogonal (<u,v> = 0).
 
     Args:
-        u, v: Binary vectors that are symplectically orthogonal
+        u: Binary vector of length 2n.
+        v: Binary vector of length 2n, symplectically orthogonal to u.
 
     Returns:
-        Solution vector w or None if no solution exists
+        Binary vector w of length 2n such that <u,w> = <v,w> = 1.
+
+    Raises:
+        Exception: If no solution exists in GF(2).
     """
     n = len(u) // 2
 
@@ -131,8 +144,8 @@ def solve_general_system(u: np.ndarray, v: np.ndarray) -> np.ndarray:
     return solution
 
 
-def find_symplectic_solution_extended(u: np.ndarray, v: np.ndarray,
-                                      t_vectors: list | None = None) -> np.ndarray:
+def find_symplectic_solution_extended(u: IntNDArray, v: IntNDArray,
+                                      t_vectors: list | None = None) -> IntNDArray:
     """
     Find a binary vector w such that:
     - <u,w> = 1
@@ -140,11 +153,16 @@ def find_symplectic_solution_extended(u: np.ndarray, v: np.ndarray,
     - <t_i,w> = <t_i,v> for all t_i in t_vectors
 
     Args:
-        u, v: Binary vectors of length 2n representing primary Pauli strings
-        t_vectors: List of binary vectors of length 2n for additional constraints
+        u: Binary vector of length 2n.
+        v: Binary vector of length 2n.
+        t_vectors: List of binary vectors of length 2n for additional constraints.
 
     Returns:
-        Binary vector w of length 2n, or None if no solution exists
+        Binary vector w of length 2n.
+
+    Raises:
+        ValueError: If u or v is the zero vector.
+        Exception: If no solution exists in GF(2).
     """
     if t_vectors is None or len(t_vectors) == 0:
         return find_symplectic_solution(u, v)
@@ -160,16 +178,20 @@ def find_symplectic_solution_extended(u: np.ndarray, v: np.ndarray,
     return solve_extended_system(u, v, t_vectors)
 
 
-def solve_extended_system(u: np.ndarray, v: np.ndarray, t_vectors: list) -> np.ndarray:
+def solve_extended_system(u: IntNDArray, v: IntNDArray, t_vectors: list) -> IntNDArray:
     """
     Solve the extended system with additional t_i constraints.
 
     Args:
-        u, v: Primary constraint vectors
-        t_vectors: Additional constraint vectors
+        u: Binary vector of length 2n (primary constraint).
+        v: Binary vector of length 2n (primary constraint).
+        t_vectors: List of binary vectors of length 2n (additional constraints).
 
     Returns:
-        Solution vector w or None if no solution exists
+        Binary vector w of length 2n.
+
+    Raises:
+        Exception: If no solution exists in GF(2).
     """
     n = len(u) // 2
     k = len(t_vectors)
@@ -204,8 +226,8 @@ def solve_extended_system(u: np.ndarray, v: np.ndarray, t_vectors: list) -> np.n
     return solution
 
 
-def check_mappable_via_clifford(pauli_sum_tableau: np.ndarray,
-                                target_pauli_sum_tableau: np.ndarray,
+def check_mappable_via_clifford(pauli_sum_tableau: TableauType,
+                                target_pauli_sum_tableau: TableauType,
                                 p: int = 2) -> bool:
     sym_check = np.all(
         symplectic_product_matrix(pauli_sum_tableau, p) == symplectic_product_matrix(target_pauli_sum_tableau, p)
@@ -216,8 +238,8 @@ def check_mappable_via_clifford(pauli_sum_tableau: np.ndarray,
     return False
 
 
-def map_single_pauli_string_to_target(pauli_string_tableau: np.ndarray, target_pauli_string_tableau: np.ndarray,
-                                      constraint_paulis: list | None = None):
+def map_single_pauli_string_to_target(pauli_string_tableau: TableauType, target_pauli_string_tableau: TableauType,
+                                      constraint_paulis: list | None = None) -> TableauType:
     sp = symplectic_product_arrays(pauli_string_tableau, target_pauli_string_tableau)
     if sp == 1:
         h = pauli_string_tableau + target_pauli_string_tableau
@@ -240,7 +262,8 @@ def map_single_pauli_string_to_target(pauli_string_tableau: np.ndarray, target_p
         raise Exception(f'sp = {sp}...This should never happen')
 
 
-def map_pauli_sum_to_target_tableau(pauli_sum_tableau: np.ndarray, target_pauli_sum_tableau: np.ndarray) -> np.ndarray:
+def map_pauli_sum_to_target_tableau(
+        pauli_sum_tableau: TableauType, target_pauli_sum_tableau: TableauType) -> TableauType:
     """
     Map a Pauli sum to a target Pauli sum using symplectic transvections.
     """
