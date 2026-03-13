@@ -56,37 +56,71 @@ class NoiseModel(ABC):
     Abstract base class for quantum noise models.
 
     Subclasses must implement:
-    - n_kraus_operators(): number of single-qudit Kraus operators
-    - kraus_probabilities(n_qudits): probabilities p_i = ||K_i||²
-    - kraus_operators(dimensions, qudit_indices): list of Kraus operators as PauliSums
-    - process_matrix(n_qudits): the λ_{mn} matrix
+    - n_qudits(): number of qudits the noise model acts on
+    - kraus_gates(): list of Gates corresponding to Kraus operators
+    - kraus_probabilities(): probabilities p_i = ||K_i||²
     """
     def __init__(self, rng: RNGGenerator) -> None:
         self.rng = rng
 
     @abstractmethod
     def n_qudits(self) -> int:
+        """
+        Return the number of qudits this noise model acts on.
+
+        Returns
+        -------
+        int
+            Number of qudits.
+        """
         pass
 
     @abstractmethod
     def kraus_gates(self) -> list[Gate]:
-        """"
-        The gate corresponding to the Kraus operator, acting as ps1 = G_i.act(ps, qudit_indices)
+        """
+        Return the list of Gates corresponding to each Kraus operator.
+
+        Returns
+        -------
+        list[Gate]
+            Gates G_i such that the Kraus action is ps_out = G_i.act(ps, qudit_indices).
         """
         pass
 
     @abstractmethod
     def kraus_probabilities(self) -> list[float]:
         """
-        Returns the Kraus probabilities for the noise channel.
+        Return the Kraus probabilities for the noise channel.
 
-        p_i = sum_j |α_{ij}|², i.e. the squared norm of each Kraus operator's coefficients.
-        The probabilities sum to 1.
+        p_i = sum_j |alpha_{ij}|^2, i.e. the squared norm of each Kraus operator's
+        coefficients. The probabilities sum to 1.
+
+        Returns
+        -------
+        list[float]
+            Probabilities p_i for each Kraus operator.
         """
         pass
 
     def apply_quantum_trajectory(self, pauli_sum: PauliObject, qudits: tuple[int, ...]) -> PauliObject:
-        # NOTE: this default implementation is valid for uncorrelated noise acting on single qudits only
+        """
+        Sample a single Kraus operator and apply it to the Pauli sum.
+
+        Uses the quantum trajectory method: a single Kraus operator is sampled
+        according to the Kraus probabilities and applied to the Pauli sum.
+
+        Parameters
+        ----------
+        pauli_sum : PauliObject
+            The Pauli object to apply noise to.
+        qudits : tuple[int, ...]
+            Qudit indices on which the noise acts.
+
+        Returns
+        -------
+        PauliObject
+            The transformed Pauli object after applying the sampled Kraus operator.
+        """
         n_qudits = len(qudits)
         kraus_n_qudits = self.n_qudits()
         if n_qudits < kraus_n_qudits:
@@ -110,6 +144,26 @@ class NoiseModel(ABC):
 
     def act_in_hilbert_space(self, rho: HilbertOperator,
                              qudits: tuple[int, ...], dimensions: DimensionsType) -> HilbertOperator:
+        """
+        Apply the full noise channel to a density matrix.
+
+        Computes rho_out = sum_i K_i rho K_i^dagger by iterating over all
+        Kraus operators (or their tensor products for multi-qudit gates).
+
+        Parameters
+        ----------
+        rho : HilbertOperator
+            The input density matrix.
+        qudits : tuple[int, ...]
+            Qudit indices on which the noise acts.
+        dimensions : DimensionsType
+            Local Hilbert space dimensions for each qudit.
+
+        Returns
+        -------
+        HilbertOperator
+            The density matrix after applying the noise channel.
+        """
 
         def _apply_unitary(output_rho: HilbertOperator | None, unitary: HilbertOperator,
                            probability: float) -> HilbertOperator:

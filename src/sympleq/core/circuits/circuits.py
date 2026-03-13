@@ -70,6 +70,19 @@ class Circuit:
 
     @classmethod
     def empty(cls, dimensions: DimensionsLike) -> Circuit:
+        """
+        Create an empty circuit with no gates.
+
+        Parameters
+        ----------
+        dimensions : DimensionsLike
+            The dimension of each qudit.
+
+        Returns
+        -------
+        Circuit
+            An empty circuit.
+        """
         dimensions = np.asarray(dimensions, dtype=int)
         C = cls(dimensions, [], [])
         C._sanity_check()
@@ -280,15 +293,36 @@ class Circuit:
             return cls.from_string(f.read())
 
     def with_noise(self, noise_model: NoiseModel) -> Circuit:
+        """
+        Attach a noise model and return self for chaining.
+
+        Parameters
+        ----------
+        noise_model : NoiseModel
+            The noise model to apply after each gate.
+
+        Returns
+        -------
+        Circuit
+            This circuit instance (for method chaining).
+        """
         self.noise_model = noise_model
         return self
 
     def add_noise(self, noise_model: NoiseModel):
+        """
+        Attach a noise model to this circuit.
+
+        Parameters
+        ----------
+        noise_model : NoiseModel
+            The noise model to apply after each gate.
+        """
         self.noise_model = noise_model
 
     def _sanity_check(self):
         """
-        Validate internal consistency of the Circuitt.
+        Validate internal consistency of the Circuit.
 
         Raises
         ------
@@ -416,7 +450,21 @@ class Circuit:
         ...
 
     def act(self, pauli: PauliObject) -> PauliObject:
-        """Apply all gates in the circuit to a Pauli object."""
+        """
+        Apply all gates in the circuit to a Pauli object.
+
+        If a noise model is attached, it is applied after each gate.
+
+        Parameters
+        ----------
+        pauli : PauliObject
+            The Pauli object to transform.
+
+        Returns
+        -------
+        PauliObject
+            The transformed Pauli object after all gates (and noise) are applied.
+        """
         for gate, qudits in zip(self._gates, self._qudit_indices):
             pauli = gate.act(pauli, qudits)
             if self.noise_model is not None:
@@ -437,7 +485,21 @@ class Circuit:
         ...
 
     def act_iter(self, pauli: PauliObject) -> Generator[PauliObject, None, None]:
-        """Yields the Pauli object after each gate application."""
+        """
+        Yield the Pauli object after each gate application.
+
+        If a noise model is attached, it is applied after each gate.
+
+        Parameters
+        ----------
+        pauli : PauliObject
+            The Pauli object to transform.
+
+        Yields
+        ------
+        PauliObject
+            The Pauli object after each successive gate (and noise) application.
+        """
         for gate, qudits in zip(self._gates, self._qudit_indices):
             pauli = gate.act(pauli, qudits)
             if self.noise_model is not None:
@@ -445,7 +507,22 @@ class Circuit:
             yield pauli
 
     def act_in_hilbert_space(self, rho: HilbertOperator) -> HilbertOperator:
-        """Apply all gates in the circuit in Hilbert space."""
+        """
+        Apply all gates in the circuit to a density matrix in Hilbert space.
+
+        Gate unitaries are cached for reuse. If a noise model is attached,
+        it is applied after each gate.
+
+        Parameters
+        ----------
+        rho : HilbertOperator
+            The input density matrix.
+
+        Returns
+        -------
+        HilbertOperator
+            The density matrix after all gates (and noise) are applied.
+        """
         for gate, qudits in zip(self._gates, self._qudit_indices):
             key = (gate, qudits)
             if key not in self._unitary_cache:
@@ -460,7 +537,22 @@ class Circuit:
         return rho
 
     def act_in_hilbert_space_iter(self, rho: HilbertOperator) -> Generator[HilbertOperator, None, None]:
-        """Apply all gates in the circuit in Hilbert space."""
+        """
+        Yield the density matrix after each gate application in Hilbert space.
+
+        Gate unitaries are cached for reuse. If a noise model is attached,
+        it is applied after each gate.
+
+        Parameters
+        ----------
+        rho : HilbertOperator
+            The input density matrix.
+
+        Yields
+        ------
+        HilbertOperator
+            The density matrix after each successive gate (and noise) application.
+        """
         for gate, qudits in zip(self._gates, self._qudit_indices):
             key = (gate, qudits)
             if key not in self._unitary_cache:

@@ -31,6 +31,20 @@ class Gate(ABC):
     def __init__(self, name: str, symplectic: TableauType,
                  phase_vector: PhasesType | None = None,
                  exceptional_phase_vectors: dict[int, PhasesType] | None = None):
+        """
+        Initialize a Clifford gate.
+
+        Parameters
+        ----------
+        name : str
+            Human-readable name for the gate.
+        symplectic : TableauType
+            The 2n x 2n symplectic matrix defining the Pauli transformation.
+        phase_vector : PhasesType | None
+            Phase vector for the gate. If None, defaults to zeros.
+        exceptional_phase_vectors : dict[int, PhasesType] | None
+            Dimension-specific phase vectors (e.g., PHASE gate for qubits).
+        """
         self._name = name
         self._n_qudits = symplectic.shape[0] // 2
         self._symplectic = symplectic.astype(int)
@@ -143,14 +157,17 @@ class Gate(ABC):
 
     @property
     def name(self) -> str:
+        """str : Human-readable name of the gate."""
         return self._name
 
     @property
     def n_qudits(self) -> int:
+        """int : Number of qudits the gate acts on."""
         return self._n_qudits
 
     @property
     def symplectic(self) -> TableauType:
+        """TableauType : The 2n x 2n symplectic matrix."""
         return self._symplectic
 
     def phase_vector(self, dimension: int = 0) -> PhasesType:
@@ -159,6 +176,16 @@ class Gate(ABC):
 
         Some gates have dimension-specific phase vectors (e.g., PHASE gate for qubits).
         If no exceptional phase vector exists for the given dimension, returns the default.
+
+        Parameters
+        ----------
+        dimension : int
+            The local Hilbert space dimension. Used to look up exceptional phase vectors.
+
+        Returns
+        -------
+        PhasesType
+            The phase vector for the given dimension.
         """
         if dimension in self._exceptional_phase_vectors:
             return self._exceptional_phase_vectors[dimension]
@@ -184,7 +211,8 @@ class Gate(ABC):
 
         Returns
         -------
-        The transformed Pauli object of the same type as the input.
+        PauliObject
+            The transformed Pauli object of the same type as the input.
         """
         if isinstance(qudits, int):
             qudits = (qudits,)
@@ -225,6 +253,26 @@ class Gate(ABC):
 
     def act_in_hilbert_space(self, rho: HilbertOperator,
                              qudits: tuple[int, ...], dimensions: DimensionsType) -> HilbertOperator:
+        """
+        Apply this gate to a density matrix in Hilbert space.
+
+        Computes rho_out = U rho U^dagger where U is the gate unitary embedded
+        into the full Hilbert space.
+
+        Parameters
+        ----------
+        rho : HilbertOperator
+            The input density matrix.
+        qudits : tuple[int, ...]
+            Qudit indices on which the gate acts.
+        dimensions : DimensionsType
+            Local Hilbert space dimensions for each qudit.
+
+        Returns
+        -------
+        HilbertOperator
+            The transformed density matrix.
+        """
         dimension = dimensions[qudits[0]]
         unitary = embed_unitary(self.local_unitary(dimension), qudits, dimensions)
 
@@ -251,10 +299,16 @@ class Gate(ABC):
         )
 
     def inverse(self) -> Self:
-        """Return the inverse of this gate.
+        """
+        Return the inverse of this gate.
 
         For singleton gates (from GATES), returns the pre-linked inverse.
         Otherwise computes the inverse symplectic matrix.
+
+        Returns
+        -------
+        Gate
+            The inverse gate such that gate @ gate.inverse() = Identity.
         """
         if self._inverse is not None:
             return self._inverse
@@ -292,10 +346,19 @@ class Gate(ABC):
 
     def transvection(self, transvection_vector: IntArrayLike, transvection_weight: int = 1) -> Gate:
         """
-        Returns a new gate that is the transvection of this gate by the given vector.
+        Return a new gate that is the transvection of this gate by the given vector.
 
-        The transvection vector should be a 2n-dimensional vector where n is the number of qudits.
-        Note: This returns a generic Gate, not a subclass instance.
+        Parameters
+        ----------
+        transvection_vector : IntArrayLike
+            A 2n-dimensional vector where n is the number of qudits.
+        transvection_weight : int
+            Multiplier for the transvection. Default is 1.
+
+        Returns
+        -------
+        Gate
+            A new generic Gate with the transvected symplectic matrix.
         """
         if not isinstance(transvection_weight, int) and not isinstance(transvection_weight, np.int64):
             raise TypeError("Transvection weight must be an integer.")
