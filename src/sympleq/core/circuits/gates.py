@@ -528,6 +528,156 @@ class _CZ(Gate):
         return self
 
 
+class _Id(Gate):
+    """Identity gate: Id|j⟩ = |j⟩."""
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+        # NOTE: here we define the gate to be single-qudit, but overriding
+        # the act method makes it work for any number of qudits.
+        symplectic = np.eye(2, dtype=int)
+        phase_vector = np.array([0, 0], dtype=int)
+
+        super().__init__("Id", symplectic, phase_vector)
+
+    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        # X|j⟩ = |j+1 mod d⟩, X^{-1}|j⟩ = |j-1 mod d⟩
+        U = np.eye(d, dtype=complex)
+        return sp.csr_matrix(U)
+
+    to_local_hilbert_space = local_unitary
+
+    def inverse(self) -> _Id:
+        # Id is self-inverse
+        return self
+
+    def act(self, pauli: PauliObject, qudits: int | tuple[int, ...]) -> PauliObject:
+        return pauli
+
+
+class _X(Gate):
+    """Generalized X gate (shift operator): X|j⟩ = |j+1 mod d⟩."""
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+        symplectic = np.eye(2, dtype=int)
+
+        if is_inverse:
+            # X^{-1} = X^{d-1} has tableau [-1, 0]
+            self._tableau = np.array([-1, 0], dtype=int)
+            name = "X_inv"
+        else:
+            self._tableau = np.array([1, 0], dtype=int)
+            name = "X"
+
+        super().__init__(name, symplectic)
+
+    def phase_vector(self, dimension: int | None = None) -> np.ndarray:
+        # h = 2 * Ω @ tableau, where Ω = [[0, 1], [-1, 0]]
+        # Ω @ [x, 0] = [0, -x], so h = [0, -2x]
+        x = self._tableau[0]
+        if dimension is not None:
+            return np.array([0, -2 * x], dtype=int) % (2 * dimension)
+        return np.array([0, -2 * x], dtype=int)
+
+    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        # X|j⟩ = |j+1 mod d⟩, X^{-1}|j⟩ = |j-1 mod d⟩
+        U = np.zeros((d, d), dtype=complex)
+        for j in range(d):
+            if self._is_inverse:
+                U[(j - 1) % d, j] = 1.0
+            else:
+                U[(j + 1) % d, j] = 1.0
+        return sp.csr_matrix(U)
+
+    to_local_hilbert_space = local_unitary
+
+
+class _Y(Gate):
+    """Generalized Y gate: Y = X * Z."""
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+        symplectic = np.eye(2, dtype=int)
+
+        if is_inverse:
+            self._tableau = np.array([-1, -1], dtype=int)
+            name = "Y_inv"
+        else:
+            self._tableau = np.array([1, 1], dtype=int)
+            name = "Y"
+
+        super().__init__(name, symplectic)
+
+    def phase_vector(self, dimension: int | None = None) -> np.ndarray:
+        # h = 2 * Ω @ [x, z] = 2 * [z, -x]
+        x, z = self._tableau
+        if dimension is not None:
+            return np.array([2 * z, -2 * x], dtype=int) % (2 * dimension)
+        return np.array([2 * z, -2 * x], dtype=int)
+
+    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        omega = np.exp(2j * np.pi / d)
+        # Y = X * Z: Y|j⟩ = ω^j |j+1 mod d⟩
+        U = np.zeros((d, d), dtype=complex)
+        for j in range(d):
+            if self._is_inverse:
+                # Y^{-1}|j⟩ = ω^{-(j-1)} |j-1 mod d⟩
+                U[(j - 1) % d, j] = omega ** (-(j - 1) % d)
+            else:
+                U[(j + 1) % d, j] = omega ** j
+        return sp.csr_matrix(np.around(U, 10))
+
+    to_local_hilbert_space = local_unitary
+
+
+class _Z(Gate):
+    """Generalized Z gate (clock operator): Z|j⟩ = ω^j |j⟩."""
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+        symplectic = np.eye(2, dtype=int)
+
+        if is_inverse:
+            self._tableau = np.array([0, -1], dtype=int)
+            name = "Z_inv"
+        else:
+            self._tableau = np.array([0, 1], dtype=int)
+            name = "Z"
+
+        super().__init__(name, symplectic)
+
+    def phase_vector(self, dimension: int | None = None) -> np.ndarray:
+        # h = 2 * Ω @ [0, z] = 2 * [z, 0]
+        z = self._tableau[1]
+        if dimension is not None:
+            return np.array([2 * z, 0], dtype=int) % (2 * dimension)
+        return np.array([2 * z, 0], dtype=int)
+
+    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        omega = np.exp(2j * np.pi / d)
+        # Z|j⟩ = ω^j |j⟩, Z^{-1}|j⟩ = ω^{-j} |j⟩
+        if self._is_inverse:
+            diag = [omega ** (-j % d) for j in range(d)]
+        else:
+            diag = [omega ** j for j in range(d)]
+        return sp.csr_matrix(np.around(np.diag(diag), 10))
+
+    to_local_hilbert_space = local_unitary
+
+
 class _Gates:
     """
     Singleton container for pre-instantiated gates.
@@ -559,6 +709,24 @@ class _Gates:
 
         self._CZ = _CZ()
         # CZ is self-inverse, already handled in the class
+
+        self._Id = _Id()
+
+        # Pauli gates
+        self._X = _X(is_inverse=False)
+        self._X_inv = _X(is_inverse=True)
+        self._X._inverse = self._X_inv
+        self._X_inv._inverse = self._X
+
+        self._Y = _Y(is_inverse=False)
+        self._Y_inv = _Y(is_inverse=True)
+        self._Y._inverse = self._Y_inv
+        self._Y_inv._inverse = self._Y
+
+        self._Z = _Z(is_inverse=False)
+        self._Z_inv = _Z(is_inverse=True)
+        self._Z._inverse = self._Z_inv
+        self._Z_inv._inverse = self._Z
 
     # Hadamard
     @property
@@ -596,6 +764,38 @@ class _Gates:
     @property
     def CZ(self) -> _CZ:
         return self._CZ
+
+    # Identity
+    @property
+    def Id(self) -> _Id:
+        return self._Id
+
+    # Pauli X
+    @property
+    def X(self) -> _X:
+        return self._X
+
+    @property
+    def X_inv(self) -> _X:
+        return self._X_inv
+
+    # Pauli Y
+    @property
+    def Y(self) -> _Y:
+        return self._Y
+
+    @property
+    def Y_inv(self) -> _Y:
+        return self._Y_inv
+
+    # Pauli Z
+    @property
+    def Z(self) -> _Z:
+        return self._Z
+
+    @property
+    def Z_inv(self) -> _Z:
+        return self._Z_inv
 
 
 # Global singleton instance
