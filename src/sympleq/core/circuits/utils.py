@@ -145,7 +145,7 @@ def _multi_index_to_linear(index: list[int] | np.ndarray, dims: list[int] | np.n
 
 def embed_unitary(U_local: sp.csr_matrix,
                   qudit_indices: tuple[int, ...] | list[int] | np.ndarray,
-                  total_dimensions: list[int] | np.ndarray) -> sp.csr_matrix:
+                  total_dimensions: DimensionsType) -> sp.csr_matrix:
     """
     Embed a local unitary acting on a subset of qudits into the full Hilbert space.
 
