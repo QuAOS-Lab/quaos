@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC
 import numpy as np
-from typing import TypeVar, Self
+from typing import Self
 import scipy.sparse as sp
 
 from sympleq._typing import IntArrayLike
@@ -9,16 +9,11 @@ from sympleq.core.paulis import PauliObject
 from sympleq.core.paulis._typing import (
     TableauType, TableauLike, PhasesType, DimensionsType, HilbertOperator
 )
-from sympleq.core.circuits.utils import embed_symplectic, transvection_matrix
+from sympleq.core.circuits.utils import embed_symplectic, embed_unitary, transvection_matrix
 from sympleq.core.circuits.random_symplectic import symplectic_random_transvection
 from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.circuits.target import get_phase_vector
-
-
-# We define a type using TypeVar to let the type checker know that
-# the input and output of the `act` function share the same type.
-P = TypeVar("P", bound="PauliObject")
 
 
 class Gate(ABC):
@@ -173,7 +168,7 @@ class Gate(ABC):
     def __repr__(self) -> str:
         return f"Gate(name={self._name}, n_qudits={self._n_qudits})"
 
-    def act(self, pauli: P, qudits: int | tuple[int, ...]) -> P:
+    def act(self, pauli: PauliObject, qudits: int | tuple[int, ...]) -> PauliObject:
         """
         Apply this gate to a Pauli object at the specified qudit indices.
 
@@ -228,6 +223,13 @@ class Gate(ABC):
 
         return pauli.__class__(tableau=new_tableau, dimensions=pauli.dimensions,
                                weights=pauli.weights, phases=new_phases)
+
+    def act_in_hilbert_space(self, rho: sp.csr_matrix,
+                             qudits: tuple[int, ...], dimensions: DimensionsType) -> sp.csr_matrix:
+        dimension = dimensions[qudits[0]]
+        unitary = embed_unitary(self.local_unitary(dimension), qudits, dimensions)
+
+        return unitary @ rho @ unitary.conjugate().transpose()
 
     def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
         """
@@ -651,7 +653,7 @@ class PauliGate(Gate):
 
     to_local_hilbert_space = local_unitary
 
-    def act(self, pauli: P, qudits: int | tuple[int, ...] | None = None) -> P:
+    def act(self, pauli: PauliObject, qudits: int | tuple[int, ...] | None = None) -> PauliObject:
         """
         Apply this PauliGate to a Pauli object.
 
