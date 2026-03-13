@@ -2,9 +2,9 @@ from __future__ import annotations
 from typing import Generator, overload
 import json
 import numpy as np
-import scipy.sparse as sp
 from pathlib import Path
 from collections import defaultdict
+import scipy.sparse as sp
 
 from sympleq.core.noise.noise_model import NoiseModel
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
@@ -56,7 +56,7 @@ class Circuit:
         self._qudit_indices = list(qudit_indices)
 
         self.noise_model = None
-        self._unitary_cache: dict[tuple, tuple[sp.csr_matrix, sp.csr_matrix]] = {}
+        self._unitary_cache: dict[tuple, tuple[HilbertOperator, HilbertOperator]] = {}
 
     @property
     def gates(self) -> list[Gate]:
@@ -444,7 +444,7 @@ class Circuit:
                 pauli = self.noise_model.apply_quantum_trajectory(pauli, qudits)
             yield pauli
 
-    def act_in_hilbert_space(self, rho: sp.csr_matrix) -> sp.csr_matrix:
+    def act_in_hilbert_space(self, rho: HilbertOperator) -> HilbertOperator:
         """Apply all gates in the circuit in Hilbert space."""
         for gate, qudits in zip(self._gates, self._qudit_indices):
             key = (gate, qudits)
@@ -459,7 +459,7 @@ class Circuit:
 
         return rho
 
-    def act_in_hilbert_space_iter(self, rho: sp.csr_matrix) -> Generator[sp.csr_matrix, None, None]:
+    def act_in_hilbert_space_iter(self, rho: HilbertOperator) -> Generator[HilbertOperator, None, None]:
         """Apply all gates in the circuit in Hilbert space."""
         for gate, qudits in zip(self._gates, self._qudit_indices):
             key = (gate, qudits)

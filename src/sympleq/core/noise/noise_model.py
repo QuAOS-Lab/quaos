@@ -43,10 +43,10 @@ from abc import ABC, abstractmethod
 import itertools
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
-import scipy.sparse as sp
 
 from sympleq.core.circuits.gates import GATES, Gate
 from sympleq.core.circuits.utils import embed_unitary
+from sympleq.core.paulis._typing import DimensionsType, HilbertOperator
 from sympleq.core.paulis.pauli_object import PauliObject
 from sympleq.core.paulis.pauli_sum import PauliSum
 
@@ -108,11 +108,11 @@ class NoiseModel(ABC):
 
         return pauli_sum
 
-    def act_in_hilbert_space(self, rho: sp.csr_matrix,
-                             qudits: tuple[int, ...], dimensions: np.ndarray) -> sp.csr_matrix:
+    def act_in_hilbert_space(self, rho: HilbertOperator,
+                             qudits: tuple[int, ...], dimensions: DimensionsType) -> HilbertOperator:
 
-        def _apply_unitary(output_rho: sp.csr_matrix | None, unitary: sp.csr_matrix,
-                           probability: float) -> sp.csr_matrix:
+        def _apply_unitary(output_rho: HilbertOperator | None, unitary: HilbertOperator,
+                           probability: float) -> HilbertOperator:
             if output_rho is None:
                 output_rho = probability * (unitary @ rho @ unitary.conjugate().transpose())
             else:
@@ -127,7 +127,7 @@ class NoiseModel(ABC):
         if n_qudits < kraus_n_qudits:
             return rho
 
-        output_rho: sp.csr_matrix | None = None
+        output_rho: HilbertOperator | None = None
 
         # E.g.: single qudit noise on single qudit gate
         cum_prob = 0
@@ -183,8 +183,8 @@ class Noiseless(NoiseModel):
     def apply_quantum_trajectory(self, pauli_sum: PauliSum, qudits: tuple[int, ...]) -> PauliSum:
         return pauli_sum
 
-    def act_in_hilbert_space(self, rho: sp.csr_matrix,
-                             qudits: tuple[int, ...], dimensions: np.ndarray) -> sp.csr_matrix:
+    def act_in_hilbert_space(self, rho: HilbertOperator,
+                             qudits: tuple[int, ...], dimensions: DimensionsType) -> HilbertOperator:
         return rho
 
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 from abc import ABC
 import numpy as np
 from typing import Self
-import scipy.sparse as sp
 
 from sympleq._typing import IntArrayLike
 from sympleq.core.paulis import PauliObject
@@ -101,10 +100,10 @@ class Gate(ABC):
 
         Parameters
         ----------
-        input_tableau : np.ndarray
+        input_tableau : TableauLike
             Input Pauli tableau of shape (m, 2n) where m is the number of Paulis
             and n is the number of qudits.
-        target_tableau : np.ndarray
+        target_tableau : TableauLike
             Target Pauli tableau of the same shape.
 
         Returns
@@ -224,8 +223,8 @@ class Gate(ABC):
         return pauli.__class__(tableau=new_tableau, dimensions=pauli.dimensions,
                                weights=pauli.weights, phases=new_phases)
 
-    def act_in_hilbert_space(self, rho: sp.csr_matrix,
-                             qudits: tuple[int, ...], dimensions: DimensionsType) -> sp.csr_matrix:
+    def act_in_hilbert_space(self, rho: HilbertOperator,
+                             qudits: tuple[int, ...], dimensions: DimensionsType) -> HilbertOperator:
         dimension = dimensions[qudits[0]]
         unitary = embed_unitary(self.local_unitary(dimension), qudits, dimensions)
 
@@ -322,7 +321,7 @@ class Gate(ABC):
 
         Returns
         -------
-        np.ndarray
+        TableauLike
             The full 2n x 2n symplectic matrix mod p
         """
         if isinstance(qudits, int):
@@ -455,7 +454,7 @@ class _CX(Gate):
                     out_k = (j + k) % d
                 out_idx = j * d + out_k  # |j, out_k⟩
                 U[out_idx, in_idx] = 1.0
-        return sp.csr_matrix(U)
+        return HilbertOperator(U)
 
     to_local_hilbert_space = local_unitary
 
@@ -485,7 +484,7 @@ class _SWAP(Gate):
                 in_idx = j * d + k   # |j,k⟩
                 out_idx = k * d + j  # |k,j⟩
                 U[out_idx, in_idx] = 1.0
-        return sp.csr_matrix(U)
+        return HilbertOperator(U)
 
     to_local_hilbert_space = local_unitary
 
@@ -519,7 +518,7 @@ class _CZ(Gate):
             for k in range(d):
                 idx = j * d + k
                 U[idx, idx] = omega ** (j * k)
-        return sp.csr_matrix(U)
+        return HilbertOperator(U)
 
     to_local_hilbert_space = local_unitary
 
@@ -540,13 +539,13 @@ class _Id(Gate):
 
         super().__init__("Id", symplectic, phase_vector)
 
-    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+    def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
         if dimension is None:
             dimension = DEFAULT_QUDIT_DIMENSION
         d = dimension
         # X|j⟩ = |j+1 mod d⟩, X^{-1}|j⟩ = |j-1 mod d⟩
         U = np.eye(d, dtype=complex)
-        return sp.csr_matrix(U)
+        return HilbertOperator(U)
 
     to_local_hilbert_space = local_unitary
 
@@ -575,7 +574,7 @@ class _X(Gate):
 
         super().__init__(name, symplectic)
 
-    def phase_vector(self, dimension: int | None = None) -> np.ndarray:
+    def phase_vector(self, dimension: int | None = None) -> PhasesType:
         # h = 2 * Ω @ tableau, where Ω = [[0, 1], [-1, 0]]
         # Ω @ [x, 0] = [0, -x], so h = [0, -2x]
         x = self._tableau[0]
@@ -583,7 +582,7 @@ class _X(Gate):
             return np.array([0, -2 * x], dtype=int) % (2 * dimension)
         return np.array([0, -2 * x], dtype=int)
 
-    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+    def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
         if dimension is None:
             dimension = DEFAULT_QUDIT_DIMENSION
         d = dimension
@@ -594,7 +593,7 @@ class _X(Gate):
                 U[(j - 1) % d, j] = 1.0
             else:
                 U[(j + 1) % d, j] = 1.0
-        return sp.csr_matrix(U)
+        return HilbertOperator(U)
 
     to_local_hilbert_space = local_unitary
 
@@ -615,14 +614,14 @@ class _Y(Gate):
 
         super().__init__(name, symplectic)
 
-    def phase_vector(self, dimension: int | None = None) -> np.ndarray:
+    def phase_vector(self, dimension: int | None = None) -> PhasesType:
         # h = 2 * Ω @ [x, z] = 2 * [z, -x]
         x, z = self._tableau
         if dimension is not None:
             return np.array([2 * z, -2 * x], dtype=int) % (2 * dimension)
         return np.array([2 * z, -2 * x], dtype=int)
 
-    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+    def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
         if dimension is None:
             dimension = DEFAULT_QUDIT_DIMENSION
         d = dimension
@@ -635,7 +634,7 @@ class _Y(Gate):
                 U[(j - 1) % d, j] = omega ** (-(j - 1) % d)
             else:
                 U[(j + 1) % d, j] = omega ** j
-        return sp.csr_matrix(np.around(U, 10))
+        return HilbertOperator(np.around(U, 10))
 
     to_local_hilbert_space = local_unitary
 
@@ -656,14 +655,14 @@ class _Z(Gate):
 
         super().__init__(name, symplectic)
 
-    def phase_vector(self, dimension: int | None = None) -> np.ndarray:
+    def phase_vector(self, dimension: int | None = None) -> PhasesType:
         # h = 2 * Ω @ [0, z] = 2 * [z, 0]
         z = self._tableau[1]
         if dimension is not None:
             return np.array([2 * z, 0], dtype=int) % (2 * dimension)
         return np.array([2 * z, 0], dtype=int)
 
-    def local_unitary(self, dimension: int | None = None) -> sp.csr_matrix:
+    def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
         if dimension is None:
             dimension = DEFAULT_QUDIT_DIMENSION
         d = dimension
@@ -673,7 +672,7 @@ class _Z(Gate):
             diag = [omega ** (-j % d) for j in range(d)]
         else:
             diag = [omega ** j for j in range(d)]
-        return sp.csr_matrix(np.around(np.diag(diag), 10))
+        return HilbertOperator(np.around(np.diag(diag), 10))
 
     to_local_hilbert_space = local_unitary
 
