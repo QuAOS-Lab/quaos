@@ -143,24 +143,33 @@ def _multi_index_to_linear(index: list[int] | np.ndarray, dims: list[int] | np.n
     return idx
 
 
-def embed_unitary(U_local: sp.csr_matrix,
+def embed_unitary(U_local: HilbertOperator,
                   qudit_indices: tuple[int, ...] | list[int] | np.ndarray,
-                  total_dimensions: DimensionsType) -> sp.csr_matrix:
+                  total_dimensions: DimensionsType) -> HilbertOperator:
     """
     Embed a local unitary acting on a subset of qudits into the full Hilbert space.
 
     - Basis ordering: |q0> ⊗ |q1> ⊗ ... ⊗ |qN-1>
     - Linear index mapping: idx(q) = sum_k q[k] * prod_{l>k} d[l]
 
-    The local unitary is assumed to act on qudits in the order given by `qudit_indices`.
+    The local unitary is assumed to act on qudits in the order given by
+    `qudit_indices`.
 
-    Args:
-        U_local: Local unitary of shape (D_loc, D_loc) where D_loc = prod(d[qudit_indices]).
-        qudit_indices: Indices of the qudits the local unitary acts on.
-        total_dimensions: Dimensions of each qudit in the full system.
+    Parameters
+    ----------
+    U_local : HilbertOperator
+        Local unitary of shape ``(D_loc, D_loc)`` where
+        ``D_loc = prod(d[qudit_indices])``.
+    qudit_indices : tuple[int, ...] | list[int] | np.ndarray
+        Indices of the qudits the local unitary acts on.
+    total_dimensions : DimensionsType
+        Dimensions of each qudit in the full system.
 
-    Returns:
-        Full unitary of shape (D_total, D_total) with D_total = prod(total_dimensions).
+    Returns
+    -------
+    HilbertOperator
+        Full unitary of shape ``(D_total, D_total)`` with
+        ``D_total = prod(total_dimensions)``.
     """
     dims = np.asarray(total_dimensions)
     N = len(dims)
