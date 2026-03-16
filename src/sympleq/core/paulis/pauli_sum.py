@@ -9,6 +9,7 @@ from pathlib import Path
 
 from sympleq import complex_phase_value, int_to_bases
 from sympleq.core.finite_field_solvers import get_linear_dependencies
+from sympleq.utils import bases_to_int
 from .pauli_object import PauliObject
 from .pauli_string import PauliString
 from .pauli import Pauli
