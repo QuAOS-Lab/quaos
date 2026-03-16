@@ -770,10 +770,10 @@ class PauliObject(ABC):
             The hash value of the Pauli object instance.
         """
         return hash(
-            (tuple(self.tableau),
-             tuple(self.weights),
-             tuple(self.phases),
-             tuple(self.dimensions))
+            (tuple(self.tableau.tobytes()),
+             tuple(self.weights.tobytes()),
+             tuple(self.phases.tobytes()),
+             tuple(self.dimensions.tobytes()))
         )
 
     def __dict__(self) -> dict:

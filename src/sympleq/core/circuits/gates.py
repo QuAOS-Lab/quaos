@@ -173,7 +173,21 @@ class Gate(ABC):
     def __repr__(self) -> str:
         return f"Gate(name={self._name}, n_qudits={self._n_qudits})"
 
-    def act(self, pauli: P, qudits: int | tuple[int, ...]) -> P:
+    def __hash__(self):
+        return hash((
+            self.name,
+            tuple(self.symplectic.flatten().tobytes()),
+            tuple(self._phase_vector.tobytes()),
+        ))
+
+    def __eq__(self, other):
+        if not isinstance(other, Gate):
+            return False
+        return np.all(self.symplectic == other.symplectic) and \
+            np.all(self._phase_vector == other._phase_vector) and \
+            np.all(self._exceptional_phase_vectors == other._exceptional_phase_vectors)
+
+    def act(self, pauli: PauliObject, qudits: int | tuple[int, ...]) -> PauliObject:
         """
         Apply this gate to a Pauli object at the specified qudit indices.
 
@@ -328,7 +342,7 @@ class Gate(ABC):
         F, _ = embed_symplectic(self.symplectic, self.phase_vector(p), qudits, n_qudits)
         if p is None:
             return F
-        
+
         return F % p
 
 
