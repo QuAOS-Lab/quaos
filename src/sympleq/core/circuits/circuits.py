@@ -35,7 +35,8 @@ class Circuit:
 
     def __init__(self, dimensions: DimensionsType,
                  gates: list[Gate],
-                 qudit_indices: list[tuple[int, ...]]):
+                 qudit_indices: list[tuple[int, ...]],
+                 use_unitary_cache: bool = True):
         """
         Initialize the Circuit.
 
@@ -56,6 +57,7 @@ class Circuit:
         self._qudit_indices = list(qudit_indices)
 
         self.noise_model = None
+        self._use_unitary_cache = use_unitary_cache
         self._unitary_cache: dict[tuple, tuple[HilbertOperator, HilbertOperator]] = {}
 
     @property
@@ -394,6 +396,17 @@ class Circuit:
         """
         return len(self.gates)
 
+    def set_use_unitary_cache(self, value: bool):
+        """
+        Enable or disable caching of the circuit's unitary matrix.
+
+        Parameters
+        ----------
+        value : bool
+            If ``True``, the unitary is cached after the first computation.
+        """
+        self._use_unitary_cache = value
+
     @property
     def lcm(self) -> int:
         """Returns the LCM of all qudit dimensions."""
@@ -527,7 +540,8 @@ class Circuit:
             key = (gate, qudits)
             if key not in self._unitary_cache:
                 U = embed_unitary(gate.local_unitary(self.dimensions[qudits[0]]), qudits, self.dimensions)
-                self._unitary_cache[key] = (U, U.conj().T)
+                if self._unitary_cache:
+                    self._unitary_cache[key] = (U, U.conj().T)
             U, U_dag = self._unitary_cache[key]
 
             rho = U @ rho @ U_dag
