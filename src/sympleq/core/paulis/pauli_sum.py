@@ -883,24 +883,6 @@ class PauliSum(PauliObject):
         #       meaning that they could be modified from the PauliString.
         return PauliString(self.tableau[index], self.dimensions, self.weights[index], self.phases[index])
 
-    def select_pauli(self, index: tuple[int, int]) -> PauliString:
-        """
-        Selects a Pauli from the PauliSum.
-
-        Parameters
-        ----------
-        pauli_index : (int, int)
-            The indices of the Pauli to select.
-
-        Returns
-        -------
-        PauliString
-            The selected Pauli as a PauliString.
-        """
-        # NOTE: We pass a view to the tableau row and the dimensions,
-        #       meaning that they could be modified from the PauliString.
-        return PauliString(self.tableau[index], self.dimensions)
-
     def to_file(self, path: str | Path) -> None:
         """
         Writes the PauliSum to a file using its internal representation.
