@@ -89,6 +89,8 @@ class Circuit:
             The dimension of each qudit.
         two_qudit_gate_ratio : float
             Probability of choosing a two-qudit gate vs single-qudit gate.
+        rng : numpy.random.Generator or None, optional
+            Random number generator. If ``None``, a default generator is used.
 
         Returns
         -------
@@ -118,18 +120,13 @@ class Circuit:
         qudit_indices = []
 
         for _ in range(n_gates):
-            set_idx = np.random.randint(n_dims)
-            if np.random.rand() < two_qudit_gate_ratio and len(index_sets[set_idx]) > 1:
-                indices = tuple(np.random.choice(index_sets[set_idx], 2, replace=False))
             set_idx = rng.integers(0, n_dims)
             if rng.random() < two_qudit_gate_ratio and len(index_sets[set_idx]) > 1:
                 indices = rng.choice(index_sets[set_idx], 2, replace=False)
-                gate = np.random.choice(two_qudit_gates)
+                gate = rng.choice(two_qudit_gates)
                 gates.append(gate)
                 qudit_indices.append(indices)
             else:
-                index = int(np.random.choice(index_sets[set_idx]))
-                gate = np.random.choice(single_qudit_gates)
                 index = rng.choice(index_sets[set_idx])
                 gate = rng.choice(single_qudit_gates)
                 gates.append(gate)

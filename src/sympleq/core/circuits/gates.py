@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC
 import numpy as np
-from typing import TypeVar, Self
+from typing import Self
 import scipy.sparse as sp
 
 from sympleq._typing import IntArrayLike
@@ -14,11 +14,6 @@ from sympleq.core.circuits.random_symplectic import symplectic_random_transvecti
 from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.circuits.target import get_phase_vector
-
-
-# We define a type using TypeVar to let the type checker know that
-# the input and output of the `act` function share the same type.
-P = TypeVar("P", bound="PauliObject")
 
 
 class Gate(ABC):
@@ -668,7 +663,7 @@ class PauliGate(Gate):
 
     to_local_hilbert_space = local_unitary
 
-    def act(self, pauli: P, qudits: int | tuple[int, ...] | None = None) -> P:
+    def act(self, pauli: PauliObject, qudits: int | tuple[int, ...] | None = None) -> PauliObject:
         """
         Apply this PauliGate to a Pauli object.
 
