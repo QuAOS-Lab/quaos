@@ -23,38 +23,46 @@ class BayesianEstimator:
         return self._variances[key]
 
     def run(self, callable: Callable[[], Hashable]):
-        for _ in range(self.min_runs):
-            result = callable()
-            if result not in self._results:
-                self._results[result] = 1
-            else:
-                self._results[result] += 1
-
         base = 1
 
-        tot = len(self._results)
-        counts_tot = self.min_runs
-        a_tot = base * tot
-
-        for key, value in self._results.items():
-            self._probabilities[key] = (value + base) / (counts_tot + a_tot)
-            self._probabilities_squared[key] = (value + base) / (counts_tot + a_tot) * \
-                (value + base + 1) / (counts_tot + a_tot + 1)
-            self._variances[key] = math.sqrt(self._probabilities_squared[key] - self._probabilities[key]**2)
-
-        while not all(self._variances.values()) <= self.threshold:
+        for _ in range(self.min_runs):
             result = callable()
-            if result not in self._results:
-                self._results[result] = 1
-            else:
-                self._results[result] += 1
+            self._results[result] = self._results.get(result, 0) + 1
 
-            self._probabilities[result] = (value + base) * (counts_tot + a_tot) / (counts_tot + 1 + a_tot + base)
-            self._probabilities_squared[result] = \
-                (value + base) * (counts_tot + a_tot) / (counts_tot + 1 + a_tot + base) * \
-                (value + base + 1) * (counts_tot + a_tot + 1) / (counts_tot + 1 + a_tot + 1 + base)
-            self._variances[key] = math.sqrt(self._probabilities_squared[key] - self._probabilities[key]**2)
+        counts_tot = self.min_runs
+        a_tot = base * len(self._results)
 
-            tot += 1
+        self._update_estimates(base, counts_tot, a_tot)
+
+        while not all(v <= self.threshold for v in self._variances.values()):
+            result = callable()
+            is_new = result not in self._results
+            self._results[result] = self._results.get(result, 0) + 1
             counts_tot += 1
-            a_tot += base
+            if is_new:
+                a_tot += base
+
+            self._update_estimates(base, counts_tot, a_tot)
+
+    def __str__(self) -> str:
+        return (f"BayesianEstimator(threshold={self.threshold}, "
+                f"min_runs={self.min_runs})")
+
+    def report(self) -> str:
+        total = sum(self._results.values())
+        lines = [f"BayesianEstimator report ({total} samples, {len(self._results)} outcomes)"]
+        for key in sorted(self._results, key=lambda k: -self._probabilities.get(k, 0)):
+            p = self._probabilities[key]
+            var = self._variances[key]
+            count = self._results[key]
+            lines.append(f"  {key}: p={p:.4f} ± {var:.4f} (n={count})")
+        return "\n".join(lines)
+
+    def _update_estimates(self, base: float, counts_tot: int, a_tot: float):
+        denom = counts_tot + a_tot
+        for key, count in self._results.items():
+            p = (count + base) / denom
+            p2 = (count + base) * (count + base + 1) / (denom * (denom + 1))
+            self._probabilities[key] = p
+            self._probabilities_squared[key] = p2
+            self._variances[key] = math.sqrt(p2 - p**2)

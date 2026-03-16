@@ -2,16 +2,15 @@ from __future__ import annotations
 from typing import Generator
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
-import scipy.sparse as sp
 
 from sympleq.core.circuits.circuits import Circuit
-from sympleq.core.circuits.utils import embed_unitary
-from sympleq.core.circuits.gates import GATES, Gate
+from sympleq.core.circuits.gates import Gate
+from sympleq.core.paulis._typing import HilbertOperator
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis.pauli_sum import PauliSum
-from sympleq.applications.randomized_benchmarking.noise_model import \
+from sympleq.core.noise.noise_model import \
     CompositeNoise, DephasingNoise, DepolarizingNoise, NoiseModel, Noiseless
-from sympleq.core.statistic_utils import BayesianEstimation
+from sympleq.core.bayesian_estimation import BayesianEstimator
 
 
 class RMB:
@@ -214,42 +213,13 @@ class RMB:
         return output
 
     def act(self, pauli: PauliSum) -> PauliSum:
-        """
-        Calculate final output state, including random errors.
-
-        Returns
-        -------
-        PauliSum
-            The resulting PauliSum after applying the noisy circuit.
-        """
-        for gate, qudits in zip(self.gates, self.qudit_indices):
-            pauli = gate.act(pauli, qudits)
-            pauli = self.noise_model.apply_quantum_trajectory(pauli, qudits)
-
-        return pauli
+        return self._circuit.act(pauli)
 
     def act_iter(self, pauli: PauliSum) -> Generator[PauliSum, None, None]:
-        for gate, qudits in zip(self.gates, self.qudit_indices):
-            pauli = gate.act(pauli, qudits)
-            pauli = self.noise_model.apply_quantum_trajectory(pauli, qudits)
-            yield pauli
+        return self._circuit.act_iter(pauli)
 
-    def act_in_hilbert_space(self, rho: sp.csr_matrix) -> sp.csr_matrix:
-        dims = self.dimensions
-        cache: dict[tuple, tuple[sp.csr_matrix, sp.csr_matrix]] = {}
-
-        for gate, qudits in zip(self.gates, self.qudit_indices):
-            key = (gate, qudits)
-            if key not in cache:
-                U = embed_unitary(gate.local_unitary(dims[qudits[0]]), qudits, dims)
-                cache[key] = (U, U.conj().T)
-            U, U_dag = cache[key]
-
-            rho = U @ rho @ U_dag
-            rho = self.noise_model.act_in_hilbert_space(rho, qudits, dims)
-
-        assert np.abs(rho.diagonal().sum() - 1.0) < 1e-5, f"{rho.diagonal().sum()}"
-        return rho
+    def act_in_hilbert_space(self, rho: HilbertOperator) -> HilbertOperator:
+        return self._circuit.act_in_hilbert_space(rho)
 
     def __str__(self) -> str:
         """
@@ -333,31 +303,16 @@ if __name__ == "__main__":
 
     # <ps|ps2>
 
-    N = 10000
-    output_ps_rhos: list[sp.csr_matrix] = []
-    for _ in range(N - 1):
-        output_ps_rhos.append(rmb.act(ps).stabilizer_to_hilbert_space(check=False))
-    output_ps_rho = np.around(sum(output_ps_rhos), 10) / N  # type: ignore
+    estimator = BayesianEstimator()
 
-    counts = {}
-    for r in output_ps_rhos:
-        key = r.toarray().tobytes()
-        if key not in counts:
-            counts[key] = 1
-        else:
-            counts[key] += 1
+    def _callable() -> HilbertOperator:
+        return rmb.act(ps).stabilizer_to_hilbert_space().toarray().tobytes()
 
-    print(output_ps_rho)
+    estimator.run(_callable)
 
-    estimation = BayesianEstimation(list(counts.values()))
-    for idx in range(len(counts)):
-        print(estimation.probability(idx), estimation.variance(idx))
+    print(estimator.report())
 
     rho = ps.stabilizer_to_hilbert_space()
     output_rho = rmb.act_in_hilbert_space(rho)
     output_rho.data = np.around(output_rho.data, 10)
     print(output_rho)
-
-    print(np.around(np.abs(output_ps_rho - output_rho), 10))
-
-    print(np.max(np.abs(output_rho - output_ps_rho)))

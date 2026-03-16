@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import Generator, overload
 import json
 import numpy as np
-import scipy.sparse as sp
 from numpy.random import Generator as RNGGenerator, default_rng
 from pathlib import Path
 from collections import defaultdict
@@ -142,12 +141,12 @@ class Circuit:
         for _ in range(n_gates):
             set_idx = rng.integers(0, n_dims)
             if rng.random() < two_qudit_gate_ratio and len(index_sets[set_idx]) > 1:
-                indices = rng.choice(index_sets[set_idx], 2, replace=False)
+                indices = tuple(int(idx) for idx in rng.choice(index_sets[set_idx], 2, replace=False))
                 gate = rng.choice(two_qudit_gates)
                 gates.append(gate)
                 qudit_indices.append(indices)
             else:
-                index = rng.choice(index_sets[set_idx])
+                index = int(rng.choice(index_sets[set_idx]))
                 gate = rng.choice(single_qudit_gates)
                 gates.append(gate)
                 qudit_indices.append((index,))
@@ -549,9 +548,10 @@ class Circuit:
         """
         for gate, qudits in zip(self._gates, self._qudit_indices):
             key = (gate, qudits)
+            print(key, type(key))
             if key not in self._unitary_cache:
                 U = embed_unitary(gate.local_unitary(self.dimensions[qudits[0]]), qudits, self.dimensions)
-                if self._unitary_cache:
+                if self._use_unitary_cache:
                     self._unitary_cache[key] = (U, U.conj().T)
             U, U_dag = self._unitary_cache[key]
 
