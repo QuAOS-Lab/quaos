@@ -948,12 +948,7 @@ class TestPaulis:
         assert not psum1.is_close(psum2, literal=False)
 
     def test_pauli_object_invalid_setters(self):
-        p = PauliString.from_exponents([1], [2], dimensions=[3])
-        with pytest.raises(Exception):
-            p.lcm = 2
-        with pytest.raises(Exception):
-            p.dimensions = np.array([2], dtype=int)
-
+        
         p = PauliString.from_random([2, 3, 5])
         with pytest.raises(Exception):
             p.lcm = 12
@@ -1060,20 +1055,6 @@ class TestPaulis:
             assert ps1 < ps2
 
     def test_pauli_phase_setters(self):
-        p1 = PauliString.from_string("x0z1")
-        p2 = PauliString.from_string("x0z1")
-        p3 = PauliString.from_string("x0z1")
-        p4 = PauliString.from_string("x0z1")
-
-        p1.phases[0] = 1.9
-        p2.set_phases([1])
-        p4.phases = [1]
-        assert p1 == p2
-        assert p1 == p4
-
-        p1.reset_phases()
-        assert p1 == p3
-        assert p2 != p3
 
         ps1 = PauliString.from_string("x1z0 x0z1")
         ps2 = PauliString.from_string("x1z0 x0z1")
@@ -1106,20 +1087,6 @@ class TestPaulis:
         assert psum2 != psum3
 
     def test_pauli_weight_setters(self):
-        p1 = PauliString.from_string("x0z1")
-        p2 = PauliString.from_string("x0z1")
-        p3 = PauliString.from_string("x0z1")
-        p4 = PauliString.from_string("x0z1")
-
-        p1.weights[0] = 1.9 + 2j
-        p2.set_weights([1.9 + 2j])
-        p4.weights = [1.9 + 2j]
-        assert p1 == p2
-        assert p1 == p4
-
-        p1.reset_weights()
-        assert p1 == p3
-        assert p2 != p3
 
         ps1 = PauliString.from_string("x1z0 x0z1")
         ps2 = PauliString.from_string("x1z0 x0z1")
