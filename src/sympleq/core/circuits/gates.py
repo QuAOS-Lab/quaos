@@ -2,6 +2,7 @@ from __future__ import annotations
 from abc import ABC
 import numpy as np
 from typing import Self
+import scipy.sparse as sp
 
 from sympleq._typing import IntArrayLike
 from sympleq.core.paulis import PauliObject
@@ -170,7 +171,7 @@ class Gate(ABC):
         """TableauType : The 2n x 2n symplectic matrix."""
         return self._symplectic
 
-    def phase_vector(self, dimension: int = 0) -> PhasesType:
+    def phase_vector(self, dimension: int | None = None) -> PhasesType:
         """
         Get the phase vector for a given dimension.
 
@@ -193,6 +194,20 @@ class Gate(ABC):
 
     def __repr__(self) -> str:
         return f"Gate(name={self._name}, n_qudits={self._n_qudits})"
+
+    def __hash__(self):
+        return hash((
+            self.name,
+            tuple(self.symplectic.flatten().tobytes()),
+            tuple(self._phase_vector.tobytes()),
+        ))
+
+    def __eq__(self, other):
+        if not isinstance(other, Gate):
+            return False
+        return np.all(self.symplectic == other.symplectic) and \
+            np.all(self._phase_vector == other._phase_vector) and \
+            np.all(self._exceptional_phase_vectors == other._exceptional_phase_vectors)
 
     def act(self, pauli: PauliObject, qudits: int | tuple[int, ...]) -> PauliObject:
         """
@@ -369,7 +384,7 @@ class Gate(ABC):
 
         return _GenericGate(new_name, self._symplectic @ T, self._phase_vector.copy())
 
-    def full_symplectic(self, qudits: tuple[int, ...] | int, n_qudits: int, p: int) -> TableauType:
+    def full_symplectic(self, qudits: tuple[int, ...] | int, n_qudits: int, p: int | None = None) -> TableauType:
         """
         Get the full 2n x 2n symplectic matrix for a gate acting on specific qudits.
 
@@ -390,6 +405,9 @@ class Gate(ABC):
         if isinstance(qudits, int):
             qudits = (qudits,)
         F, _ = embed_symplectic(self.symplectic, self.phase_vector(p), qudits, n_qudits)
+        if p is None:
+            return F
+
         return F % p
 
 
