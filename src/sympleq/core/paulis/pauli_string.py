@@ -243,6 +243,44 @@ class PauliString(PauliObject):
         dimensions[self.n_qudits():] = A.dimensions
         return PauliString(tableau, dimensions)
 
+        # TODO: define the same operation for PauliSum
+        #       (tensor with PauliString ONLY, recall PauliString cannot have weights and phase)
+    def __rmatmul__(self, A: PauliString) -> PauliString:
+        """
+        Implements the tensor product between a PauliString (`self`) and a PauliString (`A`) objects.
+        It corresponds to operator tensor product (`@`).
+        The resulting PauliString has the exponents of both strings concatenated.
+
+        Parameters
+        ----------
+        A : PauliString
+            The PauliString to be right-multiplied with this PauliString.
+
+        Returns
+        -------
+        PauliString
+            A new PauliString instance with updated `x_exp`, `z_exp`, and `dimensions` arrays,
+            resulting from concatenating the corresponding attributes of the operands.
+
+        Examples
+        --------
+        >>> ps = PauliString(...)
+        >>> p = Pauli(...)
+        >>> result = p @ ps
+        """
+
+        new_n_qudits = self.n_qudits() + A.n_qudits()
+        tableau = np.empty(2 * new_n_qudits, dtype=int)
+        tableau[:self.n_qudits()] = self.x_exp
+        tableau[self.n_qudits():new_n_qudits] = A.x_exp
+        tableau[new_n_qudits:new_n_qudits + self.n_qudits()] = self.z_exp
+        tableau[new_n_qudits + self.n_qudits():] = A.z_exp
+
+        dimensions = np.empty(new_n_qudits, dtype=int)
+        dimensions[:self.n_qudits()] = self.dimensions
+        dimensions[self.n_qudits():] = A.dimensions
+        return PauliString(tableau, dimensions)
+
     def __mul__(self, A: PauliString) -> PauliString:
         """
         Multiply two PauliString objects element-wise. It corresponds to operator multiplication (`*`).
