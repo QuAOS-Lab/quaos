@@ -159,7 +159,7 @@ class Gate(ABC):
     def symplectic(self) -> TableauType:
         return self._symplectic
 
-    def phase_vector(self, dimension: int = 0) -> PhasesType:
+    def phase_vector(self, dimension: int | None = None) -> PhasesType:
         """
         Get the phase vector for a given dimension.
 
@@ -305,7 +305,7 @@ class Gate(ABC):
 
         return _GenericGate(new_name, self._symplectic @ T, self._phase_vector.copy())
 
-    def full_symplectic(self, qudits: tuple[int, ...] | int, n_qudits: int, p: int) -> TableauType:
+    def full_symplectic(self, qudits: tuple[int, ...] | int, n_qudits: int, p: int | None = None) -> TableauType:
         """
         Get the full 2n x 2n symplectic matrix for a gate acting on specific qudits.
 
@@ -326,6 +326,9 @@ class Gate(ABC):
         if isinstance(qudits, int):
             qudits = (qudits,)
         F, _ = embed_symplectic(self.symplectic, self.phase_vector(p), qudits, n_qudits)
+        if p is None:
+            return F
+        
         return F % p
 
 

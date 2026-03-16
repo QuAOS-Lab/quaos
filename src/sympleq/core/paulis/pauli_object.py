@@ -799,7 +799,7 @@ class PauliObject(ABC):
         Pauli object
             A copy of the Pauli object.
         """
-        return self.__class__(self.tableau.copy(), self.dimensions.copy(), self.weights.copy(), self.phases.copy())
+        return self.__class__(self.tableau.copy(), self.dimensions, self.weights.copy(), self.phases.copy())
 
     def phase_to_weight(self):
         """

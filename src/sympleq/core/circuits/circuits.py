@@ -667,7 +667,7 @@ class Circuit:
         """
 
         def gate_name(gate: Gate) -> str:
-            return gate.name.replace("-inv", "*")[:gate_name_len].center(gate_name_len)
+            return gate.name.replace("_inv", "*")[:gate_name_len].center(gate_name_len)
 
         n_qudits = self.n_qudits()
         lines: list[str] = ["" for _ in range(3 * n_qudits)]

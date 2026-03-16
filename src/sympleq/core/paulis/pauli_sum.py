@@ -12,7 +12,7 @@ from sympleq.core.finite_field_solvers import get_linear_dependencies
 from .pauli_object import PauliObject
 from .pauli_string import PauliString
 from .pauli import Pauli
-from ._typing import ScalarType, TableauType, DimensionsLike, PhasesLike, WeightsLike
+from ._typing import HilbertOperator, ScalarType, TableauType, DimensionsLike, PhasesLike, WeightsLike
 from .constants import DEFAULT_QUDIT_DIMENSION
 
 if TYPE_CHECKING:
@@ -1119,7 +1119,7 @@ class PauliSum(PauliObject):
         return PauliSum(tableau=sub_tableau, dimensions=sub_dims,
                         weights=sub_weights, phases=sub_phases)
 
-    def to_hilbert_space(self, pauli_string_index: int | None = None) -> sp.csr_matrix:
+    def to_hilbert_space(self, pauli_string_index: int | None = None) -> HilbertOperator:
         """
         Get the matrix form of the PauliSum as a sparse matrix. This is inclusive of the weights.
 
