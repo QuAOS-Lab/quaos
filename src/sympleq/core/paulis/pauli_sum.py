@@ -1332,6 +1332,10 @@ class PauliSum(PauliObject):
             True if the PauliSum is a stabilizer state, False otherwise.
         """
 
+        # Sanity check 0: there are no identities in the PauliSum
+        if np.any(np.asarray(~self.tableau.any(axis=1)).nonzero()):
+            warnings.warn("There are identities in the stabilizer state.")
+            return False
         # Sanity check 1: weights must be one
         if not np.allclose(self.weights, np.ones_like(self.weights), atol=1e-10):
             warnings.warn("Not all weights of the stabilizer state are one.")
@@ -1341,9 +1345,7 @@ class PauliSum(PauliObject):
             warnings.warn("The PauliStrings in the PauliSum are not all-to-all commuting.")
             return False
         # Sanity check 3: number of PauliStrings may be equal to number of qudits (and we remove identities)
-        stabilizer_without_identities = self.copy()
-        stabilizer_without_identities.remove_trivial_paulis()
-        if stabilizer_without_identities.n_paulis() != self.n_qudits():
+        if self.n_paulis() != self.n_qudits():
             warnings.warn("The number of PauliStrings is not equal to the number of qudits.")
             return False
 

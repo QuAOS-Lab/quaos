@@ -1235,6 +1235,27 @@ class TestPaulis:
             with pytest.raises(ValueError):
                 _, _ = P.ordered_eigenspectrum()
 
+    def test_is_stabilizer(self):
+        # It fails i there are identities
+        stabilizer = PauliSum.from_string(["x0z0 x0z0", "x0z0 x0z1"], dimensions=[2, 3])
+        assert not stabilizer.is_stabilizer(), "Stabilizer should not contain identities."
+
+        # It fails when weigths are not all 1
+        stabilizer = PauliSum.from_string(["x0z1 x0z0", "x0z0 x0z1"], dimensions=[2, 3], weights=[1, 0.5])
+        assert not stabilizer.is_stabilizer(), "Stabilizer should not contain terms with weights other than 1."
+
+        # It fails if there are non-commuting terms
+        stabilizer = PauliSum.from_string(["x0z1 x0z0", "x1z0 x0z2"], dimensions=[2, 3])
+        assert not stabilizer.is_stabilizer(), "Stabilizer should not contain non-commuting terms."
+
+        # It fails if n_paulis != n_qudits
+        stabilizer = PauliSum.from_string(["x0z1 x0z0"], dimensions=[2, 3])
+        assert not stabilizer.is_stabilizer(), "Stabilizer should have n_paulis == n_qudits."
+
+        # It fails if phases are non compatible with stabilizer conditions
+        stabilizer = PauliSum.from_string(["x0z1 x0z0", "x0z0 x0z1"], dimensions=[2, 3], phases=[0, 1])
+        assert not stabilizer.is_stabilizer(), "Phases must be compatible for each stabilizer."
+
     def test_stabilizer_to_hilbert_space(self):
         for i in range(N_tests):
             dimensions = [2]  # choose_random_dimensions(250)
