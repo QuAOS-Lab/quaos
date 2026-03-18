@@ -1321,8 +1321,11 @@ class PauliSum(PauliObject):
 
     def is_stabilizer(self) -> bool:
         """
-        Checks whether the PauliSum is a stabilizer state.
-
+        Checks whether the PauliSum is a stabilizer state. We represent stabilizer states as PauliSums where
+        all weights are one, the PauliStrings are commuting, have consistent phases, and the number of PauliStrings
+        is equal to the number of qudits. Notice that this last requirement is not necessary in general, but we set
+        it for clarity and practicality. If you have less stabilizer, you can fill it to ensure the number of 
+        generators is equal to the number of qudits.
         Returns
         -------
         bool
@@ -1337,8 +1340,10 @@ class PauliSum(PauliObject):
         if not self.is_commuting():
             warnings.warn("The PauliStrings in the PauliSum are not all-to-all commuting.")
             return False
-        # Sanity check 3: number of PauliStrings may be equal to number of qudits
-        if self.n_paulis() != self.n_qudits():
+        # Sanity check 3: number of PauliStrings may be equal to number of qudits (and we remove identities)
+        stabilizer_without_identities = self.copy()
+        stabilizer_without_identities.remove_trivial_paulis()
+        if stabilizer_without_identities.n_paulis() != self.n_qudits():
             warnings.warn("The number of PauliStrings is not equal to the number of qudits.")
             return False
 
