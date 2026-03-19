@@ -6,6 +6,7 @@ import pytest
 from scipy.sparse import issparse
 from sympleq.core.circuits.known_circuits import to_x, to_ix
 from sympleq.core.circuits import Circuit, GATES
+from sympleq.core.noise.noise_model import CompositeNoise, DepolarizingNoise, DephasingNoise, Noiseless, NoiseModel
 from sympleq.core.paulis import PauliSum, PauliString
 
 
@@ -328,7 +329,7 @@ class TestCircuits():
         data = json.loads(s)
 
         assert data["dimensions"] == dimensions
-        assert data["data"] == [["H", [0]], ["CX", [0, 1]]]
+        assert data["data"] == [["H", [0], "None"], ["CX", [0, 1], "None"]]
 
     def test_from_string_basic(self):
         """Test basic from_string functionality."""
@@ -438,6 +439,73 @@ class TestCircuits():
         restored_result = restored.act(pauli_sum)
 
         assert original_result == restored_result
+
+    def test_roundtrip_with_global_noise(self):
+        """Test roundtrip with a single noise model applied to all gates."""
+        dimensions = [2, 2]
+        circuit = Circuit.from_tuples(
+            dimensions, [(GATES.H, 0), (GATES.CX, 0, 1)]
+        ).with_noise(DepolarizingNoise(0.05))
+
+        restored = Circuit.from_string(circuit.to_string())
+        assert circuit == restored
+
+    def test_roundtrip_with_per_gate_noise(self):
+        """Test roundtrip with different noise models per gate."""
+        dimensions = [2, 2]
+        circuit = Circuit.from_tuples(
+            dimensions, [(GATES.H, 0), (GATES.S, 1), (GATES.CX, 0, 1)]
+        ).with_noise([DepolarizingNoise(0.05), DephasingNoise(0.1), None])
+
+        restored = Circuit.from_string(circuit.to_string())
+        assert circuit == restored
+
+    def test_roundtrip_with_noiseless(self):
+        """Test roundtrip with Noiseless noise model."""
+        dimensions = [2, 2]
+        circuit = Circuit.from_tuples(
+            dimensions, [(GATES.H, 0), (GATES.CX, 0, 1)]
+        ).with_noise(Noiseless())
+
+        restored = Circuit.from_string(circuit.to_string())
+        assert circuit == restored
+
+    def test_noise_model_from_string_none(self):
+        """Test NoiseModel.from_string with None."""
+        assert NoiseModel.from_string("None") is None
+
+    def test_noise_model_from_string_unknown(self):
+        """Test NoiseModel.from_string raises on unknown model."""
+        with pytest.raises(ValueError, match="Unknown noise model"):
+            NoiseModel.from_string("UnknownNoise(error_rate=0.1)")
+
+    def test_noise_model_from_string_invalid(self):
+        """Test NoiseModel.from_string raises on unparseable string."""
+        with pytest.raises(ValueError, match="Cannot parse"):
+            NoiseModel.from_string("garbage")
+
+    def test_roundtrip_with_composite_noise(self):
+        """Test roundtrip with CompositeNoise applied to all gates."""
+        dimensions = [2, 2]
+        noise = CompositeNoise.from_noise_models([
+            DepolarizingNoise(0.05), DephasingNoise(0.1)
+        ])
+        circuit = Circuit.from_tuples(
+            dimensions, [(GATES.H, 0), (GATES.CX, 0, 1)]
+        ).with_noise(noise)
+
+        restored = Circuit.from_string(circuit.to_string())
+        assert circuit == restored
+
+    def test_composite_noise_str(self):
+        """Test CompositeNoise.__str__ output."""
+        noise = CompositeNoise.from_noise_models([
+            DepolarizingNoise(0.05), DephasingNoise(0.1)
+        ])
+        s = str(noise)
+        assert s.startswith("CompositeNoise([")
+        assert "DepolarizingNoise" in s
+        assert "DephasingNoise" in s
 
     def test_gates_layout(self):
         dimensions = [3] * 4

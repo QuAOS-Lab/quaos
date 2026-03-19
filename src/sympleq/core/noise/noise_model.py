@@ -41,6 +41,7 @@ as they are basically Gates.
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import itertools
+import re
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 
@@ -101,6 +102,54 @@ class NoiseModel(ABC):
             Probabilities p_i for each Kraus operator.
         """
         pass
+
+    def __str__(self) -> str:
+        return self.__class__.__name__
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, NoiseModel):
+            return NotImplemented
+        return str(self) == str(other)
+
+    @classmethod
+    def from_string(cls, s: str) -> NoiseModel | None:
+        if s == "None":
+            return None
+        if s == "Noiseless":
+            return Noiseless()
+
+        m = re.match(r"CompositeNoise\(\[(.+)\]\)$", s)
+        if m is not None:
+            inner = m.group(1)
+            # Split on ", " but only at the top level (not inside nested parens)
+            models = []
+            depth = 0
+            current = ""
+            for ch in inner:
+                if ch == '(':
+                    depth += 1
+                elif ch == ')':
+                    depth -= 1
+                if ch == ',' and depth == 0:
+                    models.append(cls.from_string(current.strip()))
+                    current = ""
+                else:
+                    current += ch
+            if current.strip():
+                models.append(cls.from_string(current.strip()))
+            return CompositeNoise.from_noise_models(models)
+
+        m = re.match(r"(\w+)\(error_rate=([\d.]+)\)", s)
+        if m is None:
+            raise ValueError(f"Cannot parse noise model from string: {s}")
+
+        name, error_rate = m.group(1), float(m.group(2))
+        if name == "DephasingNoise":
+            return DephasingNoise(error_rate)
+        elif name == "DepolarizingNoise":
+            return DepolarizingNoise(error_rate)
+        else:
+            raise ValueError(f"Unknown noise model: {name}")
 
     def apply_quantum_trajectory(self, pauli_sum: PauliObject, qudits: tuple[int, ...]) -> PauliObject:
         """
@@ -239,6 +288,9 @@ class Noiseless(NoiseModel):
 
 
 class DephasingNoise(NoiseModel):
+    def __str__(self) -> str:
+        return f"DephasingNoise(error_rate={1.0 - self.p0:.4f})"
+
     def __init__(self, error_rate: float, rng: RNGGenerator | None = None) -> None:
         # The dephasing channel has tow Klaus operators: the identity and Z.
         # A single parameter p0 models the noise probability,
@@ -266,6 +318,9 @@ class DephasingNoise(NoiseModel):
 
 
 class DepolarizingNoise(NoiseModel):
+    def __str__(self) -> str:
+        return f"DepolarizingNoise(error_rate={(1.0 - self.p0) / 0.75:.4f})"
+
     def __init__(self, error_rate: float, rng: RNGGenerator | None = None) -> None:
         # The depolarizing channel has four Klaus operators: the 4 paulis.
         # A single parameter p0 models the noise probability,
@@ -299,6 +354,10 @@ class CompositeNoise(NoiseModel):
     Operators representing the same Pauli are combined by summing their weights
     and normalizing by the total number of models.
     """
+
+    def __str__(self) -> str:
+        models_str = ", ".join(str(m) for m in self.noise_models)
+        return f"CompositeNoise([{models_str}])"
 
     def __init__(self, noise_models: list[NoiseModel], rng: RNGGenerator) -> None:
         self.noise_models = noise_models
