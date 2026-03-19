@@ -186,14 +186,10 @@ class NoiseModel(ABC):
         # E.g.: single qudit noise on single qudit gate
         cum_prob = 0
         if n_qudits == kraus_n_qudits:
-            for kraus_gate, probability in zip(self.kraus_gates(), self.kraus_probabilities()):
-                unitary = embed_unitary(kraus_gate.local_unitary(dimension), qudits, dimensions)
-                output_rho = _apply_unitary(output_rho, unitary, probability)
-                cum_prob += probability
-
-            assert np.abs(cum_prob - 1.0) < 10**(-5), f"cum prob {cum_prob}"
-            assert output_rho is not None
-            return output_rho
+            unitaries = [embed_unitary(kraus_gate.local_unitary(dimension), qudits, dimensions)
+                         for kraus_gate in self.kraus_gates()]
+            return np.sum([probability * (unitary @ rho @ unitary.conjugate().transpose())
+                           for unitary, probability in zip(unitaries, self.kraus_probabilities())])
 
         if kraus_n_qudits == 1:
             # Act independently on each qudit.
