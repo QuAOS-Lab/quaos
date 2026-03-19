@@ -548,7 +548,6 @@ class Circuit:
         """
         for gate, qudits in zip(self._gates, self._qudit_indices):
             key = (gate, qudits)
-            print(key, type(key))
             if key not in self._unitary_cache:
                 U = embed_unitary(gate.local_unitary(self.dimensions[qudits[0]]), qudits, self.dimensions)
                 if self._use_unitary_cache:

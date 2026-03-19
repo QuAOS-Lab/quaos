@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typing import Generator
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 
@@ -16,18 +15,26 @@ from sympleq.core.bayesian_estimation import BayesianEstimator
 class RMB:
     def __init__(self,
                  circuit: Circuit,
-                 random_initial_state: bool,
                  with_random_elimination: float,
                  with_random_insertion: float,
-                 noise_model: NoiseModel,
-                 rng: RNGGenerator
+                 rng: RNGGenerator,
+                 noise_model: NoiseModel | None = None,
+                 scrambler: Circuit | None = None
                  ) -> None:
 
         self.rng = rng
 
-        self._circuit = circuit + circuit.inverse()
-        self.noise_model = noise_model
-        self._initial_state = RMB.initial_state(circuit.dimensions, random_initial_state, self.rng)
+        self._scrambler = scrambler
+        self._scrambler_inv = scrambler.inverse() if scrambler else None
+
+        self._circuit = circuit
+        self._circuit_inv = circuit.inverse()
+
+        if noise_model:
+            self._circuit.add_noise(noise_model)
+            self._circuit_inv.add_noise(noise_model)
+
+        self._initial_state = RMB.initial_state(circuit.dimensions)
 
         # Eliminate and insert identity gates from and to the circuit to make it asymmetric.
         # This step is performed without applying errors.
@@ -52,15 +59,8 @@ class RMB:
                         self._circuit.remove_gate(idx)
 
     @classmethod
-    def initial_state(cls,
-                      dimensions: list[int] | np.ndarray,
-                      random_phases: bool = False,
-                      rng: RNGGenerator | None = None) -> PauliSum:
-        if rng is None:
-            rng = default_rng()
-
+    def initial_state(cls, dimensions: list[int] | np.ndarray) -> PauliSum:
         n_qudits = len(dimensions)
-
         pauli_strings = []
         for p_idx in range(n_qudits):
             pauli_string = ""
@@ -72,16 +72,11 @@ class RMB:
             pauli_strings.append(pauli_string)
 
         ps = PauliSum.from_string(pauli_strings, dimensions)
-        if random_phases:
-            ps.set_phases(rng.choice(a=[0, 2], size=ps.n_paulis()))
-
         return ps
 
     @classmethod
     def from_circuit(cls,
                      circuit: Circuit,
-                     random_initial_state: bool = True,
-                     noise_model: NoiseModel = Noiseless(),
                      rng: RNGGenerator | None = None
                      ) -> RMB:
         """
@@ -92,10 +87,6 @@ class RMB:
         circuit: Circuit
             The base circuit to construct the RMB. The circuit will be mirrored, so in a sense this input
             is half the final circuit.
-        random_initial_state: bool = True
-            Whether the initial state should be set randomly.
-        noise_model: NoiseModel
-            The noise model to use to get the Kraus operators...
         rng : numpy.random.Generator | None = None
             The random number generator. Passing a value can be used to obtain deterministic randomness.
 
@@ -108,16 +99,14 @@ class RMB:
         if rng is None:
             rng = default_rng()
 
-        return cls(circuit, random_initial_state, False, False, noise_model, rng)
+        return cls(circuit, False, False, rng)
 
     @classmethod
     def from_random(cls,
                     dimensions: int | list[int] | np.ndarray,
                     gate_density: float = 1.0,
-                    random_initial_state: bool = True,
                     with_random_elimination: float = 0.0,
                     with_random_insertion: float = 0.0,
-                    noise_model: NoiseModel = Noiseless(),
                     rng: RNGGenerator | None = None
                     ) -> RMB:
         """
@@ -140,8 +129,6 @@ class RMB:
             Whether gates acting as identity should be randomly inserted.
                 This is used to break the mirror symmetry of the circuit without
                 affecting the output state (in absence of errors).
-        noise_model: NoiseModel
-            The noise model to use to get the Kraus operators...
         rng : numpy.random.Generator | None = None
             The random number generator. Passing a value can be used to obtain deterministic randomness.
 
@@ -159,10 +146,70 @@ class RMB:
 
         n_qudits = len(dimensions)
         n_gates = int(gate_density * n_qudits)
+        scrambler = Circuit.from_random(10, dimensions, two_qudit_gate_ratio=0.0, rng=rng)
         circuit = Circuit.from_random(n_gates, dimensions, rng=rng)
 
-        return cls(circuit, random_initial_state,
-                   with_random_elimination, with_random_insertion, noise_model, rng)
+        return cls(circuit, with_random_elimination, with_random_insertion, rng).with_scrambler(scrambler)
+
+    def with_noise(self, noise_model: NoiseModel) -> RMB:
+        """
+        Attach a noise model and return self for chaining.
+
+        Parameters
+        ----------
+        noise_model : NoiseModel
+            The noise model to apply after each gate.
+
+        Returns
+        -------
+        RMB
+            This RMB instance (for method chaining).
+        """
+        self._circuit.add_noise(noise_model)
+        self._circuit_inv.add_noise(noise_model)
+        return self
+
+    def with_scrambler(self, scrambler: Circuit) -> RMB:
+        """
+        Attach a scrambler to randomize the initial state and return self for chaining.
+
+        Parameters
+        ----------
+        scrambler : Circuit
+            The scrambler to prepend to the circuit.
+
+        Returns
+        -------
+        RMB
+            This RMB instance (for method chaining).
+        """
+        if not np.array_equal(scrambler.dimensions, self._circuit.dimensions):
+            raise ValueError("Scrambler and circuit must have the same dimensions.")
+
+        if not all([g.n_qudits == 1 for g in scrambler.gates]):
+            raise ValueError("Scrambler gates should be all 1-qudit gates.")
+
+        self._scrambler = scrambler
+        self._scrambler_inv = scrambler.inverse()
+        return self
+
+    def with_random_scrambler(self, n_gates: int = 10) -> RMB:
+        """
+        Attach a random scrambler to randomize the initial state and return self for chaining.
+
+        Parameters
+        ----------
+        n_gates : int | None
+            The depth of the random scrambler.
+
+        Returns
+        -------
+        RMB
+            This RMB instance (for method chaining).
+        """
+        self._scrambler = Circuit.from_random(n_gates, self.dimensions, two_qudit_gate_ratio=0.0, rng=self.rng)
+        self._scrambler_inv = self._scrambler.inverse()
+        return self
 
     @property
     def dimensions(self) -> np.ndarray:
@@ -186,40 +233,40 @@ class RMB:
     def n_qudits(self) -> int:
         return len(self._circuit.dimensions)
 
-    def average_act(self, pauli_sum: PauliSum, n_runs: int = 1) -> PauliSum:
-        """
-        Calculate final output state, including random errors. The result is averaged over many runs.
-        Parameters
-        ----------
-        n_runs: int = 1
-            The number times the circuit should be applied. The return value will be the average
-            over all these runs.
+    def run(self) -> PauliSum:
+        # NOTE: need to run the circuits separately cause they have different noise models
+        ps = self._initial_state
+        if self._scrambler is not None:
+            ps = self._scrambler.act(ps)
 
-        Returns
-        -------
-        PauliSum
-            The resulting PauliSum after applying the noisy circuit.
-        """
-        if n_runs < 1:
-            raise ValueError(f"Number of runs must be greater equal to 1 (got {n_runs}).")
+        ps = self._circuit.act(ps)
+        ps = self._circuit_inv.act(ps)
 
-        output = self.act(pauli_sum)
-        for _ in range(n_runs - 1):
-            output += self.act(pauli_sum)
-            output.combine_equivalent_paulis()
+        if self._scrambler_inv is not None:
+            ps = self._scrambler_inv.act(ps)
 
-        output = output / n_runs
+        return ps
 
-        return output
+    def run_in_hilbert_space(self) -> HilbertOperator:
+        # NOTE: need to run the circuits separately cause they have different noise models
+        rho = self._initial_state.stabilizer_to_hilbert_space()
+        if self._scrambler is not None:
+            rho = self._scrambler.act_in_hilbert_space(rho)
 
-    def act(self, pauli: PauliSum) -> PauliSum:
-        return self._circuit.act(pauli)
+        rho = self._circuit.act_in_hilbert_space(rho)
+        rho = self._circuit_inv.act_in_hilbert_space(rho)
 
-    def act_iter(self, pauli: PauliSum) -> Generator[PauliSum, None, None]:
-        return self._circuit.act_iter(pauli)
+        if self._scrambler_inv is not None:
+            rho = self._scrambler_inv.act_in_hilbert_space(rho)
 
-    def act_in_hilbert_space(self, rho: HilbertOperator) -> HilbertOperator:
-        return self._circuit.act_in_hilbert_space(rho)
+        return rho
+
+    def circuit(self) -> Circuit:
+        # Note: currently noise is not composed well when we sum circuits.
+        if self._scrambler is not None and self._scrambler_inv is not None:
+            return self._scrambler + self._circuit + self._circuit_inv + self._scrambler_inv
+
+        return self._circuit + self._circuit_inv
 
     def __str__(self) -> str:
         """
@@ -269,10 +316,11 @@ Circuit:
 
         n_qudits = self.n_qudits()
         with_input = self._initial_state
-        with_output = self.act(self._initial_state)
+        with_output = self.run()
         wires = [green("=") if with_input.phases[l_idx] == with_output.phases[l_idx]
                  else red("=") for l_idx in range(n_qudits)]
-        return self._circuit.gates_layout(
+
+        return self.circuit().gates_layout(
             with_qudit_indices=with_qudit_indices,
             with_input=with_input,
             with_output=with_output,
@@ -280,39 +328,105 @@ Circuit:
             wrap=wrap)
 
 
+def _fidelity(rho: np.matrix, sigma: np.matrix) -> float:
+    from scipy.linalg import sqrtm
+
+    sq_rho = sqrtm(rho)
+    tmp_matrix = sq_rho @ sigma @ sq_rho
+    return np.real(np.trace(sqrtm(tmp_matrix)) ** 2)
+
+
+def fidelity(estimator: BayesianEstimator, target: HilbertOperator) -> tuple[float, float]:
+    sigma = np.sum([estimator.probability(res) * res.stabilizer_to_hilbert_space() for res in results])
+    rho = target.todense()
+    fidelity = _fidelity(rho, sigma)
+
+    rng = default_rng()
+
+    def _sample_fidelity() -> float:
+        sampled_probabilities = {}
+        cum_probability = 0
+        for res in estimator.results():
+            p = estimator.probability(res)
+            std = np.sqrt(estimator.variance(res))
+            s = max(0.0, rng.normal(p, std))
+            cum_probability += s
+            sampled_probabilities[res] = s
+
+        sampled_sigma = np.sum([sampled_probabilities[res] / cum_probability *
+                                res.stabilizer_to_hilbert_space() for res in results])
+        return _fidelity(rho, sampled_sigma)
+
+    N = 100
+    sampling = np.empty(N, dtype=float)
+    for i in range(N):
+        sampling[i] = _sample_fidelity()
+
+    avg = np.mean(sampling)
+    std = float(np.std(sampling))
+
+    assert abs(avg - fidelity) <= std, "Inconsistend sampling"
+    return fidelity, std
+
+
 if __name__ == "__main__":
     n_qudits = 2
-    gate_density = 4.5
+    gate_density = 8
     dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qudits
+    threshold = 0.5 * 1e-3
+    rng = default_rng(11)
 
-    noise_model = CompositeNoise.from_noise_models([DephasingNoise(0.05), DepolarizingNoise(0.005)])
-    noise_model = DepolarizingNoise(0.05)
+    noise_model = CompositeNoise.from_noise_models([DephasingNoise(0.001), DepolarizingNoise(0.01)], rng=rng)
+    # noise_model = DepolarizingNoise(1.0, rng)
+    # noise_model = DephasingNoise(0.5, rng)
+    # noise_model = Noiseless()
     rmb = RMB.from_random(dimensions, gate_density,
-                          random_initial_state=False,
-                          noise_model=noise_model,
-                          with_random_elimination=False,
-                          rng=default_rng())
+                          with_random_elimination=True,
+                          rng=rng
+                          ).with_noise(noise_model).with_random_scrambler()
 
     print(rmb.gates_layout(with_qudit_indices=True))
 
-    ps = rmb._initial_state
-    scrambler = Circuit.from_random(50, rmb.dimensions)
-    ps = scrambler.act(ps)
+    output_rho = rmb.run_in_hilbert_space()
+    output_rho.eliminate_zeros()
 
-    # \mathcal{S}_1 = |ps><ps|
+    def _callable() -> PauliSum:
+        return rmb.run()
 
-    # <ps|ps2>
+    import time
+    now = time.time()
+    estimator = BayesianEstimator(threshold, min_runs=1000)
 
-    estimator = BayesianEstimator()
+    n_printed = 0
 
-    def _callable() -> HilbertOperator:
-        return rmb.act(ps).stabilizer_to_hilbert_space().toarray().tobytes()
+    for _ in estimator.run_iter(_callable):
+        if n_printed > 0:
+            print(f"\033[{n_printed}A", end="")
 
-    estimator.run(_callable)
+        n_printed = 1
+        print(f"Threshold={threshold} - {time.time() - now:.2f}s")
 
-    print(estimator.report())
+        results: list[PauliSum] = estimator.results()
+        for idx, res in enumerate(results):
+            p = estimator.probability(res)
+            std = np.sqrt(estimator.variance(res))
+            print(f"\033[K{res.phases}: p={p:.5f} ± {std:.5f}")
+        n_printed += len(results)
 
-    rho = ps.stabilizer_to_hilbert_space()
-    output_rho = rmb.act_in_hilbert_space(rho)
-    output_rho.data = np.around(output_rho.data, 10)
-    print(output_rho)
+        n_runs = estimator.num_runs()
+        print(f"n_runs={n_runs}")
+        n_printed += 1
+
+        if n_runs % 1000 == 1:
+            average_rho = sum([estimator.probability(res) * res.stabilizer_to_hilbert_space() for res in results])
+            m = np.max(np.abs(average_rho - output_rho))
+            print(f"Max error={m:.5f}")
+            n_printed += 1
+
+    print()
+    fid, err = fidelity(estimator, output_rho)
+    print(f"Ballistic accuracy={fid:.5f} ± {err:.5f}")
+
+    rho = rmb._initial_state.stabilizer_to_hilbert_space()
+    fid, err = fidelity(estimator, rho)
+    print(f"Fidelity={fid:.5f} ± {err:.5f}")
