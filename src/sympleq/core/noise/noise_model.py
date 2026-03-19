@@ -279,7 +279,7 @@ class DepolarizingNoise(NoiseModel):
         # Ki =  sqrt(1 − p0/3) σi
         if error_rate > 1.0 or error_rate < 0.0:
             raise ValueError(f"Error rate should be between 0.0 and 1.0 (got {error_rate}).")
-        self.p0 = 1.0 - error_rate
+        self.p0 = 1.0 - 0.75 * error_rate
         self._probabilities = [self.p0, (1.0 - self.p0) / 3, (1.0 - self.p0) / 3, (1.0 - self.p0) / 3]
 
         if rng is None:
