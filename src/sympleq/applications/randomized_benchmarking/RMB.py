@@ -15,24 +15,23 @@ from sympleq.core.bayesian_estimation import BayesianEstimator
 class RMB:
     def __init__(self,
                  circuit: Circuit,
+                 scrambler: Circuit,
                  with_random_elimination: float,
                  with_random_insertion: float,
                  rng: RNGGenerator,
                  noise_model: NoiseModel | None = None,
-                 scrambler: Circuit | None = None
                  ) -> None:
 
         self.rng = rng
 
         self._scrambler = scrambler
-        self._scrambler_inv = scrambler.inverse() if scrambler else None
+        self._scrambler_inv = scrambler.inverse()
 
         self._circuit = circuit
         self._circuit_inv = circuit.inverse()
 
-        if noise_model:
-            self._circuit.add_noise(noise_model)
-            self._circuit_inv.add_noise(noise_model)
+        self._circuit.set_noise(noise_model)
+        self._circuit_inv.set_noise(noise_model)
 
         self._initial_state = RMB.initial_state(circuit.dimensions)
 
@@ -99,7 +98,7 @@ class RMB:
         if rng is None:
             rng = default_rng()
 
-        return cls(circuit, False, False, rng)
+        return cls(circuit, Circuit.empty(circuit.dimensions), False, False, rng)
 
     @classmethod
     def from_random(cls,
@@ -149,7 +148,8 @@ class RMB:
         scrambler = Circuit.from_random(10, dimensions, two_qudit_gate_ratio=0.0, rng=rng)
         circuit = Circuit.from_random(n_gates, dimensions, rng=rng)
 
-        return cls(circuit, with_random_elimination, with_random_insertion, rng).with_scrambler(scrambler)
+        return cls(circuit, Circuit.empty(circuit.dimensions), with_random_elimination, with_random_insertion, rng)\
+            .with_scrambler(scrambler)
 
     def with_noise(self, noise_model: NoiseModel) -> RMB:
         """
@@ -165,8 +165,8 @@ class RMB:
         RMB
             This RMB instance (for method chaining).
         """
-        self._circuit.add_noise(noise_model)
-        self._circuit_inv.add_noise(noise_model)
+        self._circuit.set_noise(noise_model)
+        self._circuit_inv.set_noise(noise_model)
         return self
 
     def with_scrambler(self, scrambler: Circuit) -> RMB:
@@ -234,39 +234,15 @@ class RMB:
         return len(self._circuit.dimensions)
 
     def run(self) -> PauliSum:
-        # NOTE: need to run the circuits separately cause they have different noise models
         ps = self._initial_state
-        if self._scrambler is not None:
-            ps = self._scrambler.act(ps)
-
-        ps = self._circuit.act(ps)
-        ps = self._circuit_inv.act(ps)
-
-        if self._scrambler_inv is not None:
-            ps = self._scrambler_inv.act(ps)
-
-        return ps
+        return self.circuit().act(ps)
 
     def run_in_hilbert_space(self) -> HilbertOperator:
-        # NOTE: need to run the circuits separately cause they have different noise models
         rho = self._initial_state.stabilizer_to_hilbert_space()
-        if self._scrambler is not None:
-            rho = self._scrambler.act_in_hilbert_space(rho)
-
-        rho = self._circuit.act_in_hilbert_space(rho)
-        rho = self._circuit_inv.act_in_hilbert_space(rho)
-
-        if self._scrambler_inv is not None:
-            rho = self._scrambler_inv.act_in_hilbert_space(rho)
-
-        return rho
+        return self.circuit().act_in_hilbert_space(rho)
 
     def circuit(self) -> Circuit:
-        # Note: currently noise is not composed well when we sum circuits.
-        if self._scrambler is not None and self._scrambler_inv is not None:
-            return self._scrambler + self._circuit + self._circuit_inv + self._scrambler_inv
-
-        return self._circuit + self._circuit_inv
+        return self._scrambler + self._circuit + self._circuit_inv + self._scrambler_inv
 
     def __str__(self) -> str:
         """
@@ -370,13 +346,13 @@ def fidelity(estimator: BayesianEstimator, target: HilbertOperator) -> tuple[flo
 
 
 if __name__ == "__main__":
-    n_qudits = 2
-    gate_density = 8
+    n_qudits = 4
+    gate_density = 6
     dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qudits
-    threshold = 0.5 * 1e-3
+    threshold = 0.05 * 1e-3
     rng = default_rng(11)
 
-    noise_model = CompositeNoise.from_noise_models([DephasingNoise(0.001), DepolarizingNoise(0.01)], rng=rng)
+    noise_model = CompositeNoise.from_noise_models([DephasingNoise(0.05), DepolarizingNoise(0.01)], rng=rng)
     # noise_model = DepolarizingNoise(1.0, rng)
     # noise_model = DephasingNoise(0.5, rng)
     # noise_model = Noiseless()
