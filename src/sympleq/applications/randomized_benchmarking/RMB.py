@@ -17,7 +17,6 @@ class RMB:
                  circuit: Circuit,
                  scrambler: Circuit,
                  with_random_elimination: float,
-                 with_random_insertion: float,
                  rng: RNGGenerator,
                  noise_model: NoiseModel | None = None,
                  ) -> None:
@@ -99,14 +98,15 @@ class RMB:
         if rng is None:
             rng = default_rng()
 
-        return cls(circuit, Circuit.empty(circuit.dimensions), False, False, rng)
+        scrambler = Circuit.empty(circuit.dimensions)
+
+        return cls(circuit, scrambler, False, rng)
 
     @classmethod
     def from_random(cls,
                     dimensions: int | list[int] | np.ndarray,
                     gate_density: float = 1.0,
                     with_random_elimination: float = 0.0,
-                    with_random_insertion: float = 0.0,
                     rng: RNGGenerator | None = None
                     ) -> RMB:
         """
@@ -117,7 +117,7 @@ class RMB:
         dimensions : int | list[int] | np.ndarray
             The dimensions of the qudits. The size of dimensions determines the number of qudits.
         gate_density: float = 1.0
-            The average number of gates for each qudit in the fir half of the circuit
+            The average number of gates for each qudit in the first half of the circuit
             (the second half is the mirror of the first).
         random_initial_state: bool = True
             Whether the initial state should be set randomly.
@@ -125,10 +125,6 @@ class RMB:
             Whether gates acting as identity should be randomly eliminated.
             This is used to break the mirror symmetry of the circuit without
             affecting the output state (in absence of errors).
-        with_random_insertion: float = 0.0
-            Whether gates acting as identity should be randomly inserted.
-                This is used to break the mirror symmetry of the circuit without
-                affecting the output state (in absence of errors).
         rng : numpy.random.Generator | None = None
             The random number generator. Passing a value can be used to obtain deterministic randomness.
 
@@ -149,7 +145,7 @@ class RMB:
         scrambler = Circuit.from_random(10, dimensions, two_qudit_gate_ratio=0.0, rng=rng)
         circuit = Circuit.from_random(n_gates, dimensions, rng=rng)
 
-        return cls(circuit, Circuit.empty(circuit.dimensions), with_random_elimination, with_random_insertion, rng)\
+        return cls(circuit, Circuit.empty(circuit.dimensions), with_random_elimination, rng)\
             .with_scrambler(scrambler)
 
     def with_noise(self, noise_model: NoiseModel) -> RMB:
