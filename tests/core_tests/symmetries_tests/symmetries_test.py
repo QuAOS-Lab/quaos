@@ -1,3 +1,4 @@
+import pytest
 from sympleq.core.circuits.gates import GATES, Gate
 from sympleq.models.random_hamiltonian import random_gate_symmetric_hamiltonian, random_pauli_symmetry_hamiltonian
 from sympleq.core.symmetries.clifford import find_clifford_symmetries  # , qudit_cost, min_qudit_clifford_symmetry
@@ -9,6 +10,7 @@ from numpy.random import default_rng
 rng = default_rng()
 
 
+@pytest.mark.fuzz
 class TestSymmetryFinder:
 
     def test_random_SWAP_symmetry(self):

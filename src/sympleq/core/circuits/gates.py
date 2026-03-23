@@ -2,6 +2,7 @@ from __future__ import annotations
 from abc import ABC
 import numpy as np
 from typing import Self
+import scipy.sparse as sp
 
 from sympleq._typing import IntArrayLike
 from sympleq.core.paulis import PauliObject
