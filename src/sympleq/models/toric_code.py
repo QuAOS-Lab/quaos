@@ -91,12 +91,11 @@ class ToricCode:
             for j in range(max_j):
                 edges = []
                 # Bottom horizontal edge of plaquette at (i,j)
-                if True:
-                    qi = ('h', i, j)
-                    if qi in index_of:
-                        edges.append(index_of[qi])
-                    elif self.periodic and i == self.Nx - 1:  # wrap around right
-                        edges.append(index_of[('h', i, j)])
+                qi = ('h', i, j)
+                if qi in index_of:
+                    edges.append(index_of[qi])
+                elif self.periodic and i == self.Nx - 1:  # wrap around right
+                    edges.append(index_of[('h', i, j)])
                 # Top horizontal edge
                 top_j = (j + 1) % self.Ny if self.periodic else j + 1
                 if top_j < self.Ny:

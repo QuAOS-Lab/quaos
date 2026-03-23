@@ -87,7 +87,7 @@ class graph:
         #     a - (int) - vertex for which degree should be returned
         # Outputs:
         #     (int) - degree of vertex a
-        return np.count_nonzero(self.adj[a, :])
+        return int(np.count_nonzero(self.adj[a, :]))
 
     # returns the number of vertices in self
     def ord(self) -> int:

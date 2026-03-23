@@ -246,7 +246,7 @@ def build_symplectic_for_transvection(u, v, p):
     return w
 
 
-def Find_transvection_map(input_ps, output_ps, p):
+def find_transvection_map(input_ps, output_ps, p):
     """
     Provides the map to transfer one paulisum in GF(p) to another paulisum.
     Currently works only for prime dimension. 
@@ -331,7 +331,7 @@ def intermediate_transvection_solve(u, v, p):
     return w
 
 
-def Find_transvection_map_solve(input_ps, output_ps, p):
+def find_transvection_map_solve(input_ps, output_ps, p):
     """
     Provides the map to transfer one PauliString in GF(p) to another PauliString.
     Currently works only for prime dimension. 
@@ -437,7 +437,7 @@ def intermediate_transvection_solve_extended(u, v, constraints, sps,  p):
 
     return w
 
-def Find_transvection_map_solve_extended(input_ps, output_ps, constraints=[], sps=[], p=2):
+def find_transvection_map_solve_extended(input_ps, output_ps, constraints=[], sps=[], p=2):
     """
     Provides the map to transfer one PauliString in GF(p) to another PauliString, subject to some constraints.
     Currently works only for prime dimension. 
@@ -489,7 +489,7 @@ def map_paulisum_to_target_paulisum(input_tab, output_tab, p):
         raise Exception(f'Cannot map these tabs')
 
     # Map the first Pauli
-    F_total = Find_transvection_map_solve_extended(
+    F_total = find_transvection_map_solve_extended(
         input_tab[0], output_tab[0], constraints=[], sps=[], p=p
     )
     assert (input_tab[0] @ F_total % p == output_tab[0]).all()
@@ -502,7 +502,7 @@ def map_paulisum_to_target_paulisum(input_tab, output_tab, p):
         constraints = [output_tab[j] for j in range(k)]
         sps = [symplectic_product_arrays(input_tab[j], input_tab[k], p) for j in range(k)]
 
-        F_k = Find_transvection_map_solve_extended(
+        F_k = find_transvection_map_solve_extended(
             u_k, output_tab[k], constraints=constraints, sps=sps, p=p
         )
 
