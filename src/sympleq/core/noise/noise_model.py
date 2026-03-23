@@ -6,23 +6,13 @@ Phys. Rev. A 108, 062604 (2023). DOI: 10.1103/PhysRevA.108.062604
 
 Overview
 --------
-A quantum noise channel transforms a Pauli string PS as:
-
-    PS_out = Σ_{m,n} λ_{mn} σ_m PS σ†_n
-
-where σ_m are Pauli basis operators and λ is the process matrix.
-
-This can equivalently be written using Kraus operators K_i:
+A quantum noise channel transforms a density matrix PS as:
 
     PS_out = Σ_i K_i PS K†_i
 
-where each Kraus operator is a linear combination of Paulis:
+where each Kraus operator K_i is a linear combination of Paulis:
 
-    K_i = Σ_j α_{ij} σ_j
-
-The process matrix λ and Kraus coefficients α are related by:
-
-    λ_{mn} = Σ_i α_{im} α*_{in}
+    K_i = Σ_j α_{ij} σ_j.
 
 The probability of each Kraus operator (used for quantum trajectory sampling) is:
 
@@ -34,8 +24,8 @@ For uncorrelated noise on multiple qudits, the multi-qudit quantities are
 tensor products of single-qudit quantities.
 
 **Clifford noise**
-For now, we assume that Kraus operators are Clifford. This simplifies greatly how they act on PauliSums,
-as they are basically Gates.
+For now, we assume that Kraus operators are Clifford. This simplifies greatly how they act on PauliSums
+as they act as Gate, one for each trajectory (see apply_quantum_trajectory).
 """
 
 from __future__ import annotations
@@ -176,8 +166,7 @@ class NoiseModel(ABC):
             return pauli_sum
         # Get probabilities to select one possible quantum trajectory
         # Given probabilities [p0, p1, p2, p3], cumsum gives [p0, p0+p1, p0+p1+p2, 1.0].
-        # This allows O(log n) sampling via searchsorted with a uniform random number
-        # in _apply_gate_to_pauli_with_error.
+        # This allows O(log n) sampling via searchsorted with a uniform random number.
         probs = np.cumsum(self.kraus_probabilities())
         idx = int(np.searchsorted(probs, self.rng.random()))
         kraus_gate = self.kraus_gates()[idx]
