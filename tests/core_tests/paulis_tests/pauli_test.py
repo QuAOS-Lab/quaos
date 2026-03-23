@@ -79,8 +79,8 @@ class TestPaulis:
                 ps0 = PauliString.from_string(f"x{r1}z{s1}", dimensions=dim)
                 ps1 = PauliString.from_string(f"x{r2}z{s2}", dimensions=dim)
 
-                assert p_string1[0] == ps0, 'Error in PauliString indexing (first PauliString)'
-                assert p_string1[1] == ps1, 'Error in PauliString indexing'
+                assert p_string1[0] == ps0, f'Error in __getitem__, expected {ps0}, got {p_string1[0]}'
+                assert p_string1[1] == ps1, f'Error in __getitem__, expected {ps1}, got {p_string1[1]}'
 
     def test_pauli_sum_multiplication(self):
         for dim in PRIME_LIST:

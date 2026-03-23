@@ -378,35 +378,6 @@ class PauliString(PauliObject):
         """
         return np.sum(np.logical_and(self.x_exp == 0, self.z_exp == 0))
 
-    def get_pauli(self, index: int) -> PauliString:
-        """
-        Returns a Pauli at the input index.
-
-        Parameters
-        ----------
-        index : int
-            The index of the Pauli.
-
-        Returns
-        -------
-        PauliString
-            The Pauli at the given index, in form of PauliString.
-        """
-
-        tableau = np.asarray([self.x_exp[index], self.z_exp[index]], dtype=int)
-        return PauliString(tableau, int(self.dimensions[index]))
-
-    def get_paulis(self) -> list[PauliString]:
-        """
-        Returns a list of Paulis corresponding to the PauliString tableau.
-
-        Returns
-        -------
-        list[PauliString]
-            A list of Pauli in form of PauliStrings.
-        """
-        return [self.get_pauli(i) for i in range(self.n_qudits())]
-
     def symplectic_residues(self, A: PauliString) -> np.ndarray:
         """
         Per-qudit symplectic residues r_j = x_j z'_j - z_j x'_j  (mod d_j).
@@ -621,18 +592,21 @@ class PauliString(PauliObject):
 
         # Return a single Pauli
         if isinstance(key, int):
-            return self.get_pauli(key)
+            key = np.asarray([key], dtype=int)
 
         # Return a (smaller) PauliString
-        if isinstance(key, slice) or isinstance(key, list):
+        elif isinstance(key, slice) or isinstance(key, list):
             key = np.asarray(key, dtype=int)
 
         if isinstance(key, np.ndarray):
+            if np.any(key >= self.n_qudits()) or np.any(key < 0):
+                raise ValueError(f"Key {key} contains indices out of bounds for \
+                                 PauliString with {self.n_qudits()} qudits.")
             tableau_mask = np.concatenate([key, key + self.n_qudits()])
             return PauliString(
-                self.tableau[tableau_mask], self.dimensions[key], self.weights, self.phases)
+                self.tableau[0, tableau_mask], self.dimensions[key], self.weights, self.phases)
 
-        raise ValueError(f"Cannot get item with key {key}. Key must be aof type int, slice, np.ndarray, or list[int].")
+        raise ValueError(f"Cannot get item with key {key}. Key must be of type int, slice, np.ndarray, or list[int].")
 
     def __setitem__(self, key: int | slice | np.ndarray | list[int], value: PauliString):
         """
