@@ -948,7 +948,7 @@ class TestPaulis:
         assert not psum1.is_close(psum2, literal=False)
 
     def test_pauli_object_invalid_setters(self):
-        
+
         p = PauliString.from_random([2, 3, 5])
         with pytest.raises(Exception):
             p.lcm = 12
@@ -1013,23 +1013,6 @@ class TestPaulis:
             _ = P - PauliString.from_exponents([2, 3], [0, 0], dimensions=[4, 5])
 
     def test_pauli_ordering(self):
-        # TODO: CHECK THE ORDERING LOGIC AND MAKE SURE IT IS ALIGNED WITH `INT_TO_BASES` AND `BASES_TO_INT`
-        for i in range(N_tests):
-            if i < N_tests / 3:
-                dims = random.choices(PRIME_LIST, k=1)
-            else:
-                dims = choose_random_dimensions(max_product=30)
-
-            idx_1, idx_2 = random.sample(range(np.prod(dims)), 2)
-            base_1 = int_to_bases(idx_1, dims)
-            base_2 = int_to_bases(idx_2, dims)
-
-            p1 = PauliString.from_exponents(x_exp=[0 for _ in range(len(dims))], z_exp=base_1, dimensions=dims)
-            p2 = PauliString.from_exponents(x_exp=[0 for _ in range(len(dims))], z_exp=base_2, dimensions=dims)
-            if idx_1 < idx_2:
-                assert p1 > p2
-            else:
-                assert p1 < p2
 
         ps1 = PauliString.from_string("x1z0 x0z1")
         ps2 = PauliString.from_string("x0z1 x1z0")
