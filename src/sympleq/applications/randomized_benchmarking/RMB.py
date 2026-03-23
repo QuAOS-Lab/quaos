@@ -9,7 +9,7 @@ from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis.pauli_sum import PauliSum
 from sympleq.core.noise.noise_model import \
     CompositeNoise, DephasingNoise, DepolarizingNoise, NoiseModel, Noiseless
-from sympleq.core.bayesian_estimation import BayesianEstimator
+from sympleq.core.bayesian_estimation import BayesianEstimator, fidelity
 
 
 class RMB:
@@ -40,7 +40,8 @@ class RMB:
         if with_random_elimination > 0.0:
             gate_to_eliminate_indices = []
             pauli = self._initial_state.copy()
-            for idx, (gate, idxs) in enumerate(zip(circuit.gates, circuit.qudit_indices)):
+            for idx, (gate, idxs) in enumerate(zip(self._circuit.gates + self._circuit_inv.gates,
+                                                   self._circuit.qudit_indices + self._circuit_inv.qudit_indices)):
                 intermediate = gate.act(pauli, idxs)
                 if pauli == intermediate:
                     gate_to_eliminate_indices.append(idx)
@@ -303,53 +304,44 @@ Circuit:
             wires=wires,
             wrap=wrap)
 
+    def run_fidelity(self, estimator: BayesianEstimator) -> tuple[float, float]:
+        rho = self._initial_state.stabilizer_to_hilbert_space()
 
-def _fidelity(rho: np.matrix, sigma: np.matrix) -> float:
-    from scipy.linalg import sqrtm
+        def _sample_fidelity() -> float:
+            sampled_probabilities = {}
+            cum_probability = 0
+            for res in estimator.results():
+                p = estimator.probability(res)
+                std = np.sqrt(estimator.variance(res))
+                s = max(0.0, self.rng.normal(p, std))
+                cum_probability += s
+                sampled_probabilities[res] = s
 
-    sq_rho = sqrtm(rho)
-    tmp_matrix = sq_rho @ sigma @ sq_rho
-    return np.real(np.trace(sqrtm(tmp_matrix)) ** 2)
+            sampled_sigma = np.sum([sampled_probabilities[res] / cum_probability *
+                                    res.stabilizer_to_hilbert_space() for res in results])
+            return fidelity(rho, sampled_sigma)
 
+        N = 100
 
-def fidelity(estimator: BayesianEstimator, target: HilbertOperator) -> tuple[float, float]:
-    sigma = np.sum([estimator.probability(res) * res.stabilizer_to_hilbert_space() for res in results])
-    rho = target.todense()
-    fidelity = _fidelity(rho, sigma)
+        sampling = np.empty(N, dtype=float)
+        for i in range(N):
+            sampling[i] = _sample_fidelity()
 
-    rng = default_rng()
+        avg = np.mean(sampling)
+        std = float(np.std(sampling))
 
-    def _sample_fidelity() -> float:
-        sampled_probabilities = {}
-        cum_probability = 0
-        for res in estimator.results():
-            p = estimator.probability(res)
-            std = np.sqrt(estimator.variance(res))
-            s = max(0.0, rng.normal(p, std))
-            cum_probability += s
-            sampled_probabilities[res] = s
+        sigma = np.sum([estimator.probability(res) * res.stabilizer_to_hilbert_space() for res in results])
+        _fidelity = fidelity(rho, sigma)
 
-        sampled_sigma = np.sum([sampled_probabilities[res] / cum_probability *
-                                res.stabilizer_to_hilbert_space() for res in results])
-        return _fidelity(rho, sampled_sigma)
-
-    N = 100
-    sampling = np.empty(N, dtype=float)
-    for i in range(N):
-        sampling[i] = _sample_fidelity()
-
-    avg = np.mean(sampling)
-    std = float(np.std(sampling))
-
-    assert abs(avg - fidelity) <= std, "Inconsistend sampling"
-    return fidelity, std
+        assert abs(avg - _fidelity) <= std, "Inconsistend sampling"
+        return _fidelity, std
 
 
 if __name__ == "__main__":
     n_qudits = 4
     gate_density = 6
     dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qudits
-    threshold = 0.05 * 1e-3
+    threshold = 0.65 * 1e-3
     rng = default_rng(11)
 
     noise_model = CompositeNoise.from_noise_models([DephasingNoise(0.05), DepolarizingNoise(0.01)], rng=rng)
@@ -400,9 +392,8 @@ if __name__ == "__main__":
             n_printed += 1
 
     print()
-    fid, err = fidelity(estimator, output_rho)
-    print(f"Ballistic accuracy={fid:.5f} ± {err:.5f}")
+    # fid, err = fidelity(estimator, output_rho)
+    # print(f"Ballistic accuracy={fid:.5f} ± {err:.5f}")
 
-    rho = rmb._initial_state.stabilizer_to_hilbert_space()
-    fid, err = fidelity(estimator, rho)
+    fid, err = rmb.run_fidelity(estimator)
     print(f"Fidelity={fid:.5f} ± {err:.5f}")
