@@ -11,7 +11,7 @@ from sympleq import complex_phase_value, int_to_bases
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 from .pauli_object import PauliObject
 from .pauli_string import PauliString
-from ._typing import ScalarType, TableauType, DimensionsLike, PhasesLike, WeightsLike
+from ._typing import HilbertOperator, ScalarType, TableauType, DimensionsLike, PhasesLike, WeightsLike
 from .constants import DEFAULT_QUDIT_DIMENSION
 
 if TYPE_CHECKING:
@@ -732,6 +732,19 @@ class PauliSum(PauliObject):
         """
         return self._tableau[:, self.n_qudits():]
 
+    def is_identity(self) -> bool:
+        """
+        Check if the PauliSum represents the identity operator.
+
+        Returns
+        -------
+        bool
+            True if the PauliSum is the identity operator, False otherwise.
+        """
+        P = self.copy()
+        P.combine_equivalent_paulis()
+        return bool(np.all(P._tableau == 0)) and bool(np.all(P._phases == 0)) and bool(np.all(P._weights == 1))
+
     def combine_equivalent_paulis(self):
         """
         Combines equivalent Pauli operators in the sum by summing their coefficients and deleting duplicates.
@@ -1064,7 +1077,7 @@ class PauliSum(PauliObject):
         return PauliSum(tableau=sub_tableau, dimensions=sub_dims,
                         weights=sub_weights, phases=sub_phases)
 
-    def to_hilbert_space(self, pauli_string_index: int | None = None) -> sp.csr_matrix:
+    def to_hilbert_space(self, pauli_string_index: int | None = None) -> HilbertOperator:
         """
         Get the matrix form of the PauliSum as a sparse matrix. This is inclusive of the weights.
 
