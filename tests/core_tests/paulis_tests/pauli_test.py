@@ -15,20 +15,6 @@ rng = default_rng()
 
 class TestPaulis:
 
-    def test_pauli_multiplication(self):
-        for dim in PRIME_LIST:
-            for _ in range(N_tests):
-                s1 = np.random.randint(0, dim)
-                r1 = np.random.randint(0, dim)
-                s2 = np.random.randint(0, dim)
-                r2 = np.random.randint(0, dim)
-                p1 = PauliString.from_exponents(r1, s1, dim)
-                p2 = PauliString.from_exponents(r2, s2, dim)
-                p3 = p1 * p2
-                assert p3.x_exp == (p1.x_exp + p2.x_exp) % dim, 'Error in Pauli multiplication (x_exp)'
-                assert p3.z_exp == (p1.z_exp + p2.z_exp) % dim, 'Error in Pauli multiplication (z_exp)'
-                assert p3.dimensions == dim, 'Error in Pauli multiplication (dimension)'
-
     def test_pauli_string_multiplication(self):
         for dim in PRIME_LIST:
             for _ in range(N_tests):

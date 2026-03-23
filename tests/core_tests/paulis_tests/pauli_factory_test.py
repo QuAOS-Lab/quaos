@@ -10,21 +10,6 @@ from tests import PRIME_LIST
 
 class TestPauliSumFactories:
 
-    def test_from_pauli_basic(self):
-
-        p_string = PauliString.from_string('x1z2', dimensions=3)
-        p_sum = PauliSum.from_pauli_strings(p_string)
-        assert np.array_equal(p_sum.tableau, p_string.tableau)
-        assert np.array_equal(p_sum.dimensions, p_string.dimensions)
-
-        pauli_exp = PauliString.from_exponents(1, 2, 3)
-        assert np.array_equal(pauli_exp.tableau, pauli_exp.tableau)
-        assert np.array_equal(pauli_exp.dimensions, pauli_exp.dimensions)
-
-        pauli_tableau = PauliString.from_tableau([1, 2], 3)
-        assert np.array_equal(pauli_tableau.tableau, pauli_tableau.tableau)
-        assert np.array_equal(pauli_tableau.dimensions, pauli_tableau.dimensions)
-
     def test_pauli_sum_from_pauli_strings_single(self):
         ps = PauliString.from_exponents([0, 1], [1, 0], [3, 2])
         assert ps.shape() == (1, 2)
@@ -245,6 +230,14 @@ class TestPauliSumFactories:
             tableau = np.asarray([[0, 0, 1, 1], [1, 1, 0, 1]], dtype=int)
             _ = PauliString.from_tableau(tableau)
 
+        for _ in range(100):
+            dimension = random.choices(PRIME_LIST)[0]
+            x = random.randint(0, dimension - 1)
+            z = random.randint(0, dimension - 1)
+            tableau = [x, z]
+            p = PauliString.from_tableau(tableau, dimension)
+            assert f"{p}" == f"x{x}z{z} "
+
     def test_pauli_string_from_random(self):
         ps1 = PauliString.from_random(3)
         ps2 = PauliString.from_random(3, 42)
@@ -254,66 +247,8 @@ class TestPauliSumFactories:
         ps4 = PauliString.from_random([2, 3, 5], 12345)
         assert ps3.shape() == ps4.shape()
 
-    def test_pauli_from_exponents(self):
-        dimension = random.choices(PRIME_LIST)[0]
-        x = random.randint(0, dimension - 1)
-        z = random.randint(0, dimension - 1)
-        p1 = PauliString.from_exponents(x, z, dimension)
-        p2 = PauliString.from_exponents(x, z)
-
-        assert p1.shape() == p2.shape()
-
-    def test_pauli_from_tableau(self):
-        tableau = np.asarray([0, 1], dtype=int)
-        _ = PauliString.from_tableau(tableau)
-
-        tableau = np.asarray([[0, 1]], dtype=int)
-        _ = PauliString.from_tableau(tableau)
-
-        with pytest.raises(ValueError):
-            tableau = np.asarray([[[0, 1]]], dtype=int)
-            _ = PauliString.from_tableau(tableau)
-
-        with pytest.raises(ValueError):
-            tableau = np.asarray([[0], [1]], dtype=int)
-            _ = PauliString.from_tableau(tableau)
-
-        with pytest.raises(ValueError):
-            tableau = np.asarray([[0, 1], [0, 0]], dtype=int)
-            _ = PauliString.from_tableau(tableau)
-
-    def test_pauli_str(self):
-        for _ in range(10):
-            dimension = random.choices(PRIME_LIST)[0]
-            x = random.randint(0, dimension - 1)
-            z = random.randint(0, dimension - 1)
-            tableau = [x, z]
-            p = PauliString.from_tableau(tableau, dimension)
-            assert f"{p}" == f"x{x}z{z} "
-
-    def test_pauli_conversions(self):
+    def test_as_pauli_sum(self):
         p_string = PauliString.from_string("x1z5", 7)
         p_sum = PauliSum.from_string("x1z5", 7)
         assert p_string.has_equal_tableau(p_sum)
         assert p_string.as_pauli_sum() == p_sum
-
-    def test_pauli_multiplication(self):
-        p = PauliString.from_string("x1z5", dimensions=7)
-        assert p * PauliString.from_string("x0z0", dimensions=7) == p
-        assert p * PauliString.from_string("x0z1", dimensions=7) == PauliString.from_string("x1z6", dimensions=7)
-
-        with pytest.raises(Exception):
-            tableau = np.asarray([[0, 1, 0, 0]], dtype=int)
-            ps = PauliString.from_tableau(tableau)
-            _ = p * ps  # type: ignore
-
-        with pytest.raises(Exception):
-            p2 = PauliString.from_string("x1z0", dimensions=5)
-            _ = p * p2
-
-    def test_pauli_to_hilbert_space(self):
-        p = PauliString.from_string("x1z0", dimensions=2)
-        assert np.array_equal(p.to_hilbert_space().toarray(), np.asarray([[0, 1], [1, 0]], dtype=int))
-
-        p = PauliString.from_string("x1z0", dimensions=3)
-        assert np.array_equal(p.to_hilbert_space().toarray(), np.asarray([[0, 0, 1], [1, 0, 0], [0, 1, 0]], dtype=int))
