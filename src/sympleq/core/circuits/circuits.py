@@ -2,9 +2,10 @@ from __future__ import annotations
 from typing import Generator, overload
 import json
 import numpy as np
+import scipy.sparse as sp
+from numpy.random import Generator as RNGGenerator, default_rng
 from pathlib import Path
 from collections import defaultdict
-import scipy.sparse as sp
 
 from sympleq.core.noise.noise_model import NoiseModel
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
@@ -99,7 +100,8 @@ class Circuit:
     @classmethod
     def from_random(cls, n_gates: int,
                     dimensions: DimensionsLike,
-                    two_qudit_gate_ratio: float = 0.3) -> Circuit:
+                    two_qudit_gate_ratio: float = 0.3,
+                    rng: RNGGenerator | None = None) -> Circuit:
         """
         Creates a random circuit with the given number of gates.
 
@@ -111,6 +113,8 @@ class Circuit:
             The dimension of each qudit.
         two_qudit_gate_ratio : float
             Probability of choosing a two-qudit gate vs single-qudit gate.
+        rng : numpy.random.Generator or None, optional
+            Random number generator. If ``None``, a default generator is used.
 
         Returns
         -------
@@ -123,6 +127,12 @@ class Circuit:
                 groups[val].append(i)
             return list(groups.values())
 
+        if rng is None:
+            rng = default_rng()
+
+        index_sets = index_lists(dimensions)  # list of lists of indexes for each dimension
+        n_dims = len(index_sets)  # number of different dimensions
+
         dimensions = np.asarray(dimensions, dtype=int)
         index_sets = index_lists(dimensions)  # list of lists of indexes for each dimension
         n_dims = len(index_sets)
@@ -134,15 +144,15 @@ class Circuit:
         qudit_indices = []
 
         for _ in range(n_gates):
-            set_idx = np.random.randint(n_dims)
-            if np.random.rand() < two_qudit_gate_ratio and len(index_sets[set_idx]) > 1:
-                indices = tuple(np.random.choice(index_sets[set_idx], 2, replace=False))
-                gate = np.random.choice(two_qudit_gates)
+            set_idx = rng.integers(0, n_dims)
+            if rng.random() < two_qudit_gate_ratio and len(index_sets[set_idx]) > 1:
+                indices = tuple(int(idx) for idx in rng.choice(index_sets[set_idx], 2, replace=False))
+                gate = rng.choice(two_qudit_gates)
                 gates.append(gate)
                 qudit_indices.append(indices)
             else:
-                index = int(np.random.choice(index_sets[set_idx]))
-                gate = np.random.choice(single_qudit_gates)
+                index = int(rng.choice(index_sets[set_idx]))
+                gate = rng.choice(single_qudit_gates)
                 gates.append(gate)
                 qudit_indices.append((index,))
 
@@ -842,7 +852,7 @@ class Circuit:
         """
 
         def gate_name(gate: Gate) -> str:
-            return gate.name.replace("-inv", "*")[:gate_name_len].center(gate_name_len)
+            return gate.name.replace("_inv", "*")[:gate_name_len].center(gate_name_len)
 
         n_qudits = self.n_qudits()
         lines: list[str] = ["" for _ in range(3 * n_qudits)]
