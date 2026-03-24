@@ -13,7 +13,7 @@ rng = default_rng()
 
 class TestConditionalHamiltonianFinder:
 
-    def generate_SWAP_symmetry(self, n_qudits, n_paulis):
+    def generate_symmetry(self, n_qudits, n_paulis):
         P_sym = random_gate_symmetric_hamiltonian(GATES.H, dimension=2, qudit_indices=tuple([0]),
                                                   n_paulis=n_paulis, n_qudits=n_qudits)
         h_red, conditioned_hamiltonians, C_F, all_phases = pauli_reduce(P_sym)
@@ -29,6 +29,6 @@ class TestConditionalHamiltonianFinder:
         n_qudits = 3
         n_paulis = 16
         for _ in range(n_test):
-            Ham, sym, tra = self.generate_SWAP_symmetry(n_qudits=n_qudits, n_paulis=n_paulis)
+            Ham, sym, tra = self.generate_symmetry(n_qudits=n_qudits, n_paulis=n_paulis)
             cond_hamiltonian = ConditionalHamiltonian(Ham, sym, tra)
             assert cond_hamiltonian.test_conditional_hamiltonian()
