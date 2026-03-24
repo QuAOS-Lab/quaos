@@ -3,11 +3,7 @@ from __future__ import annotations
 import numpy as np
 import galois
 
-# gf2 inverse may live either in this package (older layout) or in the shared solvers
-try:  # pragma: no cover
-    from sympleq.core.finite_field_solvers import gf2_inv  # type: ignore
-except Exception:  # pragma: no cover
-    from .graph_automorphism_gf2 import gf2_inv  # type: ignore
+from sympleq.core.finite_field_solvers import gf2_inv
 
 
 def check_code_automorphism(

@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, cast
 import os
 import queue
-import time
 import multiprocessing as mp
 
 import numpy as np

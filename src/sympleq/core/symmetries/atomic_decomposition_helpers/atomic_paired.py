@@ -8,7 +8,6 @@ from ..modular_helpers import (
     mod_p,
     independent_columns,
     omega_matrix,
-    inv_mod_mat,
     rank_mod,
     nullspace_mod,
     inv_mod_scalar,
@@ -67,8 +66,8 @@ def _intersection_basis(A: np.ndarray, B: np.ndarray, p: int) -> np.ndarray:
     if N.size == 0:
         return np.zeros((A.shape[0], 0), dtype=np.int64)
     X = N[: A.shape[1], :]
-    I = mod_p(A @ X, p)
-    return independent_columns(I, p)
+    Id = mod_p(A @ X, p)
+    return independent_columns(Id, p)
 
 
 def _cyclic_module_has_full_rank(
@@ -80,7 +79,7 @@ def _cyclic_module_has_full_rank(
     p: int,
 ) -> bool:
     """
-    True iff cyclic_submodule_basis produces rank exactly deg_q*L (after indep filtering).
+    True iff cyclic_submodule_basis produces rank exactly deg_q*L (after independent filtering).
     """
     v = mod_p(v.reshape(-1, 1), p)
     target = int(deg_q) * int(L)
@@ -188,14 +187,14 @@ def atomic_blocks_in_paired_sector(
 
     Certified ("OK") iff:
       - for every length L, the induced chain-level pairing between the chosen generators
-        is nonsingular (enforced by construction),
+        is non-singular (enforced by construction),
       - each constructed block span is nondegenerate,
       - and the blocks span the whole paired sector.
     """
     F = mod_p(F, p)
 
     q = primaries[key]["poly"]
-    qstar = primaries[key_star]["poly"]
+    q_star = primaries[key_star]["poly"]
 
     Vq = independent_columns(mod_p(primaries[key]["V_basis"], p), p)
     Vqs = independent_columns(mod_p(primaries[key_star]["V_basis"], p), p)
@@ -263,7 +262,7 @@ def atomic_blocks_in_paired_sector(
             Fq = restrict_operator_invariant(F, Vq_r, p)
             Fqs = restrict_operator_invariant(F, Vqs_r, p)
             Nq = q_of_F_restricted(Fq, q, p)
-            Nqs = q_of_F_restricted(Fqs, qstar, p)
+            Nqs = q_of_F_restricted(Fqs, q_star, p)
 
             tops_left = jordan_chain_tops_nilpotent(Nq, max_exp, p)
             tops_right = jordan_chain_tops_nilpotent(Nqs, max_exp, p)
@@ -295,14 +294,14 @@ def atomic_blocks_in_paired_sector(
                     continue
 
                 # Pick a single generator pair (v,w) with nonzero chain-level top pairing.
-                Npow = _mat_pow_mod(Nq, int(L) - 1, p)
+                N_pow = _mat_pow_mod(Nq, int(L) - 1, p)
                 v_top = None
                 w_top = None
                 s_val = 0
 
                 for ai in range(A.shape[1]):
                     v_cand = A[:, ai:ai + 1]
-                    Nv = mod_p(Npow @ v_cand, p)
+                    Nv = mod_p(N_pow @ v_cand, p)
                     for j in range(pool.shape[1]):
                         w_cand = pool[:, j:j + 1]
                         s = int(mod_p(Nv.T @ (P @ w_cand), p).reshape(())) % p
@@ -375,8 +374,8 @@ def atomic_blocks_in_paired_sector(
 
             if not extracted:
                 raise RuntimeError(
-                    "Paired sector: could not extract a valid block from remaining subspace"
-                    + (f" (last_err={last_err})" if last_err else "")
+                    ("Paired sector: could not extract a valid block from remaining subspace" +
+                     f" (last_err={last_err})" if last_err else "")
                 )
 
         # Final span check

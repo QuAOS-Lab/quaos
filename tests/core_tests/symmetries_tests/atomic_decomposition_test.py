@@ -53,9 +53,6 @@ from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_unipotent_p2 im
 )
 
 from sympleq.core.symmetries.atomic_decomposition import atomic_block_decompose, CertificationError, _build_sector
-import os
-import traceback
-import textwrap
 
 from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_paired import atomic_blocks_in_paired_sector
 from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_self import atomic_blocks_in_self_sector_nonunipotent

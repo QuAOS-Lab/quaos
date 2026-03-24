@@ -115,12 +115,12 @@ def prepare_clifford_ga_search(
     # ---- extra column invariants for base partition (optional) ----
     col_invariants = None
     if extra_column_invariants != "none":
-        toks = {t.strip().lower() for t in extra_column_invariants.replace(",", "+").split("+") if t.strip()}
-        toks.discard("none")
+        tokens = {t.strip().lower() for t in extra_column_invariants.replace(",", "+").split("+") if t.strip()}
+        tokens.discard("none")
 
         feats: list[np.ndarray] = []
 
-        if "hist" in toks:
+        if "hist" in tokens:
             # Heuristic. Useful for ordering / early pruning but not provably complete.
             inv_hist = np.zeros((n, min(p, 16)), dtype=np.int64)
             if p == 2 and G_mod2 is not None:
@@ -133,7 +133,7 @@ def prepare_clifford_ga_search(
                 inv_hist[j, :min(p, 16)] = cnt[:min(p, 16)]
             feats.append(inv_hist)
 
-        if ("lc" in toks) or ("loop_coloop" in toks) or ("loops_coloops" in toks):
+        if ("lc" in tokens) or ("loop_coloop" in tokens) or ("loops_coloops" in tokens):
             # loop: column is zero
             if p == 2 and G_mod2 is not None:
                 is_loop = np.all(G_mod2 == 0, axis=0)
@@ -160,7 +160,8 @@ def prepare_clifford_ga_search(
                     U = np.linalg.inv(C)
                     X = U @ G
                     X_np = np.asarray(X, dtype=int) % p
-                    basis_row_used = np.any(X_np[:, nonB] != 0, axis=1) if nonB.size else np.zeros(X_np.shape[0], dtype=bool)
+                    basis_row_used = np.any(X_np[:, nonB] != 0, axis=1) if nonB.size else np.zeros(X_np.shape[0],
+                                                                                                   dtype=bool)
 
                 is_coloop[B_cols] = ~basis_row_used
             except Exception:
@@ -170,7 +171,7 @@ def prepare_clifford_ga_search(
             inv_lc = np.stack([is_loop.astype(np.int64), is_coloop.astype(np.int64)], axis=1)
             feats.append(inv_lc)
 
-        unknown = toks - {"hist", "lc", "loop_coloop", "loops_coloops"}
+        unknown = tokens - {"hist", "lc", "loop_coloop", "loops_coloops"}
         if unknown:
             raise ValueError("extra_column_invariants must be 'none', 'hist', 'lc', or 'hist+lc'.")
 
@@ -296,8 +297,6 @@ def clifford_ga_search_from_prepared(
 
     random_seed affects only tie-breaking / candidate ordering.
     """
-    pauli = prepared.pauli
-    p = prepared.p
     n = prepared.n
     S_mod = prepared.S_mod
     coeffs = prepared.coeffs
@@ -490,9 +489,9 @@ def clifford_ga_search_from_prepared(
         K = 16
         extra = mapped[:K]
         anchors_new = np.unique(np.concatenate([anchors, extra]))
-        Amax = 64
-        if anchors_new.size > Amax:
-            anchors_new = anchors_new[:Amax]
+        A_max = 64
+        if anchors_new.size > A_max:
+            anchors_new = anchors_new[:A_max]
         anchors = anchors_new
         return anchors, compute_anchor_hash(S_mod, anchors, base_colors, coeff_id, seed=int(random_seed))
 
@@ -695,10 +694,10 @@ def clifford_ga_search_from_prepared(
 
                 # activate induced completion once basis is fully mapped
                 if (
-                    use_code_induced_completion
-                    and code_C is None
-                    and prepared.G_mod2 is not None
-                    and basis_mapped_count == k_basis
+                    use_code_induced_completion and
+                    code_C is None and
+                    prepared.G_mod2 is not None and
+                    basis_mapped_count == k_basis
                 ):
                     C = compute_induced_completion_matrix_gf2(prepared.G_mod2, B_cols, phi)
                     if C is None:
