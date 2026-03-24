@@ -11,7 +11,7 @@ from numpy.random import default_rng
 rng = default_rng()
 
 
-class ConditionalHamiltonianFinder:
+class TestConditionalHamiltonianFinder:
 
     def generate_SWAP_symmetry(self, n_qudits, n_paulis):
         P_sym = random_gate_symmetric_hamiltonian(GATES.H, dimension=2, qudit_indices=tuple([0]),
