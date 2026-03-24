@@ -9,10 +9,17 @@ from sympleq.core.circuits.gates import GATES, Gate
 
 # Map SympleQ gate singletons to pytket OpTypes (qubit-only).
 _GATE_MAP: dict[Gate, OpType] = {
+    GATES.Id: OpType.noop,
     GATES.H: OpType.H,
-    GATES.H_inv: OpType.H,       # H is self-inverse up to global phase; pytket has no H_inv
+    GATES.H_inv: OpType.H,       # H is self-inverse for qubits
     GATES.S: OpType.S,
     GATES.S_inv: OpType.Sdg,
+    GATES.X: OpType.X,
+    GATES.X_inv: OpType.X,       # X is self-inverse for qubits
+    GATES.Y: OpType.Y,
+    GATES.Y_inv: OpType.Y,       # Y is self-inverse for qubits
+    GATES.Z: OpType.Z,
+    GATES.Z_inv: OpType.Z,       # Z is self-inverse for qubits
     GATES.CX: OpType.CX,
     GATES.CX_inv: OpType.CX,     # CX is self-inverse
     GATES.SWAP: OpType.SWAP,
@@ -20,9 +27,13 @@ _GATE_MAP: dict[Gate, OpType] = {
 }
 
 _REVERSE_MAP: dict[OpType, Gate] = {
+    OpType.noop: GATES.Id,
     OpType.H: GATES.H,
     OpType.S: GATES.S,
     OpType.Sdg: GATES.S_inv,
+    OpType.X: GATES.X,
+    OpType.Y: GATES.Y,
+    OpType.Z: GATES.Z,
     OpType.CX: GATES.CX,
     OpType.SWAP: GATES.SWAP,
     OpType.CZ: GATES.CZ,
@@ -73,7 +84,7 @@ def from_pytket_circuit(tk_circuit: PytketCircuit) -> Circuit:
     """
     Convert a pytket Circuit to a SympleQ Circuit.
 
-    Only a subset of pytket gates is supported (H, S, Sdg, CX, SWAP, CZ).
+    Only a subset of pytket gates is supported (H, S, Sdg, X, Y, Z, CX, SWAP, CZ, noop).
 
     Parameters
     ----------

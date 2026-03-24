@@ -67,6 +67,30 @@ class TestToPytketCircuit:
         with pytest.raises(ValueError, match="dimension=2"):
             to_pytket_circuit(circuit)
 
+    def test_pauli_gates(self):
+        """Convert circuit with X, Y, Z gates."""
+        circuit = Circuit.from_tuples([2, 2], [
+            (GATES.X, 0),
+            (GATES.Y, 1),
+            (GATES.Z, 0),
+        ])
+        tk = to_pytket_circuit(circuit)
+
+        commands = tk.get_commands()
+        assert len(commands) == 3
+        assert commands[0].op.type == OpType.X
+        assert commands[1].op.type == OpType.Y
+        assert commands[2].op.type == OpType.Z
+
+    def test_identity_gate(self):
+        """Convert circuit with Id gate."""
+        circuit = Circuit.from_tuples([2], [(GATES.Id, 0)])
+        tk = to_pytket_circuit(circuit)
+
+        commands = tk.get_commands()
+        assert len(commands) == 1
+        assert commands[0].op.type == OpType.noop
+
     def test_inverse_gates(self):
         """H_inv and CX_inv map to their pytket equivalents."""
         circuit = Circuit.from_tuples([2, 2], [
@@ -97,6 +121,20 @@ class TestFromPytketCircuit:
         assert circuit.gates[0] is GATES.H
         assert circuit.gates[1] is GATES.S
         assert circuit.gates[2] is GATES.S_inv
+
+    def test_pauli_gates(self):
+        """Convert pytket circuit with X, Y, Z."""
+        tk = PytketCircuit(2)
+        tk.X(0)
+        tk.Y(1)
+        tk.Z(0)
+
+        circuit = from_pytket_circuit(tk)
+
+        assert circuit.n_gates() == 3
+        assert circuit.gates[0] is GATES.X
+        assert circuit.gates[1] is GATES.Y
+        assert circuit.gates[2] is GATES.Z
 
     def test_two_qubit_gates(self):
         """Convert pytket circuit with CX, SWAP, CZ."""
