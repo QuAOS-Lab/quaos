@@ -20,5 +20,8 @@ authors = [{ name = "Quaos-Lab", email = "sympleq.org@gmail.com" }]
 license = { text = "MIT" }
 requires-python = ">=3.11"
 
+[project.optional-dependencies]
+pytket = ["pytket>=1.0.0"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
