@@ -165,34 +165,34 @@ def _rand_symmetric(rng: np.random.Generator, n: int, p: int) -> np.ndarray:
     return mod_p(M, p)
 
 
-def _symplectic_shear_upper(Bsym: np.ndarray, p: int) -> np.ndarray:
+def _symplectic_shear_upper(B_sym: np.ndarray, p: int) -> np.ndarray:
     # [[I, B],[0,I]] with B symmetric is symplectic in the standard Ω convention
-    n = Bsym.shape[0]
-    I = np.eye(n, dtype=np.int64)
+    n = B_sym.shape[0]
+    Id = np.eye(n, dtype=np.int64)
     Z = np.zeros((n, n), dtype=np.int64)
-    return mod_p(np.block([[I, Bsym], [Z, I]]), p)
+    return mod_p(np.block([[Id, B_sym], [Z, Id]]), p)
 
 
-def _symplectic_shear_lower(Csym: np.ndarray, p: int) -> np.ndarray:
+def _symplectic_shear_lower(C_sym: np.ndarray, p: int) -> np.ndarray:
     # [[I,0],[C,I]] with C symmetric is symplectic
-    n = Csym.shape[0]
-    I = np.eye(n, dtype=np.int64)
+    n = C_sym.shape[0]
+    Id = np.eye(n, dtype=np.int64)
     Z = np.zeros((n, n), dtype=np.int64)
-    return mod_p(np.block([[I, Z], [Csym, I]]), p)
+    return mod_p(np.block([[Id, Z], [C_sym, Id]]), p)
 
 
 def _symplectic_scale(A: np.ndarray, p: int) -> np.ndarray:
     # diag(A, (A^{-1})^T) is symplectic
     A = mod_p(A, p)
-    Ainv = inv_mod_mat(A, p)
-    return mod_p(_block_diag(A, mod_p(Ainv.T, p)), p)
+    A_inv = inv_mod_mat(A, p)
+    return mod_p(_block_diag(A, mod_p(A_inv.T, p)), p)
 
 
 def _symplectic_swap(n: int, p: int) -> np.ndarray:
     # [[0, I],[-I,0]] is symplectic
-    I = np.eye(n, dtype=np.int64)
+    Id = np.eye(n, dtype=np.int64)
     Z = np.zeros((n, n), dtype=np.int64)
-    return mod_p(np.block([[Z, I], [mod_p(-I, p), Z]]), p)
+    return mod_p(np.block([[Z, Id], [mod_p(-Id, p), Z]]), p)
 
 
 def rand_symplectic(rng: np.random.Generator, n: int, p: int, steps: int = 12) -> np.ndarray:
@@ -409,7 +409,7 @@ class TestModularHelpers:
                 assert np.array_equal(mod_p(A @ Ainv, p), I)
                 assert np.array_equal(mod_p(Ainv @ A, p), I)
 
-    def test_rank_nullspace_ranknullity(self) -> None:
+    def test_rank_nullspace_rank_nullity(self) -> None:
         rng = np.random.default_rng()
         for p in [2, 3, 5]:
             for (n, m) in [(4, 4), (4, 6), (6, 4)]:
@@ -477,7 +477,7 @@ class TestPolynomialsFP:
         assert np.array_equal(m, mod_p(poly_trim(want), p))
 
         # optional: also sanity-check subtraction
-        assert np.array_equal(d, mod_p(poly_trim(np.array([1-6, 2-1, 3], dtype=np.int64)), p))
+        assert np.array_equal(d, mod_p(poly_trim(np.array([1 - 6, 2 - 1, 3], dtype=np.int64)), p))
 
     def test_poly_divmod_regression_trailing_zero_overwrite(self) -> None:
         p = 7

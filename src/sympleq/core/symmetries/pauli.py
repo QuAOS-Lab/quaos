@@ -270,6 +270,13 @@ def symplectic_reduction_qudit(P) -> tuple[Circuit, list]:
     return C, sorted(pivots, key=lambda x: x[1])
 
 
+def symplectic_pauli_reduction(P) -> tuple[Circuit, list]:
+    """
+    Backward-compatible alias for the qudit symplectic reduction routine.
+    """
+    return symplectic_reduction_qudit(P)
+
+
 def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit) -> tuple[Circuit, list]:
     """
     Applies one iteration of the symplectic reduction algorithm to a PauliSum.
