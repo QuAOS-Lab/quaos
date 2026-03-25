@@ -549,10 +549,11 @@ class PauliString(PauliObject):
             A new PauliString instance with the specified qudits removed if
             `return_new` is True, otherwise returns self after modification.
         """
-        dimensions = self.dimensions[mask]
-        new_tableau = np.empty(2 * self.n_qudits(), dtype=int)
-        new_tableau[:self.n_qudits()] = self.x_exp[mask]
-        new_tableau[self.n_qudits():] = self.z_exp[mask]
+        remaining_indices = [i for i in range(self.n_qudits()) if i not in mask]
+        dimensions = self.dimensions[remaining_indices]
+        new_tableau = np.empty(2 * len(dimensions), dtype=int)
+        new_tableau[:len(dimensions)] = self.x_exp[remaining_indices]
+        new_tableau[len(dimensions):] = self.z_exp[remaining_indices]
 
         if return_new:
             return PauliString(new_tableau, dimensions)

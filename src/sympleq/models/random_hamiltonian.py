@@ -303,7 +303,7 @@ def random_pauli_symmetry_hamiltonian(n_qudits: int, n_paulis: int, n_redundant=
 
 #     return P_sym
 
-    
+
 # --- GF(2) rank tracker for rows of length 2n (int dtype 0/1) ---
 class GF2RankTracker:
     def __init__(self, m: int):
