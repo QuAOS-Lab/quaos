@@ -1,6 +1,9 @@
 """Implements a random symplectic with the approach from """
+from __future__ import annotations
 
 import numpy as np
+
+from sympleq.core.paulis._typing import TableauType
 
 
 def symplectic_group_size(n: int, p: int = 2) -> int:
@@ -120,7 +123,7 @@ def find_transvection(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     return out
 
 
-def symplectic_gf2(index: int, n: int) -> np.ndarray:
+def symplectic_gf2_interleaved(index: int, n: int) -> TableauType:
     """
     Deterministic canonical enumeration of Sp(2n,2) per Koenig/Smolin appendix.
     Returns 2n x 2n numpy array dtype=int8 in grouped ordering [x0,x1,...,z0,z1,...].
@@ -192,14 +195,8 @@ def symplectic_gf2(index: int, n: int) -> np.ndarray:
     return _symplectic_recursive(i, n)
 
 
-def symplectic_gf2_interleaved(index: int, n: int) -> np.ndarray:
-    """
-    Backward-compatible alias.
-
-    Despite the historical name, this returns grouped ordering:
-    [x0,x1,...,z0,z1,...].
-    """
-    return symplectic_gf2(index, n)
+def symplectic_gf2(index: int, n: int) -> TableauType:
+    return interleaved_to_grouped(symplectic_gf2_interleaved(index, n))
 
 
 def interleaved_to_grouped(F_inter: np.ndarray) -> np.ndarray:
@@ -261,7 +258,8 @@ def _vector_to_transvection(v, J, d):
     return (np.identity(len(v), dtype=int) + (J @ v) @ v.T) % d
 
 
-def symplectic_random_transvection(n_qudits, dimension=2, num_transvections=None, rng=None):
+def symplectic_random_transvection(n_qudits: int, dimension: int = 2,
+                                   num_transvections: int | None = None) -> TableauType:
     """
     Return a random 2n x 2n symplectic matrix over Z_d by composing
     num_transvections random transvections.

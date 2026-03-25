@@ -65,7 +65,7 @@ jobs:
             --junitxml=${{ env.COVERAGE_REPORT_JUNIT }} \
             --disable-warnings \
             -vv \
-            -m "not system and not stress and not acceptance"
+            -m "not system and not stress and not acceptance and not fuzz"
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5

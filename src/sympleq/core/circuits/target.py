@@ -1,12 +1,14 @@
 """Codes for finding target Paulis and gates which map a given Pauli to a target Pauli."""
+from __future__ import annotations
 from sympleq.core.paulis import PauliString, PauliSum
+from sympleq.core.paulis._typing import TableauType, PhasesType
 import numpy as np
 from collections import defaultdict
 from itertools import product
 from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 
 
-def find_map_to_target_pauli_sum(input_pauli: PauliSum, target_pauli: PauliSum) -> tuple[np.ndarray, np.ndarray,
+def find_map_to_target_pauli_sum(input_pauli: PauliSum, target_pauli: PauliSum) -> tuple[TableauType, PhasesType,
                                                                                          list[int], int]:
     """
     TODO: For efficiency improvement act only on target qudits
@@ -116,7 +118,7 @@ def find_allowed_target(pauli_sum, target_pauli_list):
     return possible_targets
 
 
-def get_phase_vector(gate_symplectic: np.ndarray, dimension: int) -> np.ndarray:
+def get_phase_vector(gate_symplectic: TableauType, dimension: int) -> PhasesType:
     """
     Calculate the phase vector for a gate given its symplectic matrix.
 

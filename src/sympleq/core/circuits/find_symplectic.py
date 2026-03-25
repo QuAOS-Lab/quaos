@@ -3,32 +3,41 @@ This module uses arXiv:1803.06987 to find symplectic solutions.
 
 So far it only works for GF(2), as in the original paper. It could be extended to GF(p).
 """
+from __future__ import annotations
 
 import numpy as np
-from sympleq.core.finite_field_solvers import solve_gf2, solve_linear_system_over_gf
+from sympleq._typing import IntNDArray
 from sympleq.core.circuits.utils import transvection_matrix, symplectic_product_arrays, symplectic_product_matrix
+from sympleq.core.finite_field_solvers import solve_gf2, solve_linear_system_over_gf
+from sympleq.core.paulis._typing import TableauType
 
 
-def _symplectic_constraint_row(vec: np.ndarray, p: int = 2) -> np.ndarray:
+def _symplectic_constraint_row(vec: IntNDArray, p: int = 2) -> IntNDArray:
     """
-    Build a row r such that r @ w = <vec, w> mod p, with vec,w in [x|z] ordering.
+    Build a row r such that r @ w = <vec, w> mod p for [x|z]-ordered vectors.
     """
     n = len(vec) // 2
     row = np.zeros(2 * n, dtype=int)
-    row[:n] = (-vec[n:]) % p   # coefficients for w_x
-    row[n:] = vec[:n] % p      # coefficients for w_z
+    row[:n] = (-vec[n:]) % p
+    row[n:] = vec[:n] % p
     return row
 
 
-def find_symplectic_solution(u: np.ndarray, v: np.ndarray, p: int = 2) -> np.ndarray:
+def find_symplectic_solution(u: IntNDArray, v: IntNDArray, p: int = 2) -> IntNDArray:
     """
-    Find a binary vector w such that <u,w> = <v,w> = 1 in symplectic inner product.
+    Find w such that <u,w> = <v,w> = 1 over GF(p).
 
     Args:
-        u, v: Binary vectors of length 2n representing Pauli strings
+        u: Vector of length 2n.
+        v: Vector of length 2n.
+        p: Prime dimension.
 
     Returns:
-        Binary vector w of length 2n, or None if no solution exists
+        Vector w of length 2n.
+
+    Raises:
+        ValueError: If u or v is the zero vector.
+        Exception: If no solution exists in GF(p).
     """
     n = len(u) // 2
 
@@ -41,14 +50,14 @@ def find_symplectic_solution(u: np.ndarray, v: np.ndarray, p: int = 2) -> np.nda
     symplectic_product_arrays_uv = symplectic_product_arrays(u, v, p)
 
     if p == 2 and symplectic_product_arrays_uv == 1:
-        # u and v are symplectically independent - use direct construction
+        # Keep the fast geometric shortcut for the binary case.
         return direct_construction(u, v)
 
     # General case over GF(p): solve linear constraints directly.
     return solve_general_system(u, v, p=p)
 
 
-def direct_construction(u: np.ndarray, v: np.ndarray) -> np.ndarray:
+def direct_construction(u: IntNDArray, v: IntNDArray) -> IntNDArray:
     """
     Direct construction when u and v are symplectically independent (<u,v> = 1).
 
@@ -56,10 +65,11 @@ def direct_construction(u: np.ndarray, v: np.ndarray) -> np.ndarray:
     solving a linear system.
 
     Args:
-        u, v: Symplectically independent binary vectors
+        u: Binary vector of length 2n.
+        v: Binary vector of length 2n, symplectically independent from u.
 
     Returns:
-        Solution vector w
+        Binary vector w of length 2n such that <u,w> = <v,w> = 1.
     """
     n = len(u) // 2
 
@@ -71,7 +81,7 @@ def direct_construction(u: np.ndarray, v: np.ndarray) -> np.ndarray:
 
     # First, try the simplest approach: w = u + v
     w_candidate = (u + v) % 2
-    if (symplectic_product_arrays(u, w_candidate) == 1 and symplectic_product_arrays(v, w_candidate) == 1):
+    if symplectic_product_arrays(u, w_candidate) == 1 and symplectic_product_arrays(v, w_candidate) == 1:
         return w_candidate
 
     # If that doesn't work, try other simple combinations
@@ -80,7 +90,7 @@ def direct_construction(u: np.ndarray, v: np.ndarray) -> np.ndarray:
             if a == 0 and b == 0:
                 continue
             w_candidate = (a * u + b * v) % 2
-            if (symplectic_product_arrays(u, w_candidate) == 1 and symplectic_product_arrays(v, w_candidate) == 1):
+            if symplectic_product_arrays(u, w_candidate) == 1 and symplectic_product_arrays(v, w_candidate) == 1:
                 return w_candidate
 
     # If simple combinations don't work, we need to add an orthogonal component
@@ -94,7 +104,7 @@ def direct_construction(u: np.ndarray, v: np.ndarray) -> np.ndarray:
         w_candidate = w_base.copy()
         w_candidate[i] = (w_candidate[i] + 1) % 2
 
-        if (symplectic_product_arrays(u, w_candidate) == 1 and symplectic_product_arrays(v, w_candidate) == 1):
+        if symplectic_product_arrays(u, w_candidate) == 1 and symplectic_product_arrays(v, w_candidate) == 1:
             return w_candidate
 
     # Fallback to the general linear solver if geometric construction fails
@@ -110,20 +120,25 @@ def direct_construction(u: np.ndarray, v: np.ndarray) -> np.ndarray:
     if solution is None:
         raise Exception("Could not find a solution in gf2.")
 
-    return solution
+    return np.asarray(solution, dtype=int) % 2
 
 
-def solve_general_system(u: np.ndarray, v: np.ndarray, p: int = 2) -> np.ndarray:
+def solve_general_system(u: IntNDArray, v: IntNDArray, p: int = 2) -> IntNDArray:
     """
-    Solve the general case when u and v are symplectically orthogonal (<u,v> = 0).
+    Solve linear constraints for <u,w> = 1 and <v,w> = 1 over GF(p).
 
     Args:
-        u, v: Binary vectors that are symplectically orthogonal
+        u: Vector of length 2n.
+        v: Vector of length 2n.
+        p: Prime dimension.
 
     Returns:
-        Solution vector w or None if no solution exists
+        Vector w of length 2n such that <u,w> = <v,w> = 1.
+
+    Raises:
+        Exception: If no solution exists in GF(p).
     """
-    n = len(u) // 2
+    n = len(u) // 2  # kept for shape clarity
 
     # Set up the linear system A @ w = b for:
     # <u,w> = 1, <v,w> = 1 (mod p)
@@ -146,21 +161,27 @@ def solve_general_system(u: np.ndarray, v: np.ndarray, p: int = 2) -> np.ndarray
     return np.asarray(solution, dtype=int) % p
 
 
-def find_symplectic_solution_extended(u: np.ndarray, v: np.ndarray,
-                                      t_vectors: list | None = None,
-                                      p: int = 2) -> np.ndarray:
+def find_symplectic_solution_extended(
+    u: IntNDArray, v: IntNDArray, t_vectors: list[IntNDArray] | None = None, p: int = 2
+) -> IntNDArray:
     """
-    Find a binary vector w such that:
+    Find w such that:
     - <u,w> = 1
     - <v,w> = 1
     - <t_i,w> = <t_i,v> for all t_i in t_vectors
 
     Args:
-        u, v: Binary vectors of length 2n representing primary Pauli strings
-        t_vectors: List of binary vectors of length 2n for additional constraints
+        u: Vector of length 2n.
+        v: Vector of length 2n.
+        t_vectors: Additional constraint vectors.
+        p: Prime dimension.
 
     Returns:
-        Binary vector w of length 2n, or None if no solution exists
+        Vector w of length 2n.
+
+    Raises:
+        ValueError: If u or v is the zero vector.
+        Exception: If no solution exists in GF(p).
     """
     if t_vectors is None or len(t_vectors) == 0:
         return find_symplectic_solution(u, v, p=p)
@@ -176,16 +197,21 @@ def find_symplectic_solution_extended(u: np.ndarray, v: np.ndarray,
     return solve_extended_system(u, v, t_vectors, p=p)
 
 
-def solve_extended_system(u: np.ndarray, v: np.ndarray, t_vectors: list, p: int = 2) -> np.ndarray:
+def solve_extended_system(u: IntNDArray, v: IntNDArray, t_vectors: list[IntNDArray], p: int = 2) -> IntNDArray:
     """
     Solve the extended system with additional t_i constraints.
 
     Args:
-        u, v: Primary constraint vectors
-        t_vectors: Additional constraint vectors
+        u: Vector of length 2n (primary constraint).
+        v: Vector of length 2n (primary constraint).
+        t_vectors: Additional vectors (additional constraints).
+        p: Prime dimension.
 
     Returns:
-        Solution vector w or None if no solution exists
+        Vector w of length 2n.
+
+    Raises:
+        Exception: If no solution exists in GF(p).
     """
     n = len(u) // 2
     k = len(t_vectors)
@@ -225,8 +251,8 @@ def solve_extended_system(u: np.ndarray, v: np.ndarray, t_vectors: list, p: int 
     return np.asarray(solution, dtype=int) % p
 
 
-def check_mappable_via_clifford(pauli_sum_tableau: np.ndarray,
-                                target_pauli_sum_tableau: np.ndarray,
+def check_mappable_via_clifford(pauli_sum_tableau: TableauType,
+                                target_pauli_sum_tableau: TableauType,
                                 p: int = 2) -> bool:
     sym_check = np.all(
         symplectic_product_matrix(pauli_sum_tableau, p) == symplectic_product_matrix(target_pauli_sum_tableau, p)
@@ -237,12 +263,13 @@ def check_mappable_via_clifford(pauli_sum_tableau: np.ndarray,
     return False
 
 
-def map_single_pauli_string_to_target(pauli_string_tableau: np.ndarray, target_pauli_string_tableau: np.ndarray,
-                                      constraint_paulis: list | None = None,
-                                      p: int = 2):
+def map_single_pauli_string_to_target(
+    pauli_string_tableau: TableauType,
+    target_pauli_string_tableau: TableauType,
+    constraint_paulis: list[TableauType] | None = None,
+    p: int = 2,
+) -> TableauType:
     if p != 2:
-        # Compatibility path: use the qudit-capable transvection solver while keeping
-        # the legacy function name/signature shape.
         from sympleq.core.circuits.find_symplectic_qudits import Find_transvection_map_solve_extended
 
         constraints = [] if constraint_paulis is None else list(constraint_paulis)
@@ -283,10 +310,8 @@ def map_single_pauli_string_to_target(pauli_string_tableau: np.ndarray, target_p
 
 
 def map_pauli_sum_to_target_tableau(
-    pauli_sum_tableau: np.ndarray,
-    target_pauli_sum_tableau: np.ndarray,
-    p: int = 2,
-) -> np.ndarray:
+    pauli_sum_tableau: TableauType, target_pauli_sum_tableau: TableauType, p: int = 2
+) -> TableauType:
     """
     Map a Pauli sum to a target Pauli sum using symplectic transvections.
     """
@@ -300,7 +325,7 @@ def map_pauli_sum_to_target_tableau(
 
     m = len(pauli_sum_tableau)
     n = len(pauli_sum_tableau[0]) // 2
-    mapped_paulis = []
+    mapped_paulis: list[TableauType] = []
     F = np.eye(2 * n, dtype=int)
     for i in range(m):
         # update the starting point to whatever previous solutions mapped it to

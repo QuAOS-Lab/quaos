@@ -7,15 +7,13 @@ import galois
 import warnings
 from pathlib import Path
 
-from sympleq.utils import int_to_bases
+from sympleq import complex_phase_value, int_to_bases
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 from .pauli_object import PauliObject
 from .pauli_string import PauliString
 from .pauli import Pauli
+from ._typing import HilbertOperator, ScalarType, TableauType, DimensionsLike, PhasesLike, WeightsLike
 from .constants import DEFAULT_QUDIT_DIMENSION
-
-
-ScalarType = Union[float, complex, int]
 
 if TYPE_CHECKING:
     PauliOrScalarType = Union[PauliObject, ScalarType]
@@ -23,9 +21,11 @@ if TYPE_CHECKING:
 
 class PauliSum(PauliObject):
     @classmethod
-    def from_tableau(cls, tableau: np.ndarray, dimensions: int | list[int] | np.ndarray | None = None,
-                     weights: ScalarType | list[ScalarType] | np.ndarray | None = None,
-                     phases: int | list[int] | np.ndarray | None = None
+    def from_tableau(cls,
+                     tableau: TableauType,
+                     dimensions: DimensionsLike | None = None,
+                     weights: WeightsLike | None = None,
+                     phases: PhasesLike | None = None
                      ) -> PauliSum:
         """
         Create a PauliSum instance from a tableau.
@@ -75,7 +75,10 @@ class PauliSum(PauliObject):
         return P
 
     @classmethod
-    def from_hilbert_space(cls, matrix: np.ndarray, dimensions: list[int] | np.ndarray, threshold: int = 9) -> PauliSum:
+    # FIXME: matrix should be sparse to speed up everything!
+    def from_hilbert_space(cls, matrix: np.ndarray,
+                           dimensions: list[int] | np.ndarray,
+                           threshold: int = 12) -> PauliSum:
         """
         Create a PauliSum instance from its Hilbert space matrix representation.
 
@@ -766,6 +769,19 @@ class PauliSum(PauliObject):
         """
         return self._tableau[:, self.n_qudits():]
 
+    def is_identity(self) -> bool:
+        """
+        Check if the PauliSum represents the identity operator.
+
+        Returns
+        -------
+        bool
+            True if the PauliSum is the identity operator, False otherwise.
+        """
+        P = self.copy()
+        P.combine_equivalent_paulis()
+        return bool(np.all(P._tableau == 0)) and bool(np.all(P._phases == 0)) and bool(np.all(P._weights == 1))
+
     def combine_equivalent_paulis(self):
         """
         Combines equivalent Pauli operators in the sum by summing their coefficients and deleting duplicates.
@@ -1116,7 +1132,7 @@ class PauliSum(PauliObject):
         return PauliSum(tableau=sub_tableau, dimensions=sub_dims,
                         weights=sub_weights, phases=sub_phases)
 
-    def to_hilbert_space(self, pauli_string_index: int | None = None) -> sp.csr_matrix:
+    def to_hilbert_space(self, pauli_string_index: int | None = None) -> HilbertOperator:
         """
         Get the matrix form of the PauliSum as a sparse matrix. This is inclusive of the weights.
 
@@ -1145,7 +1161,7 @@ class PauliSum(PauliObject):
                 h_next = self.xz_mat(dim, X, Z)
                 h = sp.csr_matrix(sp.kron(h, h_next, format="csr"))
 
-            e = np.exp(phase * 2 * np.pi * 1j / (2 * self.lcm)) * self.weights[i]
+            e = complex_phase_value(phase, self.lcm) * self.weights[i]
             list_of_pauli_matrices.append(e * h)
 
         h = list_of_pauli_matrices[0]
@@ -1193,10 +1209,16 @@ class PauliSum(PauliObject):
             new_phases = (self.phases + np.array(phases)) % (2 * self.lcm)
             self._phases = new_phases
 
-    def ordered_eigenspectrum(self) -> tuple[np.ndarray, np.ndarray]:
+    def ordered_eigenspectrum(self, num_eigens: int | None = None) -> tuple[np.ndarray, np.ndarray]:
         """
-        Compute eigenvalues/eigenvectors of the PauliSum and (by default) pick
-        the ground-state energy (`only_gs` = `True`).
+        Compute the eigenvalues/eigenvectors of the PauliSum; by default it returns all eigenvectors,
+        but it can be restricted to the lowest `num_eigens` eigenvalues/eigenvectors by setting `num_eigens`
+        to an integer.
+
+        Parameters
+        ----------
+        num_eigens : int | None
+            The number of eigenvalues and eigenvectors to return. If None, all are returned.
 
         Returns
         -------
@@ -1210,10 +1232,20 @@ class PauliSum(PauliObject):
             raise ValueError("Cannot find ground state for non-Hermitian PauliSum.")
 
         # Convert PauliSum to matrix form
-        m = self.to_hilbert_space().toarray()
+        sparse_matrix = self.to_hilbert_space()
+
+        if num_eigens is None:
+            num_eigens = sparse_matrix.shape[0]
 
         # Get eigenvalues and eigenvectors
-        val, vec = np.linalg.eigh(m)
+        if num_eigens >= sparse_matrix.shape[0] - 2:
+            val, vec = np.linalg.eigh(sparse_matrix.toarray())
+            val = val[:num_eigens]
+            vec = vec[:, :num_eigens]
+        else:
+            weights = np.abs(self.weights)
+            total_weights = np.sum(weights)
+            val, vec = sp.linalg.eigsh(sparse_matrix, k=num_eigens, sigma=-1.1 * total_weights)
         vec = np.transpose(vec)
 
         # Ordering
@@ -1223,7 +1255,10 @@ class PauliSum(PauliObject):
         normalized_states = (states / np.linalg.norm(states, axis=1, keepdims=True))
 
         # Check normalization
-        assert np.allclose(np.linalg.norm(normalized_states, axis=0), 1.0)
+        assert np.allclose(np.linalg.norm(normalized_states, axis=1), 1.0,
+                           rtol=1e-10), "Eigenvectors are not normalized."
+        # Check eigenvalues are real - Hermitian matrix!
+        assert np.allclose(np.imag(energies), 0.0, rtol=1e-10), "Energies are not real, but the matrix is Hermitian."
 
         return (energies, normalized_states)
 
@@ -1262,6 +1297,11 @@ class PauliSum(PauliObject):
                 Warning("The stabilizer state is not uniquely defined, " +
                         f"as the number of PauliStrings {self.n_paulis()} is less than the number " +
                         f"of qudits {self.n_qudits()}.")
+
+        # TODO: generalize to all dimensions, not just qubits
+        if not np.all(self.dimensions == 2):
+            raise NotImplementedError(
+                "Stabilizer to Hilbert space conversion is currently only implemented for qubits.")
 
         _, states = self.ordered_eigenspectrum()
         ground_state = states[0]
@@ -1445,15 +1485,13 @@ class PauliSum(PauliObject):
         scipy.sparse.csr_matrix
             Generalized Pauli matrix
         """
-        omega = np.exp(2 * np.pi * 1j / d)
-        aa0 = np.array([1 for i in range(d)])
+        omega = complex_phase_value(2 * 1, d)
+        aa0 = np.array([1 for _ in range(d)])
         aa1 = np.array([i for i in range(d)])
         aa2 = np.array([(i - aX) % d for i in range(d)])
+        aa3 = np.array([omega**(i * aZ) for i in range(d)])
         X = sp.csr_matrix((aa0, (aa1, aa2)))
-        aa0 = np.array([omega**(i * aZ) for i in range(d)])
-        aa1 = np.array([i for i in range(d)])
-        aa2 = np.array([i for i in range(d)])
-        Z = sp.csr_matrix((aa0, (aa1, aa2)))
+        Z = sp.csr_matrix((aa3, (aa1, aa1)))
         # if (d == 2) and (aX % 2 == 1) and (aZ % 2 == 1):
         #    return 1j * (X @ Z)
         return X @ Z

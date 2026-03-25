@@ -37,7 +37,7 @@ class ToricCode:
 
     def list_qubits(self) -> list[tuple[str, int, int]]:
         """
-        List all edge qudits (kept method name for backward compatibility).
+        List all edge qudits.
         ('h', i, j): horizontal edge (i,j)->(i+1,j)
         ('v', i, j): vertical edge   (i,j)->(i,j+1)
         """
@@ -113,7 +113,8 @@ class ToricCode:
                 qi = ('h', i, j)
                 if qi in index_of:
                     edges.append(index_of[qi])
-
+                elif self.periodic and i == self.Nx - 1:  # wrap around right
+                    edges.append(index_of[('h', i, j)])
                 # Top horizontal edge
                 top_j = (j + 1) % self.Ny if self.periodic else j + 1
                 if top_j < self.Ny:

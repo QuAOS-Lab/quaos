@@ -42,7 +42,7 @@ class CertificationError(RuntimeError):
 
 def _concat_blocks_to_partial_basis(blocks: List[AtomicBlock], n2: int, p: int) -> np.ndarray:
     """
-    Build a *partial* symplectic frame T = [U_all | V_all] (2n × 2k) from block bases.
+    Build a *partial* symplectic frame T = [U_all | V_all] (2n x 2k) from block bases.
     Does NOT require spanning the full space.
     """
     if not blocks:
