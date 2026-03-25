@@ -15,6 +15,38 @@ rng = default_rng()
 
 class TestPaulis:
 
+    def test_pauli_string_basic_relations(self):
+        for dim in PRIME_LIST:
+            x1 = PauliString.from_string('x1z0', dimensions=[dim])
+            y1 = PauliString.from_string('x1z1', dimensions=[dim])
+            z1 = PauliString.from_string('x0z1', dimensions=[dim])
+            id = PauliString.from_string('x0z0', dimensions=[dim])
+
+            # REMARK: phases do not matter, since these are Pauli objects
+            assert x1 * z1 == y1, 'Error in Pauli multiplication (x * z = y) ' + (x1 * z1).__str__()
+            assert x1**dim == id, 'Error in Pauli exponentiation (x**dim = id) ' + (x1**dim).__str__()
+            assert y1**dim == id, 'Error in Pauli exponentiation (y**dim = id) ' + (y1**dim).__str__()
+            assert z1**dim == id, 'Error in Pauli exponentiation (z**dim = id)  ' + (z1**dim).__str__()
+            assert x1 * y1 == x1**2 * z1, 'Error in Pauli multiplication (x * y = x**2 * z) ' + (x1 * y1).__str__()
+            assert y1 * z1 == x1 * z1**2, 'Error in Pauli multiplication (y * z = x**2 * z) ' + (y1 * z1).__str__()
+            assert z1 * x1 == y1, 'Error in Pauli multiplication (z * x = y) ' + (z1 * x1).__str__()
+            assert x1 * id == x1, 'Error in Pauli multiplication (x * id = x) ' + (x1 * id).__str__()
+            assert y1 * id == y1, 'Error in Pauli multiplication (y * id = y) ' + (y1 * id).__str__()
+            assert z1 * id == z1, 'Error in Pauli multiplication (z * id = z) ' + (z1 * id).__str__()
+
+        for dim in PRIME_LIST:
+            for _ in range(N_tests):
+                s1 = np.random.randint(0, dim)
+                r1 = np.random.randint(0, dim)
+                s2 = np.random.randint(0, dim)
+                r2 = np.random.randint(0, dim)
+                p1 = PauliString.from_exponents(r1, s1, dim)
+                p2 = PauliString.from_exponents(r2, s2, dim)
+                p3 = p1 * p2
+                assert p3.x_exp == (p1.x_exp + p2.x_exp) % dim, 'Error in Pauli multiplication (x_exp)'
+                assert p3.z_exp == (p1.z_exp + p2.z_exp) % dim, 'Error in Pauli multiplication (z_exp)'
+                assert p3.dimensions == dim, 'Error in Pauli multiplication (dimension)'
+
     def test_pauli_string_multiplication(self):
         for dim in PRIME_LIST:
             for _ in range(N_tests):
@@ -82,6 +114,30 @@ class TestPaulis:
                 assert p_string1[0] == ps0, f'Error in __getitem__, expected {ps0}, got {p_string1[0]}'
                 assert p_string1[1] == ps1, f'Error in __getitem__, expected {ps1}, got {p_string1[1]}'
 
+    def test_pauli_string_get_and_set_item(self):
+        for dim in PRIME_LIST:
+            for _ in range(N_tests):
+                r1 = np.random.randint(0, dim)
+                s1 = np.random.randint(0, dim)
+                r2 = np.random.randint(0, dim)
+                s2 = np.random.randint(0, dim)
+
+                p_string1 = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2}", dimensions=[dim, dim])
+                ps0 = PauliString.from_string(f"x{r1}z{s1}", dimensions=dim)
+                ps1 = PauliString.from_string(f"x{r2}z{s2}", dimensions=dim)
+
+                assert p_string1[0] == ps0, 'Error in PauliString getitem (first PauliString)'
+                assert p_string1[1] == ps1, 'Error in PauliString getitem (second PauliString)'
+
+                # Test setitem
+                new_r1 = np.random.randint(0, dim)
+                new_s1 = np.random.randint(0, dim)
+                new_ps0 = PauliString.from_string(f"x{new_r1}z{new_s1}", dimensions=dim)
+
+                p_string1[0] = new_ps0
+
+                assert p_string1[0] == new_ps0, 'Error in PauliString setitem (first PauliString)'
+
     def test_pauli_sum_multiplication(self):
         for dim in PRIME_LIST:
             for _ in range(N_tests):
@@ -95,7 +151,7 @@ class TestPaulis:
                 r12 = np.random.randint(0, 2 * dim)
                 r22 = np.random.randint(0, 2 * dim)
                 s12 = np.random.randint(0, 2 * dim)
-                s22 = np.random.randint(0, dim)
+                s22 = np.random.randint(0, 2 * dim)
                 p_string2 = PauliString.from_string(f"x{r12}z{s12} x{r22}z{s22}", dimensions=[dim, dim])
 
                 random_pauli_sum = PauliSum.from_pauli_strings([p_string1, p_string2])
