@@ -17,22 +17,27 @@ class TestPaulis:
 
     def test_pauli_string_basic_relations(self):
         for dim in PRIME_LIST:
-            x1 = PauliString.from_string('x1z0', dimensions=[dim])
-            y1 = PauliString.from_string('x1z1', dimensions=[dim])
-            z1 = PauliString.from_string('x0z1', dimensions=[dim])
-            id = PauliString.from_string('x0z0', dimensions=[dim])
+            x1 = PauliString.from_string('x1z0', dimensions=dim)
+            y1 = PauliString.from_string('x1z1', dimensions=dim)
+            z1 = PauliString.from_string('x0z1', dimensions=dim)
+            id = PauliString.from_string('x0z0', dimensions=dim)
 
             # REMARK: phases do not matter, since these are Pauli objects
-            assert x1 * z1 == y1, 'Error in Pauli multiplication (x * z = y) ' + (x1 * z1).__str__()
-            assert x1**dim == id, 'Error in Pauli exponentiation (x**dim = id) ' + (x1**dim).__str__()
-            assert y1**dim == id, 'Error in Pauli exponentiation (y**dim = id) ' + (y1**dim).__str__()
-            assert z1**dim == id, 'Error in Pauli exponentiation (z**dim = id)  ' + (z1**dim).__str__()
-            assert x1 * y1 == x1**2 * z1, 'Error in Pauli multiplication (x * y = x**2 * z) ' + (x1 * y1).__str__()
-            assert y1 * z1 == x1 * z1**2, 'Error in Pauli multiplication (y * z = x**2 * z) ' + (y1 * z1).__str__()
-            assert z1 * x1 == y1, 'Error in Pauli multiplication (z * x = y) ' + (z1 * x1).__str__()
-            assert x1 * id == x1, 'Error in Pauli multiplication (x * id = x) ' + (x1 * id).__str__()
-            assert y1 * id == y1, 'Error in Pauli multiplication (y * id = y) ' + (y1 * id).__str__()
-            assert z1 * id == z1, 'Error in Pauli multiplication (z * id = z) ' + (z1 * id).__str__()
+            assert x1 * z1 == y1, f'Error in Pauli multiplication (x * z = y), got {x1 * z1} instead of {y1}'
+            assert x1**dim == id, f'Error in Pauli exponentiation (x**dim = id), got {x1**dim} instead of {id}'
+            assert y1**dim == id, f'Error in Pauli exponentiation (y**dim = id), got {y1**dim} instead of {id}'
+            assert z1**dim == id, f'Error in Pauli exponentiation (z**dim = id), got {z1**dim} instead of {id}'
+            assert x1 * y1 == x1**2 * \
+                z1, f'Error in Pauli multiplication (x * y = x**2 * z), got {x1 * y1} instead of {x1**2 * z1}'
+            assert y1 * z1 == x1 * \
+                z1**2, f'Error in Pauli multiplication (y * z = x**2 * z), got {y1 * z1} instead of {x1 * z1**2}'
+            # fix phases for the next test
+            y1_minus = y1.copy()
+            y1_minus.set_phases([2])
+            assert z1 * x1 == y1_minus, f'Error in Pauli multiplication (z * x = y), got {z1 * x1} instead of {y1}'
+            assert x1 * id == x1, f'Error in Pauli multiplication (x * id = x), got {x1 * id} instead of {x1}'
+            assert y1 * id == y1, f'Error in Pauli multiplication (y * id = y), got {y1 * id} instead of {y1}'
+            assert z1 * id == z1, f'Error in Pauli multiplication (z * id = z), got {z1 * id} instead of {z1}'
 
         for dim in PRIME_LIST:
             for _ in range(N_tests):
