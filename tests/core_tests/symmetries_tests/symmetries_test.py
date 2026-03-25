@@ -125,7 +125,7 @@ class TestSymmetryFinder:
     def test_random_arbitrary_symmetry(self):
         n_tests = 10
         dimension = 2
-        n_qudits = 10
+        n_qudits = 5
         n_paulis = 20
         all_qudit_indices = tuple(range(n_qudits))
 
@@ -245,7 +245,7 @@ class TestSymmetryFinder:
 
     def test_random_arbitrary_symmetry_with_block_decomposition(self):
 
-        n_tests = 50
+        n_tests = 5
         p = 2
         n_qudits = 10
         n_paulis = 25

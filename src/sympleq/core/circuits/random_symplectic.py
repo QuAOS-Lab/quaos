@@ -258,8 +258,12 @@ def _vector_to_transvection(v, J, d):
     return (np.identity(len(v), dtype=int) + (J @ v) @ v.T) % d
 
 
-def symplectic_random_transvection(n_qudits: int, dimension: int = 2,
-                                   num_transvections: int | None = None) -> TableauType:
+def symplectic_random_transvection(
+    n_qudits: int,
+    dimension: int = 2,
+    num_transvections: int | None = None,
+    rng: np.random.Generator | None = None,
+) -> TableauType:
     """
     Return a random 2n x 2n symplectic matrix over Z_d by composing
     num_transvections random transvections.
@@ -272,6 +276,8 @@ def symplectic_random_transvection(n_qudits: int, dimension: int = 2,
         Dimension of each qudit (>=2).
     num_transvections : int or None
         Number of transvections to compose. If None, defaults to 2 * (2n).
+    rng : np.random.Generator or None
+        Optional random generator. If None, a default generator is created.
 
     Returns
     -------

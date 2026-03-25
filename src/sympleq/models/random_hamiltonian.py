@@ -382,7 +382,7 @@ def random_gate_symmetric_hamiltonian(G: Gate,
     Notes:
       - The final number of terms is targeted to be close to `n_paulis` within
         `target_count_tolerance` when feasible.
-      - Each added orbit block is Hermitized before accumulation, so the final
+      - Each added orbit block is made Hermitian before accumulation, so the final
         Hamiltonian is guaranteed Hermitian (up to numerical tolerance).
     """
     if n_qudits is None:
