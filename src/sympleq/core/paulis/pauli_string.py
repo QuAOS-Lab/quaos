@@ -643,8 +643,8 @@ class PauliString(PauliObject):
             if len(key) != value.n_qudits():
                 raise ValueError(f"Cannot set item with key {key} and value {value}:\
                                  mismatching dimensions.")
-            self._tableau[key] = value.x_exp
-            self._tableau[key + self.n_qudits()] = value.z_exp
+            self._tableau[0, key] = value.x_exp
+            self._tableau[0, key + self.n_qudits()] = value.z_exp
             self._dimensions[key] = value.dimensions
             self._lcm = np.lcm.reduce(self.dimensions)
 
