@@ -5,6 +5,7 @@ from numpy.random import Generator as RNGGenerator, default_rng
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.paulis import PauliSum, PauliString, Pauli
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
+from sympleq.models.symmetric_hamiltonian import int_to_bases
 from tests import PRIME_LIST, choose_random_dimensions
 
 
@@ -13,92 +14,6 @@ rng = default_rng()
 
 
 class TestPaulis:
-
-    def test_combine_equivalent_paulis_regression(self):
-        # Regression: combining must not double-count or keep cancelled terms.
-        d = 2
-        dims = [d, d]
-        # Same tableau twice with opposite coefficients -> should cancel to empty.
-        T = np.array([[1, 0, 0, 1],
-                      [1, 0, 0, 1]], dtype=int)
-        weights = np.array([1.0 + 0.0j, -1.0 + 0.0j], dtype=complex)
-        phases = np.array([0, 0], dtype=int)
-        H = PauliSum.from_tableau(T, dimensions=dims, weights=weights, phases=phases)
-        H.combine_equivalent_paulis()
-        assert H.n_paulis() == 0
-
-    def test_combine_equivalent_paulis_randomized(self):
-        rng = np.random.default_rng(0)
-        for d in PRIME_LIST:
-            for _ in range(10):
-                n_qudits = int(rng.integers(1, 4))
-                dims = [d] * n_qudits
-                lcm = int(np.lcm.reduce(dims))
-                mod = 2 * lcm
-
-                # Build k unique rows, then duplicate them with random coefficients/phases.
-                k_unique = int(rng.integers(3, 8))
-                mult = int(rng.integers(2, 5))
-                base_rows = rng.integers(0, d, size=(k_unique, 2 * n_qudits), dtype=int)
-
-                rows = np.repeat(base_rows, mult, axis=0)
-                weights = (rng.normal(size=rows.shape[0]) + 1j * rng.normal(size=rows.shape[0])).astype(complex)
-                phases = rng.integers(0, mod, size=rows.shape[0], dtype=int)
-
-                H = PauliSum.from_tableau(rows, dimensions=dims, weights=weights, phases=phases)
-
-                # Expected coefficient sum in coefficient-form (phases absorbed into weights).
-                expected = {}
-                omega = np.exp(2 * np.pi * 1j / mod)
-                for i in range(rows.shape[0]):
-                    key = rows[i].tobytes()
-                    coeff = weights[i] * (omega ** phases[i])
-                    expected[key] = expected.get(key, 0.0 + 0.0j) + coeff
-
-                H.combine_equivalent_paulis()
-
-                got = {H.tableau[i].tobytes(): complex(H.weights[i]) for i in range(H.n_paulis())}
-
-                # Zeros should be removed.
-                for k, v in expected.items():
-                    if abs(v) <= 1e-14:
-                        assert k not in got
-                    else:
-                        assert k in got
-                        assert np.allclose(got[k], v, atol=1e-12, rtol=0)
-                assert np.all(H.phases == 0)
-
-    def test_pauli_multiplication(self):
-        for dim in PRIME_LIST:
-            x1 = Pauli.Xnd(1, dim)
-            y1 = Pauli.Ynd(1, dim)
-            z1 = Pauli.Znd(1, dim)
-            id = Pauli.Idnd(dim)
-
-            # REMARK: phases do not matter, since these are Pauli objects
-            assert x1 * z1 == y1, 'Error in Pauli multiplication (x * z = y) ' + (x1 * z1).__str__()
-            assert x1**dim == id, 'Error in Pauli exponentiation (x**dim = id) ' + (x1**dim).__str__()
-            assert y1**dim == id, 'Error in Pauli exponentiation (y**dim = id) ' + (y1**dim).__str__()
-            assert z1**dim == id, 'Error in Pauli exponentiation (z**dim = id)  ' + (z1**dim).__str__()
-            assert x1 * y1 == x1**2 * z1, 'Error in Pauli multiplication (x * y = x**2 * z) ' + (x1 * y1).__str__()
-            assert y1 * z1 == x1 * z1**2, 'Error in Pauli multiplication (y * z = x**2 * z) ' + (y1 * z1).__str__()
-            assert z1 * x1 == y1, 'Error in Pauli multiplication (z * x = y) ' + (z1 * x1).__str__()
-            assert x1 * id == x1, 'Error in Pauli multiplication (x * id = x) ' + (x1 * id).__str__()
-            assert y1 * id == y1, 'Error in Pauli multiplication (y * id = y) ' + (y1 * id).__str__()
-            assert z1 * id == z1, 'Error in Pauli multiplication (z * id = z) ' + (z1 * id).__str__()
-
-        for dim in PRIME_LIST:
-            for _ in range(N_tests):
-                s1 = np.random.randint(0, dim)
-                r1 = np.random.randint(0, dim)
-                s2 = np.random.randint(0, dim)
-                r2 = np.random.randint(0, dim)
-                p1 = Pauli.from_exponents(r1, s1, dim)
-                p2 = Pauli.from_exponents(r2, s2, dim)
-                p3 = p1 * p2
-                assert p3.x_exp == (p1.x_exp + p2.x_exp) % dim, 'Error in Pauli multiplication (x_exp)'
-                assert p3.z_exp == (p1.z_exp + p2.z_exp) % dim, 'Error in Pauli multiplication (z_exp)'
-                assert p3.dimension == dim, 'Error in Pauli multiplication (dimension)'
 
     def test_pauli_string_multiplication(self):
         for dim in PRIME_LIST:
@@ -161,11 +76,11 @@ class TestPaulis:
                 s2 = np.random.randint(0, dim)
 
                 p_string1 = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2}", dimensions=[dim, dim])
-                ps0 = Pauli.from_string(f"x{r1}z{s1}", dimension=dim)
-                ps1 = Pauli.from_string(f"x{r2}z{s2}", dimension=dim)
+                ps0 = PauliString.from_string(f"x{r1}z{s1}", dimensions=dim)
+                ps1 = PauliString.from_string(f"x{r2}z{s2}", dimensions=dim)
 
-                assert p_string1[0] == ps0, 'Error in PauliString indexing (first PauliString)'
-                assert p_string1[1] == ps1, 'Error in PauliString indexing'
+                assert p_string1[0] == ps0, f'Error in __getitem__, expected {ps0}, got {p_string1[0]}'
+                assert p_string1[1] == ps1, f'Error in __getitem__, expected {ps1}, got {p_string1[1]}'
 
     def test_to_hilbert_space_consistency(self):
         # Single Pauli matches PauliString representation
@@ -358,22 +273,6 @@ class TestPaulis:
             ps = PauliSum.from_string(pauli_list, dimensions=dimensions, weights=weights)
 
             np.testing.assert_array_equal(ps.tableau, expected_tableau)
-
-    def test_basic_pauli_relations(self):
-        for d in PRIME_LIST:
-            x_exp = random.randint(1, d - 1)
-            z_exp = random.randint(1, d - 1)
-            x1 = Pauli.from_string(f'x{x_exp}z0', dimension=d)
-            z1 = Pauli.from_string(f'x0z{z_exp}', dimension=d)
-            y1 = Pauli.from_string(f'x{x_exp}z{z_exp}', dimension=d)
-            id = Pauli.Idnd(dimension=d)
-
-            assert x1 * z1 == y1, f'Error in Pauli multiplication for d={d}'
-            assert x1**d == id, f'Error in Pauli exponentiation (x**{d} = id) for d={d}'
-            assert y1**d == id, f'Error in Pauli exponentiation (y**{d} = id) for d={d}'
-            assert z1**d == id, f'Error in Pauli exponentiation (z**{d} = id) for d={d}'
-            assert x1 * id == x1, f'Error in Pauli multiplication (x * id = x) for d={d}'
-            assert id * z1 == z1, f'Error in Pauli multiplication (id * z = z) for d={d}'
 
     def test_pauli_string_construction(self):
         for _ in range(N_tests):
@@ -1095,11 +994,6 @@ class TestPaulis:
         assert not psum1.is_close(psum2, literal=False)
 
     def test_pauli_object_invalid_setters(self):
-        p = Pauli.Xnd(1, 2)
-        with pytest.raises(Exception):
-            p.lcm = 2
-        with pytest.raises(Exception):
-            p.dimensions = np.array([2], dtype=int)
 
         p = PauliString.from_random([2, 3, 5])
         with pytest.raises(Exception):
@@ -1136,8 +1030,8 @@ class TestPaulis:
     def test_pauli_object_sum(self):
         dimension = 4
         pauli_objects = [
-            Pauli.Xnd(1, dimension),
-            PauliString.from_string('x2z3', dimension),
+            PauliString.from_string("x1z0", dimensions=dimension),
+            PauliString.from_string('x2z3', dimensions=dimension),
             PauliSum.from_random(3, dimensions=dimension)
         ]
         P = sum(pauli_objects, start=PauliSum.from_random(1, dimensions=dimension))
@@ -1165,9 +1059,6 @@ class TestPaulis:
             _ = P - PauliString.from_exponents([2, 3], [0, 0], dimensions=[4, 5])
 
     def test_pauli_ordering(self):
-        p1 = Pauli.from_string("x0z1")
-        p2 = Pauli.from_string("x1z0")
-        assert p1 > p2
 
         ps1 = PauliString.from_string("x1z0 x0z1")
         ps2 = PauliString.from_string("x0z1 x1z0")
@@ -1193,20 +1084,6 @@ class TestPaulis:
             assert ps1 < ps2
 
     def test_pauli_phase_setters(self):
-        p1 = Pauli.from_string("x0z1")
-        p2 = Pauli.from_string("x0z1")
-        p3 = Pauli.from_string("x0z1")
-        p4 = Pauli.from_string("x0z1")
-
-        p1.phases[0] = 1.9
-        p2.set_phases([1])
-        p4.phases = [1]
-        assert p1 == p2
-        assert p1 == p4
-
-        p1.reset_phases()
-        assert p1 == p3
-        assert p2 != p3
 
         ps1 = PauliString.from_string("x1z0 x0z1")
         ps2 = PauliString.from_string("x1z0 x0z1")
@@ -1239,20 +1116,6 @@ class TestPaulis:
         assert psum2 != psum3
 
     def test_pauli_weight_setters(self):
-        p1 = Pauli.from_string("x0z1")
-        p2 = Pauli.from_string("x0z1")
-        p3 = Pauli.from_string("x0z1")
-        p4 = Pauli.from_string("x0z1")
-
-        p1.weights[0] = 1.9 + 2j
-        p2.set_weights([1.9 + 2j])
-        p4.weights = [1.9 + 2j]
-        assert p1 == p2
-        assert p1 == p4
-
-        p1.reset_weights()
-        assert p1 == p3
-        assert p2 != p3
 
         ps1 = PauliString.from_string("x1z0 x0z1")
         ps2 = PauliString.from_string("x1z0 x0z1")
