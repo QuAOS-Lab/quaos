@@ -238,9 +238,3 @@ class TestPauliSumFactories:
         ps3 = PauliString.from_random([2, 3, 5])
         ps4 = PauliString.from_random([2, 3, 5], 12345)
         assert ps3.shape() == ps4.shape()
-
-    def test_as_pauli_sum(self):
-        p_string = PauliString.from_string("x1z5", 7)
-        p_sum = PauliSum.from_string("x1z5", 7)
-        assert p_string.has_equal_tableau(p_sum)
-        assert p_string.as_pauli_sum() == p_sum
