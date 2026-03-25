@@ -13,7 +13,7 @@ from sympleq.core.paulis._typing import TableauType, DimensionsLike, DimensionsT
 from .utils import embed_unitary
 from .gates import Gate, GATES, _GenericGate
 from .utils import embed_symplectic
-from sympleq.core.paulis import PauliSum, PauliString, Pauli, PauliObject
+from sympleq.core.paulis import PauliSum, PauliString, PauliObject
 
 
 # Type alias for from_tuples input: (Gate, qudit_idx1, qudit_idx2, ...)
@@ -403,10 +403,6 @@ class Circuit:
         return f"Circuit(dimensions={list(self.dimensions)}, n_gates={len(self._gates)})"
 
     @overload
-    def act(self, pauli: Pauli) -> Pauli:
-        ...
-
-    @overload
     def act(self, pauli: PauliString) -> PauliString:
         ...
 
@@ -419,10 +415,6 @@ class Circuit:
         for gate, qudits in zip(self._gates, self._qudit_indices):
             pauli = gate.act(pauli, qudits)
         return pauli
-
-    @overload
-    def act_iter(self, pauli: Pauli) -> Generator[Pauli, None, None]:
-        ...
 
     @overload
     def act_iter(self, pauli: PauliString) -> Generator[PauliString, None, None]:
