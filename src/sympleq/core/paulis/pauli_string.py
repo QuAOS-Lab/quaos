@@ -630,7 +630,9 @@ class PauliString(PauliObject):
         # TODO: is it necessary to distinguish the two cases in the if... elif... loop?
 
         if isinstance(value, PauliString):
-            if isinstance(key, slice):
+            if isinstance(key, int):
+                key = np.asarray([key], dtype=int)
+            elif isinstance(key, slice):
                 # Trick to convert slice to NumPy array.
                 # This is necessary to be able to get the number of items in the slice.
                 key = np.asarray(range(key.stop)[key], dtype=int)
@@ -643,10 +645,10 @@ class PauliString(PauliObject):
             if len(key) != value.n_qudits():
                 raise ValueError(f"Cannot set item with key {key} and value {value}:\
                                  mismatching dimensions.")
+            if self._dimensions[key] != value.dimensions:
+                raise ValueError(f"Cannot change dimension of qudit(s)! key: {key} and value: {value}.")
             self._tableau[0, key] = value.x_exp
             self._tableau[0, key + self.n_qudits()] = value.z_exp
-            self._dimensions[key] = value.dimensions
-            self._lcm = np.lcm.reduce(self.dimensions)
 
         else:
             raise ValueError(f"Cannot set item with key {key} and value {value}.")
