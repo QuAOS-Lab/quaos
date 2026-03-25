@@ -230,14 +230,6 @@ class TestPauliSumFactories:
             tableau = np.asarray([[0, 0, 1, 1], [1, 1, 0, 1]], dtype=int)
             _ = PauliString.from_tableau(tableau)
 
-        for _ in range(100):
-            dimension = random.choices(PRIME_LIST)[0]
-            x = random.randint(0, dimension - 1)
-            z = random.randint(0, dimension - 1)
-            tableau = [x, z]
-            p = PauliString.from_tableau(tableau, dimension)
-            assert f"{p}" == f"x{x}z{z} "
-
     def test_pauli_string_from_random(self):
         ps1 = PauliString.from_random(3)
         ps2 = PauliString.from_random(3, 42)

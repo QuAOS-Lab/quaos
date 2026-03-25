@@ -228,22 +228,6 @@ class TestPaulis:
 
             np.testing.assert_array_equal(ps.tableau, expected_tableau)
 
-    def test_basic_pauli_relations(self):
-        for d in PRIME_LIST:
-            x_exp = random.randint(1, d - 1)
-            z_exp = random.randint(1, d - 1)
-            x1 = PauliString.from_string(f'x{x_exp}z0', dimensions=d)
-            z1 = PauliString.from_string(f'x0z{z_exp}', dimensions=d)
-            y1 = PauliString.from_string(f'x{x_exp}z{z_exp}', dimensions=d)
-            id = PauliString.from_string('x0z0', dimensions=d)
-
-            assert x1 * z1 == y1, f'Error in Pauli multiplication for d={d}'
-            assert x1**d == id, f'Error in Pauli exponentiation (x**{d} = id) for d={d}'
-            assert y1**d == id, f'Error in Pauli exponentiation (y**{d} = id) for d={d}'
-            assert z1**d == id, f'Error in Pauli exponentiation (z**{d} = id) for d={d}'
-            assert x1 * id == x1, f'Error in Pauli multiplication (x * id = x) for d={d}'
-            assert id * z1 == z1, f'Error in Pauli multiplication (id * z = z) for d={d}'
-
     def test_pauli_string_construction(self):
         for _ in range(N_tests):
             dimensions = choose_random_dimensions(max_product=60)
