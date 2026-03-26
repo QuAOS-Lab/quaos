@@ -602,9 +602,6 @@ class PauliString(PauliObject):
             key = np.asarray(key, dtype=int)
 
         if isinstance(key, np.ndarray):
-            if np.any(key >= self.n_qudits()) or np.any(key < 0):
-                raise ValueError(f"Key {key} contains indices out of bounds for \
-                                 PauliString with {self.n_qudits()} qudits.")
             tableau_mask = np.concatenate([key, key + self.n_qudits()])
             return PauliString(
                 self.tableau[0, tableau_mask], self.dimensions[key], self.weights, self.phases)
