@@ -119,7 +119,7 @@ class TestPaulis:
                 assert p_string1[0] == ps0, f'Error in __getitem__, expected {ps0}, got {p_string1[0]}'
                 assert p_string1[1] == ps1, f'Error in __getitem__, expected {ps1}, got {p_string1[1]}'
 
-    def test_pauli_string_get_and_set_item(self):
+    def test_pauli_string_get_and_set_one_item(self):
         for dim in PRIME_LIST:
             for _ in range(N_tests):
                 r1 = np.random.randint(0, dim)
@@ -142,6 +142,53 @@ class TestPaulis:
                 p_string1[0] = new_ps0
 
                 assert p_string1[0] == new_ps0, 'Error in PauliString setitem (first PauliString)'
+
+    def test_pauli_string_get_and_set_multiple_item(self):
+        for dim in PRIME_LIST:
+            for _ in range(N_tests):
+                r1 = np.random.randint(0, dim)
+                s1 = np.random.randint(0, dim)
+                r2 = np.random.randint(0, dim)
+                s2 = np.random.randint(0, dim)
+                r3 = np.random.randint(0, dim)
+                s3 = np.random.randint(0, dim)
+
+                p_string1 = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2} x{r3}z{s3}", dimensions=[dim, dim, dim])
+
+                # Test getitem with slice
+                p_test = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2}", dimensions=[dim, dim])
+                assert p_string1[0:2] == p_test, \
+                    f'Error in PauliString __getitem__ with slice, expected {p_test}, got {p_string1[0:2]}'
+
+                # Test getitem with np.ndarray
+                p_test = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2}", dimensions=[dim, dim])
+                assert p_string1[np.array(
+                    [0, 1])] == p_test, \
+                    f'Error in PauliString __getitem__ with np.ndarray, expected {p_test}, got {p_string1[np.array([0, 1])]}'
+
+                # Test getitem with list of integers
+                p_test = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2}", dimensions=[dim, dim])
+                assert p_string1[[0, 1]] == p_test, \
+                    f'Error in PauliString __getitem__ with list of integers, expected {p_test}, got {p_string1[[0, 1]]}'
+
+                new_r1 = np.random.randint(0, dim)
+                new_s1 = np.random.randint(0, dim)
+                new_r2 = np.random.randint(0, dim)
+                new_s2 = np.random.randint(0, dim)
+
+                new_ps0 = PauliString.from_string(f"x{new_r1}z{new_s1} x{new_r2}z{new_s2}", dimensions=[dim, dim])
+
+                # Test setitem with slice
+                p_string1[0:2] = new_ps0
+                assert p_string1[0:2] == new_ps0, 'Error in PauliString __setitem__ with slice'
+
+                # Test setitem with np.ndarray
+                p_string1[np.array([0, 2])] = new_ps0
+                assert p_string1[np.array([0, 2])] == new_ps0, 'Error in PauliString __setitem__ with np.ndarray'
+
+                # Test setitem with list of integers
+                p_string1[[1, 2]] = new_ps0
+                assert p_string1[[1, 2]] == new_ps0, 'Error in PauliString __setitem__ with list of integers'
 
     def test_pauli_sum_multiplication(self):
         for dim in PRIME_LIST:
