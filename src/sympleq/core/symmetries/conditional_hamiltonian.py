@@ -23,6 +23,18 @@ def group_indices(lst):
     return [indices for indices in index_dict.values()]
 
 
+def prime_factors(num):
+    factors = []
+    factor = 2
+    while (num >= 2):
+        if (num % factor == 0):
+            factors.append(factor)
+            num = num / factor
+        else:
+            factor += 1
+    return factors
+
+
 def flatten(list_of_lists):
     L = []
     for lst in list_of_lists:
@@ -275,7 +287,7 @@ class ConditionalHamiltonian:
         if qudit_dimension == 1:
             return G[0]
         else:
-            P_qudit = PauliSum.from_hilbert_space(G, [qudit_dimension])
+            P_qudit = PauliSum.from_hilbert_space(G, prime_factors(qudit_dimension)[::-1])
             return P_qudit
 
     def select_hamiltonian(self, selection: list[int]) -> PauliSum:
