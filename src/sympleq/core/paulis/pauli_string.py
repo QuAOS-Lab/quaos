@@ -595,7 +595,10 @@ class PauliString(PauliObject):
             key = np.asarray([key], dtype=int)
 
         # Return a (smaller) PauliString
-        elif isinstance(key, slice) or isinstance(key, list):
+        elif isinstance(key, slice):
+            key = np.asarray(range(key.stop)[key], dtype=int)
+
+        elif isinstance(key, list):
             key = np.asarray(key, dtype=int)
 
         if isinstance(key, np.ndarray):
@@ -633,8 +636,6 @@ class PauliString(PauliObject):
             if isinstance(key, int):
                 key = np.asarray([key], dtype=int)
             elif isinstance(key, slice):
-                # Trick to convert slice to NumPy array.
-                # This is necessary to be able to get the number of items in the slice.
                 key = np.asarray(range(key.stop)[key], dtype=int)
             elif isinstance(key, list):
                 key = np.asarray(key, dtype=int)
@@ -645,7 +646,7 @@ class PauliString(PauliObject):
             if len(key) != value.n_qudits():
                 raise ValueError(f"Cannot set item with key {key} and value {value}:\
                                  mismatching dimensions.")
-            if self._dimensions[key] != value.dimensions:
+            if np.any(self._dimensions[key] != value.dimensions):
                 raise ValueError(f"Cannot change dimension of qudit(s)! key: {key} and value: {value}.")
             self._tableau[0, key] = value.x_exp
             self._tableau[0, key + self.n_qudits()] = value.z_exp
