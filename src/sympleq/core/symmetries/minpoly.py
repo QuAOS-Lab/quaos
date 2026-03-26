@@ -8,79 +8,9 @@ from sympleq.core.symmetries.polynomials_fp import (poly_monic, poly_lcm, poly_t
                                                     poly_gcd, poly_sub, poly_mul, poly_add)
 
 
-class _SpanBasisSimple:
+class _SpanBasis:
     """
-    Span basis over GF(p) for vectors in GF(p)^n, no coefficient tracking.
-    Supports membership test without mutating the basis.
-    """
-    def __init__(self, n: int, p: int):
-        self.n = int(n)
-        self.p = int(p)
-        self.pivots: List[int] = []
-        self.vecs: List[np.ndarray] = []  # each 1D length n, pivot normalized to 1 (if p odd)
-
-    def _reduce_inplace(self, v: np.ndarray) -> None:
-        """Reduce v by current basis in-place."""
-        p = self.p
-        if p == 2:
-            for i, piv in enumerate(self.pivots):
-                if v[piv] & 1:
-                    v ^= self.vecs[i]
-        else:
-            for i, piv in enumerate(self.pivots):
-                a = int(v[piv] % p)
-                if a:
-                    v[:] = mod_p(v - a * self.vecs[i], p)
-
-    def in_span(self, v: np.ndarray) -> bool:
-        """Return True iff v lies in the current span (does not mutate the basis)."""
-        v = mod_p(np.asarray(v, dtype=np.int64).reshape(-1), self.p).copy()
-        if v.size != self.n:
-            raise ValueError("wrong vector length")
-        self._reduce_inplace(v)
-        return not np.any(v)  # v == 0
-
-    def add(self, v: np.ndarray) -> bool:
-        """Add v if independent; return True iff span increased."""
-        p = self.p
-        v = mod_p(np.asarray(v, dtype=np.int64).reshape(-1), p).copy()
-        if v.size != self.n:
-            raise ValueError("wrong vector length")
-
-        self._reduce_inplace(v)
-        nz = np.flatnonzero(v)
-        if nz.size == 0:
-            return False
-        piv = int(nz[0])
-
-        # Normalize pivot (odd p)
-        if p != 2:
-            inv = inv_mod_scalar(int(v[piv]), p)
-            v = mod_p(v * inv, p)
-
-        # Eliminate pivot from existing basis
-        if p == 2:
-            for i in range(len(self.vecs)):
-                if self.vecs[i][piv] & 1:
-                    self.vecs[i] ^= v
-        else:
-            for i in range(len(self.vecs)):
-                a = int(self.vecs[i][piv] % p)
-                if a:
-                    self.vecs[i] = mod_p(self.vecs[i] - a * v, p)
-
-        # Insert by pivot order
-        ins = 0
-        while ins < len(self.pivots) and self.pivots[ins] < piv:
-            ins += 1
-        self.pivots.insert(ins, piv)
-        self.vecs.insert(ins, v)
-        return True
-
-
-class _SpanBasisWithCombo:
-    """
-    Span basis over GF(p) with *fixed-length* combo vectors.
+    Span basis over GF(p) with fixed-length vectors.
 
     Invariant: each stored basis vector vecs[i] equals a linear combination of
     generator columns g_0,...,g_{gen_dim-1} given by combos[i, :gen_dim].
@@ -194,7 +124,7 @@ def minimal_poly_for_vector(F: np.ndarray, v: np.ndarray, p: int) -> np.ndarray:
     if v.size != n2:
         raise ValueError("v has wrong length")
 
-    B = _SpanBasisWithCombo(n2, p, max_gen=n2 + 1)
+    B = _SpanBasis(n2, p, max_gen=n2 + 1)
 
     w = v.copy()
     for t in range(0, n2 + 1):
@@ -208,7 +138,7 @@ def minimal_poly_for_vector(F: np.ndarray, v: np.ndarray, p: int) -> np.ndarray:
         # advance Krylov
         w = matmul_mod(F, w.reshape(-1, 1), p).reshape(-1)
 
-    raise RuntimeError("minimal_poly_for_vector: exceeded ambient dimension (unexpected)")
+    raise RuntimeError("minimal_poly_for_vector: exceeded ambient dimension ")
 
 
 def minimal_polynomial(F: np.ndarray, p: int) -> np.ndarray:
@@ -499,7 +429,7 @@ def factor_poly_over_fp(f: np.ndarray, p: int, rng: Optional[np.random.Generator
     Returns a list of irreducible factors, repeated by multiplicity.
     """
     if rng is None:
-        # Deterministic seed derived from the input polynomial (stable across runs)
+        # Deterministic seed derived from the input polynomial
         seed = zlib.adler32(poly_monic(f, p).tobytes()) & 0xFFFFFFFF
         rng = np.random.default_rng(seed)
 

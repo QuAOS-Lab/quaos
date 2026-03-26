@@ -134,7 +134,7 @@ class ConditionalHamiltonian:
             for b in commposite_blocks:
                 non_commuting_blocks.remove(b)
 
-        # turn list of commuting block indices into list of blocks (with qudit incices)
+        # turn list of commuting block indices into list of blocks (with qudit indices)
         source_blocks = []
         for block_index in commuting_blocks:
             if isinstance(block_index, int):
