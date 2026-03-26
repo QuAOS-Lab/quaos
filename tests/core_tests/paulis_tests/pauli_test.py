@@ -190,6 +190,46 @@ class TestPaulis:
                 p_string1[[1, 2]] = new_ps0
                 assert p_string1[[1, 2]] == new_ps0, 'Error in PauliString __setitem__ with list of integers'
 
+    def test_pauli_string_get_item_errors(self):
+        for dim in PRIME_LIST:
+
+            p_string1 = PauliString.from_string(f"x{1}z{0} x{0}z{1}", dimensions=[dim, dim])
+
+            with pytest.raises(IndexError):
+                _ = p_string1[2]
+
+            with pytest.raises(IndexError):
+                _ = p_string1[-3]
+
+            with pytest.raises(ValueError):
+                _ = p_string1['invalid']
+
+            with pytest.raises(ValueError):
+                _ = p_string1[1.0]
+
+    def test_pauli_string_set_item_errors(self):
+        for dim in PRIME_LIST:
+
+            p_string1 = PauliString.from_string(f"x{1}z{0} x{0}z{1}", dimensions=[dim, dim])
+
+            with pytest.raises(IndexError):
+                p_string1[2] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)
+
+            with pytest.raises(IndexError):
+                p_string1[-3] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)
+
+            with pytest.raises(ValueError):
+                p_string1['invalid'] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)
+
+            with pytest.raises(ValueError):
+                p_string1[1.0] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)
+
+            with pytest.raises(ValueError):
+                p_string1[1] = PauliString.from_string(f"x{1}z{0}", dimensions=dim + 1)
+
+            with pytest.raises(ValueError):
+                p_string1[1] = PauliString.from_string(f"x{1}z{0} x{0}z{2} x{1}z{0}", dimensions=[dim, dim, dim])
+
     def test_pauli_sum_multiplication(self):
         for dim in PRIME_LIST:
             for _ in range(N_tests):
