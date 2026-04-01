@@ -4,9 +4,8 @@ import pickle
 import warnings
 from typing import Callable
 from sympleq import int_to_bases
-from sympleq.core.paulis import PauliSum
+from sympleq.core.paulis import PauliSum, hamiltonian_mean
 from sympleq.core.circuits import Circuit
-from sympleq.core.paulis import hamiltonian_mean
 from sympleq.applications.measurement.allocation import (sort_hamiltonian, choose_measurement,
                                                          construct_circuit_list, update_data,
                                                          construct_diagnostic_circuits, standard_error_function,
