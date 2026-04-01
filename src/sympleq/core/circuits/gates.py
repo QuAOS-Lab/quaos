@@ -3,9 +3,10 @@ from abc import ABC
 import numpy as np
 from typing import Self
 import scipy.sparse as sp
+from typing import overload
 
 from sympleq._typing import IntArrayLike
-from sympleq.core.paulis import PauliObject
+from sympleq.core.paulis import PauliObject, PauliSum, PauliString
 from sympleq.core.paulis._typing import (
     TableauType, TableauLike, PhasesType, DimensionsType, HilbertOperator
 )
@@ -187,7 +188,19 @@ class Gate(ABC):
             np.all(self._phase_vector == other._phase_vector) and \
             np.all(self._exceptional_phase_vectors == other._exceptional_phase_vectors)
 
+    @overload
+    def act(self, pauli: PauliSum, qudits: int | tuple[int, ...]) -> PauliSum:
+        ...
+
+    @overload
+    def act(self, pauli: PauliString, qudits: int | tuple[int, ...]) -> PauliString:
+        ...
+
+    @overload
     def act(self, pauli: PauliObject, qudits: int | tuple[int, ...]) -> PauliObject:
+        ...
+
+    def act(self, pauli: PauliObject, qudits: int | tuple[int, ...]):
         """
         Apply this gate to a Pauli object at the specified qudit indices.
 
