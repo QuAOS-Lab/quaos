@@ -1,5 +1,12 @@
 import numpy as np
+import matplotlib.pyplot as plt
+import pickle
+import warnings
+from typing import Callable
+from sympleq import int_to_bases
 from sympleq.core.paulis import PauliSum
+from sympleq.core.circuits import Circuit
+from sympleq.core.paulis import hamiltonian_mean
 from sympleq.applications.measurement.allocation import (sort_hamiltonian, choose_measurement,
                                                          construct_circuit_list, update_data,
                                                          construct_diagnostic_circuits, standard_error_function,
@@ -13,13 +20,6 @@ from sympleq.applications.measurement.aquire_utils import (calculate_mean_estima
                                                            calculate_statistical_variance_estimate,
                                                            calculate_systematic_variance_estimate,
                                                            true_statistical_variance, config_params, aquire_params)
-from sympleq.core.circuits import Circuit
-from sympleq.utils import int_to_bases
-from sympleq.core.paulis.utils import hamiltonian_mean
-from typing import Callable
-import pickle
-import matplotlib.pyplot as plt
-import warnings
 
 
 class AquireConfig:
