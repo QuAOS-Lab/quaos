@@ -12,8 +12,7 @@ from sympleq.core.finite_field_solvers import get_linear_dependencies
 from sympleq.utils import bases_to_int
 from .pauli_object import PauliObject
 from .pauli_string import PauliString
-from .pauli import Pauli
-from ._typing import ScalarType, TableauType, DimensionsLike, PhasesLike, WeightsLike
+from ._typing import HilbertOperator, ScalarType, TableauType, DimensionsLike, PhasesLike, WeightsLike
 from .constants import DEFAULT_QUDIT_DIMENSION
 
 if TYPE_CHECKING:
@@ -51,26 +50,6 @@ class PauliSum(PauliObject):
         """
 
         P = cls(tableau, dimensions, weights, phases)
-        P._sanity_check()
-
-        return P
-
-    @classmethod
-    def from_pauli(cls, pauli: Pauli) -> PauliSum:
-        """
-        Create a PauliSum instance from a single Pauli.
-
-        Parameters
-        ----------
-        pauli : Pauli
-            The Pauli to convert into a PauliSum.
-
-        Returns
-        -------
-        PauliSum
-            A PauliSum instance representing the given Pauli operator.
-        """
-        P = cls(pauli.tableau, pauli.dimensions, pauli.weights, pauli.phases)
         P._sanity_check()
 
         return P
@@ -439,11 +418,6 @@ class PauliSum(PauliObject):
 
     @overload
     def __getitem__(self,
-                    key: tuple[int, int]) -> Pauli:
-        ...
-
-    @overload
-    def __getitem__(self,
                     key: int | tuple[int, slice | list[int] | np.ndarray]) -> PauliString:
         ...
 
@@ -457,9 +431,9 @@ class PauliSum(PauliObject):
                     tuple[list[int], np.ndarray]) -> PauliSum:
         ...
 
-    def __getitem__(self, key) -> Pauli | PauliString | PauliSum:
+    def __getitem__(self, key) -> PauliString | PauliSum:
         """
-        Retrieve a Pauli,  PauliString, or (smaller) PauliSum from the PauliSum.
+        Retrieve a PauliString, or (smaller) PauliSum from the PauliSum.
 
         Parameters
         ----------
@@ -469,8 +443,8 @@ class PauliSum(PauliObject):
 
         Returns
         -------
-        PauliString or Pauli
-            The selected Pauli operator(s). Returns a single Pauli if `key` is an int, otherwise returns a PauliString.
+        PauliString
+            The selected Pauli operator(s)
 
         Raises
         ------
@@ -503,8 +477,8 @@ class PauliSum(PauliObject):
             if isinstance(pauli_indices, int):
                 if isinstance(qudit_indices, int):
                     # Single Pauli
-                    return Pauli(self.tableau[pauli_indices][qudit_indices],
-                                 self.dimensions[qudit_indices])
+                    return PauliString(self.tableau[pauli_indices][qudit_indices],
+                                       self.dimensions[qudit_indices])
 
                 # Sub-PauliString
                 if isinstance(qudit_indices, (list, np.ndarray, slice)):
@@ -515,12 +489,6 @@ class PauliSum(PauliObject):
             return self.get_subspace(qudit_indices, pauli_indices)
 
         raise TypeError(f"Key must be int or slice, not {type(key)}")
-
-    @overload
-    def __setitem__(self,
-                    key: tuple[int, int],
-                    value: 'Pauli'):
-        ...
 
     @overload
     def __setitem__(self,
@@ -597,9 +565,6 @@ class PauliSum(PauliObject):
 
         if isinstance(A, ScalarType):
             return PauliSum(self.tableau, self.dimensions, self.weights * A, self.phases)
-
-        if isinstance(A, Pauli):
-            return self * A.as_pauli_sum()
 
         if isinstance(A, PauliString):
             return self * A.as_pauli_sum()
@@ -720,8 +685,6 @@ class PauliSum(PauliObject):
         """
         if isinstance(A, PauliString):
             A = PauliSum.from_pauli_strings(A)
-        elif isinstance(A, Pauli):
-            A = PauliSum.from_pauli(A)
 
         new_dimensions = np.concatenate((self.dimensions, A.dimensions))
         new_lcm = np.lcm.reduce(new_dimensions)
@@ -771,6 +734,19 @@ class PauliSum(PauliObject):
         Array of Z exponents for each qudit.
         """
         return self._tableau[:, self.n_qudits():]
+
+    def is_identity(self) -> bool:
+        """
+        Check if the PauliSum represents the identity operator.
+
+        Returns
+        -------
+        bool
+            True if the PauliSum is the identity operator, False otherwise.
+        """
+        P = self.copy()
+        P.combine_equivalent_paulis()
+        return bool(np.all(P._tableau == 0)) and bool(np.all(P._phases == 0)) and bool(np.all(P._weights == 1))
 
     def combine_equivalent_paulis(self):
         """
@@ -922,24 +898,6 @@ class PauliSum(PauliObject):
         # NOTE: We pass a view to the tableau row and the dimensions,
         #       meaning that they could be modified from the PauliString.
         return PauliString(self.tableau[index], self.dimensions, self.weights[index], self.phases[index])
-
-    def select_pauli(self, index: tuple[int, int]) -> Pauli:
-        """
-        Selects a Pauli from the PauliSum.
-
-        Parameters
-        ----------
-        pauli_index : (int, int)
-            The indices of the Pauli to select.
-
-        Returns
-        -------
-        Pauli
-            The selected Pauli.
-        """
-        # NOTE: We pass a view to the tableau row and the dimensions,
-        #       meaning that they could be modified from the PauliString.
-        return Pauli(self.tableau[index], self.dimensions)
 
     def to_file(self, path: str | Path) -> None:
         """
@@ -1122,7 +1080,7 @@ class PauliSum(PauliObject):
         return PauliSum(tableau=sub_tableau, dimensions=sub_dims,
                         weights=sub_weights, phases=sub_phases)
 
-    def to_hilbert_space(self, pauli_string_index: int | None = None) -> sp.csr_matrix:
+    def to_hilbert_space(self, pauli_string_index: int | None = None) -> HilbertOperator:
         """
         Get the matrix form of the PauliSum as a sparse matrix. This is inclusive of the weights.
 

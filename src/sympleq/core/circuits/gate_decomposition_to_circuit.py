@@ -1,9 +1,11 @@
+from __future__ import annotations
 import numpy as np
 from sympleq.core.circuits import Circuit
 from sympleq.core.circuits.circuits import GateSpec
 from sympleq.core.circuits.utils import symplectic_form, is_symplectic
 from sympleq.core.circuits.gates import GATES, Gate, PauliGate
 from sympleq.core.paulis import PauliString
+from sympleq.core.paulis._typing import TableauType, PhasesType, DimensionsLike
 from collections import deque
 
 # Convenience aliases for singleton gates
@@ -33,7 +35,7 @@ def mm_p(A, B, p):
     return mod_p(A @ B, p)
 
 
-def inv_gfp(A: np.ndarray, p: int) -> np.ndarray:
+def inv_gfp(A: TableauType, p: int) -> TableauType:
     """Inverse over GF(p) by Gauss–Jordan."""
     A = mod_p(A.copy(), p)
     n = A.shape[0]
@@ -81,7 +83,7 @@ def _is_invertible_mod(A: np.ndarray, p: int) -> bool:
 # ---------- preconditioner (BFS over Gate objects) ----------
 
 
-def ensure_invertible_A_circuit(F: np.ndarray, p: int, max_depth: int | None = None) -> Circuit:
+def ensure_invertible_A_circuit(F: TableauType, p: int, max_depth: int | None = None) -> Circuit:
     """
     Find a Circuit C_pre such that the A-block of (C_pre.full_symplectic(n) @ F) is invertible mod p.
     Returns the Circuit (does NOT modify F).
@@ -233,7 +235,7 @@ def _emit_local_ops_for_D(index: int, u: int, p: int) -> list[GateSpec]:
 
 
 # ---- MAIN: synthesize M = diag(A, (A^T)^{-1}) as a gate list (right-multiplication) ----
-def synth_linear_A_to_gates(n: int, A: np.ndarray, p: int) -> list[GateSpec]:
+def synth_linear_A_to_gates(n: int, A: TableauType, p: int) -> list[GateSpec]:
     """
     RIGHT-multiplication consistent synthesis of [[A,0],[0,(A^T)^{-1}]].
 
@@ -372,7 +374,7 @@ def _bfs_2q_to_target(n: int, p: int, target_full: np.ndarray, i: int, j: int, m
     raise RuntimeError("2q BFS failed (increase depth or check generators).")
 
 
-def synth_lower_from_symmetric(n: int, C_sym: np.ndarray, p: int) -> list[GateSpec]:
+def synth_lower_from_symmetric(n: int, C_sym: TableauType, p: int) -> list[GateSpec]:
     """
     Build L(C) = [[I,0],[C,I]] with right-multiplication convention.
     - Diagonals: C_ii * PHASE(i)
@@ -407,7 +409,7 @@ def synth_lower_from_symmetric(n: int, C_sym: np.ndarray, p: int) -> list[GateSp
     return ops
 
 
-def synth_upper_from_symmetric_via_H(n: int, S_sym: np.ndarray, p: int) -> list[GateSpec]:
+def synth_upper_from_symmetric_via_H(n: int, S_sym: TableauType, p: int) -> list[GateSpec]:
     """
     Build R(S) = [[I,S],[0,I]] using the H-sandwich:
       R(S) = (H_all) · L(-S) · (H_all)^(-1)   (right-multiplication)
@@ -430,7 +432,7 @@ def _add_ops_to_circuit(circuit: Circuit, ops: list[GateSpec]) -> None:
         circuit.add_gate(gate, *qudits)
 
 
-def decompose_symplectic_to_circuit(F: np.ndarray, p: int, *, check: bool = True) -> Circuit:
+def decompose_symplectic_to_circuit(F: TableauType, p: int, *, check: bool = True) -> Circuit:
     """
     Return a Circuit whose composite symplectic equals F (mod p),
     consistent with your RIGHT-multiplication convention for Pauli action.
@@ -504,7 +506,7 @@ def decompose_symplectic_to_circuit(F: np.ndarray, p: int, *, check: bool = True
     return C_tot
 
 
-def solve_g_for_phase_delta(delta_h: np.ndarray, p: int) -> np.ndarray | None:
+def solve_g_for_phase_delta(delta_h: PhasesType, p: int) -> TableauType | None:
     """
     Solve 2 Ω g = delta_h (mod p) for prime p (odd only).
     Returns g or None if unsolvable (e.g., p=2 and delta_h not in image).
@@ -524,15 +526,15 @@ def solve_g_for_phase_delta(delta_h: np.ndarray, p: int) -> np.ndarray | None:
     return g
 
 
-def pauli_gate_for_phase_fix(h_raw: np.ndarray,
-                             h_target: np.ndarray,
-                             dimensions: list[int] | np.ndarray) -> Gate | None:
+def pauli_gate_for_phase_fix(h_raw: PhasesType,
+                             h_target: PhasesType,
+                             dimensions: DimensionsLike) -> Gate | None:
     """
     Build a PauliGate that corrects (part of) delta_h = h_target - h_raw by Pauli conjugation.
     Uses per-wire dims via PauliString with your global 2*lcm phase ring.
     Returns None if there is no nontrivial solvable component (common for p=2).
     """
-    dims = list(map(int, dimensions))
+    dims = np.asarray(dimensions, dtype=int)
     n = len(dims)
     lcm = int(np.lcm.reduce(dims))
     # We’ll fix each prime-power component via CRT in practice; for now, do per-prime p where possible.
@@ -558,10 +560,10 @@ def pauli_gate_for_phase_fix(h_raw: np.ndarray,
     return PauliGate(pauli)
 
 
-def pauli_correction_gate(F: np.ndarray,
-                          h_body: np.ndarray,
-                          h_target: np.ndarray,
-                          dimensions: list[int]) -> "PauliGate":
+def pauli_correction_gate(F: TableauType,
+                          h_body: PhasesType,
+                          h_target: PhasesType,
+                          dimensions: DimensionsLike) -> PauliGate:
     """
     Build a PauliGate that fixes the phase vector under right-multiplication:
         h_out = h_body + F^T * (2 Ω v)  (mod 2*lcm)
@@ -570,12 +572,10 @@ def pauli_correction_gate(F: np.ndarray,
     For odd p: exact correction.
     For p=2: corrects the even part (the best Pauli can do).
     """
-    import numpy as np
-
-    dims = list(map(int, dimensions))
+    dims = np.asarray(dimensions, dtype=int)
     assert len(set(dims)) == 1, ("Mixed dimension qudits not supported. As there are no entangling mixed qudit gates,"
                                  " split the system into qudits of equal dimension and run separately.")
-    p = dims[0]
+    p = int(dims[0])
 
     n2 = F.shape[0]
     assert n2 % 2 == 0
@@ -632,7 +632,7 @@ def pauli_correction_gate(F: np.ndarray,
         return PauliGate(pauli)
 
 
-def gate_to_circuit(big_gate: "Gate", dimensions: list[int] | np.ndarray) -> "Circuit":
+def gate_to_circuit(big_gate: Gate, dimensions: DimensionsLike) -> Circuit:
     """
     Decompose a single Gate (F, h) into a Circuit of Clifford generators
     (Hadamard/PHASE/CX/SWAP/…) followed by a final PauliGate that fixes the
@@ -651,9 +651,9 @@ def gate_to_circuit(big_gate: "Gate", dimensions: list[int] | np.ndarray) -> "Ci
     """
     # Pull target data
     F_target = big_gate.symplectic
-    dims = list(map(int, dimensions))
+    dims = np.asarray(dimensions, dtype=int)
     assert len(set(dims)) == 1, "gate_to_circuit assumes a uniform local dimension."
-    p = dims[0]
+    p = int(dims[0])
     h_target = big_gate.phase_vector(p)
 
     n2 = F_target.shape[0]

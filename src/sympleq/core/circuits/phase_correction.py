@@ -1,12 +1,14 @@
+from __future__ import annotations
 import numpy as np
 import galois
 from sympleq.core.circuits.utils import symplectic_form
 from sympleq.core.paulis import PauliString
 from sympleq.core.circuits.gates import PauliGate, Gate
+from sympleq.core.paulis._typing import TableauType, PhasesType, DimensionsLike
 from sympleq.core.finite_field_solvers import solve_linear_system_over_gf
 
 
-def pauli_phase_correction(H: np.ndarray, delta_phi_2p: np.ndarray, p: int, dimensions: list[int] | None = None):
+def pauli_phase_correction(H: TableauType, delta_phi_2p: PhasesType, p: int, dimensions: DimensionsLike | None = None):
     """
     Given tableau H (k x 2n, rows [x|z]) and a target Δφ (mod 2L),
     attempt to construct a Clifford whose action adjusts the phases by Δφ.
