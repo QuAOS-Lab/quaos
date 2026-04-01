@@ -178,17 +178,23 @@ def embed_unitary(U_local: HilbertOperator,
     D_rest = int(np.prod([dims[k] for k in rest]) if rest else 1)
     D_total = int(np.prod(dims))
 
-    # Build permutation matrix P that reorders tensor factors to [sel..., rest...]
+    # Build permutation matrix P that reorders tensor factors to [sel..., rest...].
+    # Construct in COO-style triplets and convert once to CSR to avoid expensive
+    # repeated structural updates on CSR.
     dims_perm = [dims[k] for k in sel + rest]
-    P = sp.csr_matrix(np.zeros((D_loc_expected * D_rest, D_total), dtype=complex))
+    n_states = D_loc_expected * D_rest
+    rows = np.empty(n_states, dtype=int)
+    cols = np.empty(n_states, dtype=int)
+    data = np.ones(n_states, dtype=complex)
 
-    # Iterate over all basis states
-    for q in np.ndindex(*dims):
+    for idx, q in enumerate(np.ndindex(*dims)):
         q = list(q)
         old_idx = _multi_index_to_linear(q, dims)
         q_perm = [q[k] for k in (sel + rest)]
         new_idx = _multi_index_to_linear(q_perm, dims_perm)
-        P[new_idx, old_idx] = 1.0
+        rows[idx] = new_idx
+        cols[idx] = old_idx
+    P = sp.csr_matrix((data, (rows, cols)), shape=(n_states, D_total))
 
     # Construct full operator: P^T (U_local ⊗ I_rest) P
     U_kron = sp.kron(U_local, sp.eye(D_rest))

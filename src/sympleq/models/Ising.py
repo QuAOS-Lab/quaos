@@ -88,7 +88,13 @@ def ising_chain_hamiltonian(n_spins: int,
     return PauliSum.from_pauli_strings(paulis, weights=weights, phases=None)
 
 
-def ising_2d_hamiltonian(n_x: int, n_y: int, J_zz: float, h_x: float, periodic: bool = False) -> PauliSum:
+def ising_2d_hamiltonian(
+    n_x: int,
+    n_y: int,
+    J_zz: float,
+    h_x: float | np.ndarray | list,
+    periodic: bool = False,
+) -> PauliSum:
     """
     Constructs the Hamiltonian of a 2D Ising model with nearest-neighbor interactions
     and a transverse field.
@@ -99,8 +105,9 @@ def ising_2d_hamiltonian(n_x: int, n_y: int, J_zz: float, h_x: float, periodic: 
         The number of spins in the x- and y-directions, respectively.
     J_zz : float
         The strength of the nearest-neighbor interactions.
-    h_x : float
-        The strength of the transverse field.
+    h_x : float or np.ndarray or list
+        The strength of the transverse field. If array-like, must have length
+        ``n_x * n_y`` in row-major site order.
     periodic : bool, optional
         Whether the chain is periodic in both x- and y-directions (default: False).
 
@@ -113,6 +120,15 @@ def ising_2d_hamiltonian(n_x: int, n_y: int, J_zz: float, h_x: float, periodic: 
     weights = []
     n_spins = n_x * n_y
     dims = [2 for _ in range(n_spins)]
+
+    if isinstance(h_x, np.ndarray) or isinstance(h_x, list):
+        h_x = np.asarray(h_x, dtype=float).reshape(-1)
+        if h_x.shape != (n_spins,):
+            raise ValueError(f"h_x must be a scalar or a vector of size {n_spins}")
+    elif isinstance(h_x, float) or isinstance(h_x, int):
+        h_x = float(h_x) * np.ones(n_spins)
+    else:
+        raise ValueError("h_x must be a float, numpy array, or list")
 
     def site_index(x, y):
         """Map 2D coordinates to 1D index in row-major order."""
@@ -146,7 +162,7 @@ def ising_2d_hamiltonian(n_x: int, n_y: int, J_zz: float, h_x: float, periodic: 
         x = np.zeros(n_spins, dtype=int)
         x[i] = 1
         paulis.append(PauliString.from_exponents(x, np.zeros(n_spins, dtype=int), dims))
-        weights.append(h_x)
+        weights.append(h_x[i])
 
     return PauliSum.from_pauli_strings(paulis, weights=weights, phases=None)
 

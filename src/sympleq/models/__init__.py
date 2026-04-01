@@ -4,9 +4,15 @@ from .Ising import (
     ising_chain_hamiltonian,
     ising_lower_triangular_hamiltonian,
 )
+from .heisenberg import (
+    all_to_all_heisenberg_hamiltonian,
+    heisenberg_2d_hamiltonian,
+)
 from .pxp import pxp_model
 
 __all__ = ['ToricCode', 'ising_2d_hamiltonian',
            'ising_chain_hamiltonian',
            'ising_lower_triangular_hamiltonian',
+           'all_to_all_heisenberg_hamiltonian',
+           'heisenberg_2d_hamiltonian',
            'pxp_model']

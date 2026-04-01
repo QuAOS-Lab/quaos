@@ -10,7 +10,7 @@ class ToricCode:
         Ny: int,
         c_x: float,
         c_z: float,
-        c_g: float,
+        c_g: float | list[float] | np.ndarray,
         periodic: bool = True,
         d: int = 2,
         hermitian: bool = True,
@@ -21,7 +21,6 @@ class ToricCode:
         self.periodic = bool(periodic)
         self.c_x = float(c_x)
         self.c_z = float(c_z)
-        self.c_g = float(c_g)
 
         self.d = int(d)
         if self.d < 2:
@@ -34,6 +33,23 @@ class ToricCode:
             if self.periodic
             else self.Nx * (self.Ny - 1) + self.Ny * (self.Nx - 1)
         )
+        self.c_g = self._normalize_gauge_coeffs(c_g)
+
+    def _normalize_gauge_coeffs(self, c_g: float | list[float] | np.ndarray) -> float | np.ndarray:
+        if np.isscalar(c_g):
+            return float(c_g)
+
+        c_g_arr = np.asarray(c_g, dtype=float).reshape(-1)
+        if c_g_arr.shape[0] != self.n_qubits:
+            raise ValueError(
+                f"Vector c_g must have length {self.n_qubits}, got {c_g_arr.shape[0]}."
+            )
+        return c_g_arr.copy()
+
+    def _gauge_coeffs(self) -> np.ndarray:
+        if np.isscalar(self.c_g):
+            return np.full(self.n_qubits, float(self.c_g), dtype=float)
+        return np.asarray(self.c_g, dtype=float).reshape(-1)
 
     def list_qubits(self) -> list[tuple[str, int, int]]:
         """
@@ -361,9 +377,10 @@ class ToricCode:
                 add_term_and_hc("x", edge_exp, self.c_x)
 
         # Gauge terms (single-edge Z)
-        if abs(self.c_g) > 1e-12:
-            for edge_exp in gauges:
-                add_term_and_hc("z", edge_exp, self.c_g)
+        gauge_coeffs = self._gauge_coeffs()
+        if np.any(np.abs(gauge_coeffs) > 1e-12):
+            for edge_exp, coeff in zip(gauges, gauge_coeffs):
+                add_term_and_hc("z", edge_exp, float(coeff))
 
         items = []
         for (x_t, z_t), c in terms.items():
@@ -425,14 +442,15 @@ class ToricCode:
                 coeffs.append(self.c_x)
 
         # Gauge terms (Z on each edge)
-        if abs(self.c_g) > 1e-12:
-            for edge_list in gauges:
+        gauge_coeffs = self._gauge_coeffs()
+        if np.any(np.abs(gauge_coeffs) > 1e-12):
+            for edge_list, coeff in zip(gauges, gauge_coeffs):
                 word = []
                 edge_set = set(edge_list)
                 for q in range(Nq):
                     word.append('x0z1' if q in edge_set else 'x0z0')
                 terms.append(' '.join(word))
-                coeffs.append(self.c_g)
+                coeffs.append(float(coeff))
 
         return terms, coeffs
 
