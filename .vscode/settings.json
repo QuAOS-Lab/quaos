@@ -53,5 +53,9 @@
   "jupyter.notebookFileRoot": "${workspaceFolder}",
   "task.autoDetect": "off",
   "python-envs.pythonProjects": [],
-  "editor.inlineSuggest.enabled": true
+  "editor.inlineSuggest.enabled": true,
+  "sonarlint.connectedMode.project": {
+    "connectionId": "quaos-lab",
+    "projectKey": "QuAOS-Lab_SympleQ"
+  }
 }
