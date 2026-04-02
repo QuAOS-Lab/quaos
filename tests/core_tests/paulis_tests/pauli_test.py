@@ -6,8 +6,7 @@ import scipy.sparse as sp
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.paulis import PauliSum, PauliString
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
-from sympleq.utils import complex_phase_value
-from sympleq.models.symmetric_hamiltonian import int_to_bases
+from sympleq import int_to_bases, complex_phase_value
 from tests import PRIME_LIST, choose_random_dimensions
 
 
