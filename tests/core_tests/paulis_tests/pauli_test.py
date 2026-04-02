@@ -5,7 +5,7 @@ from numpy.random import Generator as RNGGenerator, default_rng
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.paulis import PauliSum, PauliString
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
-from sympleq.models.symmetric_hamiltonian import int_to_bases
+from sympleq import int_to_bases
 from tests import PRIME_LIST, choose_random_dimensions
 
 
