@@ -232,6 +232,76 @@ def ising_lower_triangular_hamiltonian(L: int, J_zz: float, h_x: float) -> Pauli
     return PauliSum.from_pauli_strings(paulis, weights=weights, phases=None)
 
 
+def modified_ising_ladder_hamiltonian(n_x: int, n_y: int, J_zz: float, h_x: float) -> PauliSum:
+    """
+    Construct a transverse-field Ising Hamiltonian on a "ladder" geometry with
+    n_x rungs and n_y legs (n_x >= 1, n_y >= 2) with the following connectivity:
+
+    o- -o- -o- -o
+    | X | X | X |   ...
+    o- -o- -o- -o
+
+    Here the X represent couplings that couple the two chains at the ith and i+1th rungs
+    these are the additional couplings that make this different from the standard 2D Ising model on a ladder geometry.
+
+    Geometry:
+      - Sites are integer coordinates (x, y) with 0 <= x < n_x and 0 <= y < n_y.
+      - Standard nearest-neighbor ZZ couplings are included on the open n_x x n_y square lattice.
+      - Additional ZZ couplings are added on both diagonals of each elementary plaquette,
+        i.e. between (x, y) and (x + 1, y + 1), and between (x + 1, y) and (x, y + 1).
+      - Uniform transverse X field is added on every site.
+
+    Parameters
+    ----------
+    n_x, n_y : int
+        Number of rungs and legs in the ladder, respectively. Must satisfy n_x >= 1 and n_y >= 2.
+    J_zz : float
+        Coupling strength of ZZ terms.
+    h_x
+        Transverse-field strength for single-site X terms.
+
+    Returns
+    -------
+    PauliSum
+        The Hamiltonian as a PauliSum object on N = n_x * n_y qubits.
+    """
+    if int(n_x) < 1:
+        raise ValueError("n_x must be at least 1.")
+    if int(n_y) < 2:
+        raise ValueError("n_y must be at least 2.")
+
+    H = ising_2d_hamiltonian(int(n_x), int(n_y), J_zz, h_x, periodic=False)
+    n_spins = int(n_x) * int(n_y)
+    dims = [2 for _ in range(n_spins)]
+
+    def site_index(x: int, y: int) -> int:
+        return y * int(n_x) + x
+
+    diagonal_terms: list[PauliString] = []
+    diagonal_weights: list[float] = []
+    z0 = np.zeros(n_spins, dtype=int)
+
+    for x in range(int(n_x) - 1):
+        for y in range(int(n_y) - 1):
+            for i, j in (
+                (site_index(x, y), site_index(x + 1, y + 1)),
+                (site_index(x + 1, y), site_index(x, y + 1)),
+            ):
+                zz = z0.copy()
+                zz[i] = 1
+                zz[j] = 1
+                diagonal_terms.append(PauliString.from_exponents(z0, zz, dims))
+                diagonal_weights.append(J_zz)
+
+    if not diagonal_terms:
+        return H
+
+    H_modified = H + PauliSum.from_pauli_strings(diagonal_terms, weights=diagonal_weights, phases=None)
+    H_modified.combine_equivalent_paulis()
+    H_modified.remove_zero_weight_paulis()
+    return H_modified
+
+
 def heuristic_clifford_symmetry(n_spins: int, periodic: bool = False) -> Gate:
     A = np.zeros((n_spins, n_spins), dtype=int)
     B = np.ones((n_spins, n_spins), dtype=int)
