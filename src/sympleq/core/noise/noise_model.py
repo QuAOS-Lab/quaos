@@ -403,3 +403,77 @@ class CompositeNoise(NoiseModel):
 
     def kraus_probabilities(self) -> list[float]:
         return self._probabilities
+
+
+class GenericNoise(NoiseModel):
+    """
+    A noise model defined by explicit Kraus gate–probability pairs.
+
+    Unlike :class:`CompositeNoise`, which derives its operators by merging
+    other noise models, ``GenericNoise`` accepts the gates and their
+    probabilities directly.
+    """
+
+    def __str__(self) -> str:
+        pairs = ", ".join(f"({p:.4f}, {g.name})" for p, g in zip(self._probabilities, self._gates))
+        return f"GenericNoise([{pairs}])"
+
+    def __init__(self, probabilities: list[float], gates: list[Gate], rng: RNGGenerator) -> None:
+        """
+        Initialize a generic noise model.
+
+        Parameters
+        ----------
+        probabilities : list[float]
+            Kraus probabilities for each gate. Must sum to 1.
+        gates : list[Gate]
+            Kraus gates corresponding to each probability.
+        rng : numpy.random.Generator
+            Random number generator for trajectory sampling.
+
+        Raises
+        ------
+        ValueError
+            If ``probabilities`` and ``gates`` have different lengths.
+        """
+        if len(probabilities) != len(gates):
+            raise ValueError(
+                f"Probabilities and gates lists must have the same length (got {len(probabilities)} and {len(gates)}).")
+        self._probabilities = probabilities
+        self._gates = gates
+        self._n_qudits = max(g.n_qudits for g in self._gates)
+
+        super().__init__(rng)
+
+    @classmethod
+    def from_probabilities_and_gates(cls, probabilities: list[float], gates: list[Gate],
+                                     rng: RNGGenerator | None = None) -> GenericNoise:
+        """
+        Create a GenericNoise from probabilities and gates.
+
+        Parameters
+        ----------
+        probabilities : list[float]
+            Kraus probabilities for each gate.
+        gates : list[Gate]
+            Kraus gates corresponding to each probability.
+        rng : numpy.random.Generator or None, optional
+            Random number generator. If ``None``, a default is used.
+
+        Returns
+        -------
+        GenericNoise
+            A new GenericNoise instance.
+        """
+        if rng is None:
+            rng = default_rng()
+        return cls(probabilities, gates, rng)
+
+    def n_qudits(self) -> int:
+        return self._n_qudits
+
+    def kraus_gates(self) -> list[Gate]:
+        return self._gates
+
+    def kraus_probabilities(self) -> list[float]:
+        return self._probabilities
