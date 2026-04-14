@@ -237,13 +237,7 @@ class NoiseModel(ABC):
 
         # E.g.: single qudit noise on multiple-qudits gate.
         # Act independently on each qudit.
-            unitaries = [embed_unitary(kraus_gate.local_unitary(dimension), qudits, dimensions)
-                         for kraus_gate in self.kraus_gates()]
-            return np.sum([probability * (unitary @ rho @ unitary.conjugate().transpose())
-                           for unitary, probability in zip(unitaries, self.kraus_probabilities())])
-
         if kraus_n_qudits == 1:
-            # Act independently on each qudit.
             # Get all gates combinations
             all_gates_combinations = list(itertools.product(self.kraus_gates(), repeat=n_qudits))
             # Pray the order is correct, like, do it
@@ -331,7 +325,6 @@ class DepolarizingNoise(NoiseModel):
         # Ki =  sqrt(1 − p0/3) σi
         if error_rate > 1.0 or error_rate < 0.0:
             raise ValueError(f"Error rate should be between 0.0 and 1.0 (got {error_rate}).")
-        self.p0 = 1.0 - 0.75 * error_rate
         self.p0 = 1.0 - 0.75 * error_rate
         self._probabilities = [self.p0, (1.0 - self.p0) / 3, (1.0 - self.p0) / 3, (1.0 - self.p0) / 3]
 
