@@ -1,18 +1,8 @@
 import numpy as np
+from sympleq import int_to_bases
 from sympleq.core.paulis import PauliSum
 from sympleq.core.circuits import Circuit
 from collections import defaultdict
-
-
-def int_to_bases(a, dims):
-    dims = np.flip(dims)
-    aa = [a % dims[0]]
-    for i in range(1, len(dims)):
-        s0 = aa[0] + sum([aa[i1] * dims[i1 - 1] for i1 in range(1, i)])
-        s1 = np.prod(dims[:i])
-        aa.append(((a - s0) // s1) % dims[i])
-    dims = np.flip(dims)
-    return np.flip(np.array(aa))
 
 
 def group_indices(lst):
