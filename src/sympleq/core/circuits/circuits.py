@@ -59,7 +59,7 @@ class Circuit:
 
         self._noise_model_per_gate: list[NoiseModel | None] = [None] * self.n_gates()
         self._use_unitary_cache = use_unitary_cache
-        self._unitary_cache: dict[tuple, tuple[HilbertOperator, HilbertOperator]] = {}
+        self._unitary_cache: dict[tuple[Gate, tuple[int, ...]], tuple[HilbertOperator, HilbertOperator]] = {}
 
     @property
     def gates(self) -> list[Gate]:
@@ -577,6 +577,8 @@ class Circuit:
         for gate, qudits, noise in zip(self._gates, self._qudit_indices, self._noise_model_per_gate):
             key = (gate, qudits)
             if key not in self._unitary_cache:
+                # FIXME: we should delegate to gate.act_in_hilbert_space.
+                # Problem is that it is unclear how to use the cache AND delegate to Gate method.
                 U = embed_unitary(gate.local_unitary(self.dimensions[qudits[0]]), qudits, self.dimensions)
                 if self._use_unitary_cache:
                     self._unitary_cache[key] = (U, U.conj().T)
@@ -584,6 +586,10 @@ class Circuit:
 
             rho = U @ rho @ U_dag
             if noise is not None:
+                # FIXME: Add cache also for noise gates.
+                # Not trivial since noise modle does not know about circuit dimensions.
+                # A more consistent way would be to standardize the cache, thus using also the dimensions
+                # in the key.
                 rho = noise.act_in_hilbert_space(rho, qudits, self.dimensions)
 
         return rho

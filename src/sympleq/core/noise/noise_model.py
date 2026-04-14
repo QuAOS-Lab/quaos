@@ -20,8 +20,8 @@ The probability of each Kraus operator (used for quantum trajectory sampling) is
 
 We take two simplifying assumptions:
 **Uncorrelated noise**
-For uncorrelated noise on multiple qudits, the multi-qudit quantities are
-tensor products of single-qudit quantities.
+If the noise model is defined on a single qudit, when acting on a multiple-qudits gate it acts
+on each qudit independently. It is still possible to define correlated noise models ab initio.
 
 **Clifford noise**
 For now, we assume that Kraus operators are Clifford. This simplifies greatly how they act on PauliSums
@@ -177,6 +177,7 @@ class NoiseModel(ABC):
             for qudit in qudits:
                 pauli_sum = kraus_gate.act(pauli_sum, qudit)
         # FIXME: handle generic case, else:...
+        # this is for kraus_n_qudits > 1, e.g. 2-qudits noise on 3-qudits gate.
 
         return pauli_sum
 
@@ -212,8 +213,13 @@ class NoiseModel(ABC):
             assert output_rho is not None
             return output_rho
 
-        dimension = dimensions[qudits[0]]
         n_qudits = len(qudits)
+        if n_qudits == 0:
+            raise ValueError("Noise model must act on at least one qudit.")
+
+        dimension = dimensions[qudits[0]]
+        if not np.all(dimensions[qudits] == dimension):
+            raise ValueError(f"Noise model must act on qudits with equal dimensions ( got {dimensions[qudits]}).")
 
         kraus_n_qudits = self.n_qudits()
         if n_qudits < kraus_n_qudits:
@@ -221,7 +227,7 @@ class NoiseModel(ABC):
 
         output_rho: HilbertOperator | None = None
 
-        # E.g.: single qudit noise on single qudit gate
+        # E.g.: single qudit noise on single-qudit gate
         cum_prob = 0
         if n_qudits == kraus_n_qudits:
             unitaries = [embed_unitary(kraus_gate.local_unitary(dimension), qudits, dimensions)
@@ -229,9 +235,9 @@ class NoiseModel(ABC):
             return np.sum([probability * (unitary @ rho @ unitary.conjugate().transpose())
                            for unitary, probability in zip(unitaries, self.kraus_probabilities())])
 
+        # E.g.: single qudit noise on multiple-qudits gate.
+        # Act independently on each qudit.
         if kraus_n_qudits == 1:
-            # Act independently on each qudit.
-
             # Get all gates combinations
             all_gates_combinations = list(itertools.product(self.kraus_gates(), repeat=n_qudits))
             # Pray the order is correct, like, do it
@@ -245,11 +251,11 @@ class NoiseModel(ABC):
                 output_rho = _apply_unitary(output_rho, unitary, probability)
                 cum_prob += probability
 
-            assert np.abs(cum_prob - 1.0) < 10**(-5), f"cum prob {cum_prob}"
+            assert np.abs(cum_prob - 1.0) < 10**(-10), f"cum prob {cum_prob}"
             assert output_rho is not None
             return output_rho
 
-        # FIXME: extend this for self.n_qudits > 1
+        # FIXME: extend this for self.n_qudits > 1, e.g. 2-qudits noise on 3-qudits gate.
 
         return rho
 
