@@ -7,6 +7,7 @@ from numpy.random import Generator as RNGGenerator, default_rng
 from pathlib import Path
 from collections import defaultdict
 
+from sympleq.core.noise.noise_model import NoiseModel
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis._typing import TableauType, DimensionsLike, DimensionsType, PhasesType, HilbertOperator
 
@@ -35,7 +36,8 @@ class Circuit:
 
     def __init__(self, dimensions: DimensionsType,
                  gates: list[Gate],
-                 qudit_indices: list[tuple[int, ...]]):
+                 qudit_indices: list[tuple[int, ...]],
+                 use_unitary_cache: bool = True):
         """
         Initialize the Circuit.
 
@@ -55,6 +57,10 @@ class Circuit:
         self._gates = gates
         self._qudit_indices = list(qudit_indices)
 
+        self._noise_model_per_gate: list[NoiseModel | None] = [None] * self.n_gates()
+        self._use_unitary_cache = use_unitary_cache
+        self._unitary_cache: dict[tuple[Gate, tuple[int, ...]], tuple[HilbertOperator, HilbertOperator]] = {}
+
     @property
     def gates(self) -> list[Gate]:
         """List of gates in the circuit."""
@@ -65,8 +71,26 @@ class Circuit:
         """List of qudit index tuples for each gate."""
         return self._qudit_indices
 
+    @property
+    def noise_model_per_gate(self) -> list[NoiseModel | None]:
+        """List of qudit index tuples for each gate."""
+        return self._noise_model_per_gate
+
     @classmethod
     def empty(cls, dimensions: DimensionsLike) -> Circuit:
+        """
+        Create an empty circuit with no gates.
+
+        Parameters
+        ----------
+        dimensions : DimensionsLike
+            The dimension of each qudit.
+
+        Returns
+        -------
+        Circuit
+            An empty circuit.
+        """
         dimensions = np.asarray(dimensions, dtype=int)
         C = cls(dimensions, [], [])
         C._sanity_check()
@@ -214,7 +238,7 @@ class Circuit:
         Create a Circuit from a JSON string.
 
         The string should be a JSON object with:
-        - "data": list of gate operations, each as [gate_name, [qudit_indices]]
+        - "data": list of gate operations, each as [gate_name, [qudit_indices], noise]
 
         Parameters
         ----------
@@ -249,6 +273,7 @@ class Circuit:
 
         gates = []
         qudit_indices = []
+        noise_model_per_gate = []
 
         for gate_spec in gate_data:
             gate_name = gate_spec[0]
@@ -260,8 +285,12 @@ class Circuit:
             gates.append(gate_map[gate_name])
             qudit_indices.append(indices)
 
+            noise_str = gate_spec[2] if len(gate_spec) > 2 else "None"
+            noise = NoiseModel.from_string(noise_str)
+            noise_model_per_gate.append(noise)
+
         dimensions = np.asarray(dimensions, dtype=int)
-        C = cls(dimensions, gates, qudit_indices)
+        C = cls(dimensions, gates, qudit_indices).with_noise(noise_model_per_gate)
         C._sanity_check()
 
         return C
@@ -285,9 +314,54 @@ class Circuit:
         with open(file_path, 'r') as f:
             return cls.from_string(f.read())
 
+    def with_noise(self, noise_model: NoiseModel | list[NoiseModel | None]) -> Circuit:
+        """
+        Attach a noise model and return self for chaining.
+
+        Parameters
+        ----------
+        noise_model : NoiseModel | list[NoiseModel | None]
+            A single noise model applied after every gate, or a list of
+            per-gate noise models (with ``None`` for noiseless gates).
+            A list must have length equal to the number of gates.
+
+        Returns
+        -------
+        Circuit
+            This circuit instance (for method chaining).
+        """
+
+        if isinstance(noise_model, NoiseModel):
+            self._noise_model_per_gate = [noise_model] * self.n_gates()
+        elif isinstance(noise_model, list):
+            if len(noise_model) != self.n_gates():
+                raise ValueError("Invalid noise input. A list of noise models should have exactly \
+                                 one element per gate.")
+            self._noise_model_per_gate = noise_model
+        else:
+            raise ValueError("Invalid noise input: must be either a NoiseModel (set global noise) or \
+                             a list of noise models with length equal to the number of gates.")
+
+        return self
+
+    def set_noise(self, noise_model: NoiseModel | None | list[NoiseModel | None]):
+        """
+        Attach a noise model to this circuit.
+
+        Parameters
+        ----------
+        noise_model : NoiseModel | None | list[NoiseModel | None]
+            A single noise model applied after every gate, ``None`` to
+            remove noise, or a list of per-gate noise models.
+        """
+        if noise_model is None:
+            self._noise_model_per_gate = [None] * self.n_gates()
+        else:
+            self = self.with_noise(noise_model)
+
     def _sanity_check(self):
         """
-        Validate internal consistency of the Circuitt.
+        Validate internal consistency of the Circuit.
 
         Raises
         ------
@@ -317,7 +391,7 @@ class Circuit:
             if not np.all(relevant_dimensions == relevant_dimensions[0]):
                 raise ValueError("Gate cannot act on qudits with different dimensions.")
 
-    def add_gate(self, gate: Gate, *qudit_indices: int):
+    def add_gate(self, gate: Gate, *qudit_indices: int, noise_model: NoiseModel | None = None):
         """
         Appends a gate acting on the specified qudits.
 
@@ -343,11 +417,13 @@ class Circuit:
 
         self._gates.append(gate)
         self._qudit_indices.append(tuple(qudit_indices))
+        self._noise_model_per_gate.append(noise_model)
 
     def remove_gate(self, index: int):
         """Removes the gate at the specified index."""
         self._gates.pop(index)
         self._qudit_indices.pop(index)
+        self._noise_model_per_gate.pop(index)
 
     def n_qudits(self) -> int:
         """Returns the number of qudits in the circuit."""
@@ -358,6 +434,17 @@ class Circuit:
         Returns the number of gates in the circuit.
         """
         return len(self.gates)
+
+    def set_use_unitary_cache(self, value: bool):
+        """
+        Enable or disable caching of the circuit's unitary matrix.
+
+        Parameters
+        ----------
+        value : bool
+            If ``True``, the unitary is cached after the first computation.
+        """
+        self._use_unitary_cache = value
 
     @property
     def lcm(self) -> int:
@@ -374,7 +461,11 @@ class Circuit:
 
         new_gates = self._gates + other._gates
         new_qudits = self._qudit_indices + other._qudit_indices
-        return Circuit(self.dimensions, new_gates, new_qudits)
+        new_noise_model_per_gate = self._noise_model_per_gate + other._noise_model_per_gate
+        C = Circuit(self.dimensions, new_gates, new_qudits)
+        C._noise_model_per_gate = new_noise_model_per_gate
+
+        return C
 
     def __eq__(self, other: Circuit) -> bool:
         if not isinstance(other, Circuit):
@@ -388,6 +479,8 @@ class Circuit:
                 return False
             if self._qudit_indices[i] != other._qudit_indices[i]:
                 return False
+            if self._noise_model_per_gate[i] != other._noise_model_per_gate[i]:
+                return False
         return True
 
     def __len__(self) -> int:
@@ -395,8 +488,9 @@ class Circuit:
 
     def __str__(self) -> str:
         lines = [f"Circuit on {self.n_qudits()} qudits (dims={list(self.dimensions)}):"]
-        for gate, qudits in zip(self._gates, self._qudit_indices):
-            lines.append(f"  {gate.name} {qudits}")
+        for gate, qudits, noise in zip(self._gates, self._qudit_indices, self._noise_model_per_gate):
+            noise_str = " " + noise.__str__() if noise else " "
+            lines.append(f"  {gate.name} {qudits}{noise_str}")
         return "\n".join(lines)
 
     def __repr__(self) -> str:
@@ -411,9 +505,26 @@ class Circuit:
         ...
 
     def act(self, pauli: PauliObject) -> PauliObject:
-        """Apply all gates in the circuit to a Pauli object."""
-        for gate, qudits in zip(self._gates, self._qudit_indices):
+        """
+        Apply all gates in the circuit to a Pauli object.
+
+        If a noise model is attached, it is applied after each gate.
+
+        Parameters
+        ----------
+        pauli : PauliObject
+            The Pauli object to transform.
+
+        Returns
+        -------
+        PauliObject
+            The transformed Pauli object after all gates (and noise) are applied.
+        """
+        for gate, qudits, noise in zip(self._gates, self._qudit_indices, self._noise_model_per_gate):
             pauli = gate.act(pauli, qudits)
+            if noise is not None:
+                pauli = noise.apply_quantum_trajectory(pauli, qudits)
+
         return pauli
 
     @overload
@@ -425,10 +536,93 @@ class Circuit:
         ...
 
     def act_iter(self, pauli: PauliObject) -> Generator[PauliObject, None, None]:
-        """Yields the Pauli object after each gate application."""
-        for gate, qudits in zip(self._gates, self._qudit_indices):
+        """
+        Yield the Pauli object after each gate application.
+
+        If a noise model is attached, it is applied after each gate.
+
+        Parameters
+        ----------
+        pauli : PauliObject
+            The Pauli object to transform.
+
+        Yields
+        ------
+        PauliObject
+            The Pauli object after each successive gate (and noise) application.
+        """
+        for gate, qudits, noise in zip(self._gates, self._qudit_indices, self._noise_model_per_gate):
             pauli = gate.act(pauli, qudits)
+            if noise is not None:
+                pauli = noise.apply_quantum_trajectory(pauli, qudits)
             yield pauli
+
+    def act_in_hilbert_space(self, rho: HilbertOperator) -> HilbertOperator:
+        """
+        Apply all gates in the circuit to a density matrix in Hilbert space.
+
+        Gate unitaries are cached for reuse. If a noise model is attached,
+        it is applied after each gate.
+
+        Parameters
+        ----------
+        rho : HilbertOperator
+            The input density matrix.
+
+        Returns
+        -------
+        HilbertOperator
+            The density matrix after all gates (and noise) are applied.
+        """
+        for gate, qudits, noise in zip(self._gates, self._qudit_indices, self._noise_model_per_gate):
+            key = (gate, qudits)
+            if key not in self._unitary_cache:
+                # FIXME: we should delegate to gate.act_in_hilbert_space.
+                # Problem is that it is unclear how to use the cache AND delegate to Gate method.
+                U = embed_unitary(gate.local_unitary(self.dimensions[qudits[0]]), qudits, self.dimensions)
+                if self._use_unitary_cache:
+                    self._unitary_cache[key] = (U, U.conj().T)
+            U, U_dag = self._unitary_cache[key]
+
+            rho = U @ rho @ U_dag
+            if noise is not None:
+                # FIXME: Add cache also for noise gates.
+                # Not trivial since noise modle does not know about circuit dimensions.
+                # A more consistent way would be to standardize the cache, thus using also the dimensions
+                # in the key.
+                rho = noise.act_in_hilbert_space(rho, qudits, self.dimensions)
+
+        return rho
+
+    def act_in_hilbert_space_iter(self, rho: HilbertOperator) -> Generator[HilbertOperator, None, None]:
+        """
+        Yield the density matrix after each gate application in Hilbert space.
+
+        Gate unitaries are cached for reuse. If a noise model is attached,
+        it is applied after each gate.
+
+        Parameters
+        ----------
+        rho : HilbertOperator
+            The input density matrix.
+
+        Yields
+        ------
+        HilbertOperator
+            The density matrix after each successive gate (and noise) application.
+        """
+        for gate, qudits, noise in zip(self._gates, self._qudit_indices, self._noise_model_per_gate):
+            key = (gate, qudits)
+            if key not in self._unitary_cache:
+                U = embed_unitary(gate.local_unitary(self.dimensions[qudits[0]]), qudits, self.dimensions)
+                self._unitary_cache[key] = (U, U.conj().T)
+            U, U_dag = self._unitary_cache[key]
+
+            rho = U @ rho @ U_dag
+            if noise is not None:
+                rho = noise.act_in_hilbert_space(rho, qudits, self.dimensions)
+
+            yield rho
 
     def copy(self) -> Circuit:
         """Returns a shallow copy of the circuit."""
@@ -596,8 +790,8 @@ class Circuit:
         '{"dimensions": [2, 3], "data": [["H", [0]], ["CX", [0, 1]]]}'
         """
         gate_data = []
-        for gate, qudits in zip(self._gates, self._qudit_indices):
-            gate_data.append([gate.name, [int(q) for q in qudits]])
+        for gate, qudits, noise in zip(self._gates, self._qudit_indices, self._noise_model_per_gate):
+            gate_data.append([gate.name, [int(q) for q in qudits], noise.__str__()])
         return json.dumps({"dimensions": [int(d) for d in self.dimensions], "data": gate_data})
 
     def save_to_file(self, file_path: str | Path) -> None:

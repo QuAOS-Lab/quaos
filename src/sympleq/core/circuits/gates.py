@@ -2,14 +2,13 @@ from __future__ import annotations
 from abc import ABC
 import numpy as np
 from typing import Self
-import scipy.sparse as sp
 
 from sympleq._typing import IntArrayLike
 from sympleq.core.paulis import PauliObject
 from sympleq.core.paulis._typing import (
     TableauType, TableauLike, PhasesType, DimensionsType, HilbertOperator
 )
-from sympleq.core.circuits.utils import embed_symplectic, transvection_matrix
+from sympleq.core.circuits.utils import embed_symplectic, embed_unitary, transvection_matrix
 from sympleq.core.circuits.random_symplectic import symplectic_random_transvection
 from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
@@ -32,6 +31,20 @@ class Gate(ABC):
     def __init__(self, name: str, symplectic: TableauType,
                  phase_vector: PhasesType | None = None,
                  exceptional_phase_vectors: dict[int, PhasesType] | None = None):
+        """
+        Initialize a Clifford gate.
+
+        Parameters
+        ----------
+        name : str
+            Human-readable name for the gate.
+        symplectic : TableauType
+            The 2n x 2n symplectic matrix defining the Pauli transformation.
+        phase_vector : PhasesType | None
+            Phase vector for the gate. If None, defaults to zeros.
+        exceptional_phase_vectors : dict[int, PhasesType] | None
+            Dimension-specific phase vectors (e.g., PHASE gate for qubits).
+        """
         self._name = name
         self._n_qudits = symplectic.shape[0] // 2
         self._symplectic = symplectic.astype(int)
@@ -101,10 +114,10 @@ class Gate(ABC):
 
         Parameters
         ----------
-        input_tableau : np.ndarray
+        input_tableau : TableauLike
             Input Pauli tableau of shape (m, 2n) where m is the number of Paulis
             and n is the number of qudits.
-        target_tableau : np.ndarray
+        target_tableau : TableauLike
             Target Pauli tableau of the same shape.
 
         Returns
@@ -144,14 +157,17 @@ class Gate(ABC):
 
     @property
     def name(self) -> str:
+        """str : Human-readable name of the gate."""
         return self._name
 
     @property
     def n_qudits(self) -> int:
+        """int : Number of qudits the gate acts on."""
         return self._n_qudits
 
     @property
     def symplectic(self) -> TableauType:
+        """TableauType : The 2n x 2n symplectic matrix."""
         return self._symplectic
 
     def phase_vector(self, dimension: int | None = None) -> PhasesType:
@@ -160,6 +176,16 @@ class Gate(ABC):
 
         Some gates have dimension-specific phase vectors (e.g., PHASE gate for qubits).
         If no exceptional phase vector exists for the given dimension, returns the default.
+
+        Parameters
+        ----------
+        dimension : int
+            The local Hilbert space dimension. Used to look up exceptional phase vectors.
+
+        Returns
+        -------
+        PhasesType
+            The phase vector for the given dimension.
         """
         if dimension in self._exceptional_phase_vectors:
             return self._exceptional_phase_vectors[dimension]
@@ -199,7 +225,8 @@ class Gate(ABC):
 
         Returns
         -------
-        The transformed Pauli object of the same type as the input.
+        PauliObject
+            The transformed Pauli object of the same type as the input.
         """
         if isinstance(qudits, int):
             qudits = (qudits,)
@@ -238,6 +265,33 @@ class Gate(ABC):
         return pauli.__class__(tableau=new_tableau, dimensions=pauli.dimensions,
                                weights=pauli.weights, phases=new_phases)
 
+    def act_in_hilbert_space(self, rho: HilbertOperator,
+                             qudits: tuple[int, ...], dimensions: DimensionsType) -> HilbertOperator:
+        """
+        Apply this gate to a density matrix in Hilbert space.
+
+        Computes rho_out = U rho U^dagger where U is the gate unitary embedded
+        into the full Hilbert space.
+
+        Parameters
+        ----------
+        rho : HilbertOperator
+            The input density matrix.
+        qudits : tuple[int, ...]
+            Qudit indices on which the gate acts.
+        dimensions : DimensionsType
+            Local Hilbert space dimensions for each qudit.
+
+        Returns
+        -------
+        HilbertOperator
+            The transformed density matrix.
+        """
+        dimension = dimensions[qudits[0]]
+        unitary = embed_unitary(self.local_unitary(dimension), qudits, dimensions)
+
+        return unitary @ rho @ unitary.conjugate().transpose()
+
     def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
         """
         Compute the unitary matrix representation of this gate.
@@ -259,10 +313,16 @@ class Gate(ABC):
         )
 
     def inverse(self) -> Self:
-        """Return the inverse of this gate.
+        """
+        Return the inverse of this gate.
 
         For singleton gates (from GATES), returns the pre-linked inverse.
         Otherwise computes the inverse symplectic matrix.
+
+        Returns
+        -------
+        Gate
+            The inverse gate such that gate @ gate.inverse() = Identity.
         """
         if self._inverse is not None:
             return self._inverse
@@ -300,10 +360,19 @@ class Gate(ABC):
 
     def transvection(self, transvection_vector: IntArrayLike, transvection_weight: int = 1) -> Gate:
         """
-        Returns a new gate that is the transvection of this gate by the given vector.
+        Return a new gate that is the transvection of this gate by the given vector.
 
-        The transvection vector should be a 2n-dimensional vector where n is the number of qudits.
-        Note: This returns a generic Gate, not a subclass instance.
+        Parameters
+        ----------
+        transvection_vector : IntArrayLike
+            A 2n-dimensional vector where n is the number of qudits.
+        transvection_weight : int
+            Multiplier for the transvection. Default is 1.
+
+        Returns
+        -------
+        Gate
+            A new generic Gate with the transvected symplectic matrix.
         """
         if not isinstance(transvection_weight, int) and not isinstance(transvection_weight, np.int64):
             raise TypeError("Transvection weight must be an integer.")
@@ -329,7 +398,7 @@ class Gate(ABC):
 
         Returns
         -------
-        np.ndarray
+        TableauLike
             The full 2n x 2n symplectic matrix mod p
         """
         if isinstance(qudits, int):
@@ -465,7 +534,7 @@ class _CX(Gate):
                     out_k = (j + k) % d
                 out_idx = j * d + out_k  # |j, out_k⟩
                 U[out_idx, in_idx] = 1.0
-        return sp.csr_matrix(U)
+        return HilbertOperator(U)
 
     to_local_hilbert_space = local_unitary
 
@@ -495,7 +564,7 @@ class _SWAP(Gate):
                 in_idx = j * d + k   # |j,k⟩
                 out_idx = k * d + j  # |k,j⟩
                 U[out_idx, in_idx] = 1.0
-        return sp.csr_matrix(U)
+        return HilbertOperator(U)
 
     to_local_hilbert_space = local_unitary
 
@@ -529,13 +598,163 @@ class _CZ(Gate):
             for k in range(d):
                 idx = j * d + k
                 U[idx, idx] = omega ** (j * k)
-        return sp.csr_matrix(U)
+        return HilbertOperator(U)
 
     to_local_hilbert_space = local_unitary
 
     def inverse(self) -> _CZ:
         # CZ is self-inverse
         return self
+
+
+class _Id(Gate):
+    """Identity gate: Id|j⟩ = |j⟩."""
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+        # NOTE: here we define the gate to be single-qudit, but overriding
+        # the act method makes it work for any number of qudits.
+        symplectic = np.eye(2, dtype=int)
+        phase_vector = np.array([0, 0], dtype=int)
+
+        super().__init__("Id", symplectic, phase_vector)
+
+    def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        # X|j⟩ = |j+1 mod d⟩, X^{-1}|j⟩ = |j-1 mod d⟩
+        U = np.eye(d, dtype=complex)
+        return HilbertOperator(U)
+
+    to_local_hilbert_space = local_unitary
+
+    def inverse(self) -> _Id:
+        # Id is self-inverse
+        return self
+
+    def act(self, pauli: PauliObject, qudits: int | tuple[int, ...]) -> PauliObject:
+        return pauli
+
+
+class _X(Gate):
+    """Generalized X gate (shift operator): X|j⟩ = |j+1 mod d⟩."""
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+        symplectic = np.eye(2, dtype=int)
+
+        if is_inverse:
+            # X^{-1} = X^{d-1} has tableau [-1, 0]
+            self._tableau = np.array([-1, 0], dtype=int)
+            name = "X_inv"
+        else:
+            self._tableau = np.array([1, 0], dtype=int)
+            name = "X"
+
+        super().__init__(name, symplectic)
+
+    def phase_vector(self, dimension: int | None = None) -> PhasesType:
+        # h = 2 * Ω @ tableau, where Ω = [[0, 1], [-1, 0]]
+        # Ω @ [x, 0] = [0, -x], so h = [0, -2x]
+        x = self._tableau[0]
+        if dimension is not None:
+            return np.array([0, -2 * x], dtype=int) % (2 * dimension)
+        return np.array([0, -2 * x], dtype=int)
+
+    def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        # X|j⟩ = |j+1 mod d⟩, X^{-1}|j⟩ = |j-1 mod d⟩
+        U = np.zeros((d, d), dtype=complex)
+        for j in range(d):
+            if self._is_inverse:
+                U[(j - 1) % d, j] = 1.0
+            else:
+                U[(j + 1) % d, j] = 1.0
+        return HilbertOperator(U)
+
+    to_local_hilbert_space = local_unitary
+
+
+class _Y(Gate):
+    """Generalized Y gate: Y = X * Z."""
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+        symplectic = np.eye(2, dtype=int)
+
+        if is_inverse:
+            self._tableau = np.array([-1, -1], dtype=int)
+            name = "Y_inv"
+        else:
+            self._tableau = np.array([1, 1], dtype=int)
+            name = "Y"
+
+        super().__init__(name, symplectic)
+
+    def phase_vector(self, dimension: int | None = None) -> PhasesType:
+        # h = 2 * Ω @ [x, z] = 2 * [z, -x]
+        x, z = self._tableau
+        if dimension is not None:
+            return np.array([2 * z, -2 * x], dtype=int) % (2 * dimension)
+        return np.array([2 * z, -2 * x], dtype=int)
+
+    def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        omega = np.exp(2j * np.pi / d)
+        # Y = X * Z: Y|j⟩ = ω^j |j+1 mod d⟩
+        U = np.zeros((d, d), dtype=complex)
+        for j in range(d):
+            if self._is_inverse:
+                # Y^{-1}|j⟩ = ω^{-(j-1)} |j-1 mod d⟩
+                U[(j - 1) % d, j] = omega ** (-(j - 1) % d)
+            else:
+                U[(j + 1) % d, j] = omega ** j
+        return HilbertOperator(np.around(U, 10))
+
+    to_local_hilbert_space = local_unitary
+
+
+class _Z(Gate):
+    """Generalized Z gate (clock operator): Z|j⟩ = ω^j |j⟩."""
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+        symplectic = np.eye(2, dtype=int)
+
+        if is_inverse:
+            self._tableau = np.array([0, -1], dtype=int)
+            name = "Z_inv"
+        else:
+            self._tableau = np.array([0, 1], dtype=int)
+            name = "Z"
+
+        super().__init__(name, symplectic)
+
+    def phase_vector(self, dimension: int | None = None) -> PhasesType:
+        # h = 2 * Ω @ [0, z] = 2 * [z, 0]
+        z = self._tableau[1]
+        if dimension is not None:
+            return np.array([2 * z, 0], dtype=int) % (2 * dimension)
+        return np.array([2 * z, 0], dtype=int)
+
+    def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        omega = np.exp(2j * np.pi / d)
+        # Z|j⟩ = ω^j |j⟩, Z^{-1}|j⟩ = ω^{-j} |j⟩
+        if self._is_inverse:
+            diag = [omega ** (-j % d) for j in range(d)]
+        else:
+            diag = [omega ** j for j in range(d)]
+        return HilbertOperator(np.around(np.diag(diag), 10))
+
+    to_local_hilbert_space = local_unitary
 
 
 class _Gates:
@@ -569,6 +788,24 @@ class _Gates:
 
         self._CZ = _CZ()
         # CZ is self-inverse, already handled in the class
+
+        self._Id = _Id()
+
+        # Pauli gates
+        self._X = _X(is_inverse=False)
+        self._X_inv = _X(is_inverse=True)
+        self._X._inverse = self._X_inv
+        self._X_inv._inverse = self._X
+
+        self._Y = _Y(is_inverse=False)
+        self._Y_inv = _Y(is_inverse=True)
+        self._Y._inverse = self._Y_inv
+        self._Y_inv._inverse = self._Y
+
+        self._Z = _Z(is_inverse=False)
+        self._Z_inv = _Z(is_inverse=True)
+        self._Z._inverse = self._Z_inv
+        self._Z_inv._inverse = self._Z
 
     # Hadamard
     @property
@@ -606,6 +843,38 @@ class _Gates:
     @property
     def CZ(self) -> _CZ:
         return self._CZ
+
+    # Identity
+    @property
+    def Id(self) -> _Id:
+        return self._Id
+
+    # Pauli X
+    @property
+    def X(self) -> _X:
+        return self._X
+
+    @property
+    def X_inv(self) -> _X:
+        return self._X_inv
+
+    # Pauli Y
+    @property
+    def Y(self) -> _Y:
+        return self._Y
+
+    @property
+    def Y_inv(self) -> _Y:
+        return self._Y_inv
+
+    # Pauli Z
+    @property
+    def Z(self) -> _Z:
+        return self._Z
+
+    @property
+    def Z_inv(self) -> _Z:
+        return self._Z_inv
 
 
 # Global singleton instance
