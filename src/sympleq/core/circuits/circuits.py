@@ -2,10 +2,10 @@ from __future__ import annotations
 from typing import Generator, overload
 import json
 import numpy as np
+import scipy.sparse as sp
 from numpy.random import Generator as RNGGenerator, default_rng
 from pathlib import Path
 from collections import defaultdict
-import scipy.sparse as sp
 
 from sympleq.core.noise.noise_model import NoiseModel
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
@@ -59,7 +59,7 @@ class Circuit:
 
         self._noise_model_per_gate: list[NoiseModel | None] = [None] * self.n_gates()
         self._use_unitary_cache = use_unitary_cache
-        self._unitary_cache: dict[tuple, tuple[HilbertOperator, HilbertOperator]] = {}
+        self._unitary_cache: dict[tuple[Gate, tuple[int, ...]], tuple[HilbertOperator, HilbertOperator]] = {}
 
     @property
     def gates(self) -> list[Gate]:
@@ -238,7 +238,7 @@ class Circuit:
         Create a Circuit from a JSON string.
 
         The string should be a JSON object with:
-        - "data": list of gate operations, each as [gate_name, [qudit_indices]]
+        - "data": list of gate operations, each as [gate_name, [qudit_indices], noise]
 
         Parameters
         ----------
@@ -273,6 +273,7 @@ class Circuit:
 
         gates = []
         qudit_indices = []
+        noise_model_per_gate = []
 
         for gate_spec in gate_data:
             gate_name = gate_spec[0]
@@ -284,8 +285,12 @@ class Circuit:
             gates.append(gate_map[gate_name])
             qudit_indices.append(indices)
 
+            noise_str = gate_spec[2] if len(gate_spec) > 2 else "None"
+            noise = NoiseModel.from_string(noise_str)
+            noise_model_per_gate.append(noise)
+
         dimensions = np.asarray(dimensions, dtype=int)
-        C = cls(dimensions, gates, qudit_indices)
+        C = cls(dimensions, gates, qudit_indices).with_noise(noise_model_per_gate)
         C._sanity_check()
 
         return C
@@ -386,7 +391,7 @@ class Circuit:
             if not np.all(relevant_dimensions == relevant_dimensions[0]):
                 raise ValueError("Gate cannot act on qudits with different dimensions.")
 
-    def add_gate(self, gate: Gate, *qudit_indices: int):
+    def add_gate(self, gate: Gate, *qudit_indices: int, noise_model: NoiseModel | None = None):
         """
         Appends a gate acting on the specified qudits.
 
@@ -412,11 +417,13 @@ class Circuit:
 
         self._gates.append(gate)
         self._qudit_indices.append(tuple(qudit_indices))
+        self._noise_model_per_gate.append(noise_model)
 
     def remove_gate(self, index: int):
         """Removes the gate at the specified index."""
         self._gates.pop(index)
         self._qudit_indices.pop(index)
+        self._noise_model_per_gate.pop(index)
 
     def n_qudits(self) -> int:
         """Returns the number of qudits in the circuit."""
@@ -570,6 +577,8 @@ class Circuit:
         for gate, qudits, noise in zip(self._gates, self._qudit_indices, self._noise_model_per_gate):
             key = (gate, qudits)
             if key not in self._unitary_cache:
+                # FIXME: we should delegate to gate.act_in_hilbert_space.
+                # Problem is that it is unclear how to use the cache AND delegate to Gate method.
                 U = embed_unitary(gate.local_unitary(self.dimensions[qudits[0]]), qudits, self.dimensions)
                 if self._use_unitary_cache:
                     self._unitary_cache[key] = (U, U.conj().T)
@@ -577,6 +586,10 @@ class Circuit:
 
             rho = U @ rho @ U_dag
             if noise is not None:
+                # FIXME: Add cache also for noise gates.
+                # Not trivial since noise modle does not know about circuit dimensions.
+                # A more consistent way would be to standardize the cache, thus using also the dimensions
+                # in the key.
                 rho = noise.act_in_hilbert_space(rho, qudits, self.dimensions)
 
         return rho
@@ -777,8 +790,8 @@ class Circuit:
         '{"dimensions": [2, 3], "data": [["H", [0]], ["CX", [0, 1]]]}'
         """
         gate_data = []
-        for gate, qudits in zip(self._gates, self._qudit_indices):
-            gate_data.append([gate.name, [int(q) for q in qudits]])
+        for gate, qudits, noise in zip(self._gates, self._qudit_indices, self._noise_model_per_gate):
+            gate_data.append([gate.name, [int(q) for q in qudits], noise.__str__()])
         return json.dumps({"dimensions": [int(d) for d in self.dimensions], "data": gate_data})
 
     def save_to_file(self, file_path: str | Path) -> None:

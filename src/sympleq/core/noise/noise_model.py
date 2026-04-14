@@ -6,23 +6,13 @@ Phys. Rev. A 108, 062604 (2023). DOI: 10.1103/PhysRevA.108.062604
 
 Overview
 --------
-A quantum noise channel transforms a Pauli string PS as:
-
-    PS_out = Σ_{m,n} λ_{mn} σ_m PS σ†_n
-
-where σ_m are Pauli basis operators and λ is the process matrix.
-
-This can equivalently be written using Kraus operators K_i:
+A quantum noise channel transforms a density matrix PS as:
 
     PS_out = Σ_i K_i PS K†_i
 
-where each Kraus operator is a linear combination of Paulis:
+where each Kraus operator K_i is a linear combination of Paulis:
 
-    K_i = Σ_j α_{ij} σ_j
-
-The process matrix λ and Kraus coefficients α are related by:
-
-    λ_{mn} = Σ_i α_{im} α*_{in}
+    K_i = Σ_j α_{ij} σ_j.
 
 The probability of each Kraus operator (used for quantum trajectory sampling) is:
 
@@ -30,17 +20,18 @@ The probability of each Kraus operator (used for quantum trajectory sampling) is
 
 We take two simplifying assumptions:
 **Uncorrelated noise**
-For uncorrelated noise on multiple qudits, the multi-qudit quantities are
-tensor products of single-qudit quantities.
+If the noise model is defined on a single qudit, when acting on a multiple-qudits gate it acts
+on each qudit independently. It is still possible to define correlated noise models ab initio.
 
 **Clifford noise**
-For now, we assume that Kraus operators are Clifford. This simplifies greatly how they act on PauliSums,
-as they are basically Gates.
+For now, we assume that Kraus operators are Clifford. This simplifies greatly how they act on PauliSums
+as they act as Gate, one for each trajectory (see apply_quantum_trajectory).
 """
 
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import itertools
+import re
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 
@@ -102,6 +93,54 @@ class NoiseModel(ABC):
         """
         pass
 
+    def __str__(self) -> str:
+        return self.__class__.__name__
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, NoiseModel):
+            return NotImplemented
+        return str(self) == str(other)
+
+    @classmethod
+    def from_string(cls, s: str) -> NoiseModel | None:
+        if s == "None":
+            return None
+        if s == "Noiseless":
+            return Noiseless()
+
+        m = re.match(r"CompositeNoise\(\[(.+)\]\)$", s)
+        if m is not None:
+            inner = m.group(1)
+            # Split on ", " but only at the top level (not inside nested parens)
+            models = []
+            depth = 0
+            current = ""
+            for ch in inner:
+                if ch == '(':
+                    depth += 1
+                elif ch == ')':
+                    depth -= 1
+                if ch == ',' and depth == 0:
+                    models.append(cls.from_string(current.strip()))
+                    current = ""
+                else:
+                    current += ch
+            if current.strip():
+                models.append(cls.from_string(current.strip()))
+            return CompositeNoise.from_noise_models(models)
+
+        m = re.match(r"(\w+)\(error_rate=([\d.]+)\)", s)
+        if m is None:
+            raise ValueError(f"Cannot parse noise model from string: {s}")
+
+        name, error_rate = m.group(1), float(m.group(2))
+        if name == "DephasingNoise":
+            return DephasingNoise(error_rate)
+        elif name == "DepolarizingNoise":
+            return DepolarizingNoise(error_rate)
+        else:
+            raise ValueError(f"Unknown noise model: {name}")
+
     def apply_quantum_trajectory(self, pauli_sum: PauliObject, qudits: tuple[int, ...]) -> PauliObject:
         """
         Sample a single Kraus operator and apply it to the Pauli sum.
@@ -127,8 +166,7 @@ class NoiseModel(ABC):
             return pauli_sum
         # Get probabilities to select one possible quantum trajectory
         # Given probabilities [p0, p1, p2, p3], cumsum gives [p0, p0+p1, p0+p1+p2, 1.0].
-        # This allows O(log n) sampling via searchsorted with a uniform random number
-        # in _apply_gate_to_pauli_with_error.
+        # This allows O(log n) sampling via searchsorted with a uniform random number.
         probs = np.cumsum(self.kraus_probabilities())
         idx = int(np.searchsorted(probs, self.rng.random()))
         kraus_gate = self.kraus_gates()[idx]
@@ -139,6 +177,7 @@ class NoiseModel(ABC):
             for qudit in qudits:
                 pauli_sum = kraus_gate.act(pauli_sum, qudit)
         # FIXME: handle generic case, else:...
+        # this is for kraus_n_qudits > 1, e.g. 2-qudits noise on 3-qudits gate.
 
         return pauli_sum
 
@@ -174,8 +213,13 @@ class NoiseModel(ABC):
             assert output_rho is not None
             return output_rho
 
-        dimension = dimensions[qudits[0]]
         n_qudits = len(qudits)
+        if n_qudits == 0:
+            raise ValueError("Noise model must act on at least one qudit.")
+
+        dimension = dimensions[qudits[0]]
+        if not np.all(dimensions[qudits] == dimension):
+            raise ValueError(f"Noise model must act on qudits with equal dimensions ( got {dimensions[qudits]}).")
 
         kraus_n_qudits = self.n_qudits()
         if n_qudits < kraus_n_qudits:
@@ -183,9 +227,16 @@ class NoiseModel(ABC):
 
         output_rho: HilbertOperator | None = None
 
-        # E.g.: single qudit noise on single qudit gate
+        # E.g.: single qudit noise on single-qudit gate
         cum_prob = 0
         if n_qudits == kraus_n_qudits:
+            unitaries = [embed_unitary(kraus_gate.local_unitary(dimension), qudits, dimensions)
+                         for kraus_gate in self.kraus_gates()]
+            return np.sum([probability * (unitary @ rho @ unitary.conjugate().transpose())
+                           for unitary, probability in zip(unitaries, self.kraus_probabilities())])
+
+        # E.g.: single qudit noise on multiple-qudits gate.
+        # Act independently on each qudit.
             unitaries = [embed_unitary(kraus_gate.local_unitary(dimension), qudits, dimensions)
                          for kraus_gate in self.kraus_gates()]
             return np.sum([probability * (unitary @ rho @ unitary.conjugate().transpose())
@@ -206,11 +257,11 @@ class NoiseModel(ABC):
                 output_rho = _apply_unitary(output_rho, unitary, probability)
                 cum_prob += probability
 
-            assert np.abs(cum_prob - 1.0) < 10**(-5), f"cum prob {cum_prob}"
+            assert np.abs(cum_prob - 1.0) < 10**(-10), f"cum prob {cum_prob}"
             assert output_rho is not None
             return output_rho
 
-        # FIXME: extend this for self.n_qudits > 1
+        # FIXME: extend this for self.n_qudits > 1, e.g. 2-qudits noise on 3-qudits gate.
 
         return rho
 
@@ -238,6 +289,9 @@ class Noiseless(NoiseModel):
 
 
 class DephasingNoise(NoiseModel):
+    def __str__(self) -> str:
+        return f"DephasingNoise(error_rate={1.0 - self.p0:.4f})"
+
     def __init__(self, error_rate: float, rng: RNGGenerator | None = None) -> None:
         # The dephasing channel has tow Klaus operators: the identity and Z.
         # A single parameter p0 models the noise probability,
@@ -265,6 +319,9 @@ class DephasingNoise(NoiseModel):
 
 
 class DepolarizingNoise(NoiseModel):
+    def __str__(self) -> str:
+        return f"DepolarizingNoise(error_rate={(1.0 - self.p0) / 0.75:.4f})"
+
     def __init__(self, error_rate: float, rng: RNGGenerator | None = None) -> None:
         # The depolarizing channel has four Klaus operators: the 4 paulis.
         # A single parameter p0 models the noise probability,
@@ -274,6 +331,7 @@ class DepolarizingNoise(NoiseModel):
         # Ki =  sqrt(1 − p0/3) σi
         if error_rate > 1.0 or error_rate < 0.0:
             raise ValueError(f"Error rate should be between 0.0 and 1.0 (got {error_rate}).")
+        self.p0 = 1.0 - 0.75 * error_rate
         self.p0 = 1.0 - 0.75 * error_rate
         self._probabilities = [self.p0, (1.0 - self.p0) / 3, (1.0 - self.p0) / 3, (1.0 - self.p0) / 3]
 
@@ -298,6 +356,10 @@ class CompositeNoise(NoiseModel):
     Operators representing the same Pauli are combined by summing their weights
     and normalizing by the total number of models.
     """
+
+    def __str__(self) -> str:
+        models_str = ", ".join(str(m) for m in self.noise_models)
+        return f"CompositeNoise([{models_str}])"
 
     def __init__(self, noise_models: list[NoiseModel], rng: RNGGenerator) -> None:
         self.noise_models = noise_models
@@ -348,6 +410,80 @@ class CompositeNoise(NoiseModel):
 
     def n_qudits(self) -> int:
         return self.noise_models[0].n_qudits()
+
+    def kraus_gates(self) -> list[Gate]:
+        return self._gates
+
+    def kraus_probabilities(self) -> list[float]:
+        return self._probabilities
+
+
+class GenericNoise(NoiseModel):
+    """
+    A noise model defined by explicit Kraus gate–probability pairs.
+
+    Unlike :class:`CompositeNoise`, which derives its operators by merging
+    other noise models, ``GenericNoise`` accepts the gates and their
+    probabilities directly.
+    """
+
+    def __str__(self) -> str:
+        pairs = ", ".join(f"({p:.4f}, {g.name})" for p, g in zip(self._probabilities, self._gates))
+        return f"GenericNoise([{pairs}])"
+
+    def __init__(self, probabilities: list[float], gates: list[Gate], rng: RNGGenerator) -> None:
+        """
+        Initialize a generic noise model.
+
+        Parameters
+        ----------
+        probabilities : list[float]
+            Kraus probabilities for each gate. Must sum to 1.
+        gates : list[Gate]
+            Kraus gates corresponding to each probability.
+        rng : numpy.random.Generator
+            Random number generator for trajectory sampling.
+
+        Raises
+        ------
+        ValueError
+            If ``probabilities`` and ``gates`` have different lengths.
+        """
+        if len(probabilities) != len(gates):
+            raise ValueError(
+                f"Probabilities and gates lists must have the same length (got {len(probabilities)} and {len(gates)}).")
+        self._probabilities = probabilities
+        self._gates = gates
+        self._n_qudits = max(g.n_qudits for g in self._gates)
+
+        super().__init__(rng)
+
+    @classmethod
+    def from_probabilities_and_gates(cls, probabilities: list[float], gates: list[Gate],
+                                     rng: RNGGenerator | None = None) -> GenericNoise:
+        """
+        Create a GenericNoise from probabilities and gates.
+
+        Parameters
+        ----------
+        probabilities : list[float]
+            Kraus probabilities for each gate.
+        gates : list[Gate]
+            Kraus gates corresponding to each probability.
+        rng : numpy.random.Generator or None, optional
+            Random number generator. If ``None``, a default is used.
+
+        Returns
+        -------
+        GenericNoise
+            A new GenericNoise instance.
+        """
+        if rng is None:
+            rng = default_rng()
+        return cls(probabilities, gates, rng)
+
+    def n_qudits(self) -> int:
+        return self._n_qudits
 
     def kraus_gates(self) -> list[Gate]:
         return self._gates

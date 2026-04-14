@@ -1,12 +1,14 @@
 import numpy as np
 import pytest
 
+from sympleq.core.circuits.gates import GATES
 from sympleq.core.noise.noise_model import (
     NoiseModel,
     Noiseless,
     DephasingNoise,
     DepolarizingNoise,
     CompositeNoise,
+    GenericNoise,
 )
 
 # All noise model classes to test
@@ -15,6 +17,7 @@ NOISE_MODELS = [
     DephasingNoise(error_rate=0.1),
     DepolarizingNoise(error_rate=0.1),
     CompositeNoise.from_noise_models([DephasingNoise(0.1), DepolarizingNoise(0.1)]),
+    GenericNoise.from_probabilities_and_gates([0.9, 0.1], [GATES.Id, GATES.Z]),
 ]
 
 
@@ -141,3 +144,58 @@ class TestCompositeNoise:
         assert len(single_ops) == len(composite_ops)
         for s_op, c_op in zip(single_ops, composite_ops):
             assert np.isclose(s_op, c_op)
+
+
+class TestGenericNoise:
+    """Tests specific to GenericNoise class."""
+
+    def test_mismatched_lengths_raises(self):
+        """Probabilities and gates with different lengths should raise."""
+        with pytest.raises(ValueError, match="same length"):
+            GenericNoise.from_probabilities_and_gates([0.5, 0.5], [GATES.Id])
+
+    def test_probabilities_preserved(self):
+        """Probabilities are returned exactly as provided."""
+        probs = [0.7, 0.2, 0.1]
+        gates = [GATES.Id, GATES.X, GATES.Z]
+        model = GenericNoise.from_probabilities_and_gates(probs, gates)
+        assert model.kraus_probabilities() == probs
+
+    def test_gates_preserved(self):
+        """Gates are returned exactly as provided."""
+        gates = [GATES.Id, GATES.Y]
+        model = GenericNoise.from_probabilities_and_gates([0.8, 0.2], gates)
+        assert model.kraus_gates() == gates
+
+    def test_n_qudits_single(self):
+        """n_qudits is 1 for single-qudit gates."""
+        model = GenericNoise.from_probabilities_and_gates(
+            [0.9, 0.1], [GATES.Id, GATES.Z]
+        )
+        assert model.n_qudits() == 1
+
+    def test_n_qudits_multi(self):
+        """n_qudits reflects the largest gate."""
+        model = GenericNoise.from_probabilities_and_gates(
+            [0.8, 0.2], [GATES.Id, GATES.CX]
+        )
+        assert model.n_qudits() == 2
+
+    def test_str(self):
+        """__str__ includes gate names and probabilities."""
+        model = GenericNoise.from_probabilities_and_gates(
+            [0.9, 0.1], [GATES.Id, GATES.Z]
+        )
+        s = str(model)
+        assert "GenericNoise" in s
+        assert "Id" in s
+        assert "Z" in s
+        assert "0.9000" in s
+        assert "0.1000" in s
+
+    def test_probabilities_sum_to_one(self):
+        """Probabilities should sum to 1."""
+        model = GenericNoise.from_probabilities_and_gates(
+            [0.5, 0.3, 0.2], [GATES.Id, GATES.X, GATES.Z]
+        )
+        assert np.isclose(sum(model.kraus_probabilities()), 1.0)
