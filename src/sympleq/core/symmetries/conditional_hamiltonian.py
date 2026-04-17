@@ -218,6 +218,16 @@ class ConditionalHamiltonian:
         self.block_variables['degeneracy_dimensions'] = {}
         self.block_variables['conditional_dimensions'] = []
         self.P_qudit_dict = {}
+        self._block_qudits_to_delete = [
+            np.array(
+                [q for q in range(self.ordered_symmetrised_hamiltonian.n_qudits()) if q not in block],
+                dtype=int,
+            )
+            for block in self.blocks
+        ]
+        self._ordered_single_terms_cache = None
+        self._term_block_selections_cache = None
+        self._term_block_selection_keys_cache = None
 
         for block_index, block in enumerate(self.blocks):
             # block parameters
@@ -384,24 +394,56 @@ class ConditionalHamiltonian:
     def _selection_block_data(
         self,
         selection_key: tuple[int, ...],
-    ) -> list[tuple[int, list[np.ndarray], np.ndarray, np.ndarray]]:
-        block_data: list[tuple[int, list[np.ndarray], np.ndarray, np.ndarray]] = []
+    ) -> list[tuple[int, list[np.ndarray], tuple[int, int]]]:
+        block_data: list[tuple[int, list[np.ndarray], tuple[int, int]]] = []
         for block, selected_eigenvalue in enumerate(selection_key):
-            relevant_qudits = self.blocks[block]
             relevant_indices = np.array(self.block_variables['degeneracies'][block][selected_eigenvalue])
             eigenvectors = [self.block_variables['eigenvectors'][block][:, r] for r in relevant_indices]
             block_data.append(
                 (
                     int(self.block_variables['degeneracy_dimensions'][block][selected_eigenvalue]),
                     eigenvectors,
-                    np.column_stack(eigenvectors).astype(complex),
-                    np.array(
-                        [q for q in range(self.ordered_symmetrised_hamiltonian.n_qudits()) if q not in relevant_qudits],
-                        dtype=int,
-                    ),
+                    (int(block), int(selected_eigenvalue)),
                 )
             )
         return block_data
+
+    def _pauli_string_cache_key(self, pauli_string: PauliString) -> tuple[tuple[int, ...], tuple[int, ...]]:
+        return (
+            tuple(int(x) for x in np.asarray(pauli_string.tableau, dtype=int).reshape(-1)),
+            tuple(int(x) for x in np.asarray(pauli_string.dimensions, dtype=int).reshape(-1)),
+        )
+
+    def _ordered_single_terms(self) -> list[PauliString]:
+        if self._ordered_single_terms_cache is None:
+            ordered_single_terms: list[PauliString] = []
+            for i in range(self.ordered_symmetrised_hamiltonian.n_paulis()):
+                ps = self.ordered_symmetrised_hamiltonian[i].copy()
+                ps.weights = np.array([1])
+                ps.phases = np.array([0])
+                ordered_single_terms.append(ps)
+            self._ordered_single_terms_cache = ordered_single_terms
+        return self._ordered_single_terms_cache
+
+    def _term_block_selections(
+        self,
+    ) -> tuple[list[list[PauliString]], list[list[tuple[tuple[int, ...], tuple[int, ...]]]]]:
+        if self._term_block_selections_cache is None or self._term_block_selection_keys_cache is None:
+            ordered_single_terms = self._ordered_single_terms()
+            term_block_selections: list[list[PauliString]] = []
+            term_block_selection_keys: list[list[tuple[tuple[int, ...], tuple[int, ...]]]] = []
+            for qudits_to_delete in self._block_qudits_to_delete:
+                block_terms: list[PauliString] = []
+                block_keys: list[tuple[tuple[int, ...], tuple[int, ...]]] = []
+                for ps in ordered_single_terms:
+                    ps_selection = ps._delete_qudits(qudits_to_delete)
+                    block_terms.append(ps_selection)
+                    block_keys.append(self._pauli_string_cache_key(ps_selection))
+                term_block_selections.append(block_terms)
+                term_block_selection_keys.append(block_keys)
+            self._term_block_selections_cache = term_block_selections
+            self._term_block_selection_keys_cache = term_block_selection_keys
+        return self._term_block_selections_cache, self._term_block_selection_keys_cache
 
     def select_hamiltonian(self, selection: list[int]) -> PauliSum | complex:
         selection_key = self._selection_key(selection)
@@ -414,40 +456,35 @@ class ConditionalHamiltonian:
 
         output_dimensions, output_is_scalar = self._selection_output_dimensions(selection_key)
         block_data = self._selection_block_data(selection_key)
+        ordered_single_terms = self._ordered_single_terms()
+        term_block_selections, term_block_selection_keys = self._term_block_selections()
 
-        n_p = self.original_hamiltonian.n_paulis()
+        n_p = len(ordered_single_terms)
         decomposed_pauli_strings = []
         scalar_offset = 0.0 + 0.0j
+        ordered_weights = self.ordered_symmetrised_hamiltonian.weights
+        ordered_phases = self.ordered_symmetrised_hamiltonian.phases
+        previous_lcm = self.ordered_symmetrised_hamiltonian.lcm
         for i in range(n_p):
-            # string
-            ps = self.ordered_symmetrised_hamiltonian[i].copy()
-            ps.weights = np.array([1])
-            ps.phases = np.array([0])
             # weight component
-            weight = self.ordered_symmetrised_hamiltonian.weights[i]
+            weight = ordered_weights[i]
             # reconstruct phase component later
-            phase = self.ordered_symmetrised_hamiltonian.phases[i]
-            previous_lcm = self.ordered_symmetrised_hamiltonian.lcm
+            phase = ordered_phases[i]
 
             # pauli strings of symmetry blocks that are later tensored
             conditional_pauli_string_blocks = []
             term_is_zero = False
             # for each symmetry block decompose the pauli string into the eigenbasis
-            for d, eigenvectors, _, qudits_to_delete in block_data:
-                # get the dimension of the degeneracy
-                ps_selection = ps.copy()
-                ps_selection = ps_selection._delete_qudits(qudits_to_delete)
+            for block_idx, (d, eigenvectors, block_cache_key) in enumerate(block_data):
+                ps_selection = term_block_selections[block_idx][i]
+                ps_selection_key = term_block_selection_keys[block_idx][i]
 
-                key = str(np.around(np.array(eigenvectors), 6))
-                if key in self.P_qudit_dict.keys():
-                    if str(ps_selection) in self.P_qudit_dict[key].keys():
-                        P_qudit = self.P_qudit_dict[key][str(ps_selection)]
-                    else:
-                        P_qudit = self.selection_to_qudit(ps_selection, d, eigenvectors)
-                        self.P_qudit_dict[key][str(ps_selection)] = P_qudit
+                block_cache = self.P_qudit_dict.setdefault(block_cache_key, {})
+                if ps_selection_key in block_cache:
+                    P_qudit = block_cache[ps_selection_key]
                 else:
-                    self.P_qudit_dict[key] = {}
-                    self.P_qudit_dict[key][str(ps_selection)] = self.selection_to_qudit(ps_selection, d, eigenvectors)
+                    P_qudit = self.selection_to_qudit(ps_selection, d, eigenvectors)
+                    block_cache[ps_selection_key] = P_qudit
 
                 # selection_to_qudit may legitimately return a scalar (e.g., d==1 or zero block).
                 if np.isscalar(P_qudit):
@@ -465,7 +502,7 @@ class ConditionalHamiltonian:
             if len(conditional_pauli_string_blocks) == 0:
                 scalar_offset += weight * np.exp(phase * 2 * np.pi * 1j / (2 * previous_lcm))
             else:
-                new_ps = conditional_pauli_string_blocks[0]
+                new_ps = conditional_pauli_string_blocks[0].copy()
                 for i in range(1, len(conditional_pauli_string_blocks)):
                     new_ps = new_ps @ conditional_pauli_string_blocks[i]
 
