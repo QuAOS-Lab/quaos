@@ -8,8 +8,9 @@ from sympleq.core.paulis._typing import HilbertOperator
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis.pauli_sum import PauliSum
 from sympleq.core.noise.noise_model import \
-    CompositeNoise, DephasingNoise, DepolarizingNoise, NoiseModel, Noiseless
-from sympleq.core.bayesian_estimation import BayesianEstimator, fidelity
+    CompositeNoise, DephasingNoise, DepolarizingNoise, NoiseModel
+from sympleq.core.bayesian_estimation import BayesianEstimator
+from sympleq.core.utils import fidelity
 
 
 class RMB:
@@ -354,16 +355,13 @@ if __name__ == "__main__":
     output_rho = rmb.run_in_hilbert_space()
     output_rho.eliminate_zeros()
 
-    def _callable() -> PauliSum:
-        return rmb.run()
-
     import time
     now = time.time()
     estimator = BayesianEstimator(threshold, min_runs=1000)
 
     n_printed = 0
 
-    for _ in estimator.run_iter(_callable):
+    for _ in estimator.run_iter(rmb.run):
         if n_printed > 0:
             print(f"\033[{n_printed}A", end="")
 
