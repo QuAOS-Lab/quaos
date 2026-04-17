@@ -217,6 +217,7 @@ class ConditionalHamiltonian:
         self.block_variables['degeneracies'] = {}
         self.block_variables['degeneracy_dimensions'] = {}
         self.block_variables['conditional_dimensions'] = []
+        self.P_qudit_dict = {}
 
         for block_index, block in enumerate(self.blocks):
             # block parameters
@@ -437,7 +438,17 @@ class ConditionalHamiltonian:
                 ps_selection = ps.copy()
                 ps_selection = ps_selection._delete_qudits(qudits_to_delete)
 
-                P_qudit = self.selection_to_qudit(ps_selection, d, eigenvectors)
+                key = str(np.around(np.array(eigenvectors), 6))
+                if key in self.P_qudit_dict.keys():
+                    if str(ps_selection) in self.P_qudit_dict[key].keys():
+                        P_qudit = self.P_qudit_dict[key][str(ps_selection)]
+                    else:
+                        P_qudit = self.selection_to_qudit(ps_selection, d, eigenvectors)
+                        self.P_qudit_dict[key][str(ps_selection)] = P_qudit
+                else:
+                    self.P_qudit_dict[key] = {}
+                    self.P_qudit_dict[key][str(ps_selection)] = self.selection_to_qudit(ps_selection, d, eigenvectors)
+
                 # selection_to_qudit may legitimately return a scalar (e.g., d==1 or zero block).
                 if np.isscalar(P_qudit):
                     p_scalar = P_qudit
