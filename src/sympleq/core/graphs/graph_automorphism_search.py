@@ -61,7 +61,6 @@ class PreparedGASearch:
 def prepare_clifford_ga_search(
     pauli_sum: PauliSum,
     *,
-    dynamic_refine_every: int = 0,
     extra_column_invariants: str = "lc",
     p2_bitset: str | bool = "auto",
     color_mode: str = "wl",
@@ -800,7 +799,6 @@ def clifford_graph_automorphism_search(
     """Convenience wrapper: prepares and runs a single search."""
     prepared = prepare_clifford_ga_search(
         pauli_sum,
-        dynamic_refine_every=dynamic_refine_every,
         extra_column_invariants=extra_column_invariants,
         p2_bitset=p2_bitset,
         color_mode=color_mode,

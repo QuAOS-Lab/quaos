@@ -1,6 +1,9 @@
 import numpy as np
 
-from sympleq.models.heisenberg import heisenberg_2d_hamiltonian
+from sympleq.models.heisenberg import (
+    heisenberg_2d_hamiltonian,
+    modified_heisenberg_ladder_hamiltonian,
+)
 
 
 def _embed_single_qubit(pauli: np.ndarray, site: int, n_qubits: int) -> np.ndarray:
@@ -64,3 +67,29 @@ def test_heisenberg_2d_hamiltonian_periodic_2x1_counts_two_wrap_bonds():
     assert np.array_equal(H.tableau, expected_tableau)
     assert np.array_equal(H.phases, expected_phases)
     np.testing.assert_allclose(H.weights, expected_weights)
+
+
+def test_modified_heisenberg_ladder_hamiltonian_adds_plaquette_diagonals():
+    n_x = 2
+    n_y = 2
+    J = 1.3
+    h_z = np.array([0.2, -0.1, 0.4, -0.3], dtype=float)
+
+    H = modified_heisenberg_ladder_hamiltonian(n_x, n_y, J, h_z=h_z)
+    H_dense = H.to_hilbert_space().toarray()
+
+    X = np.array([[0, 1], [1, 0]], dtype=complex)
+    Y = np.array([[0, -1j], [1j, 0]], dtype=complex)
+    Z = np.array([[1, 0], [0, -1]], dtype=complex)
+
+    expected = np.zeros_like(H_dense)
+    bonds = [(0, 1), (0, 2), (1, 3), (2, 3), (0, 3), (1, 2)]
+    for i, j in bonds:
+        expected += J * _embed_two_qubit(X, i, X, j, 4)
+        expected += J * _embed_two_qubit(Y, i, Y, j, 4)
+        expected += J * _embed_two_qubit(Z, i, Z, j, 4)
+
+    for i, field in enumerate(h_z):
+        expected += field * _embed_single_qubit(Z, i, 4)
+
+    np.testing.assert_allclose(H_dense, expected)

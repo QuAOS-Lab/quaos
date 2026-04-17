@@ -116,7 +116,6 @@ def clifford_graph_automorphism_search_random_restarts(
     # Precompute the expensive invariants once.
     prepared = prepare_clifford_ga_search(
         pauli_sum,
-        dynamic_refine_every=dynamic_refine_every,
         extra_column_invariants=extra_column_invariants,
         p2_bitset=p2_bitset,
         color_mode=color_mode,
