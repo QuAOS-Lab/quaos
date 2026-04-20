@@ -103,6 +103,23 @@ class TestToPytketCircuit:
         assert commands[0].op.type == OpType.H
         assert commands[1].op.type == OpType.CX
 
+    def test_zzphase_gates(self):
+        """GATES.ZZPhase maps to OpType.ZZPhase with angle +0.5; inverse with -0.5."""
+        circuit = Circuit.from_tuples([2, 2], [
+            (GATES.ZZPhase, 0, 1),
+            (GATES.ZZPhase_inv, 0, 1),
+        ])
+        tk = to_pytket_circuit(circuit)
+
+        commands = tk.get_commands()
+        assert len(commands) == 2
+        assert commands[0].op.type == OpType.ZZPhase
+        assert np.isclose(float(commands[0].op.params[0]), 0.5)
+        assert commands[1].op.type == OpType.ZZPhase
+        # pytket normalizes -0.5 modulo the gate's 4-half-turn period, so we accept either form.
+        inv_angle = float(commands[1].op.params[0]) % 4.0
+        assert np.isclose(inv_angle, 3.5)
+
 
 class TestFromPytketCircuit:
 
@@ -169,6 +186,26 @@ class TestFromPytketCircuit:
         with pytest.raises(ValueError, match="No SympleQ mapping"):
             from_pytket_circuit(tk)
 
+    def test_zzphase_gates(self):
+        """ZZPhase(±0.5) should map to GATES.ZZPhase and GATES.ZZPhase_inv."""
+        tk = PytketCircuit(2)
+        tk.add_gate(OpType.ZZPhase, [0.5], [0, 1])
+        tk.add_gate(OpType.ZZPhase, [-0.5], [0, 1])
+
+        circuit = from_pytket_circuit(tk)
+
+        assert circuit.n_gates() == 2
+        assert circuit.gates[0] is GATES.ZZPhase
+        assert circuit.gates[1] is GATES.ZZPhase_inv
+
+    def test_zzphase_non_clifford_angle_raises(self):
+        """Non-Clifford ZZPhase angles should raise ValueError."""
+        tk = PytketCircuit(2)
+        tk.add_gate(OpType.ZZPhase, [0.25], [0, 1])
+
+        with pytest.raises(ValueError, match="Clifford ZZPhase"):
+            from_pytket_circuit(tk)
+
 
 class TestRoundtrip:
 
@@ -206,6 +243,18 @@ class TestRoundtrip:
         for oc, rc in zip(orig_cmds, rest_cmds):
             assert oc.op.type == rc.op.type
             assert [q.index[0] for q in oc.qubits] == [q.index[0] for q in rc.qubits]
+
+    def test_zzphase_roundtrip(self):
+        """SympleQ -> pytket -> SympleQ roundtrip preserves ZZPhase and its inverse."""
+        original = Circuit.from_tuples([2, 2], [
+            (GATES.ZZPhase, 0, 1),
+            (GATES.ZZPhase_inv, 0, 1),
+        ])
+        restored = from_pytket_circuit(to_pytket_circuit(original))
+
+        assert restored.n_gates() == 2
+        assert restored.gates[0] is GATES.ZZPhase
+        assert restored.gates[1] is GATES.ZZPhase_inv
 
     def test_random_circuit_roundtrip(self):
         """Roundtrip random qubit circuits preserves gate count and gate set."""
