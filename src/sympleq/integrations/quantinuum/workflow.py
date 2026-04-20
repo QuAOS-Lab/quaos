@@ -1,7 +1,8 @@
 import sys
 import qnexus as qnx
-from pytket.backends.backendresult import BackendResult
 from qnexus.models.references import IncompleteJobItemRef, CircuitRef
+from pytket.backends.backendresult import BackendResult
+from pytket.utils.distribution import EmpiricalDistribution
 from numpy.random import default_rng
 
 from sympleq.core.circuits import Circuit
@@ -65,15 +66,17 @@ def build_and_compile_circuit(circuit: Circuit, backend_config: qnx.QuantinuumCo
     return ref_compiled_circuit
 
 
-def run(ref_compiled_circuit: CircuitRef, n_shots: int, backend_config: qnx.QuantinuumConfig) -> BackendResult:
+def run(ref_compiled_circuit: CircuitRef, n_shots: int,
+        backend_config: qnx.QuantinuumConfig, syntax_checker: str | None = None) -> BackendResult:
     _phase(f"Executing ({n_shots} shots)")
 
-    if not device_name.endswith("E"):
+    # Syntax checker not available on emulator
+    if not device_name.endswith("E") and syntax_checker is not None:
         execution_cost = qnx.circuits.cost(
             circuit_ref=ref_compiled_circuit,
             n_shots=n_shots,
             backend_config=backend_config,
-            syntax_checker="H2-2SC",
+            syntax_checker=syntax_checker,
         )
 
         _info(f"Execution cost: {execution_cost}")
@@ -100,7 +103,7 @@ def run(ref_compiled_circuit: CircuitRef, n_shots: int, backend_config: qnx.Quan
     return backend_result
 
 
-def run_circuit_on_device(circuit: Circuit, n_shots: int, device_name: str):
+def run_circuit_on_device(circuit: Circuit, n_shots: int, device_name: str) -> EmpiricalDistribution:
     backend_config = qnx.QuantinuumConfig(device_name=device_name, no_opt=True)
     setup()
     ref_circuit = build_and_compile_circuit(circuit, backend_config)
@@ -112,9 +115,11 @@ def run_circuit_on_device(circuit: Circuit, n_shots: int, device_name: str):
     for state, count in counts.most_common():
         _info(f"{state}: {count / total:.4f} ({count}/{total})")
 
+    return distribution
+
 
 if __name__ == "__main__":
-    device_name = "H2-1LE"  # H2-1LE
+    device_name = "H2-1LE"
     n_shots = 100
     n_gates = 24
     n_qubits = 6
