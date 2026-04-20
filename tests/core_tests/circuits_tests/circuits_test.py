@@ -555,6 +555,54 @@ class TestCircuits():
         with pytest.raises(ValueError):
             _ = Circuit.from_gates_and_qudits(dimensions, [GATES.CX, GATES.H, GATES.S], [(0, 1), (2,)])
 
+    def test_from_random_gates_set_default(self):
+        """Default gate set is {H, S, CX, SWAP}; no ZZPhase or CZ should appear."""
+        rng = np.random.default_rng(0)
+        c = Circuit.from_random(50, [2, 2, 2], rng=rng)
+        allowed = {GATES.H, GATES.S, GATES.CX, GATES.SWAP}
+        for g in c.gates:
+            assert g in allowed, f"Default gate set produced unexpected gate {g.name}"
+
+    def test_from_random_gates_set_restricts_sampling(self):
+        """Only the gates in gates_set should appear in the produced circuit."""
+        gates_set = [GATES.S, GATES.ZZPhase]
+        rng = np.random.default_rng(42)
+        c = Circuit.from_random(100, [2] * 4, gates_set=gates_set,
+                                two_qudit_gate_ratio=0.5, rng=rng)
+        seen = set(c.gates)
+        assert seen.issubset({GATES.S, GATES.ZZPhase})
+        # With 100 gates and 50/50 ratio both should actually appear.
+        assert GATES.S in seen
+        assert GATES.ZZPhase in seen
+
+    def test_from_random_gates_set_only_single_qudit(self):
+        """With only single-qudit gates and ratio=0, only single-qudit gates should appear."""
+        gates_set = [GATES.H, GATES.S]
+        rng = np.random.default_rng(0)
+        c = Circuit.from_random(40, [2, 2, 2], gates_set=gates_set,
+                                two_qudit_gate_ratio=0.0, rng=rng)
+        for g in c.gates:
+            assert g.n_qudits == 1
+            assert g in {GATES.H, GATES.S}
+
+    def test_from_random_gates_set_warns_on_multi_qudit(self):
+        """Passing a gate that acts on >2 qudits should emit a warning (and be ignored)."""
+        from sympleq.core.circuits import Gate
+        # A 3-qudit random Clifford as a stand-in for an unsupported multi-qudit gate
+        three_qudit_gate = Gate.from_random(n_qudits=3, dimension=2)
+        gates_set = [GATES.H, GATES.CX, three_qudit_gate]
+        with pytest.warns(UserWarning, match="single qudit and 2-qudits"):
+            c = Circuit.from_random(10, [2, 2, 2], gates_set=gates_set,
+                                    rng=np.random.default_rng(0))
+        for g in c.gates:
+            assert g.n_qudits <= 2
+            assert g is not three_qudit_gate
+
+    def test_from_random_gates_set_invalid_type(self):
+        """A non-container gates_set should raise ValueError."""
+        with pytest.raises(ValueError):
+            _ = Circuit.from_random(5, [2, 2], gates_set=GATES.H)  # type: ignore[arg-type]
+
 
 if __name__ == '__main__':
     TestCircuits().test_circuit_composition()
