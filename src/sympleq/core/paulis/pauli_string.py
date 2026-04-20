@@ -1,12 +1,11 @@
 from __future__ import annotations
-from typing import overload, TYPE_CHECKING
+from typing import TYPE_CHECKING
 import numpy as np
 import re
 import scipy.sparse as sp
 
 from sympleq import bases_to_int
 from .pauli_object import PauliObject
-from .pauli import Pauli
 from .constants import DEFAULT_QUDIT_DIMENSION
 
 if TYPE_CHECKING:
@@ -73,27 +72,6 @@ class PauliString(PauliObject):
         tableau[len(dimensions):] = z_exp % dimensions
 
         P = cls(tableau, dimensions)
-        P._sanity_check()
-
-        return P
-
-    @classmethod
-    def from_pauli(cls, pauli: Pauli) -> PauliString:
-        """
-        Create a PauliString instance from a single Pauli.
-
-        Parameters
-        ----------
-        pauli : Pauli
-            The Pauli to convert into a PauliString.
-
-        Returns
-        -------
-        PauliString
-            A PauliString instance representing the given Pauli operator.
-        """
-
-        P = cls(pauli.tableau, pauli.dimensions)
         P._sanity_check()
 
         return P
@@ -265,16 +243,18 @@ class PauliString(PauliObject):
         dimensions[self.n_qudits():] = A.dimensions
         return PauliString(tableau, dimensions)
 
-    def __rmatmul__(self, A: Pauli) -> PauliString:
+        # TODO: define the same operation for PauliSum
+        #       (tensor with PauliString ONLY, recall PauliString cannot have weights and phase)
+    def __rmatmul__(self, A: PauliString) -> PauliString:
         """
-        Implements the tensor product between a PauliString (`self`) and a Pauli (`A`) objects.
+        Implements the tensor product between a PauliString (`self`) and a PauliString (`A`) objects.
         It corresponds to operator tensor product (`@`).
         The resulting PauliString has the exponents of both strings concatenated.
 
         Parameters
         ----------
-        A : Pauli
-            The Pauli to be right-multiplied with this PauliString.
+        A : PauliString
+            The PauliString to be right-multiplied with this PauliString.
 
         Returns
         -------
@@ -397,35 +377,6 @@ class PauliString(PauliObject):
             The number of identities.
         """
         return np.sum(np.logical_and(self.x_exp == 0, self.z_exp == 0))
-
-    def get_pauli(self, index: int) -> Pauli:
-        """
-        Returns a Pauli at the input index.
-
-        Parameters
-        ----------
-        index : int
-            The index of the Pauli.
-
-        Returns
-        -------
-        Pauli
-            The Pauli at the given index.
-        """
-
-        tableau = np.asarray([self.x_exp[index], self.z_exp[index]], dtype=int)
-        return Pauli(tableau, int(self.dimensions[index]))
-
-    def get_paulis(self) -> list[Pauli]:
-        """
-        Returns a list of Paulis corresponding to the PauliString tableau.
-
-        Returns
-        -------
-        list[Pauli]
-            A list of Pauli.
-        """
-        return [self.get_pauli(i) for i in range(self.n_qudits())]
 
     def symplectic_residues(self, A: PauliString) -> np.ndarray:
         """
@@ -611,15 +562,7 @@ class PauliString(PauliObject):
         self._lcm = np.lcm.reduce(dimensions)
         return self
 
-    @overload
-    def __getitem__(self, key: int) -> Pauli:
-        ...
-
-    @overload
-    def __getitem__(self, key: slice | np.ndarray | list[int]) -> PauliString:
-        ...
-
-    def __getitem__(self, key: int | slice | np.ndarray | list[int]) -> PauliString | Pauli:
+    def __getitem__(self, key: int | slice | np.ndarray | list[int]) -> PauliString:
         """
         Retrieve a Pauli or a (smaller) PauliString from the PauliString.
 
@@ -631,7 +574,7 @@ class PauliString(PauliObject):
 
         Returns
         -------
-        PauliString or Pauli
+        PauliString
             The selected Pauli operator(s). Returns a single Pauli if `key` is an int, otherwise returns a PauliString.
 
         Raises
@@ -649,20 +592,23 @@ class PauliString(PauliObject):
 
         # Return a single Pauli
         if isinstance(key, int):
-            return self.get_pauli(key)
+            key = np.asarray([key], dtype=int)
 
         # Return a (smaller) PauliString
-        if isinstance(key, slice) or isinstance(key, list):
+        elif isinstance(key, slice):
+            key = np.asarray(range(key.stop)[key], dtype=int)
+
+        elif isinstance(key, list):
             key = np.asarray(key, dtype=int)
 
         if isinstance(key, np.ndarray):
             tableau_mask = np.concatenate([key, key + self.n_qudits()])
             return PauliString(
-                self.tableau[tableau_mask], self.dimensions[key], self.weights, self.phases)
+                self.tableau[0, tableau_mask], self.dimensions[key], self.weights, self.phases)
 
-        raise ValueError(f"Cannot get item with key {key}. Key must be aof type int, slice, np.ndarray, or list[int].")
+        raise ValueError(f"Cannot get item with key {key}. Key must be of type int, slice, np.ndarray, or list[int].")
 
-    def __setitem__(self, key: int | slice | np.ndarray | list[int], value: Pauli | PauliString):
+    def __setitem__(self, key: int | slice | np.ndarray | list[int], value: PauliString):
         """
         Set the value(s) of the PauliString at the specified index or slice.
 
@@ -683,16 +629,10 @@ class PauliString(PauliObject):
         # FIXME: merge this with PauliSum __setitem__ into PauliObject
         # TODO: is it necessary to distinguish the two cases in the if... elif... loop?
 
-        if isinstance(key, int) and isinstance(value, Pauli):
-            self._tableau[key] = value.x_exp
-            self._tableau[key + self.n_qudits()] = value.z_exp
-            self._dimensions[key] = value.dimensions[0]
-            self._lcm = np.lcm.reduce(self.dimensions)
-
-        elif isinstance(value, PauliString):
-            if isinstance(key, slice):
-                # Trick to convert slice to NumPy array.
-                # This is necessary to be able to get the number of items in the slice.
+        if isinstance(value, PauliString):
+            if isinstance(key, int):
+                key = np.asarray([key], dtype=int)
+            elif isinstance(key, slice):
                 key = np.asarray(range(key.stop)[key], dtype=int)
             elif isinstance(key, list):
                 key = np.asarray(key, dtype=int)
@@ -703,10 +643,10 @@ class PauliString(PauliObject):
             if len(key) != value.n_qudits():
                 raise ValueError(f"Cannot set item with key {key} and value {value}:\
                                  mismatching dimensions.")
-            self._tableau[key] = value.x_exp
-            self._tableau[key + self.n_qudits()] = value.z_exp
-            self._dimensions[key] = value.dimensions
-            self._lcm = np.lcm.reduce(self.dimensions)
+            if np.any(self._dimensions[key] != value.dimensions):
+                raise ValueError(f"Cannot change dimension of qudit(s)! key: {key} and value: {value}.")
+            self._tableau[0, key] = value.x_exp
+            self._tableau[0, key + self.n_qudits()] = value.z_exp
 
         else:
             raise ValueError(f"Cannot set item with key {key} and value {value}.")
