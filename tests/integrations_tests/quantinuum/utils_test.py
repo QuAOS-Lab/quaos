@@ -4,7 +4,7 @@ from pytket.circuit import Circuit as PytketCircuit, OpType
 
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.circuits.gates import GATES
-from sympleq.integrations.pytket import to_pytket_circuit, from_pytket_circuit
+from sympleq.integrations.quantinuum.utils import to_pytket_circuit, from_pytket_circuit
 
 
 class TestToPytketCircuit:
