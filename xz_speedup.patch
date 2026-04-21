@@ -1,0 +1,38 @@
+diff --git a/src/sympleq/core/paulis/pauli_sum.py b/src/sympleq/core/paulis/pauli_sum.py
+index 054481e..7a77c2d 100644
+--- a/src/sympleq/core/paulis/pauli_sum.py
++++ b/src/sympleq/core/paulis/pauli_sum.py
+@@ -1472,13 +1472,23 @@ class PauliSum(PauliObject):
+         scipy.sparse.csr_matrix
+             Generalized Pauli matrix
+         """
+-        omega = complex_phase_value(2 * 1, d)
+-        aa0 = np.array([1 for _ in range(d)])
+-        aa1 = np.array([i for i in range(d)])
+-        aa2 = np.array([(i - aX) % d for i in range(d)])
+-        aa3 = np.array([omega**(i * aZ) for i in range(d)])
+-        X = sp.csr_matrix((aa0, (aa1, aa2)))
+-        Z = sp.csr_matrix((aa3, (aa1, aa1)))
+-        # if (d == 2) and (aX % 2 == 1) and (aZ % 2 == 1):
+-        #    return 1j * (X @ Z)
+-        return X @ Z
++        n_mod = aX % d
++        m_mod = aZ % d
++
++        indptr = np.arange(d + 1, dtype=int)
++
++        indices = (np.arange(d, dtype=int) - n_mod) % d
++
++        phase = 2.0 * np.pi * m_mod / d
++        angles = indices * phase
++
++        data = np.empty(d, dtype=np.complex128)
++        np.cos(angles, out=data.real)
++        np.sin(angles, out=data.imag)
++
++        return sp.csr_matrix(
++            (data, indices, indptr),
++            shape=(d, d),
++            dtype=np.complex128,
++            copy=False,
++        )
