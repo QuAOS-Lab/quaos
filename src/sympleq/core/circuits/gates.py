@@ -312,6 +312,9 @@ class Gate(ABC):
             "Override in subclass or use a specific gate class."
         )
 
+    def to_local_hilbert_space(self, dimension: int | None = None) -> HilbertOperator:
+        return self.local_unitary(dimension)
+
     def inverse(self) -> Self:
         """
         Return the inverse of this gate.
@@ -449,8 +452,6 @@ class _HADAMARD(Gate):
             return U.conj().T
         return U
 
-    to_local_hilbert_space = local_unitary
-
 
 class _PHASE(Gate):
     """Phase gate (S): X -> XZ, Z -> Z. Has special phase vector for qubits."""
@@ -487,8 +488,6 @@ class _PHASE(Gate):
         if self._is_inverse:
             return U.conj().T
         return U
-
-    to_local_hilbert_space = local_unitary
 
 
 class _CX(Gate):
@@ -536,8 +535,6 @@ class _CX(Gate):
                 U[out_idx, in_idx] = 1.0
         return HilbertOperator(U)
 
-    to_local_hilbert_space = local_unitary
-
 
 class _SWAP(Gate):
     """SWAP gate: X0 <-> X1, Z0 <-> Z1. Self-inverse."""
@@ -565,8 +562,6 @@ class _SWAP(Gate):
                 out_idx = k * d + j  # |k,j⟩
                 U[out_idx, in_idx] = 1.0
         return HilbertOperator(U)
-
-    to_local_hilbert_space = local_unitary
 
     def inverse(self) -> _SWAP:
         # SWAP is self-inverse
@@ -600,11 +595,54 @@ class _CZ(Gate):
                 U[idx, idx] = omega ** (j * k)
         return HilbertOperator(U)
 
-    to_local_hilbert_space = local_unitary
-
     def inverse(self) -> _CZ:
         # CZ is self-inverse
         return self
+
+
+class _ZZPhase(Gate):
+    """ZZ-Phase gate (native for Quantinuum:
+    https://docs.quantinuum.com/systems/trainings/helios/getting_started/parameterized_angle_2_qubit_gates.html).
+    The angle is set to pi/4 thus the gate is Clifford."""
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+
+        if is_inverse:
+            symplectic = np.array([
+                [1, 0, -1, -1],   # image of X0:  X0 -> X0 Z0^{-1} Z1^{-1}
+                [0, 1, -1, -1],    # image of X1:  X1 -> Z0 X1^{-1} Z1^{-1}
+                [0, 0, 1, 0],    # image of Z0:  Z0 -> Z0
+                [0, 0, 0, 1]     # image of Z1:  Z1 -> Z1
+            ], dtype=int).T
+            exceptional = {2: np.array([-1, -1, 0, 0], dtype=int)}
+            name = "ZZP_inv"
+        else:
+            symplectic = np.array([
+                [1, 0, 1, 1],    # image of X0:  X0 -> X0 Z0 Z1
+                [0, 1, 1, 1],    # image of X1:  X1 -> Z0 X1 Z1
+                [0, 0, 1, 0],    # image of Z0:  Z0 -> Z0
+                [0, 0, 0, 1]    # image of Z1:  Z1 -> Z1
+            ], dtype=int).T
+            exceptional = {2: np.array([1, 1, 0, 0], dtype=int)}
+            name = "ZZP"
+
+        super().__init__(name, symplectic, exceptional_phase_vectors=exceptional)
+
+    def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
+        """Applies phase exp(±iπ(j+k)²/d) to |j,k⟩ (sign flipped for the inverse).
+        For qubits this reproduces ZZPhase(±π/4) = exp(∓iπ/4 Z⊗Z) up to a global phase."""
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        d = dimension
+        D = d * d
+        sign = -1 if self._is_inverse else 1
+        U = np.zeros((D, D), dtype=complex)
+        for j in range(d):
+            for k in range(d):
+                idx = j * d + k
+                U[idx, idx] = np.exp(sign * 1j * np.pi * (j + k) ** 2 / d)
+        return HilbertOperator(U)
 
 
 class _Id(Gate):
@@ -626,8 +664,6 @@ class _Id(Gate):
         # X|j⟩ = |j+1 mod d⟩, X^{-1}|j⟩ = |j-1 mod d⟩
         U = np.eye(d, dtype=complex)
         return HilbertOperator(U)
-
-    to_local_hilbert_space = local_unitary
 
     def inverse(self) -> _Id:
         # Id is self-inverse
@@ -675,8 +711,6 @@ class _X(Gate):
                 U[(j + 1) % d, j] = 1.0
         return HilbertOperator(U)
 
-    to_local_hilbert_space = local_unitary
-
 
 class _Y(Gate):
     """Generalized Y gate: Y = X * Z."""
@@ -716,8 +750,6 @@ class _Y(Gate):
                 U[(j + 1) % d, j] = omega ** j
         return HilbertOperator(np.around(U, 10))
 
-    to_local_hilbert_space = local_unitary
-
 
 class _Z(Gate):
     """Generalized Z gate (clock operator): Z|j⟩ = ω^j |j⟩."""
@@ -754,8 +786,6 @@ class _Z(Gate):
             diag = [omega ** j for j in range(d)]
         return HilbertOperator(np.around(np.diag(diag), 10))
 
-    to_local_hilbert_space = local_unitary
-
 
 class _Gates:
     """
@@ -782,6 +812,11 @@ class _Gates:
         self._CX_inv = _CX(is_inverse=True)
         self._CX._inverse = self._CX_inv
         self._CX_inv._inverse = self._CX
+
+        self._ZZPhase = _ZZPhase(is_inverse=False)
+        self._ZZPhase_inv = _ZZPhase(is_inverse=True)
+        self._ZZPhase._inverse = self._ZZPhase_inv
+        self._ZZPhase_inv._inverse = self._ZZPhase
 
         self._SWAP = _SWAP()
         # SWAP is self-inverse, already handled in the class
@@ -833,6 +868,15 @@ class _Gates:
     @property
     def CX_inv(self) -> _CX:
         return self._CX_inv
+
+    # Quantinuum-ZZ-Phase with angle pi/4
+    @property
+    def ZZPhase(self) -> _ZZPhase:
+        return self._ZZPhase
+
+    @property
+    def ZZPhase_inv(self) -> _ZZPhase:
+        return self._ZZPhase_inv
 
     # SWAP
     @property
@@ -929,8 +973,6 @@ class PauliGate(Gate):
         x = self.pauli_string.x_exp
         z = self.pauli_string.z_exp
         return pauli_unitary_from_tableau(d, x, z, convention="bare")
-
-    to_local_hilbert_space = local_unitary
 
     def act(self, pauli: PauliObject, qudits: int | tuple[int, ...] | None = None) -> PauliObject:
         """
