@@ -1,12 +1,11 @@
 from __future__ import annotations
 from abc import ABC
 import numpy as np
-from typing import Self
+from typing import Self, TypeVar, cast
 import scipy.sparse as sp
-from typing import overload
 
 from sympleq._typing import IntArrayLike
-from sympleq.core.paulis import PauliObject, PauliSum, PauliString
+from sympleq.core.paulis import PauliObject, PauliString
 from sympleq.core.paulis._typing import (
     TableauType, TableauLike, PhasesType, DimensionsType, HilbertOperator
 )
@@ -15,6 +14,9 @@ from sympleq.core.circuits.random_symplectic import symplectic_random_transvecti
 from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.circuits.target import get_phase_vector
+
+
+_PauliObjectT = TypeVar("_PauliObjectT", bound=PauliObject)
 
 
 class Gate(ABC):
@@ -183,19 +185,7 @@ class Gate(ABC):
             np.all(self._phase_vector == other._phase_vector) and \
             np.all(self._exceptional_phase_vectors == other._exceptional_phase_vectors)
 
-    @overload
-    def act(self, pauli: PauliSum, qudits: int | tuple[int, ...]) -> PauliSum:
-        ...
-
-    @overload
-    def act(self, pauli: PauliString, qudits: int | tuple[int, ...]) -> PauliString:
-        ...
-
-    @overload
-    def act(self, pauli: PauliObject, qudits: int | tuple[int, ...]) -> PauliObject:
-        ...
-
-    def act(self, pauli: PauliObject, qudits: int | tuple[int, ...]):
+    def act(self, pauli: _PauliObjectT, qudits: int | tuple[int, ...]) -> _PauliObjectT:
         """
         Apply this gate to a Pauli object at the specified qudit indices.
 
@@ -248,8 +238,10 @@ class Gate(ABC):
 
         new_phases = (pauli.phases + acquired_phases) % (2 * pauli.lcm)
 
-        return pauli.__class__(tableau=new_tableau, dimensions=pauli.dimensions,
-                               weights=pauli.weights, phases=new_phases)
+        return cast(_PauliObjectT, pauli.__class__(
+            tableau=new_tableau, dimensions=pauli.dimensions,
+            weights=pauli.weights, phases=new_phases
+        ))
 
     def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
         """
@@ -676,7 +668,7 @@ class PauliGate(Gate):
 
     to_local_hilbert_space = local_unitary
 
-    def act(self, pauli: PauliObject, qudits: int | tuple[int, ...] | None = None) -> PauliObject:
+    def act(self, pauli: _PauliObjectT, qudits: int | tuple[int, ...] | None = None) -> _PauliObjectT:
         """
         Apply this PauliGate to a Pauli object.
 
