@@ -6,6 +6,7 @@ import pytest
 from scipy.sparse import issparse
 from sympleq.core.circuits.known_circuits import to_x, to_ix
 from sympleq.core.circuits import Circuit, GATES
+from sympleq.core.noise.noise_model import CompositeNoise, DepolarizingNoise, DephasingNoise, Noiseless, NoiseModel
 from sympleq.core.paulis import PauliSum, PauliString
 
 
@@ -328,7 +329,7 @@ class TestCircuits():
         data = json.loads(s)
 
         assert data["dimensions"] == dimensions
-        assert data["data"] == [["H", [0]], ["CX", [0, 1]]]
+        assert data["data"] == [["H", [0], "None"], ["CX", [0, 1], "None"]]
 
     def test_from_string_basic(self):
         """Test basic from_string functionality."""
@@ -439,6 +440,73 @@ class TestCircuits():
 
         assert original_result == restored_result
 
+    def test_roundtrip_with_global_noise(self):
+        """Test roundtrip with a single noise model applied to all gates."""
+        dimensions = [2, 2]
+        circuit = Circuit.from_tuples(
+            dimensions, [(GATES.H, 0), (GATES.CX, 0, 1)]
+        ).with_noise(DepolarizingNoise(0.05))
+
+        restored = Circuit.from_string(circuit.to_string())
+        assert circuit == restored
+
+    def test_roundtrip_with_per_gate_noise(self):
+        """Test roundtrip with different noise models per gate."""
+        dimensions = [2, 2]
+        circuit = Circuit.from_tuples(
+            dimensions, [(GATES.H, 0), (GATES.S, 1), (GATES.CX, 0, 1)]
+        ).with_noise([DepolarizingNoise(0.05), DephasingNoise(0.1), None])
+
+        restored = Circuit.from_string(circuit.to_string())
+        assert circuit == restored
+
+    def test_roundtrip_with_noiseless(self):
+        """Test roundtrip with Noiseless noise model."""
+        dimensions = [2, 2]
+        circuit = Circuit.from_tuples(
+            dimensions, [(GATES.H, 0), (GATES.CX, 0, 1)]
+        ).with_noise(Noiseless())
+
+        restored = Circuit.from_string(circuit.to_string())
+        assert circuit == restored
+
+    def test_noise_model_from_string_none(self):
+        """Test NoiseModel.from_string with None."""
+        assert NoiseModel.from_string("None") is None
+
+    def test_noise_model_from_string_unknown(self):
+        """Test NoiseModel.from_string raises on unknown model."""
+        with pytest.raises(ValueError, match="Unknown noise model"):
+            NoiseModel.from_string("UnknownNoise(error_rate=0.1)")
+
+    def test_noise_model_from_string_invalid(self):
+        """Test NoiseModel.from_string raises on unparseable string."""
+        with pytest.raises(ValueError, match="Cannot parse"):
+            NoiseModel.from_string("garbage")
+
+    def test_roundtrip_with_composite_noise(self):
+        """Test roundtrip with CompositeNoise applied to all gates."""
+        dimensions = [2, 2]
+        noise = CompositeNoise.from_noise_models([
+            DepolarizingNoise(0.05), DephasingNoise(0.1)
+        ])
+        circuit = Circuit.from_tuples(
+            dimensions, [(GATES.H, 0), (GATES.CX, 0, 1)]
+        ).with_noise(noise)
+
+        restored = Circuit.from_string(circuit.to_string())
+        assert circuit == restored
+
+    def test_composite_noise_str(self):
+        """Test CompositeNoise.__str__ output."""
+        noise = CompositeNoise.from_noise_models([
+            DepolarizingNoise(0.05), DephasingNoise(0.1)
+        ])
+        s = str(noise)
+        assert s.startswith("CompositeNoise([")
+        assert "DepolarizingNoise" in s
+        assert "DephasingNoise" in s
+
     def test_gates_layout(self):
         dimensions = [3] * 4
         circuit = Circuit.from_random(np.random.randint(4, 12), dimensions)
@@ -486,6 +554,54 @@ class TestCircuits():
             _ = Circuit.from_gates_and_qudits(dimensions, [GATES.CX, GATES.H], [(0, 1), (2,), (1,)])
         with pytest.raises(ValueError):
             _ = Circuit.from_gates_and_qudits(dimensions, [GATES.CX, GATES.H, GATES.S], [(0, 1), (2,)])
+
+    def test_from_random_gates_set_default(self):
+        """Default gate set is {H, S, CX, SWAP}; no ZZPhase or CZ should appear."""
+        rng = np.random.default_rng(0)
+        c = Circuit.from_random(50, [2, 2, 2], rng=rng)
+        allowed = {GATES.H, GATES.S, GATES.CX, GATES.SWAP}
+        for g in c.gates:
+            assert g in allowed, f"Default gate set produced unexpected gate {g.name}"
+
+    def test_from_random_gates_set_restricts_sampling(self):
+        """Only the gates in gates_set should appear in the produced circuit."""
+        gates_set = [GATES.S, GATES.ZZPhase]
+        rng = np.random.default_rng(42)
+        c = Circuit.from_random(100, [2] * 4, gates_set=gates_set,
+                                two_qudit_gate_ratio=0.5, rng=rng)
+        seen = set(c.gates)
+        assert seen.issubset({GATES.S, GATES.ZZPhase})
+        # With 100 gates and 50/50 ratio both should actually appear.
+        assert GATES.S in seen
+        assert GATES.ZZPhase in seen
+
+    def test_from_random_gates_set_only_single_qudit(self):
+        """With only single-qudit gates and ratio=0, only single-qudit gates should appear."""
+        gates_set = [GATES.H, GATES.S]
+        rng = np.random.default_rng(0)
+        c = Circuit.from_random(40, [2, 2, 2], gates_set=gates_set,
+                                two_qudit_gate_ratio=0.0, rng=rng)
+        for g in c.gates:
+            assert g.n_qudits == 1
+            assert g in {GATES.H, GATES.S}
+
+    def test_from_random_gates_set_warns_on_multi_qudit(self):
+        """Passing a gate that acts on >2 qudits should emit a warning (and be ignored)."""
+        from sympleq.core.circuits import Gate
+        # A 3-qudit random Clifford as a stand-in for an unsupported multi-qudit gate
+        three_qudit_gate = Gate.from_random(n_qudits=3, dimension=2)
+        gates_set = [GATES.H, GATES.CX, three_qudit_gate]
+        with pytest.warns(UserWarning, match="single qudit and 2-qudits"):
+            c = Circuit.from_random(10, [2, 2, 2], gates_set=gates_set,
+                                    rng=np.random.default_rng(0))
+        for g in c.gates:
+            assert g.n_qudits <= 2
+            assert g is not three_qudit_gate
+
+    def test_from_random_gates_set_invalid_type(self):
+        """A non-container gates_set should raise ValueError."""
+        with pytest.raises(ValueError):
+            _ = Circuit.from_random(5, [2, 2], gates_set=GATES.H)  # type: ignore[arg-type]
 
 
 if __name__ == '__main__':
