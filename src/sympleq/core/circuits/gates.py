@@ -16,7 +16,7 @@ from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.circuits.target import get_phase_vector
 
 
-_PauliObjectT = TypeVar("_PauliObjectT", bound=PauliObject)
+PauliType = TypeVar("PauliType", bound=PauliObject)
 
 
 class Gate(ABC):
@@ -212,7 +212,7 @@ class Gate(ABC):
             np.all(self._phase_vector == other._phase_vector) and \
             np.all(self._exceptional_phase_vectors == other._exceptional_phase_vectors)
 
-    def act(self, pauli: _PauliObjectT, qudits: int | tuple[int, ...]) -> _PauliObjectT:
+    def act(self, pauli: PauliType, qudits: int | tuple[int, ...]) -> PauliType:
         """
         Apply this gate to a Pauli object at the specified qudit indices.
 
@@ -266,7 +266,7 @@ class Gate(ABC):
 
         new_phases = (pauli.phases + acquired_phases) % (2 * pauli.lcm)
 
-        return cast(_PauliObjectT, pauli.__class__(
+        return cast(PauliType, pauli.__class__(
             tableau=new_tableau, dimensions=pauli.dimensions,
             weights=pauli.weights, phases=new_phases
         ))
@@ -980,7 +980,7 @@ class PauliGate(Gate):
         z = self.pauli_string.z_exp
         return pauli_unitary_from_tableau(d, x, z, convention="bare")
 
-    def act(self, pauli: _PauliObjectT, qudits: int | tuple[int, ...] | None = None) -> _PauliObjectT:
+    def act(self, pauli: PauliType, qudits: int | tuple[int, ...] | None = None) -> PauliType:
         """
         Apply this PauliGate to a Pauli object.
 
