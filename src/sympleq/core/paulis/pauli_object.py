@@ -776,7 +776,7 @@ class PauliObject(ABC):
              tuple(self.dimensions.tobytes()))
         )
 
-    def __dict__(self) -> dict:
+    def get_dict(self) -> dict:
         """
         Returns a dictionary representation of the object's attributes.
 
