@@ -603,6 +603,87 @@ class TestCircuits():
         with pytest.raises(ValueError):
             _ = Circuit.from_random(5, [2, 2], gates_set=GATES.H)  # type: ignore[arg-type]
 
+    def test_from_depth_default_gate_set(self):
+        """Default from_depth gate set is {H, S, CX, CZ, SWAP}."""
+        rng = np.random.default_rng()
+        c = Circuit.from_depth(depth=10, dimensions=[2]*10, rng=rng)
+        allowed = {GATES.H, GATES.S, GATES.CX, GATES.CZ, GATES.SWAP}
+        for g in c.gates:
+            assert g in allowed, f"Default gate set produced unexpected gate {g.name}"
+
+    def test_from_depth_single_qudit_only_covers_full_grid(self):
+        """With ratio=0 every layer is filled with single-qudit gates -> n_gates == depth * n_qudits."""
+        depth = 4
+        dimensions = [2, 2, 2]
+        c = Circuit.from_depth(depth=depth, dimensions=dimensions,
+                               two_qudit_gate_ratio=0.0,
+                               rng=np.random.default_rng(0))
+        assert c.n_gates() == depth * len(dimensions)
+        for g in c.gates:
+            assert g.n_qudits == 1
+
+    def test_from_depth_qudit_positions_cover_full_grid(self):
+        """Every layer fully tiles the qudit register: total qudit-slots == depth * n_qudits."""
+        depth = 6
+        dimensions = [2, 2, 2, 2]
+        c = Circuit.from_depth(depth=depth, dimensions=dimensions,
+                               rng=np.random.default_rng(7))
+        total_positions = sum(len(idxs) for idxs in c.qudit_indices)
+        assert total_positions == depth * len(dimensions)
+
+    def test_from_depth_gates_set_restricts_sampling(self):
+        """Only gates in gates_set should appear."""
+        gates_set = [GATES.H, GATES.CX]
+        c = Circuit.from_depth(depth=10, dimensions=[2] * 3, gates_set=gates_set,
+                               rng=np.random.default_rng(0))
+        seen = set(c.gates)
+        assert seen.issubset({GATES.H, GATES.CX})
+
+    def test_from_depth_only_single_qudit_in_gates_set(self):
+        """If gates_set contains only single-qudit gates, the produced circuit has only those."""
+        gates_set = [GATES.H, GATES.S]
+        c = Circuit.from_depth(depth=5, dimensions=[2, 2, 2], gates_set=gates_set,
+                               two_qudit_gate_ratio=0.0,
+                               rng=np.random.default_rng(0))
+        for g in c.gates:
+            assert g.n_qudits == 1
+            assert g in {GATES.H, GATES.S}
+
+    def test_from_depth_warns_on_multi_qudit(self):
+        """Passing a gate acting on >2 qudits emits a warning and ignores it."""
+        from sympleq.core.circuits import Gate
+        three_qudit_gate = Gate.from_random(n_qudits=3, dimension=2)
+        gates_set = [GATES.H, GATES.CX, three_qudit_gate]
+        with pytest.warns(UserWarning, match="single qudit and 2-qudits"):
+            c = Circuit.from_depth(depth=4, dimensions=[2, 2, 2], gates_set=gates_set,
+                                   rng=np.random.default_rng(0))
+        for g in c.gates:
+            assert g.n_qudits <= 2
+            assert g is not three_qudit_gate
+
+    def test_from_depth_invalid_gates_set_type(self):
+        """A non-container gates_set should raise ValueError."""
+        with pytest.raises(ValueError):
+            _ = Circuit.from_depth(depth=3, dimensions=[2, 2], gates_set=GATES.H)  # type: ignore[arg-type]
+
+    def test_from_depth_invalid_ratio(self):
+        """two_qudit_gate_ratio outside [0, 1] should raise ValueError."""
+        with pytest.raises(ValueError):
+            _ = Circuit.from_depth(depth=3, dimensions=[2, 2], two_qudit_gate_ratio=-0.1)
+        with pytest.raises(ValueError):
+            _ = Circuit.from_depth(depth=3, dimensions=[2, 2], two_qudit_gate_ratio=1.5)
+
+    def test_from_depth_rng_reproducible(self):
+        """Same seed yields the same circuit."""
+        c1 = Circuit.from_depth(depth=5, dimensions=[2, 2, 2],
+                                rng=np.random.default_rng(123))
+        c2 = Circuit.from_depth(depth=5, dimensions=[2, 2, 2],
+                                rng=np.random.default_rng(123))
+        assert c1.n_gates() == c2.n_gates()
+        for g1, g2 in zip(c1.gates, c2.gates):
+            assert g1 is g2
+        assert list(c1.qudit_indices) == list(c2.qudit_indices)
+
 
 if __name__ == '__main__':
     TestCircuits().test_circuit_composition()

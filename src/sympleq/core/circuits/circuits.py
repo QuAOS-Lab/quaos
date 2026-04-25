@@ -245,6 +245,109 @@ class Circuit:
         return C
 
     @classmethod
+    def from_depth(cls,
+                   depth: int,
+                   dimensions: DimensionsLike,
+                   gates_set: tuple[Gate] | list[Gate] | set[Gate] | None = None,
+                   two_qudit_gate_ratio: float = 0.3,
+                   rng: RNGGenerator | None = None) -> Circuit:
+        """
+        Creates a random circuit with the given depth. Similar to from_random, but the circuit
+        is created with layers of gates, acting on each qudit.
+
+        Parameters
+        ----------
+        depth : int
+            Number of gates per qudit in the circuit.
+        dimensions : DimensionsLike
+            The dimension of each qudit.
+        gates_set : tuple[Gate] | list[Gate] | set[Gate] | None, default None
+            The set of gates from which to draw. If ``None`` a default gate set is used.
+        two_qudit_gate_ratio : float, default 0.3
+            Probability of choosing a two-qudit gate vs single-qudit gate.
+        rng : numpy.random.Generator or None, default None
+            Random number generator. If ``None``, a default generator is used.
+
+        Returns
+        -------
+        Circuit
+            A new random Circuit.
+        """
+
+        if gates_set is None:
+            single_qudit_gates: list[Gate] = [GATES.H, GATES.S]
+            two_qudit_gates: list[Gate] = [GATES.CX, GATES.CZ, GATES.SWAP]
+        elif isinstance(gates_set, (tuple, list, set)):
+            single_qudit_gates = [gate for gate in gates_set if gate.n_qudits == 1]
+            two_qudit_gates = [gate for gate in gates_set if gate.n_qudits == 2]
+            if any([gate.n_qudits > 2 for gate in gates_set]):
+                warnings.warn("Only single qudit and 2-qudits gates are used to generate the circuit.")
+        else:
+            raise ValueError("Invalid gates_set type.")
+
+        if two_qudit_gate_ratio < 0.0 or two_qudit_gate_ratio > 1.0:
+            raise ValueError(
+                f"Invalid two_qudit_gate_ratio, it should be between 0 and 1 (got {two_qudit_gate_ratio}).")
+
+        if rng is None:
+            rng = default_rng()
+
+        dimensions = np.asarray(dimensions, dtype=int)
+        # generate list of lists of indexes for each dimension
+        groups: dict[int, list[int]] = defaultdict(list)
+        for i, val in enumerate(dimensions):
+            groups[val].append(i)
+        two_qudits_gates_index_sets = [v for v in groups.values() if len(v) >= 2]
+        num_index_sets = len(two_qudits_gates_index_sets)
+
+        n_qudits = len(dimensions)
+        num_gates = n_qudits * depth
+        # Divide by two since each gate applies to 2 qudits
+        num_two_qudits_gates = int(two_qudit_gate_ratio * num_gates) // 2
+
+        # First assign only 1-qudit gates
+        layers: list[dict[tuple[int, ...], Gate]] = []
+        for _ in range(depth):
+            layer = {}
+
+            for q in range(n_qudits):
+                gate = single_qudit_gates[rng.integers(0, len(single_qudit_gates))]
+                layer[(q,)] = gate
+            layers.append(layer)
+
+        # Distribute num_two_qudits_gates over depth layers randomly,
+        # with max max_two_qudits_gates_per_layer per layer.
+        if num_two_qudits_gates > 0 and two_qudit_gates:
+            for l_idx in rng.choice(range(depth), num_two_qudits_gates):
+                layer = layers[int(l_idx)]
+                set_idx = rng.integers(0, num_index_sets)
+                first_pick = int(set_idx)
+                while True:
+                    # Restrict to qudits who had at most `depth` 2-qudit gates
+                    available_qudits = [q for q in two_qudits_gates_index_sets[set_idx] if (q,) in layer]
+                    if len(available_qudits) >= 2:
+                        break
+                    else:
+                        set_idx = (set_idx + 1) % num_index_sets
+                        # Ensure this terminates eventually
+                        if set_idx == first_pick:
+                            # FIXME: instead pick a different layer and raise only if none is available
+                            raise ValueError("Could not find a gate layout to satisfy the 2-qudits requirements.")
+                indices = tuple(int(idx) for idx in rng.choice(available_qudits, 2, replace=False))
+                for idx in indices:
+                    layer.pop((idx,))
+                gate = two_qudit_gates[rng.integers(0, len(two_qudit_gates))]
+                layer[indices] = gate
+
+        gates = [g for layer in layers for g in layer.values()]
+        qudit_indices = [idxs for layer in layers for idxs in layer.keys()]
+
+        C = cls(dimensions, gates, qudit_indices)
+        C._sanity_check()
+
+        return C
+
+    @classmethod
     def from_string(cls, s: str) -> Circuit:
         """
         Create a Circuit from a JSON string.
