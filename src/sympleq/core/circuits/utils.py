@@ -3,7 +3,7 @@ import numpy as np
 import scipy.sparse as sp
 from functools import reduce
 from sympleq._typing import IntNDArray
-from sympleq.core.paulis._typing import TableauType, PhasesType, HilbertOperator, DimensionsType
+from sympleq.core.paulis._typing import TableauType, PhasesType, HilbertOperator, DimensionsLike
 
 
 def is_symplectic(F: TableauType, p: int) -> bool:
@@ -145,7 +145,7 @@ def _multi_index_to_linear(index: list[int] | np.ndarray, dims: list[int] | np.n
 
 def embed_unitary(U_local: HilbertOperator,
                   qudit_indices: tuple[int, ...] | list[int] | np.ndarray,
-                  total_dimensions: DimensionsType) -> HilbertOperator:
+                  total_dimensions: DimensionsLike) -> HilbertOperator:
     """
     Embed a local unitary acting on a subset of qudits into the full Hilbert space.
 
