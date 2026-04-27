@@ -1,393 +1,325 @@
 from __future__ import annotations
+from pathlib import Path
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 
-from sympleq.core.circuits.circuits import Circuit
-from sympleq.core.circuits.gates import Gate
-from sympleq.core.paulis._typing import HilbertOperator
-from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
-from sympleq.core.paulis.pauli_sum import PauliSum
-from sympleq.core.noise.noise_model import \
-    CompositeNoise, DephasingNoise, DepolarizingNoise, NoiseModel
+from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData, UpdateStrategy
+from sympleq.applications.randomized_benchmarking.backends import RMBBackend, SympleqBackend, QuantinuumBackend
+from sympleq.applications.randomized_benchmarking.backends.base import backend_from_dict
 from sympleq.core.bayesian_estimation import BayesianEstimator
-from sympleq.core.utils import fidelity
+
+DATA_DIR = Path(__file__).parent / "data"
 
 
 class RMB:
     def __init__(self,
-                 circuit: Circuit,
-                 scrambler: Circuit,
-                 with_random_elimination: float,
+                 update_strategy: UpdateStrategy,
+                 backend: RMBBackend,
                  rng: RNGGenerator,
-                 noise_model: NoiseModel | None = None,
-                 ) -> None:
-
+                 *,
+                 threshold: float = 10**(-3),
+                 min_runs: int = 100,
+                 max_runs: int | None = None) -> None:
+        self._update_strategy = update_strategy
+        self._backend = backend
+        self._threshold = threshold
+        self._min_runs = min_runs
+        self._max_runs = max_runs
         self.rng = rng
+        self._data: RMBData = {}
 
-        self._scrambler = scrambler
-        self._scrambler_inv = scrambler.inverse()
+    def _default_bayesian_estimator(self) -> BayesianEstimator:
+        return BayesianEstimator(threshold=self._threshold, min_runs=self._min_runs, max_runs=self._max_runs)
 
-        self._circuit = circuit
-        self._circuit_inv = circuit.inverse()
+    def with_backend(self, backend: RMBBackend) -> RMB:
+        """Set ``self._backend`` and return ``self`` for chaining."""
+        self._backend = backend
+        return self
 
-        self._circuit.set_noise(noise_model)
-        self._circuit_inv.set_noise(noise_model)
+    def with_update_strategy(self, update_strategy: UpdateStrategy) -> RMB:
+        """Set ``self._update_strategy`` and return ``self`` for chaining."""
+        self._update_strategy = update_strategy
+        return self
 
-        self._initial_state = RMB.initial_state(circuit.dimensions)
-
-        # Eliminate and insert identity gates from and to the circuit to make it asymmetric.
-        # This step is performed without applying errors.
-        if with_random_elimination > 0.0:
-            gate_to_eliminate_indices = []
-            pauli = self._initial_state.copy()
-            for idx, (gate, idxs) in enumerate(zip(self._circuit.gates + self._circuit_inv.gates,
-                                                   self._circuit.qudit_indices + self._circuit_inv.qudit_indices)):
-                intermediate = gate.act(pauli, idxs)
-                if pauli == intermediate:
-                    gate_to_eliminate_indices.append(idx)
-
-                pauli = intermediate
-
-            for idx in gate_to_eliminate_indices:
-                if self.rng.random() <= with_random_elimination:
-                    if self.rng.choice(a=[False, True]):
-                        # Remove gate from mirrored circuit (right part)
-                        # idx can have max value len(circuit.gates) - 1 == len(self.circuit.gates) / 2 - 1
-                        self._circuit.remove_gate(len(self._circuit) - 1 - idx)
-                    else:
-                        # Remove gate from base circuit (left part)
-                        self._circuit.remove_gate(idx)
-
-    @classmethod
-    def initial_state(cls, dimensions: list[int] | np.ndarray) -> PauliSum:
-        n_qudits = len(dimensions)
-        pauli_strings = []
-        for p_idx in range(n_qudits):
-            pauli_string = ""
-            for q_idx in range(n_qudits):
-                if p_idx == q_idx:
-                    pauli_string += "x0z1"
-                else:
-                    pauli_string += "x0z0"
-            pauli_strings.append(pauli_string)
-
-        ps = PauliSum.from_string(pauli_strings, dimensions)
-        return ps
-
-    @classmethod
-    def from_circuit(cls,
-                     circuit: Circuit,
-                     rng: RNGGenerator | None = None
-                     ) -> RMB:
+    def with_bayesian_estimator(self,
+                                threshold: float = 10**(-3),
+                                min_runs: int = 100,
+                                max_runs: int | None = None) -> RMB:
         """
-        Create a random RMB object.
+        Set the estimator parameters and return ``self`` for chaining.
+
+        These parameters are forwarded to :meth:`default_bayesian_estimator`
+        when a fresh estimator is built for each configuration.
+        """
+        self._threshold = threshold
+        self._min_runs = min_runs
+        self._max_runs = max_runs
+        return self
+
+    @classmethod
+    def default(cls, rng: RNGGenerator | None = None) -> RMB:
+        """
+        Build an RMB instance with default settings.
+
+        Uses :meth:`RMBConfig.default_update_strategy` as the update
+        strategy and a noiseless :class:`SympleqBackend` as the backend.
+        """
+        if rng is None:
+            rng = default_rng()
+        return cls(update_strategy=RMBConfig.default_update_strategy,
+                   backend=SympleqBackend(),
+                   rng=rng)
+
+    def run(self, config: RMBConfig, verbose: bool = False):
+        """
+        Run the RMB sweep starting from ``config``.
+
+        For each configuration, samples random circuits and feeds the
+        success/failure outcomes (provided by the backend) into a
+        Bayesian estimator until it converges.
 
         Parameters
         ----------
-        circuit: Circuit
-            The base circuit to construct the RMB. The circuit will be mirrored, so in a sense this input
-            is half the final circuit.
-        rng : numpy.random.Generator | None = None
-            The random number generator. Passing a value can be used to obtain deterministic randomness.
-
-        Returns
-        -------
-        RMB
-            A RMB object.
+        config : RMBConfig
+            Starting configuration. If ``None``, falls back to
+            :meth:`RMBConfig.default`.
+        verbose : bool
+            If ``True``, the underlying estimator prints live progress.
         """
+
+        if config is None:
+            config = RMBConfig.default()
+
+        while True:
+            if config not in self._data:
+                self._data[config] = self._default_bayesian_estimator()
+
+            estimator = self._data[config]
+            estimator.run(lambda: self._backend.fidelity_estimation(config, self.rng), verbose)
+
+            # FIXME: add breaking conditions, e.g. times or number of samples
+            if len(self._data) >= 8:
+                break
+
+            config = self._update_strategy(self._data, config)
+
+        RMB.print_data(self._data)
+
+    @classmethod
+    def print_data(cls, data: RMBData):
+        """Print ``data`` as a markdown-style table of configs and fidelities."""
+        headers = ["depth", "two_qudit_gate_ratio", "n_qubits", "random_elimination", "fidelity"]
+        rows = []
+        for config, estimator in data.items():
+            rows.append([
+                f"{config.depth}",
+                f"{config.two_qudit_gate_ratio}",
+                f"{config.n_qubits}",
+                f"{config.random_elimination}",
+                f"{estimator.probability(True):.4f} ± {estimator.variance(True):.4f}",
+            ])
+
+        widths = [max(len(h), *(len(r[i]) for r in rows)) if rows else len(h)
+                  for i, h in enumerate(headers)]
+
+        def fmt(cells: list[str]) -> str:
+            return "| " + " | ".join(c.center(w) for c, w in zip(cells, widths)) + " |"
+
+        sep = "|-" + "-|-".join("-" * w for w in widths) + "-|"
+        print(sep)
+        print(fmt(headers))
+        print(sep)
+        for row in rows:
+            print(fmt(row))
+        print(sep)
+
+    def save(self, path: str | Path = "rmb.json"):
+        """
+        Save this RMB run as JSON.
+
+        The output file contains the backend parameters, the Bayesian
+        estimator parameters, and one record per ``(config, estimator)``
+        pair in :attr:`_data`. Each record includes the config fields
+        and the estimator's per-outcome counts so :meth:`load` can
+        reconstruct the full state.
+
+        Parameters
+        ----------
+        path : str | Path
+            Output file. Bare file names (no separators) are resolved
+            inside the package's ``data/`` directory; otherwise the
+            given path is used as-is.
+        """
+        import json
+        path = Path(path)
+        if not path.is_absolute() and path.parent == Path("."):
+            path = DATA_DIR / path
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        records = []
+        for config, estimator in self._data.items():
+            records.append({
+                "depth": config.depth,
+                "scrambling_probability": config.scrambling_probability,
+                "two_qudit_gate_ratio": config.two_qudit_gate_ratio,
+                "n_qubits": config.n_qubits,
+                "random_elimination": config.random_elimination,
+                "gates_set": [g.name for g in config.gates_set],
+                "results": [[outcome, count] for outcome, count in estimator._results.items()],
+            })
+
+        payload = {
+            "backend": self._backend.to_dict(),
+            "estimator": {
+                "threshold": self._threshold,
+                "min_runs": self._min_runs,
+                "max_runs": self._max_runs,
+            },
+            "data": records,
+        }
+
+        with open(path, "w") as f:
+            json.dump(payload, f, indent=2)
+
+    @classmethod
+    def load(cls, path: str | Path = "rmb.json", rng: RNGGenerator | None = None) -> RMB:
+        """
+        Load an RMB run previously written by :meth:`save`.
+
+        Reconstructs the backend and estimator parameters, then rebuilds
+        each entry in :attr:`_data` by replaying the saved per-outcome
+        counts into a fresh Bayesian estimator. ``gates_set`` is not
+        reconstructed and falls back to the :class:`RMBConfig` default.
+
+        Parameters
+        ----------
+        path : str | Path
+            Input file. Bare file names (no separators) are resolved
+            inside the package's ``data/`` directory; otherwise the
+            given path is used as-is.
+        rng : numpy.random.Generator | None
+            RNG to attach to the rebuilt RMB. ``None`` uses ``default_rng()``.
+        """
+        import json
+        path = Path(path)
+        if not path.is_absolute() and path.parent == Path("."):
+            path = DATA_DIR / path
+        with open(path) as f:
+            payload = json.load(f)
 
         if rng is None:
             rng = default_rng()
 
-        scrambler = Circuit.empty(circuit.dimensions)
+        backend = backend_from_dict(payload["backend"])
+        estimator_params = payload["estimator"]
+        rmb = cls(update_strategy=RMBConfig.default_update_strategy,
+                  backend=backend,
+                  rng=rng,
+                  threshold=estimator_params["threshold"],
+                  min_runs=estimator_params["min_runs"],
+                  max_runs=estimator_params["max_runs"])
 
-        return cls(circuit, scrambler, False, rng)
+        for rec in payload["data"]:
+            config = RMBConfig(
+                depth=rec["depth"],
+                scrambling_probability=rec["scrambling_probability"],
+                two_qudit_gate_ratio=rec["two_qudit_gate_ratio"],
+                n_qubits=rec["n_qubits"],
+                random_elimination=rec["random_elimination"],
+            )
+            estimator = rmb._default_bayesian_estimator()
+            for outcome, count in rec["results"]:
+                for _ in range(count):
+                    estimator._record_result(outcome)
+            rmb._data[config] = estimator
+        return rmb
 
     @classmethod
-    def from_random(cls,
-                    dimensions: int | list[int] | np.ndarray,
-                    gate_density: float = 1.0,
-                    with_random_elimination: float = 0.0,
-                    rng: RNGGenerator | None = None
-                    ) -> RMB:
+    def plot_data(cls, data: RMBData, ax=None, show: bool = True):
         """
-        Create a random RMB object.
+        Scatter ``data`` with depth on x, two-qudit gate ratio on y,
+        and color encoding the fidelity (bright green = 1.0, dark
+        red = 0.0).
+
+        Each data point is drawn as three concentric disks whose colors
+        encode ``fidelity - std``, ``fidelity``, and ``fidelity + std``
+        from outer to inner (so the inner disk is greener and the outer
+        disk is redder when the estimate is uncertain). ``std`` is the
+        square root of the estimator variance.
 
         Parameters
         ----------
-        dimensions : int | list[int] | np.ndarray
-            The dimensions of the qudits. The size of dimensions determines the number of qudits.
-        gate_density: float = 1.0
-            The average number of gates for each qudit in the first half of the circuit
-            (the second half is the mirror of the first).
-        random_initial_state: bool = True
-            Whether the initial state should be set randomly.
-        with_random_elimination: float = 0.0
-            Whether gates acting as identity should be randomly eliminated.
-            This is used to break the mirror symmetry of the circuit without
-            affecting the output state (in absence of errors).
-        rng : numpy.random.Generator | None = None
-            The random number generator. Passing a value can be used to obtain deterministic randomness.
+        data : RMBData
+            Mapping from configurations to their Bayesian estimators.
+        ax : matplotlib.axes.Axes | None
+            Axes to plot on. If ``None``, a new figure and axes are
+            created.
+        show : bool
+            If ``True``, call ``plt.show()`` after building the plot.
 
         Returns
         -------
-        RMB
-            A RMB object.
+        matplotlib.axes.Axes
+            The axes the plot was drawn on.
         """
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import LinearSegmentedColormap
 
-        if isinstance(dimensions, int):
-            dimensions = [dimensions]
+        if ax is None:
+            _, ax = plt.subplots()
 
-        if rng is None:
-            rng = default_rng()
+        depths = np.array([c.depth for c in data])
+        ratios = np.array([c.two_qudit_gate_ratio for c in data])
+        fidelities = np.array([e.probability(True) for e in data.values()])
+        stds = np.array([np.sqrt(e.variance(True)) for e in data.values()])
 
-        n_qudits = len(dimensions)
-        n_gates = int(gate_density * n_qudits)
-        scrambler = Circuit.from_random(10, dimensions, two_qudit_gate_ratio=0.0, rng=rng)
-        circuit = Circuit.from_random(n_gates, dimensions, rng=rng)
+        cmap = LinearSegmentedColormap.from_list(
+            "darkred_to_lime",
+            ["darkred", "red", "orange", "lime", "green"])
 
-        return cls(circuit, Circuit.empty(circuit.dimensions), with_random_elimination, rng)\
-            .with_scrambler(scrambler)
+        outer_color = np.clip(fidelities - stds, 0.0, 1.0)
+        middle_color = fidelities
+        inner_color = np.clip(fidelities + stds, 0.0, 1.0)
 
-    def with_noise(self, noise_model: NoiseModel) -> RMB:
-        """
-        Attach a noise model and return self for chaining.
+        ax.scatter(depths, ratios, c=outer_color, cmap=cmap,
+                   vmin=0.0, vmax=1.0, s=200, edgecolors="none", zorder=1)
+        sc = ax.scatter(depths, ratios, c=middle_color, cmap=cmap,
+                        vmin=0.0, vmax=1.0, s=100, edgecolors="none", zorder=2)
+        ax.scatter(depths, ratios, c=inner_color, cmap=cmap,
+                   vmin=0.0, vmax=1.0, s=30, edgecolors="none", zorder=3)
 
-        Parameters
-        ----------
-        noise_model : NoiseModel
-            The noise model to apply after each gate.
+        ax.set_xlabel("depth")
+        ax.set_ylabel("two-qudit gate ratio")
+        cbar = plt.colorbar(sc, ax=ax)
+        cbar.set_label("fidelity")
 
-        Returns
-        -------
-        RMB
-            This RMB instance (for method chaining).
-        """
-        self._circuit.set_noise(noise_model)
-        self._circuit_inv.set_noise(noise_model)
-        return self
+        if show:
+            plt.show()
 
-    def with_scrambler(self, scrambler: Circuit) -> RMB:
-        """
-        Attach a scrambler to randomize the initial state and return self for chaining.
-
-        Parameters
-        ----------
-        scrambler : Circuit
-            The scrambler to prepend to the circuit.
-
-        Returns
-        -------
-        RMB
-            This RMB instance (for method chaining).
-        """
-        if not np.array_equal(scrambler.dimensions, self._circuit.dimensions):
-            raise ValueError("Scrambler and circuit must have the same dimensions.")
-
-        if not all([g.n_qudits == 1 for g in scrambler.gates]):
-            raise ValueError("Scrambler gates should be all 1-qudit gates.")
-
-        self._scrambler = scrambler
-        self._scrambler_inv = scrambler.inverse()
-        return self
-
-    def with_random_scrambler(self, n_gates: int = 10) -> RMB:
-        """
-        Attach a random scrambler to randomize the initial state and return self for chaining.
-
-        Parameters
-        ----------
-        n_gates : int | None
-            The depth of the random scrambler.
-
-        Returns
-        -------
-        RMB
-            This RMB instance (for method chaining).
-        """
-        self._scrambler = Circuit.from_random(n_gates, self.dimensions, two_qudit_gate_ratio=0.0, rng=self.rng)
-        self._scrambler_inv = self._scrambler.inverse()
-        return self
-
-    @property
-    def dimensions(self) -> np.ndarray:
-        return self._circuit.dimensions
-
-    @property
-    def lcm(self) -> int:
-        return self._circuit.lcm
-
-    @property
-    def gates(self) -> list[Gate]:
-        return self._circuit.gates
-
-    @property
-    def qudit_indices(self) -> list[tuple[int, ...]]:
-        return self._circuit.qudit_indices
-
-    def n_gates(self) -> int:
-        return len(self._circuit.gates)
-
-    def n_qudits(self) -> int:
-        return len(self._circuit.dimensions)
-
-    def run(self) -> PauliSum:
-        ps = self._initial_state
-        return self.circuit().act(ps)
-
-    def run_in_hilbert_space(self) -> HilbertOperator:
-        rho = self._initial_state.stabilizer_to_hilbert_space()
-        return self.circuit().act_in_hilbert_space(rho)
-
-    def circuit(self) -> Circuit:
-        return self._scrambler + self._circuit + self._circuit_inv + self._scrambler_inv
-
-    def __str__(self) -> str:
-        """
-        Returns a more readable string representation of the RMB.
-
-        Returns
-        -------
-        str
-            A string representation of the RMB.
-        """
-
-        p_string = f"""
-Initial state:
-  {self._initial_state}
-
-Circuit:
-  {self._circuit}
-"""
-        return p_string
-
-    def gates_layout(self, with_qudit_indices: bool = False, wrap: bool = True) -> str:
-        """
-        Returns a visual circuit diagram of the RMB.
-
-        Renders the circuit as ASCII art with gates displayed as boxes
-        connected by wires.
-
-        Parameters
-        ----------
-        with_qudit_indices : bool, default False
-            If True, display qudit indices on the left of each wire.
-        wrap : bool, default True
-            If True, wrap the output to fit the terminal width by splitting
-            at gate boundaries.
-
-        Returns
-        -------
-        str
-            A string representation of the circuit diagram.
-        """
-
-        def green(s):
-            return f"\033[92m{s}\033[0m"
-
-        def red(s):
-            return f"\033[91m{s}\033[0m"
-
-        n_qudits = self.n_qudits()
-        with_input = self._initial_state
-        with_output = self.run()
-        wires = [green("=") if with_input.phases[l_idx] == with_output.phases[l_idx]
-                 else red("=") for l_idx in range(n_qudits)]
-
-        return self.circuit().gates_layout(
-            with_qudit_indices=with_qudit_indices,
-            with_input=with_input,
-            with_output=with_output,
-            wires=wires,
-            wrap=wrap)
-
-    def run_fidelity(self, estimator: BayesianEstimator) -> tuple[float, float]:
-        rho = self._initial_state.stabilizer_to_hilbert_space()
-
-        def _sample_fidelity() -> float:
-            sampled_probabilities = {}
-            cum_probability = 0
-            for res in estimator.results():
-                p = estimator.probability(res)
-                std = np.sqrt(estimator.variance(res))
-                s = max(0.0, self.rng.normal(p, std))
-                cum_probability += s
-                sampled_probabilities[res] = s
-
-            sampled_sigma = np.sum([sampled_probabilities[res] / cum_probability *
-                                    res.stabilizer_to_hilbert_space() for res in results])
-            return fidelity(rho, sampled_sigma)
-
-        N = 100
-
-        sampling = np.empty(N, dtype=float)
-        for i in range(N):
-            sampling[i] = _sample_fidelity()
-
-        avg = np.mean(sampling)
-        std = float(np.std(sampling))
-
-        sigma = np.sum([estimator.probability(res) * res.stabilizer_to_hilbert_space() for res in results])
-        _fidelity = fidelity(rho, sigma)
-
-        assert abs(avg - _fidelity) <= std, "Inconsistend sampling"
-        return _fidelity, std
+        return ax
 
 
 if __name__ == "__main__":
-    n_qudits = 4
-    gate_density = 6
-    dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qudits
-    threshold = 0.65 * 1e-3
-    rng = default_rng(11)
+    rng = default_rng()
+    verbose = True
 
-    noise_model = CompositeNoise.from_noise_models([DephasingNoise(0.05), DepolarizingNoise(0.01)], rng=rng)
-    # noise_model = DepolarizingNoise(1.0, rng)
-    # noise_model = DephasingNoise(0.5, rng)
-    # noise_model = Noiseless()
-    rmb = RMB.from_random(dimensions, gate_density,
-                          with_random_elimination=True,
-                          rng=rng
-                          ).with_noise(noise_model).with_random_scrambler()
+    initial_config = RMBConfig.default()\
+        .with_depth(20)\
+        .with_random_elimination(0.25)\
+        .with_n_qubits(4)\
+        .with_two_qudit_gate_ratio(0.75)\
+        .with_scrambling_probability(0.5)
 
-    print(rmb.gates_layout(with_qudit_indices=True))
+    # noise_model = GenericNoise.from_paulis([0.001, 0.001, 0.002], rng=rng)
+    # two_qubit_noise_model = GenericNoise.from_paulis([0.0075, 0.0075, 0.0075], rng=rng)
+    # rmb = RMB.default(rng)\
+    #     .with_backend(SympleqBackend(noise_model, two_qubit_noise_model))\
+    #     .with_bayesian_estimator(threshold=10**(-4), min_runs=100)
 
-    output_rho = rmb.run_in_hilbert_space()
-    output_rho.eliminate_zeros()
+    rmb = RMB.default(rng)\
+        .with_backend(QuantinuumBackend(device_name="H2-2E"))\
+        .with_bayesian_estimator(threshold=10**(-1), min_runs=10)
 
-    import time
-    now = time.time()
-    estimator = BayesianEstimator(threshold, min_runs=1000)
-
-    n_printed = 0
-
-    for _ in estimator.run_iter(rmb.run):
-        if n_printed > 0:
-            print(f"\033[{n_printed}A", end="")
-
-        n_printed = 1
-        print(f"Threshold={threshold} - {time.time() - now:.2f}s")
-
-        results: list[PauliSum] = estimator.results()
-        for idx, res in enumerate(results):
-            p = estimator.probability(res)
-            std = np.sqrt(estimator.variance(res))
-            print(f"\033[K{res.phases}: p={p:.5f} ± {std:.5f}")
-        n_printed += len(results)
-
-        n_runs = estimator.num_runs()
-        print(f"n_runs={n_runs}")
-        n_printed += 1
-
-        if n_runs % 1000 == 1:
-            average_rho = sum([estimator.probability(res) * res.stabilizer_to_hilbert_space() for res in results])
-            m = np.max(np.abs(average_rho - output_rho))
-            print(f"Max error={m:.5f}")
-            n_printed += 1
-
-    print()
-    # fid, err = fidelity(estimator, output_rho)
-    # print(f"Ballistic accuracy={fid:.5f} ± {err:.5f}")
-
-    fid, err = rmb.run_fidelity(estimator)
-    print(f"Fidelity={fid:.5f} ± {err:.5f}")
+    rmb.run(initial_config, verbose)
+    rmb.save("quantinuum.json")
+    RMB.plot_data(rmb._data)

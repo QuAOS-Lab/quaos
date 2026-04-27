@@ -69,6 +69,8 @@ class BayesianEstimator:
         float
             Bayesian posterior mean probability.
         """
+        if key not in self._probabilities:
+            return 0.0
         return self._probabilities[key]
 
     def variance(self, key: Hashable) -> float:
@@ -85,6 +87,8 @@ class BayesianEstimator:
         float
             Bayesian posterior variance.
         """
+        if key not in self._probabilities:
+            return 0.0
         return self._variances[key]
 
     def _update_estimates(self, base: float, counts_tot: int, a_tot: float):
@@ -107,7 +111,7 @@ class BayesianEstimator:
     def _converged(self) -> bool:
         return (self._counts_tot >= self.min_runs and all(v <= self.threshold for v in self._variances.values()))
 
-    def run(self, callable: Callable[[], Hashable]):
+    def run(self, callable: Callable[[], Hashable], verbose: bool = False):
         """
         Run the estimator to convergence.
 
@@ -119,10 +123,10 @@ class BayesianEstimator:
         callable : Callable[[], Hashable]
             A zero-argument function that returns a hashable outcome.
         """
-        for _ in self.run_iter(callable):
+        for _ in self.run_iter(callable, verbose):
             pass
 
-    def run_iter(self, callable: Callable[[], Hashable]) -> Generator[None, None, None]:
+    def run_iter(self, callable: Callable[[], Hashable], verbose: bool = False) -> Generator[None, None, None]:
         """
         Run the estimator, yielding after each sample.
 
@@ -139,11 +143,34 @@ class BayesianEstimator:
         None
             Yields after each sample is recorded.
         """
+        if verbose:
+            import time
+            now = time.time()
+            n_printed = 0
+
         while not self._converged():
             if self.max_runs and self.num_runs() > self.max_runs:
                 break
             result = callable()
             self._record_result(result)
+            if verbose:
+                import numpy as np
+                if n_printed > 0:
+                    print(f"\033[{n_printed}A", end="")
+
+                n_printed = 1
+                print(f"Threshold={self.threshold} - {time.time() - now:.2f}s")
+
+                results: list = self.results()
+                for res in results:
+                    p = self.probability(res)
+                    std = np.sqrt(self.variance(res))
+                    print(f"\033[K{res}: p={p:.5f} ± {std:.5f}")
+                n_printed += len(results)
+
+                n_runs = self.num_runs()
+                print(f"n_runs={n_runs}\n")
+                n_printed += 2
             yield
 
     def report(self) -> str:

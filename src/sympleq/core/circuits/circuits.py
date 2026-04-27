@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Generator, overload
+from typing import TYPE_CHECKING, Generator, overload
 import json
 import numpy as np
 import scipy.sparse as sp
@@ -8,7 +8,8 @@ from pathlib import Path
 from collections import defaultdict
 import warnings
 
-from sympleq.core.noise.noise_model import NoiseModel
+if TYPE_CHECKING:
+    from sympleq.core.noise.noise_model import NoiseModel
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis._typing import TableauType, DimensionsLike, DimensionsType, PhasesType, HilbertOperator
 
@@ -101,7 +102,7 @@ class Circuit:
     @classmethod
     def from_random(cls, n_gates: int,
                     dimensions: DimensionsLike,
-                    gates_set: tuple[Gate] | list[Gate] | set[Gate] | None = None,
+                    gates_set: tuple[Gate, ...] | list[Gate] | set[Gate] | None = None,
                     two_qudit_gate_ratio: float = 0.3,
                     rng: RNGGenerator | None = None) -> Circuit:
         """
@@ -113,7 +114,7 @@ class Circuit:
             Number of gates in the circuit.
         dimensions : DimensionsLike
             The dimension of each qudit.
-        gates_set : tuple[Gate] | list[Gate] | set[Gate]
+        gates_set : tuple[Gate, ...] | list[Gate] | set[Gate]
             The set of gates from which to draw.
         two_qudit_gate_ratio : float
             Probability of choosing a two-qudit gate vs single-qudit gate.
@@ -248,7 +249,7 @@ class Circuit:
     def from_depth(cls,
                    depth: int,
                    dimensions: DimensionsLike,
-                   gates_set: tuple[Gate] | list[Gate] | set[Gate] | None = None,
+                   gates_set: tuple[Gate, ...] | list[Gate] | set[Gate] | None = None,
                    two_qudit_gate_ratio: float = 0.3,
                    rng: RNGGenerator | None = None) -> Circuit:
         """
@@ -261,7 +262,7 @@ class Circuit:
             Number of gates per qudit in the circuit.
         dimensions : DimensionsLike
             The dimension of each qudit.
-        gates_set : tuple[Gate] | list[Gate] | set[Gate] | None, default None
+        gates_set : tuple[Gate, ...] | list[Gate] | set[Gate] | None, default None
             The set of gates from which to draw. If ``None`` a default gate set is used.
         two_qudit_gate_ratio : float, default 0.3
             Probability of choosing a two-qudit gate vs single-qudit gate.
@@ -398,6 +399,7 @@ class Circuit:
         qudit_indices = []
         noise_model_per_gate = []
 
+        from sympleq.core.noise.noise_model import NoiseModel
         for gate_spec in gate_data:
             gate_name = gate_spec[0]
             indices = tuple(gate_spec[1])
@@ -454,6 +456,7 @@ class Circuit:
             This circuit instance (for method chaining).
         """
 
+        from sympleq.core.noise.noise_model import NoiseModel
         if isinstance(noise_model, NoiseModel):
             self._noise_model_per_gate = [noise_model] * self.n_gates()
         elif isinstance(noise_model, list):
@@ -464,6 +467,46 @@ class Circuit:
         else:
             raise ValueError("Invalid noise input: must be either a NoiseModel (set global noise) or \
                              a list of noise models with length equal to the number of gates.")
+
+        return self
+
+    def with_two_qudit_noise(self, noise_model: NoiseModel | list[NoiseModel | None]) -> Circuit:
+        """
+        Attach a noise model to all two-qudits gates and return self for chaining.
+
+        Parameters
+        ----------
+        noise_model : NoiseModel | list[NoiseModel | None]
+            A single noise model applied after every two-qudits gate, or a list of
+            per-two-qudit-gate noise models (with ``None`` for noiseless gates).
+            A list must have length equal to the number of two-qudit gates in
+            the circuit (single-qudit gates are skipped).
+
+        Returns
+        -------
+        Circuit
+            This circuit instance (for method chaining).
+        """
+
+        from sympleq.core.noise.noise_model import NoiseModel
+        if isinstance(noise_model, NoiseModel):
+            for i, gate in enumerate(self._gates):
+                if gate.n_qudits == 2:
+                    self._noise_model_per_gate[i] = noise_model
+        elif isinstance(noise_model, list):
+            n_two_qudit_gates = len([g for g in self._gates if g.n_qudits == 2])
+            if len(noise_model) != n_two_qudit_gates:
+                raise ValueError(f"Invalid noise input. A list of noise models should have exactly "
+                                 f"one element per two-qudit gate "
+                                 f"(got {len(noise_model)}, expected {n_two_qudit_gates}).")
+            j = 0
+            for i, gate in enumerate(self._gates):
+                if gate.n_qudits == 2:
+                    self._noise_model_per_gate[i] = noise_model[j]
+                    j += 1
+        else:
+            raise ValueError("Invalid noise input: must be either a NoiseModel (set global noise) or \
+                             a list of noise models with length equal to the number of two-qudit gates.")
 
         return self
 
@@ -481,6 +524,23 @@ class Circuit:
             self._noise_model_per_gate = [None] * self.n_gates()
         else:
             self = self.with_noise(noise_model)
+
+    def set_two_qudit_noise(self, noise_model: NoiseModel | None | list[NoiseModel | None]):
+        """
+        Attach a noise model to all two-qudits gates of this circuit.
+
+        Parameters
+        ----------
+        noise_model : NoiseModel | None | list[NoiseModel | None]
+            A single noise model applied after every two-qudits gate, ``None`` to
+            remove noise from two-qudits gates, or a list of per-gate noise models.
+        """
+        if noise_model is None:
+            for i, gate in enumerate(self._gates):
+                if gate.n_qudits == 2:
+                    self._noise_model_per_gate[i] = None
+        else:
+            self = self.with_two_qudit_noise(noise_model)
 
     def _sanity_check(self):
         """
