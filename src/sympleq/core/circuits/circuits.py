@@ -319,7 +319,8 @@ class Circuit:
         if num_two_qudits_gates > 0 and two_qudit_gates:
             # available_qudits is a list of set_idxs (one per layer). Each element is a list of qudit indices,
             # indicating which qudits can be combined in a 2-qudit gate.
-            available_qudits: list[list[list[int]]] = [two_qudits_gates_index_sets for _ in range(depth)]
+            available_qudits: list[list[list[int]]] = [[list(s) for s in two_qudits_gates_index_sets]
+                                                       for _ in range(depth)]
             for _ in range(num_two_qudits_gates):
                 layer_choices = [i for i in range(depth) if available_qudits[i]]
                 if not layer_choices:
