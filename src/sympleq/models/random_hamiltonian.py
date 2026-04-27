@@ -193,7 +193,7 @@ def random_gate_symmetric_hamiltonian(G: Gate,
                                       n_qudits: int,
                                       n_paulis: int | None = None,
                                       weight_mode: str = 'uniform',
-                                      scrambled: bool = False):
+                                      scrambled: bool = False) -> PauliSum:
     """
     Generate a random symmetric Hamiltonian from a gate G.
 
