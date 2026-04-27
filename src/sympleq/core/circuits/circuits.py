@@ -298,7 +298,6 @@ class Circuit:
         for i, val in enumerate(dimensions):
             groups[val].append(i)
         two_qudits_gates_index_sets = [v for v in groups.values() if len(v) >= 2]
-        num_index_sets = len(two_qudits_gates_index_sets)
 
         n_qudits = len(dimensions)
         num_gates = n_qudits * depth
@@ -318,24 +317,32 @@ class Circuit:
         # Distribute num_two_qudits_gates over depth layers randomly,
         # with max max_two_qudits_gates_per_layer per layer.
         if num_two_qudits_gates > 0 and two_qudit_gates:
-            for l_idx in rng.choice(range(depth), num_two_qudits_gates):
-                layer = layers[int(l_idx)]
-                set_idx = rng.integers(0, num_index_sets)
-                first_pick = int(set_idx)
-                while True:
-                    # Restrict to qudits who had at most `depth` 2-qudit gates
-                    available_qudits = [q for q in two_qudits_gates_index_sets[set_idx] if (q,) in layer]
-                    if len(available_qudits) >= 2:
-                        break
-                    else:
-                        set_idx = (set_idx + 1) % num_index_sets
-                        # Ensure this terminates eventually
-                        if set_idx == first_pick:
-                            # FIXME: instead pick a different layer and raise only if none is available
-                            raise ValueError("Could not find a gate layout to satisfy the 2-qudits requirements.")
-                indices = tuple(int(idx) for idx in rng.choice(available_qudits, 2, replace=False))
+            # available_qudits is a list of set_idxs (one per layer). Each element is a list of qudit indices,
+            # indicating which qudits can be combined in a 2-qudit gate.
+            available_qudits: list[list[list[int]]] = [two_qudits_gates_index_sets for _ in range(depth)]
+            for _ in range(num_two_qudits_gates):
+                layer_choices = [i for i in range(depth) if available_qudits[i]]
+                if not layer_choices:
+                    warnings.warn("Could not satisfy the required number of 2-qudit gates.")
+                    break
+                layer_idx = int(rng.choice(layer_choices))
+                layer = layers[layer_idx]
+                # By construction, len(qudits_set) >= 2
+                qudits_set_idx = int(rng.choice(range(len(available_qudits[layer_idx]))))
+                qudits_set = available_qudits[layer_idx][qudits_set_idx]
+                assert len(qudits_set) >= 2
+                indices = tuple(int(idx) for idx in rng.choice(qudits_set, 2, replace=False))
+
+                # Remove single qudit gates assigned for the qudits.
                 for idx in indices:
                     layer.pop((idx,))
+                    available_qudits[layer_idx][qudits_set_idx].remove(idx)
+
+                # If after assigning 2 qudits from the set, the set is too small to assign more,
+                # remove it from available_qudits[layer_idx].
+                if len(available_qudits[layer_idx][qudits_set_idx]) < 2:
+                    available_qudits[layer_idx].pop(qudits_set_idx)
+
                 gate = two_qudit_gates[rng.integers(0, len(two_qudit_gates))]
                 layer[indices] = gate
 

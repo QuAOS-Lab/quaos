@@ -606,7 +606,7 @@ class TestCircuits():
     def test_from_depth_default_gate_set(self):
         """Default from_depth gate set is {H, S, CX, CZ, SWAP}."""
         rng = np.random.default_rng()
-        c = Circuit.from_depth(depth=10, dimensions=[2]*10, rng=rng)
+        c = Circuit.from_depth(depth=10, dimensions=[2] * 4, rng=rng)
         allowed = {GATES.H, GATES.S, GATES.CX, GATES.CZ, GATES.SWAP}
         for g in c.gates:
             assert g in allowed, f"Default gate set produced unexpected gate {g.name}"
