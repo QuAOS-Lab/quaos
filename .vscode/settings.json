@@ -49,8 +49,8 @@
   "python.analysis.include": [
     "**/src",
     "**/tests",
-],
-"python.analysis.exclude": [
+  ],
+  "python.analysis.exclude": [
     "**/.github",
     "**/.vscode",
     "**/docs",
