@@ -33,9 +33,17 @@ jobs:
           extra-packages: "flake8"
           checkout: "false"
 
-      - name: Flake8
+      - name: Flake8 (linting)
         run: |
           flake8 ${{ env.SRC_DIR }} --config=${{ env.FLAKE8_CONFIG }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Pyright (typing check)
+        run: npx --yes pyright@1.1.409 src tests
 
   testing:
     runs-on: ubuntu-latest
