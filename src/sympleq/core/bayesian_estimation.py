@@ -129,7 +129,8 @@ class BayesianEstimator:
         for _ in self.run_iter(callable, verbose):
             pass
 
-    def run_iter[T: Hashable](self, callable: EstimatorCallable[T], verbose: bool = False) -> Generator[None, None, None]:
+    def run_iter[T: Hashable](self, callable: EstimatorCallable[T],
+                              verbose: bool = False) -> Generator[None, None, None]:
         """
         Run the estimator, yielding after each sample.
 
@@ -169,12 +170,12 @@ class BayesianEstimator:
                 n_printed = 1
                 print(f"Threshold={self.threshold} - {time.time() - now:.2f}s")
 
-                results: list = self.results()
-                for res in results:
+                seen = self.results()
+                for res in seen:
                     p = self.probability(res)
                     std = np.sqrt(self.variance(res))
                     print(f"\033[K{res}: p={p:.5f} ± {std:.5f}")
-                n_printed += len(results)
+                n_printed += len(seen)
 
                 n_runs = self.num_runs()
                 print(f"n_runs={n_runs}\n")
