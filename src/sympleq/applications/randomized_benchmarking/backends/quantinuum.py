@@ -24,24 +24,30 @@ class QuantinuumBackend(RMBBackend):
 
     type = "quantinuum"
 
-    def __init__(self, device_name: str = "H2-1LE", n_shots: int = 1, project_name: str = "Benchmark") -> None:
+    def __init__(self, device_name: str = "H2-2E", n_shots: int = 1, project_name: str = "Benchmark") -> None:
         self.device_name = device_name
         self.n_shots = n_shots
         self.project_name = project_name
+        self.batch_size = 10
 
-    def fidelity_estimation(self, config: RMBConfig, rng: RNGGenerator) -> bool:
-        from sympleq.integrations.quantinuum.workflow import run_circuit_on_device
-        circuit = config.random_circuit(rng=rng)
-        distribution = run_circuit_on_device(circuit, self.n_shots, self.device_name, self.project_name, verbose=True)
-        counts = distribution.as_counter()
-        if not counts:
-            return False
+    def fidelity_estimation(self, config: RMBConfig, rng: RNGGenerator) -> list[bool]:
+        from sympleq.integrations.quantinuum.workflow import run_circuits_on_device
+        circuits = [config.random_circuit(rng=rng) for _ in range(self.batch_size)]
+        distributions = run_circuits_on_device(
+            circuits, self.n_shots, self.device_name, self.project_name, verbose=True)
 
-        # FIXME: update to get self.n_shots most common
-        outcomes = counts.most_common()
-        outcome, count = outcomes[0]
-        assert count <= self.n_shots
-        return all(bit == 0 for bit in outcome)
+        results = []
+        for distribution in distributions:
+            counts = distribution.as_counter()
+            if not counts:
+                continue
+
+            outcome, count = counts.most_common()[0]
+            assert count <= self.n_shots
+            # FIXME: compare to initial state
+            results.append(all(bit == 0 for bit in outcome))
+
+        return results
 
     def to_dict(self) -> dict:
         return {

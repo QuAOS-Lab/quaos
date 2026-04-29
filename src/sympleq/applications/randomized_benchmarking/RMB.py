@@ -3,10 +3,13 @@ from pathlib import Path
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 
-from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData, UpdateStrategy
+from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
 from sympleq.applications.randomized_benchmarking.backends import RMBBackend, SympleqBackend, QuantinuumBackend
 from sympleq.applications.randomized_benchmarking.backends.base import backend_from_dict
+from sympleq.applications.randomized_benchmarking.update_strategy import UpdateStrategy, default_update_strategy
 from sympleq.core.bayesian_estimation import BayesianEstimator
+from sympleq.core.noise.noise_model import GenericNoise
+from sympleq.integrations.quantinuum.utils import to_pytket_circuit
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -16,7 +19,6 @@ class RMB:
                  update_strategy: UpdateStrategy,
                  backend: RMBBackend,
                  rng: RNGGenerator,
-                 *,
                  threshold: float = 10**(-3),
                  min_runs: int = 100,
                  max_runs: int | None = None) -> None:
@@ -61,16 +63,16 @@ class RMB:
         """
         Build an RMB instance with default settings.
 
-        Uses :meth:`RMBConfig.default_update_strategy` as the update
+        Uses :meth:`default_update_strategy` as the update
         strategy and a noiseless :class:`SympleqBackend` as the backend.
         """
         if rng is None:
             rng = default_rng()
-        return cls(update_strategy=RMBConfig.default_update_strategy,
+        return cls(update_strategy=default_update_strategy,
                    backend=SympleqBackend(),
                    rng=rng)
 
-    def run(self, config: RMBConfig, verbose: bool = False):
+    def run(self, config: RMBConfig | None = None, verbose: bool = False):
         """
         Run the RMB sweep starting from ``config``.
 
@@ -95,10 +97,10 @@ class RMB:
                 self._data[config] = self._default_bayesian_estimator()
 
             estimator = self._data[config]
-            estimator.run(lambda: self._backend.fidelity_estimation(config, self.rng), verbose)
+            estimator.run(lambda c=config: self._backend.fidelity_estimation(c, self.rng), verbose)
 
             # FIXME: add breaking conditions, e.g. times or number of samples
-            if len(self._data) >= 8:
+            if len(self._data) >= 20:
                 break
 
             config = self._update_strategy(self._data, config)
@@ -108,12 +110,12 @@ class RMB:
     @classmethod
     def print_data(cls, data: RMBData):
         """Print ``data`` as a markdown-style table of configs and fidelities."""
-        headers = ["depth", "two_qudit_gate_ratio", "n_qubits", "random_elimination", "fidelity"]
+        headers = ["depth", "two_qubit_gate_ratio", "n_qubits", "random_elimination", "fidelity"]
         rows = []
         for config, estimator in data.items():
             rows.append([
                 f"{config.depth}",
-                f"{config.two_qudit_gate_ratio}",
+                f"{config.two_qubit_gate_ratio}",
                 f"{config.n_qubits}",
                 f"{config.random_elimination}",
                 f"{estimator.probability(True):.4f} ± {estimator.variance(True):.4f}",
@@ -133,7 +135,7 @@ class RMB:
             print(fmt(row))
         print(sep)
 
-    def save(self, path: str | Path = "rmb.json"):
+    def save(self, path: str | Path | None = None):
         """
         Save this RMB run as JSON.
 
@@ -151,6 +153,10 @@ class RMB:
             given path is used as-is.
         """
         import json
+        if path is None:
+            import datetime
+            path = f"{self._backend.type}-{datetime.datetime.now()}.json"
+
         path = Path(path)
         if not path.is_absolute() and path.parent == Path("."):
             path = DATA_DIR / path
@@ -161,7 +167,7 @@ class RMB:
             records.append({
                 "depth": config.depth,
                 "scrambling_probability": config.scrambling_probability,
-                "two_qudit_gate_ratio": config.two_qudit_gate_ratio,
+                "two_qubit_gate_ratio": config.two_qubit_gate_ratio,
                 "n_qubits": config.n_qubits,
                 "random_elimination": config.random_elimination,
                 "gates_set": [g.name for g in config.gates_set],
@@ -212,7 +218,7 @@ class RMB:
 
         backend = backend_from_dict(payload["backend"])
         estimator_params = payload["estimator"]
-        rmb = cls(update_strategy=RMBConfig.default_update_strategy,
+        rmb = cls(update_strategy=default_update_strategy,
                   backend=backend,
                   rng=rng,
                   threshold=estimator_params["threshold"],
@@ -223,7 +229,7 @@ class RMB:
             config = RMBConfig(
                 depth=rec["depth"],
                 scrambling_probability=rec["scrambling_probability"],
-                two_qudit_gate_ratio=rec["two_qudit_gate_ratio"],
+                two_qubit_gate_ratio=rec["two_qubit_gate_ratio"],
                 n_qubits=rec["n_qubits"],
                 random_elimination=rec["random_elimination"],
             )
@@ -269,7 +275,7 @@ class RMB:
             _, ax = plt.subplots()
 
         depths = np.array([c.depth for c in data])
-        ratios = np.array([c.two_qudit_gate_ratio for c in data])
+        ratios = np.array([c.two_qubit_gate_ratio for c in data])
         fidelities = np.array([e.probability(True) for e in data.values()])
         stds = np.array([np.sqrt(e.variance(True)) for e in data.values()])
 
@@ -304,22 +310,30 @@ if __name__ == "__main__":
     verbose = True
 
     initial_config = RMBConfig.default()\
-        .with_depth(20)\
+        .with_depth(12)\
         .with_random_elimination(0.25)\
-        .with_n_qubits(4)\
-        .with_two_qudit_gate_ratio(0.75)\
+        .with_n_qubits(6)\
+        .with_two_qubit_gate_ratio(0.5)\
         .with_scrambling_probability(0.5)
 
-    # noise_model = GenericNoise.from_paulis([0.001, 0.001, 0.002], rng=rng)
-    # two_qubit_noise_model = GenericNoise.from_paulis([0.0075, 0.0075, 0.0075], rng=rng)
-    # rmb = RMB.default(rng)\
-    #     .with_backend(SympleqBackend(noise_model, two_qubit_noise_model))\
-    #     .with_bayesian_estimator(threshold=10**(-4), min_runs=100)
+    circuit = initial_config.random_circuit()
+    p_circuit = to_pytket_circuit(circuit)
+    print(f"Sympleq  circuit: qubits={circuit.n_qudits()} gates={circuit.n_gates()}")
+    print(f"Pytket   circuit: qubits={p_circuit.n_qubits} gates={p_circuit.n_gates}")
 
+    noise_model = GenericNoise.from_paulis([0.001, 0.001, 0.002], rng=rng)
+    two_qubit_noise_model = GenericNoise.from_paulis([0.0075, 0.0075, 0.0075], rng=rng)
     rmb = RMB.default(rng)\
-        .with_backend(QuantinuumBackend(device_name="H2-2E"))\
-        .with_bayesian_estimator(threshold=10**(-1), min_runs=10)
+        .with_backend(SympleqBackend(noise_model, two_qubit_noise_model))\
+        .with_bayesian_estimator(threshold=10**(-3), min_runs=100)
+
+    device_name = "H2-Emulator"
+    backend = QuantinuumBackend(device_name=device_name)
+    rmb = RMB.default(rng)\
+        .with_backend(backend)\
+        .with_bayesian_estimator(threshold=10**(-1), min_runs=8)
 
     rmb.run(initial_config, verbose)
-    rmb.save("quantinuum.json")
+
+    rmb.save()
     RMB.plot_data(rmb._data)

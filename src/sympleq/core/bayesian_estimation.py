@@ -1,6 +1,9 @@
 from typing import Any, Callable, Generator, Hashable
 
 
+type EstimatorCallable[T: Hashable] = Callable[[], T | list[T]]
+
+
 class BayesianEstimator:
     def __init__(self, threshold: float = 10**(-2), min_runs: int = 100, max_runs: int | None = None) -> None:
         """
@@ -111,7 +114,7 @@ class BayesianEstimator:
     def _converged(self) -> bool:
         return (self._counts_tot >= self.min_runs and all(v <= self.threshold for v in self._variances.values()))
 
-    def run(self, callable: Callable[[], Hashable], verbose: bool = False):
+    def run[T: Hashable](self, callable: EstimatorCallable[T], verbose: bool = False):
         """
         Run the estimator to convergence.
 
@@ -126,7 +129,7 @@ class BayesianEstimator:
         for _ in self.run_iter(callable, verbose):
             pass
 
-    def run_iter(self, callable: Callable[[], Hashable], verbose: bool = False) -> Generator[None, None, None]:
+    def run_iter[T: Hashable](self, callable: EstimatorCallable[T], verbose: bool = False) -> Generator[None, None, None]:
         """
         Run the estimator, yielding after each sample.
 
@@ -151,8 +154,13 @@ class BayesianEstimator:
         while not self._converged():
             if self.max_runs and self.num_runs() > self.max_runs:
                 break
-            result = callable()
-            self._record_result(result)
+            results = callable()
+            if not isinstance(results, list):
+                results = [results]
+
+            for result in results:
+                self._record_result(result)
+
             if verbose:
                 import numpy as np
                 if n_printed > 0:

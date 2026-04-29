@@ -1,6 +1,5 @@
 from __future__ import annotations
 from dataclasses import dataclass, field, replace
-from typing import Callable
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 
@@ -11,7 +10,6 @@ from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis.pauli_sum import PauliSum
 
 type RMBData = dict[RMBConfig, BayesianEstimator]
-type UpdateStrategy = Callable[[RMBData, RMBConfig], RMBConfig]
 
 
 @dataclass(frozen=True)  # Frozen to avoid possible mistakes in using references
@@ -29,8 +27,8 @@ class RMBConfig:
     scrambling_probability : float
         Probability of inserting an X gate (vs Id) on each qudit in the
         scrambler layer wrapping the random circuit. In ``[0, 1]``.
-    two_qudit_gate_ratio : float
-        Fraction of gates in the random circuit drawn from the two-qudit
+    two_qubit_gate_ratio : float
+        Fraction of gates in the random circuit drawn from the two-qubit
         subset of ``gates_set``. In ``[0, 1]``.
     gates_set : tuple[Gate, ...]
         Gates available to sample from when building the random circuit.
@@ -42,7 +40,7 @@ class RMBConfig:
     """
     depth: int = 1
     scrambling_probability: float = 0.0
-    two_qudit_gate_ratio: float = 0.0
+    two_qubit_gate_ratio: float = 0.0
     gates_set: tuple[Gate, ...] = (GATES.H, GATES.S, GATES.ZZPhase)
     n_qubits: int = 1
     random_elimination: float = 0.0
@@ -57,9 +55,9 @@ class RMBConfig:
         if not 0.0 <= self.scrambling_probability <= 1.0:
             raise ValueError(
                 f"Invalid scrambling_probability, it should be between 0 and 1 (got {self.scrambling_probability}).")
-        if not 0.0 <= self.two_qudit_gate_ratio <= 1.0:
+        if not 0.0 <= self.two_qubit_gate_ratio <= 1.0:
             raise ValueError(
-                f"Invalid two_qudit_gate_ratio, it should be between 0 and 1 (got {self.two_qudit_gate_ratio}).")
+                f"Invalid two_qubit_gate_ratio, it should be between 0 and 1 (got {self.two_qubit_gate_ratio}).")
         if not 0.0 <= self.random_elimination <= 1.0:
             raise ValueError(
                 f"Invalid random_elimination, it should be between 0 and 1 (got {self.random_elimination}).")
@@ -84,7 +82,7 @@ class RMBConfig:
     @classmethod
     def default(cls) -> RMBConfig:
         """Return a sensible default configuration for an RMB sweep."""
-        return cls(depth=10, random_elimination=0.1, n_qubits=2, two_qudit_gate_ratio=0.3)
+        return cls(depth=10, random_elimination=0.1, n_qubits=2, two_qubit_gate_ratio=0.3)
 
     def with_depth(self, depth: int) -> RMBConfig:
         """Return a copy of this config with ``depth`` replaced."""
@@ -94,9 +92,9 @@ class RMBConfig:
         """Return a copy of this config with ``scrambling_probability`` replaced."""
         return replace(self, scrambling_probability=scrambling_probability)
 
-    def with_two_qudit_gate_ratio(self, two_qudit_gate_ratio: float) -> RMBConfig:
-        """Return a copy of this config with ``two_qudit_gate_ratio`` replaced."""
-        return replace(self, two_qudit_gate_ratio=two_qudit_gate_ratio)
+    def with_two_qubit_gate_ratio(self, two_qubit_gate_ratio: float) -> RMBConfig:
+        """Return a copy of this config with ``two_qubit_gate_ratio`` replaced."""
+        return replace(self, two_qubit_gate_ratio=two_qubit_gate_ratio)
 
     def with_n_qubits(self, n_qubits: int) -> RMBConfig:
         """Return a copy of this config with ``n_qubits`` replaced."""
@@ -150,7 +148,7 @@ class RMBConfig:
         _circuit = Circuit.from_depth(self.depth,
                                       self.dimensions,
                                       gates_set=self.gates_set,
-                                      two_qudit_gate_ratio=self.two_qudit_gate_ratio,
+                                      two_qudit_gate_ratio=self.two_qubit_gate_ratio,
                                       rng=rng)
         _scrambler = Circuit.empty(self.dimensions)
         for q_idx in range(self.n_qubits):
@@ -177,38 +175,3 @@ class RMBConfig:
                 pauli = intermediate
 
         return circuit
-
-    @classmethod
-    def default_update_strategy(cls, data: RMBData, current_config: RMBConfig) -> RMBConfig:
-        """
-        Default rule for advancing an RMB sweep.
-
-        Parameters
-        ----------
-        data : RMBData
-            Mapping from previously seen configurations to their
-            Bayesian estimators.
-        current_config : RMBConfig
-            Configuration that was just run (or about to be run).
-
-        Returns
-        -------
-        RMBConfig
-            New configuration to run next.
-        """
-        if current_config in data:
-            estimator = data[current_config]
-        else:
-            return RMBConfig.default()
-        # probability(True) is the fidelity
-        if estimator.probability(True) >= 0.8:
-            new_config = current_config.with_depth(current_config.depth + 4)
-        elif estimator.probability(True) >= 0.6:
-            new_config = current_config.with_depth(current_config.depth + 2)
-        elif estimator.probability(True) >= 0.5:
-            new_config = current_config.with_depth(current_config.depth + 1)
-        else:
-            new_value = round(current_config.two_qudit_gate_ratio * 0.9, 2)
-            new_config = current_config.with_two_qudit_gate_ratio(new_value)
-
-        return new_config

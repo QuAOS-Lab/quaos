@@ -31,15 +31,20 @@ class SympleqBackend(RMBBackend):
         self.noise_model = noise_model
         self.two_qubit_noise_model = two_qubit_noise_model
 
-    def fidelity_estimation(self, config: RMBConfig, rng: RNGGenerator) -> bool:
+    def fidelity_estimation(self, config: RMBConfig, rng: RNGGenerator) -> list[bool]:
         initial_state = config.initial_state()
-        circuit = config.random_circuit(rng=rng)
-        if self.noise_model is not None:
-            circuit = circuit.with_noise(self.noise_model)
-        if self.two_qubit_noise_model is not None:
-            circuit = circuit.with_two_qudit_noise(self.two_qubit_noise_model)
-        final_state = circuit.act(initial_state)
-        return final_state == initial_state
+        n_runs = 1
+        results = []
+        for _ in range(n_runs):
+            circuit = config.random_circuit(rng=rng)
+            if self.noise_model is not None:
+                circuit = circuit.with_noise(self.noise_model)
+            if self.two_qubit_noise_model is not None:
+                circuit = circuit.with_two_qudit_noise(self.two_qubit_noise_model)
+            final_state = circuit.act(initial_state)
+            results.append(final_state == initial_state)
+
+        return results
 
     def to_dict(self) -> dict:
         return {
