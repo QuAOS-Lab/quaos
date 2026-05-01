@@ -15,12 +15,12 @@ from sympleq.core.circuits import GATES
 from sympleq.models.fermi_hubbard import disordered_tv_chain_model
 from sympleq.models.heisenberg import all_to_all_heisenberg_hamiltonian
 from sympleq.models.Ising import ising_2d_hamiltonian
-from sympleq.models.random_hamiltonian import random_gate_symmetric_hamiltonian
+# from sympleq.models.random_hamiltonian import random_gate_symmetric_hamiltonian
 from sympleq.models.toric_code import ToricCode
 
-TIMEOUT_SECONDS = 100
+TIMEOUT_SECONDS = 10**6
 SCRIPT_DIR = Path(__file__).resolve().parent
-CSV_FILENAME = SCRIPT_DIR / "existing_clifford_timing_csv9.csv"
+CSV_FILENAME = SCRIPT_DIR / "clifford_timing_csv10.csv"
 MAX_QUBITS = 1000
 
 
@@ -56,16 +56,16 @@ def build_model_pauli_sum(model_name, nx, ny, periodic):
             periodic=periodic,
             spinless=False,
         )
-    if model_name == "random_swap_symmetric":
-        return random_gate_symmetric_hamiltonian(
-            GATES.SWAP,
-            dimension=2,
-            qudit_indices=(0, 1),
-            n_qudits=ny,
-            n_paulis=2 * ny,
-            weight_mode="uniform",
-            scrambled=True,
-        )
+    # if model_name == "random_swap_symmetric":
+    #     return random_gate_symmetric_hamiltonian(
+    #         GATES.SWAP,
+    #         dimension=2,
+    #         qudit_indices=(0, 1),
+    #         n_qudits=ny,
+    #         n_paulis=2 * ny,
+    #         weight_mode="uniform",
+    #         scrambled=True,
+    #     )
     raise ValueError(f"Unknown model: {model_name}")
 
 
@@ -447,8 +447,10 @@ def qubits_for_job(model_name, nx, ny, periodic):
         return 2 * nx * ny if periodic else nx * (ny - 1) + ny * (nx - 1)
     if model_name == "ising_ladder":
         return nx * ny
-    if model_name in ("tv_chain", "heisenberg_chain", "random_swap_symmetric"):
+    if model_name in ("tv_chain", "heisenberg_chain"):
         return ny
+    # if model_name == "random_swap_symmetric":
+    #     return ny
     if model_name == "fermi_hubbard":
         return 2 * ny
     raise ValueError(f"Unknown model: {model_name}")
@@ -483,25 +485,25 @@ def main():
     existing_tv_chain_sizes = [(1, ny) for ny in ny_range]
     existing_heisenberg_sizes = [(1, ny) for ny in ny_range]
     existing_fermi_hubbard_sizes = [(1, ny) for ny in ny_range]
-    existing_random_swap_symmetric_sizes = [(1, ny) for ny in ny_range]
+    # existing_random_swap_symmetric_sizes = [(1, ny) for ny in ny_range]
     igraph_toric_sizes = [(1, ny) for ny in range(2, 501,10)]
     igraph_ising_ladder_sizes = [(2, ny) for ny in ny_range]
     igraph_tv_chain_sizes = [(1, ny) for ny in ny_range]
     igraph_heisenberg_sizes = [(1, ny) for ny in ny_range]
     igraph_fermi_hubbard_sizes = [(1, ny) for ny in ny_range]
-    igraph_random_swap_symmetric_sizes = [(1, ny) for ny in ny_range]
+    # igraph_random_swap_symmetric_sizes = [(1, ny) for ny in ny_range]
     jobs = [
         # ("toric", True, existing_toric_sizes, igraph_toric_sizes),
-        # ("ising_ladder", False, existing_ising_ladder_sizes, igraph_ising_ladder_sizes),
+        ("ising_ladder", False, existing_ising_ladder_sizes, igraph_ising_ladder_sizes),
         ("tv_chain", False, existing_tv_chain_sizes, igraph_tv_chain_sizes),
         ("heisenberg_chain", False, existing_heisenberg_sizes, igraph_heisenberg_sizes),
-        # ("fermi_hubbard", False, existing_fermi_hubbard_sizes, igraph_fermi_hubbard_sizes),
-        (
-            "random_swap_symmetric",
-            False,
-            existing_random_swap_symmetric_sizes,
-            igraph_random_swap_symmetric_sizes,
-        ),
+        ("fermi_hubbard", False, existing_fermi_hubbard_sizes, igraph_fermi_hubbard_sizes),
+        # (
+        #     "random_swap_symmetric",
+        #     False,
+        #     existing_random_swap_symmetric_sizes,
+        #     igraph_random_swap_symmetric_sizes,
+        # ),
     ]
     results = load_results_csv(CSV_FILENAME)
     print_loaded_data_summary(results)
@@ -521,7 +523,7 @@ def main():
 
     has_pending = False
     for model_name, periodic, existing_sizes, igraph_sizes in jobs:
-        for method, sizes in (("igraph", igraph_sizes), ("existing", existing_sizes)):
+        for method, sizes in (("igraph", igraph_sizes),):
             timeout_limit = timeout_limits.get((method, model_name))
             for nx, ny in sizes:
                 if (method, model_name, nx, ny) in completed:
@@ -546,7 +548,7 @@ def main():
     for model_name, periodic, existing_sizes, igraph_sizes in jobs:
         method_jobs = [
             ("igraph", time_igraph_find_clifford, igraph_sizes),
-            ("existing", time_existing_find_clifford, existing_sizes),
+            # ("existing", time_existing_find_clifford, existing_sizes),
         ]
         for method, timer, sizes in method_jobs:
             for nx, ny in sizes:

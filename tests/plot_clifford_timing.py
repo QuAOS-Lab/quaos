@@ -7,8 +7,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-CSV_FILENAME = SCRIPT_DIR / "existing_clifford_timing_csv9.csv"
-PLOT_FILENAME = SCRIPT_DIR / "clifford_timing_csv9.png"
+CSV_FILENAME = SCRIPT_DIR / "existing_clifford_timing_csv10.csv"
+PLOT_FILENAME = SCRIPT_DIR / "clifford_timing_csv10.png"
 MAX_QUBITS = 1000
 # ONLY_MODELS = {"fermi_hubbard"}
 ONLY_MODELS = None
