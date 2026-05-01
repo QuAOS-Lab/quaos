@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CSV_FILENAME = SCRIPT_DIR / "existing_clifford_timing_csv9.csv"
-PLOT_FILENAME = SCRIPT_DIR / "existing_clifford_timing_csv9.png"
+PLOT_FILENAME = SCRIPT_DIR / "clifford_timing_csv9.png"
 MAX_QUBITS = 1000
 # ONLY_MODELS = {"fermi_hubbard"}
 ONLY_MODELS = None

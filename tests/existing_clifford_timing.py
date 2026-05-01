@@ -1,6 +1,7 @@
 import multiprocessing as mp
 import csv
 from pathlib import Path
+from queue import Empty
 from time import perf_counter
 
 import igraph as ig
@@ -11,8 +12,11 @@ from sympleq.core.graphs.graph_automorphism import _LeafContext, _check_leaf_wit
 from sympleq.core.graphs.graph_coloring import _build_base_partition
 from sympleq.core.symmetries.clifford import find_clifford_symmetries
 from sympleq.core.circuits import GATES
+from sympleq.models.fermi_hubbard import disordered_tv_chain_model
+from sympleq.models.heisenberg import all_to_all_heisenberg_hamiltonian
+from sympleq.models.Ising import ising_2d_hamiltonian
 from sympleq.models.random_hamiltonian import random_gate_symmetric_hamiltonian
-from sympleq.models import ToricCode, heisenberg_chain_hamiltonian, ising_2d_hamiltonian, disordered_tv_chain_model
+from sympleq.models.toric_code import ToricCode
 
 TIMEOUT_SECONDS = 100
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -36,13 +40,10 @@ def build_model_pauli_sum(model_name, nx, ny, periodic):
             seed=10_000 + ny,
         )
     if model_name == "heisenberg_chain":
-        return heisenberg_chain_hamiltonian(
-            n_spins=ny,
-            j_x=1.0,
-            j_y=1.0,
-            j_z=0.5,
-            periodic=periodic,
-            all_to_all=True,
+        return all_to_all_heisenberg_hamiltonian(
+            n=ny,
+            J=1.0,
+            delta_z=0.5,
         )
     if model_name == "fermi_hubbard":
         from sympleq.models.fermi_hubbard import fermi_hubbard_model
@@ -267,6 +268,13 @@ def igraph_find_worker(model_name, nx, ny, periodic, queue):
 
 
 def time_method(worker, method, model_name, nx, ny, periodic, timeout_seconds=TIMEOUT_SECONDS):
+    def model_metadata():
+        try:
+            pauli_sum = build_model_pauli_sum(model_name, nx, ny, periodic)
+            return pauli_sum.n_qudits(), pauli_sum.n_paulis(), None
+        except Exception as exc:
+            return None, None, f"{type(exc).__name__}: {exc}"
+
     queue = mp.Queue()
     process = mp.Process(
         target=worker,
@@ -281,7 +289,7 @@ def time_method(worker, method, model_name, nx, ny, periodic, timeout_seconds=TI
     if process.is_alive():
         process.terminate()
         process.join()
-        pauli_sum = build_model_pauli_sum(model_name, nx, ny, periodic)
+        qubits, paulis, metadata_error = model_metadata()
         return {
             "method": method,
             "model": model_name,
@@ -290,18 +298,22 @@ def time_method(worker, method, model_name, nx, ny, periodic, timeout_seconds=TI
             "periodic": periodic,
             "seconds": timeout_seconds,
             "wall_seconds": wall_seconds,
-            "qubits": pauli_sum.n_qudits(),
-            "paulis": pauli_sum.n_paulis(),
+            "qubits": qubits,
+            "paulis": paulis,
             "found": False,
             "count": 0,
             "checked": 0,
             "word": None,
             "timeout": True,
-            "error": None,
+            "error": metadata_error,
         }
 
-    if not queue.empty():
-        result = queue.get()
+    try:
+        result = queue.get_nowait()
+    except Empty:
+        result = None
+
+    if result is not None:
         return {
             "method": method,
             "model": model_name,
@@ -320,7 +332,10 @@ def time_method(worker, method, model_name, nx, ny, periodic, timeout_seconds=TI
             "error": result["error"],
         }
 
-    pauli_sum = build_model_pauli_sum(model_name, nx, ny, periodic)
+    qubits, paulis, metadata_error = model_metadata()
+    error = f"worker exited with code {process.exitcode}"
+    if metadata_error is not None:
+        error = f"{error}; metadata error: {metadata_error}"
     return {
         "method": method,
         "model": model_name,
@@ -329,14 +344,14 @@ def time_method(worker, method, model_name, nx, ny, periodic, timeout_seconds=TI
         "periodic": periodic,
         "seconds": wall_seconds,
         "wall_seconds": wall_seconds,
-        "qubits": pauli_sum.n_qudits(),
-        "paulis": pauli_sum.n_paulis(),
+        "qubits": qubits,
+        "paulis": paulis,
         "found": False,
         "count": 0,
         "checked": 0,
         "word": None,
         "timeout": False,
-        "error": f"worker exited with code {process.exitcode}",
+        "error": error,
     }
 
 

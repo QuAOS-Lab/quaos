@@ -111,3 +111,23 @@ def complex_phase_value(phase: int, dimension: int) -> complex:
         complex: The computed eigenvalue.
     """
     return np.exp(2 * np.pi * 1j * phase / (2 * dimension))
+
+
+def multi_kron(matrices):
+    """
+    Compute the Kronecker product of multiple matrices.
+
+    Args:
+        matrices (List[np.ndarray]): A list of matrices to compute the Kronecker product of.
+
+    Returns:
+        np.ndarray: The Kronecker product of the input matrices.
+    """
+    if len(matrices) <= 1:
+        return matrices[0]
+    M = np.kron(matrices[0], matrices[1])
+    if len(matrices) == 2:
+        return M
+    for i in range(2, len(matrices)):
+        M = np.kron(M, matrices[i])
+    return M
