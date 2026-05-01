@@ -129,24 +129,27 @@ class _LeafContext:
     row_basis_cache: dict[str, np.ndarray]
 
 
-def _check_leaf(pi: np.ndarray, ctx: _LeafContext) -> Gate | None:
+def _check_leaf_with_reason(pi: np.ndarray, ctx: _LeafContext) -> tuple[Gate | None, str]:
     """
     Run all structural and phase-correction checks for a candidate permutation.
-    Returns a symmetry Gate or None.
+    Returns a symmetry Gate and "ok", or None and the failing leaf check.
     """
     if np.array_equal(pi, ctx.identity_perm):
-        return None
+        return None, "identity permutation"
     if not np.array_equal(ctx.S_mod[np.ix_(pi, pi)], ctx.S_mod):
-        return None
+        return None, "does not preserve S_mod"
     if not _check_code_automorphism(ctx.G, ctx.basis_order, ctx.labels, pi):
-        return None
+        return None, "fails linear-code/matroid automorphism check"
 
     H_basis_src = ctx.basis_source_ps
     tgt_idx = pi[ctx.basis_indices]
     H_basis_tgt = PauliSum.from_tableau(ctx.base_tableau[tgt_idx], ctx.pauli_sum.dimensions,
                                         weights=ctx.base_weights[tgt_idx])
     H_basis_tgt.set_phases(np.array(ctx.base_phases[tgt_idx], dtype=int, copy=True))
-    F, h0, _, _ = find_map_to_target_pauli_sum(H_basis_src, H_basis_tgt)
+    try:
+        F, h0, _, _ = find_map_to_target_pauli_sum(H_basis_src, H_basis_tgt)
+    except Exception as exc:
+        return None, f"find_map_to_target_pauli_sum failed: {type(exc).__name__}: {exc}"
 
     nq = ctx.n_qudits
     # Canonical coefficient-form Hamiltonian (phases separated, weights normalized)
@@ -180,7 +183,7 @@ def _check_leaf(pi: np.ndarray, ctx: _LeafContext) -> Gate | None:
         row_basis_cache=ctx.row_basis_cache,
     )
     if h_lin is None:
-        return None
+        return None, "phase correction has no solution"
 
     h0_mod = np.asarray(h0, dtype=int) % ctx.two_lcm
     h_lin_mod = np.asarray(h_lin, dtype=int) % ctx.two_lcm
@@ -191,17 +194,101 @@ def _check_leaf(pi: np.ndarray, ctx: _LeafContext) -> Gate | None:
     H_out_cf.weight_to_phase()
 
     if not np.array_equal(H_out_cf.tableau, ctx.ref_tableau):
-        return None
+        return None, "final verification failed: tableau mismatch"
     if not np.all((ctx.ref_phases - H_out_cf.phases) % ctx.two_lcm == 0):
-        return None
+        return None, "final verification failed: phase mismatch"
     if not np.array_equal(H_out_cf.weights, ctx.ref_weights):
-        return None
+        return None, "final verification failed: weight mismatch"
 
     # NOTE: Historically we had an additional consistency check involving diag(F Ω F^T) and h_tot.
     # In practice this rejected valid symmetries due to convention mismatches (and is redundant given the
     # explicit verification above: SG.act(pauli) == pauli up to standardisation).
 
-    return SG
+    return SG, "ok"
+
+
+def _check_leaf(pi: np.ndarray, ctx: _LeafContext) -> Gate | None:
+    """
+    Run all structural and phase-correction checks for a candidate permutation.
+    Returns a symmetry Gate or None.
+    """
+    gate, _ = _check_leaf_with_reason(pi, ctx)
+    return gate
+
+
+def clifford_from_pauli_permutation(
+    pauli_sum: PauliSum,
+    permutation: np.ndarray | list[int],
+    return_reason: bool = False,
+) -> Gate | None | tuple[Gate | None, str]:
+    """
+    Run the same leaf-level Clifford reconstruction and phase-correction checks
+    used by clifford_graph_automorphism_search for a proposed Pauli-term permutation.
+    """
+    pauli = pauli_sum.copy()
+    pauli.weight_to_phase()
+
+    pi = np.asarray(permutation, dtype=np.int64)
+    if pi.ndim != 1 or pi.size != pauli.n_paulis():
+        raise ValueError("permutation must be a 1-D permutation of the Pauli terms.")
+    if not np.array_equal(np.sort(pi), np.arange(pauli.n_paulis(), dtype=np.int64)):
+        raise ValueError("permutation must contain each Pauli-term index exactly once.")
+
+    independent_labels, dependencies = get_linear_dependencies(pauli.tableau, 2)
+    labels = sorted(set(independent_labels) | set(dependencies.keys()))
+    S_mod = pauli.symplectic_product_matrix()
+    G, basis_order = pauli.matroid()
+
+    if not np.all([pauli.dimensions[i] == pauli.dimensions[0] for i in range(1, len(pauli.dimensions))]):
+        raise ValueError("All qubits must have same dimension for now. The key things to fix are: "
+                         "_gf_solve_one_solution, and the symplectic_solver for F.")
+
+    pauli_standard = pauli.to_standard_form()
+    pauli_standard.weight_to_phase()
+    ref_tableau = pauli_standard.tableau.astype(int, copy=False)
+    ref_phases = np.asarray(pauli_standard.phases, dtype=int)
+    ref_weights = np.asarray(pauli_standard.weights)
+    base_tableau = pauli.tableau.astype(int, copy=False)
+    base_weights = np.asarray(pauli.weights)
+    base_phases = np.asarray(pauli.phases, dtype=int)
+    basis_indices = np.asarray(independent_labels, dtype=int)
+    basis_source_ps = pauli[basis_indices]
+
+    dims_array = np.asarray(pauli.dimensions, dtype=int)
+    row_basis_cache: dict[str, np.ndarray] = {}
+    if dims_array.size and np.all(dims_array == dims_array[0]):
+        p_uni = int(dims_array[0])
+        cache = _select_row_basis_indices(base_tableau % p_uni, p_uni, base_tableau.shape[1])
+        if p_uni == 2:
+            row_basis_cache["gf2"] = cache
+        else:
+            row_basis_cache["gfp"] = cache
+
+    leaf_ctx = _LeafContext(
+        p=int(pauli.lcm),
+        two_lcm=2 * pauli_sum.lcm,
+        n_qudits=pauli_sum.n_qudits(),
+        identity_perm=np.arange(pauli.n_paulis(), dtype=np.int64),
+        S_mod=S_mod,
+        G=G,
+        basis_order=basis_order,
+        labels=labels,
+        pauli_sum=pauli,
+        ref_tableau=ref_tableau,
+        ref_phases=ref_phases,
+        ref_weights=ref_weights,
+        base_tableau=base_tableau,
+        base_weights=base_weights,
+        base_phases=base_phases,
+        basis_indices=basis_indices,
+        basis_source_ps=basis_source_ps,
+        row_basis_cache=row_basis_cache,
+    )
+
+    gate, reason = _check_leaf_with_reason(pi, leaf_ctx)
+    if return_reason:
+        return gate, reason
+    return gate
 
 
 def clifford_graph_automorphism_search(

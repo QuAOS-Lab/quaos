@@ -1,0 +1,297 @@
+from collections import deque
+from time import perf_counter
+
+import igraph as ig
+import matplotlib
+import numpy as np
+
+from sympleq.core.finite_field_solvers import get_linear_dependencies, _select_row_basis_indices
+from sympleq.core.graphs.graph_automorphism import _LeafContext, _check_leaf_with_reason
+from sympleq.core.graphs.graph_coloring import _build_base_partition
+from sympleq.models import ToricCode, ising_2d_hamiltonian
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+
+def build_leaf_context(pauli_sum):
+    pauli = pauli_sum.copy()
+    pauli.weight_to_phase()
+
+    independent_labels, dependencies = get_linear_dependencies(pauli.tableau, 2)
+    labels = sorted(set(independent_labels) | set(dependencies.keys()))
+    S_mod = pauli.symplectic_product_matrix()
+    G, basis_order = pauli.matroid()
+
+    pauli_standard = pauli.to_standard_form()
+    pauli_standard.weight_to_phase()
+
+    base_tableau = pauli.tableau.astype(int, copy=False)
+    dims_array = np.asarray(pauli.dimensions, dtype=int)
+    row_basis_cache = {}
+    if dims_array.size and np.all(dims_array == dims_array[0]):
+        p_uni = int(dims_array[0])
+        cache = _select_row_basis_indices(base_tableau % p_uni, p_uni, base_tableau.shape[1])
+        row_basis_cache["gf2" if p_uni == 2 else "gfp"] = cache
+
+    return _LeafContext(
+        p=int(pauli.lcm),
+        two_lcm=2 * pauli_sum.lcm,
+        n_qudits=pauli_sum.n_qudits(),
+        identity_perm=np.arange(pauli.n_paulis(), dtype=np.int64),
+        S_mod=S_mod,
+        G=G,
+        basis_order=basis_order,
+        labels=labels,
+        pauli_sum=pauli,
+        ref_tableau=pauli_standard.tableau.astype(int, copy=False),
+        ref_phases=np.asarray(pauli_standard.phases, dtype=int),
+        ref_weights=np.asarray(pauli_standard.weights),
+        base_tableau=base_tableau,
+        base_weights=np.asarray(pauli.weights),
+        base_phases=np.asarray(pauli.phases, dtype=int),
+        basis_indices=np.asarray(independent_labels, dtype=int),
+        basis_source_ps=pauli[np.asarray(independent_labels, dtype=int)],
+        row_basis_cache=row_basis_cache,
+    )
+
+
+def build_subdivision_graph_from_s_mod(S_mod, vertex_colors):
+    n = S_mod.shape[0]
+    edges = []
+    edge_colors = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            edges.append((i, j))
+            edge_colors.append(int(S_mod[i, j]))
+
+    unique_vertex_colors = sorted(set(vertex_colors), key=str)
+    vertex_color_map = {c: i for i, c in enumerate(unique_vertex_colors)}
+    h_colors = [vertex_color_map[int(c)] for c in vertex_colors]
+
+    edge_color_offset = max(h_colors, default=-1) + 1
+    unique_edge_colors = sorted(set(edge_colors), key=str)
+    edge_color_map = {c: edge_color_offset + i for i, c in enumerate(unique_edge_colors)}
+
+    h = ig.Graph(n=n + len(edges), directed=False)
+    subdivided_edges = []
+    for edge_idx, (u, v) in enumerate(edges):
+        w = n + edge_idx
+        subdivided_edges.append((u, w))
+        subdivided_edges.append((w, v))
+        h_colors.append(edge_color_map[edge_colors[edge_idx]])
+
+    h.add_edges(subdivided_edges)
+    h.vs["vertex_color"] = h_colors
+    return h, h_colors
+
+
+def permutation_to_tuple(permutation):
+    if hasattr(permutation, "mapping"):
+        return tuple(permutation.mapping)
+    return tuple(permutation)
+
+
+def compose(left, right):
+    return tuple(left[i] for i in right)
+
+
+def generated_group_permutations(generators, n_vertices):
+    generators = [permutation_to_tuple(g) for g in generators]
+    identity = tuple(range(n_vertices))
+    seen = {identity}
+    queue = deque([(identity, ())])
+
+    while queue:
+        current, word = queue.popleft()
+        for idx, generator in enumerate(generators):
+            for side, candidate in (
+                ("L", compose(generator, current)),
+                ("R", compose(current, generator)),
+            ):
+                if candidate in seen:
+                    continue
+                seen.add(candidate)
+                candidate_word = word + ((idx, side),)
+                queue.append((candidate, candidate_word))
+                yield candidate, candidate_word
+
+
+def first_clifford_from_generators(pauli_sum, h, generators):
+    generators = generators.generators if hasattr(generators, "generators") else generators
+    ctx = build_leaf_context(pauli_sum)
+    n_paulis = pauli_sum.n_paulis()
+    identity_pauli_perm = tuple(range(n_paulis))
+    checked = 0
+
+    # First try igraph's generators directly.
+    for idx, generator in enumerate(generators):
+        pi = np.asarray(permutation_to_tuple(generator)[:n_paulis], dtype=np.int64)
+        if tuple(pi) == identity_pauli_perm:
+            continue
+        checked += 1
+        gate, reason = _check_leaf_with_reason(pi, ctx)
+        if gate is not None:
+            return gate, tuple(pi), ((idx, "generator"),), checked, reason
+
+    # Then try the group generated by those generators.
+    for full_perm, word in generated_group_permutations(generators, h.vcount()):
+        pi_tuple = tuple(full_perm[:n_paulis])
+        if pi_tuple == identity_pauli_perm:
+            continue
+        checked += 1
+        gate, reason = _check_leaf_with_reason(np.asarray(pi_tuple, dtype=np.int64), ctx)
+        if gate is not None:
+            return gate, pi_tuple, word, checked, reason
+
+    return None, None, None, checked, "no Clifford lift found"
+
+
+def time_one_pauli_sum(pauli_sum, nx, ny, model_name, periodic, build_seconds):
+    graph_start = perf_counter()
+    pauli_for_graph = pauli_sum.copy()
+    pauli_for_graph.weight_to_phase()
+    S_mod = pauli_for_graph.symplectic_product_matrix()
+    colors, _ = _build_base_partition(
+        S_mod,
+        int(pauli_for_graph.lcm),
+        coeffs=pauli_for_graph.weights,
+        col_invariants=None,
+        max_rounds=0,
+        color_mode="wl",
+    )
+    h, h_colors = build_subdivision_graph_from_s_mod(S_mod, colors)
+    graph_seconds = perf_counter() - graph_start
+
+    timed_start = perf_counter()
+    generator_start = perf_counter()
+    automorphism_group = h.automorphism_group(color=h_colors)
+    generator_seconds = perf_counter() - generator_start
+    generators = automorphism_group.generators if hasattr(automorphism_group, "generators") else automorphism_group
+
+    search_start = perf_counter()
+    gate, permutation, word, checked, reason = first_clifford_from_generators(pauli_sum, h, generators)
+    search_seconds = perf_counter() - search_start
+    total_find_seconds = perf_counter() - timed_start
+
+    return {
+        "model": model_name,
+        "nx": nx,
+        "ny": ny,
+        "periodic": periodic,
+        "qubits": pauli_sum.n_qudits(),
+        "paulis": pauli_sum.n_paulis(),
+        "subdivision_vertices": h.vcount(),
+        "subdivision_edges": h.ecount(),
+        "num_generators": len(generators),
+        "checked_permutations": checked,
+        "found": gate is not None,
+        "generator_word": word,
+        "pauli_permutation": permutation,
+        "build_seconds": build_seconds,
+        "graph_seconds": graph_seconds,
+        "generator_seconds": generator_seconds,
+        "search_seconds": search_seconds,
+        "total_find_seconds": total_find_seconds,
+        "reason": reason,
+    }
+
+
+def time_one_toric_lattice(nx, ny, periodic=True):
+    build_start = perf_counter()
+    model = ToricCode(Nx=nx, Ny=ny, c_x=1.0, c_z=2.0, c_g=0.1, periodic=periodic)
+    pauli_sum = model.hamiltonian()
+    build_seconds = perf_counter() - build_start
+    return time_one_pauli_sum(pauli_sum, nx, ny, "toric", periodic, build_seconds)
+
+
+def time_one_ising_ladder(nx, ny, periodic=False):
+    build_start = perf_counter()
+    pauli_sum = ising_2d_hamiltonian(n_x=nx, n_y=ny, J_zz=1.0, h_x=0.7, periodic=periodic)
+    build_seconds = perf_counter() - build_start
+    return time_one_pauli_sum(pauli_sum, nx, ny, "ising_ladder", periodic, build_seconds)
+
+
+def plot_timing_results(results, filename="igraph_clifford_timing.png"):
+    if not results:
+        return
+
+    fig, ax_time = plt.subplots(figsize=(8, 5))
+
+    # search_seconds = [r["search_seconds"] for r in results]
+    # checked = [r["checked_permutations"] for r in results]
+    # ax_time.plot(qubits, search_seconds, marker="o", label="Clifford lift search")
+
+    model_colors = {
+        "toric": "tab:blue",
+        "ising_ladder": "tab:orange",
+    }
+    for model_name in sorted({r["model"] for r in results}):
+        model_results = [r for r in results if r["model"] == model_name]
+        qubits = [r["qubits"] for r in model_results]
+        generator_seconds = [r["generator_seconds"] for r in model_results]
+        total_find_seconds = [r["total_find_seconds"] for r in model_results]
+        color = model_colors.get(model_name)
+
+        ax_time.plot(
+            qubits,
+            generator_seconds,
+            marker="o",
+            linestyle="--",
+            color=color,
+            label=f"{model_name}: Time to find Aut(G) generators",
+        )
+        ax_time.plot(
+            qubits,
+            total_find_seconds,
+            marker="o",
+            linestyle="-",
+            color=color,
+            label=f"{model_name}: Total Time to Find One Clifford Symmetry",
+        )
+
+    ax_time.set_xlabel("number of qubits")
+    ax_time.set_ylabel("seconds")
+    ax_time.set_yscale("log")
+    #ax_time.set_title("Toric vs Ising ladder")
+    ax_time.grid(True, alpha=0.3)
+    ax_time.legend()
+
+    fig.tight_layout()
+    fig.savefig(filename, dpi=160)
+    plt.close(fig)
+    print(f"Saved timing plot: {filename}")
+
+
+def main():
+    toric_sizes = [(2, ny) for ny in range(2, 30, 4)]
+    ising_ladder_sizes = [(2, ny) for ny in range(2, 51, 4)]
+    results = []
+
+    print(
+        "model,nx,ny,qubits,paulis,subdivision_vertices,num_generators,"
+        "checked,found,generator_seconds,search_seconds,total_find_seconds,word"
+    )
+    for timing_fn, periodic, sizes in (
+        (time_one_toric_lattice, True, toric_sizes),
+        (time_one_ising_ladder, False, ising_ladder_sizes),
+    ):
+        for nx, ny in sizes:
+            result = timing_fn(nx, ny, periodic=periodic)
+            results.append(result)
+            print(
+                f"{result['model']},{result['nx']},{result['ny']},{result['qubits']},{result['paulis']},"
+                f"{result['subdivision_vertices']},{result['num_generators']},"
+                f"{result['checked_permutations']},{result['found']},"
+                f"{result['generator_seconds']:.6f},{result['search_seconds']:.6f},"
+                f"{result['total_find_seconds']:.6f},{result['generator_word']}"
+            )
+            if not result["found"]:
+                print(f"No Clifford symmetry found for {result['model']}; stopping that sweep.")
+                break
+
+    plot_timing_results(results)
+
+
+if __name__ == "__main__":
+    main()
