@@ -1,3 +1,4 @@
+from pytket import Circuit
 import qnexus as qnx
 from qnexus.client.auth import is_logged_in
 from qnexus.models.references import IncompleteJobItemRef, CircuitRef
@@ -5,7 +6,7 @@ from pytket.backends.backendresult import BackendResult
 from pytket.utils.distribution import EmpiricalDistribution
 from numpy.random import default_rng
 
-from sympleq.core.circuits import Circuit
+from sympleq.core.circuits import Circuit as SympleqCircuit
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.integrations.quantinuum.utils import to_pytket_circuit
 
@@ -35,12 +36,10 @@ def build_and_compile_circuits(circuits: list[Circuit],
 
     programs = []
     for idx, circuit in enumerate(circuits):
-        pytket_circuit = to_pytket_circuit(circuit)
-        pytket_circuit.measure_all()
-        ref = qnx.circuits.upload(circuit=pytket_circuit, name=f"{project_name}-Circuit_{idx}")
+        ref = qnx.circuits.upload(circuit=circuit, name=f"{project_name}-Circuit_{idx}")
         programs.append(ref)
 
-    _ok("Circuis built and uploaded")
+    _ok("Circuits built and uploaded")
 
     ref_compile_job = qnx.start_compile_job(
         programs=programs,
@@ -61,9 +60,11 @@ def build_and_compile_circuits(circuits: list[Circuit],
 
         ref_compiled_circuit = ref_result.get_output()
         compiled_circuit = ref_compiled_circuit.download_circuit()
-        _info(f"Sympleq  circuit: qubits={circuit.n_qudits()} gates={circuit.n_gates()}")
-        _info(f"Pytket   circuit: qubits={pytket_circuit.n_qubits} gates={pytket_circuit.n_gates}")
+        # NOTE: The discrepancy between Pytket and Sympleq is due to the measure_all() operation from above,
+        # which adds extra measurement gates.
+        _info(f"Pytket   circuit: qubits={circuit.n_qubits} gates={circuit.n_gates}")
         _info(f"Compiled circuit: qubits={compiled_circuit.n_qubits} gates={compiled_circuit.n_gates}")
+
         outputs.append(ref_compiled_circuit)
     _ok("Compilation complete")
 
@@ -76,15 +77,19 @@ def run_compiled_circuits(ref_circuits: list[CircuitRef],
                           syntax_checker: str | None = None) -> list[BackendResult]:
 
     # Syntax checker not available on emulator
-    if not backend_config.device_name.endswith("E") and syntax_checker is not None:
-        execution_cost = qnx.circuits.cost(
-            circuit_ref=ref_circuits,
-            n_shots=n_shots,
-            backend_config=backend_config,
-            syntax_checker=syntax_checker,
-        )
+    if syntax_checker is not None:
+        try:
+            execution_cost = qnx.circuits.cost(
+                circuit_ref=ref_circuits,
+                n_shots=n_shots,
+                backend_config=backend_config,
+                syntax_checker=syntax_checker,
+            )
 
-        _info(f"Execution cost: {execution_cost}")
+            _info(f"Execution cost: {execution_cost}")
+        except Exception as err:
+            _info(f"Syntax checker not available, cannot estimate cost: {err}.")
+
         input("Do you want to proceed?")
 
     ref_execute_job = qnx.start_execute_job(
@@ -145,7 +150,8 @@ if __name__ == "__main__":
     n_qubits = 6
     dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qubits
     rng = default_rng(10)
-    circuit = Circuit.from_random(n_gates, dimensions, two_qudit_gate_ratio=0.25, rng=rng)
+    circuit = SympleqCircuit.from_random(n_gates, dimensions, two_qudit_gate_ratio=0.25, rng=rng)
     circuit = circuit + circuit.inverse()
+    p_circuit = to_pytket_circuit(circuit)
 
-    run_circuits_on_device([circuit], n_shots, device_name, "Benchmark", verbose=True)
+    run_circuits_on_device([p_circuit], n_shots, device_name, "Benchmark", verbose=True)

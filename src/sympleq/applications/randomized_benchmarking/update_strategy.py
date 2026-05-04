@@ -34,7 +34,9 @@ def default_update_strategy(data: RMBData, current_config: RMBConfig) -> RMBConf
     elif estimator.probability(True) >= 0.5:
         new_config = current_config.with_depth(current_config.depth + 1)
     else:
-        new_value = round(current_config.two_qubit_gate_ratio * 0.9, 2)
-        new_config = current_config.with_two_qubit_gate_ratio(new_value)
+        delta = current_config.max_two_qubit_gate_ratio - current_config.min_two_qubit_gate_ratio
+        new_max = current_config.min_two_qubit_gate_ratio
+        new_min = new_max - delta
+        new_config = current_config.with_two_qubit_gate_ratio(new_min, new_max)
 
     return new_config

@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Any, Callable, Generator, Hashable
 
 
@@ -103,15 +104,49 @@ class BayesianEstimator:
             self._probabilities_squared[key] = p2
             self._variances[key] = (p2 - p**2)
 
-    def _record_result(self, result: Hashable):
-        is_new = result not in self._results
-        self._results[result] = self._results.get(result, 0) + 1
-        self._counts_tot += 1
+    def record(self, outcome: Hashable, count: int = 1) -> None:
+        """Record ``count`` occurrences of ``outcome`` and refresh estimates.
+
+        Parameters
+        ----------
+        outcome : Hashable
+            The observed outcome.
+        count : int
+            Number of occurrences to add. Must be positive; ``<= 0`` is a no-op.
+        """
+        if count <= 0:
+            return
+        is_new = outcome not in self._results
+        self._results[outcome] = self._results.get(outcome, 0) + count
+        self._counts_tot += count
         if is_new:
             self._a_tot += self._base
         self._update_estimates(self._base, self._counts_tot, self._a_tot)
 
-    def _converged(self) -> bool:
+    def merge(self, other: BayesianEstimator) -> None:
+        """Add all of ``other``'s recorded outcomes to this estimator.
+
+        Parameters
+        ----------
+        other : BayesianEstimator
+            Estimator whose outcome counts are to be folded in.
+        """
+        for outcome, count in other._results.items():
+            self.record(outcome, count)
+
+    def counts(self) -> dict[Hashable, int]:
+        """Return a copy of the per-outcome count map.
+
+        Returns
+        -------
+        dict[Hashable, int]
+            ``{outcome: count}`` for every observed outcome.
+        """
+        return dict(self._results)
+
+    def is_converged(self) -> bool:
+        """Return ``True`` when at least ``min_runs`` samples have been recorded
+        and every variance is at or below ``threshold``."""
         return (self._counts_tot >= self.min_runs and all(v <= self.threshold for v in self._variances.values()))
 
     def run[T: Hashable](self, callable: EstimatorCallable[T], verbose: bool = False):
@@ -152,7 +187,7 @@ class BayesianEstimator:
             now = time.time()
             n_printed = 0
 
-        while not self._converged():
+        while not self.is_converged():
             if self.max_runs and self.num_runs() > self.max_runs:
                 break
             results = callable()
@@ -160,7 +195,7 @@ class BayesianEstimator:
                 results = [results]
 
             for result in results:
-                self._record_result(result)
+                self.record(result)
 
             if verbose:
                 import numpy as np

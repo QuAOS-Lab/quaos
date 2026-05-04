@@ -5,7 +5,7 @@ from numpy.random import Generator as RNGGenerator, default_rng
 
 from sympleq.core.bayesian_estimation import BayesianEstimator
 from sympleq.core.circuits.circuits import Circuit
-from sympleq.core.circuits.gates import GATES, Gate
+from sympleq.core.circuits.gates import DEFAULT_GATES_SET, GATES, Gate
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis.pauli_sum import PauliSum
 
@@ -27,9 +27,14 @@ class RMBConfig:
     scrambling_probability : float
         Probability of inserting an X gate (vs Id) on each qudit in the
         scrambler layer wrapping the random circuit. In ``[0, 1]``.
-    two_qubit_gate_ratio : float
-        Fraction of gates in the random circuit drawn from the two-qubit
-        subset of ``gates_set``. In ``[0, 1]``.
+    min_two_qubit_gate_ratio : float
+        Lower bound on the fraction of gates in the random circuit drawn
+        from the two-qubit subset of ``gates_set``. In ``[0, 1]``.
+    max_two_qubit_gate_ratio : float
+        Upper bound on the fraction of gates in the random circuit drawn
+        from the two-qubit subset of ``gates_set``. In ``[0, 1]``.
+        ``random_circuit`` samples a ratio uniformly from
+        ``[min_two_qubit_gate_ratio, max_two_qubit_gate_ratio]``.
     gates_set : tuple[Gate, ...]
         Gates available to sample from when building the random circuit.
     n_qubits : int
@@ -40,8 +45,9 @@ class RMBConfig:
     """
     depth: int = 1
     scrambling_probability: float = 0.0
-    two_qubit_gate_ratio: float = 0.0
-    gates_set: tuple[Gate, ...] = (GATES.H, GATES.S, GATES.ZZPhase)
+    min_two_qubit_gate_ratio: float = 0.0
+    max_two_qubit_gate_ratio: float = 0.0
+    gates_set: tuple[Gate, ...] = tuple(DEFAULT_GATES_SET)
     n_qubits: int = 1
     random_elimination: float = 0.0
     dimensions: np.ndarray = field(init=False, compare=False, hash=False, repr=False)
@@ -55,9 +61,18 @@ class RMBConfig:
         if not 0.0 <= self.scrambling_probability <= 1.0:
             raise ValueError(
                 f"Invalid scrambling_probability, it should be between 0 and 1 (got {self.scrambling_probability}).")
-        if not 0.0 <= self.two_qubit_gate_ratio <= 1.0:
+        if not 0.0 <= self.min_two_qubit_gate_ratio <= 1.0:
             raise ValueError(
-                f"Invalid two_qubit_gate_ratio, it should be between 0 and 1 (got {self.two_qubit_gate_ratio}).")
+                f"Invalid min_two_qubit_gate_ratio, it should be between 0 and 1 "
+                f"(got {self.min_two_qubit_gate_ratio}).")
+        if not 0.0 <= self.max_two_qubit_gate_ratio <= 1.0:
+            raise ValueError(
+                f"Invalid max_two_qubit_gate_ratio, it should be between 0 and 1 "
+                f"(got {self.max_two_qubit_gate_ratio}).")
+        if self.min_two_qubit_gate_ratio > self.max_two_qubit_gate_ratio:
+            raise ValueError(
+                f"min_two_qubit_gate_ratio ({self.min_two_qubit_gate_ratio}) cannot exceed "
+                f"max_two_qubit_gate_ratio ({self.max_two_qubit_gate_ratio}).")
         if not 0.0 <= self.random_elimination <= 1.0:
             raise ValueError(
                 f"Invalid random_elimination, it should be between 0 and 1 (got {self.random_elimination}).")
@@ -82,7 +97,8 @@ class RMBConfig:
     @classmethod
     def default(cls) -> RMBConfig:
         """Return a sensible default configuration for an RMB sweep."""
-        return cls(depth=10, random_elimination=0.1, n_qubits=2, two_qubit_gate_ratio=0.3)
+        return cls(depth=10, random_elimination=0.1, n_qubits=2,
+                   min_two_qubit_gate_ratio=0.3, max_two_qubit_gate_ratio=0.3)
 
     def with_depth(self, depth: int) -> RMBConfig:
         """Return a copy of this config with ``depth`` replaced."""
@@ -92,9 +108,16 @@ class RMBConfig:
         """Return a copy of this config with ``scrambling_probability`` replaced."""
         return replace(self, scrambling_probability=scrambling_probability)
 
-    def with_two_qubit_gate_ratio(self, two_qubit_gate_ratio: float) -> RMBConfig:
-        """Return a copy of this config with ``two_qubit_gate_ratio`` replaced."""
-        return replace(self, two_qubit_gate_ratio=two_qubit_gate_ratio)
+    def with_two_qubit_gate_ratio(self, min_ratio: float, max_ratio: float | None = None) -> RMBConfig:
+        """
+        Return a copy of this config with the two-qubit ratio bounds replaced.
+
+        Pass a single value to fix the ratio (sets both bounds equal); pass
+        two values to set a range to sample from at circuit-build time.
+        """
+        if max_ratio is None:
+            max_ratio = min_ratio
+        return replace(self, min_two_qubit_gate_ratio=min_ratio, max_two_qubit_gate_ratio=max_ratio)
 
     def with_n_qubits(self, n_qubits: int) -> RMBConfig:
         """Return a copy of this config with ``n_qubits`` replaced."""
@@ -103,6 +126,10 @@ class RMBConfig:
     def with_random_elimination(self, random_elimination: float) -> RMBConfig:
         """Return a copy of this config with ``random_elimination`` replaced."""
         return replace(self, random_elimination=random_elimination)
+
+    def with_gates_set(self, gates_set: tuple[Gate, ...]) -> RMBConfig:
+        """Return a copy of this config with ``gates_set`` replaced."""
+        return replace(self, gates_set=gates_set)
 
     def initial_state(self) -> PauliSum:
         """
@@ -145,10 +172,11 @@ class RMBConfig:
         if rng is None:
             rng = default_rng()
 
+        ratio = rng.uniform(self.min_two_qubit_gate_ratio, self.max_two_qubit_gate_ratio)
         _circuit = Circuit.from_depth(self.depth,
                                       self.dimensions,
                                       gates_set=self.gates_set,
-                                      two_qudit_gate_ratio=self.two_qubit_gate_ratio,
+                                      two_qudit_gate_ratio=ratio,
                                       rng=rng)
         _scrambler = Circuit.empty(self.dimensions)
         for q_idx in range(self.n_qubits):

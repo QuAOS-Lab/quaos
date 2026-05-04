@@ -1,0 +1,1252 @@
+[
+  {
+    "depth": 10,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.75,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        119
+      ],
+      [
+        false,
+        128
+      ]
+    ]
+  },
+  {
+    "depth": 10,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.68,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        121
+      ],
+      [
+        false,
+        126
+      ]
+    ]
+  },
+  {
+    "depth": 10,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.61,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        113
+      ],
+      [
+        true,
+        133
+      ]
+    ]
+  },
+  {
+    "depth": 11,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.61,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        131
+      ],
+      [
+        false,
+        115
+      ]
+    ]
+  },
+  {
+    "depth": 12,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.61,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        126
+      ],
+      [
+        true,
+        121
+      ]
+    ]
+  },
+  {
+    "depth": 12,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.55,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        105
+      ],
+      [
+        false,
+        138
+      ]
+    ]
+  },
+  {
+    "depth": 12,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.5,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        107
+      ],
+      [
+        true,
+        137
+      ]
+    ]
+  },
+  {
+    "depth": 13,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.5,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        121
+      ],
+      [
+        false,
+        126
+      ]
+    ]
+  },
+  {
+    "depth": 13,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.45,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        112
+      ],
+      [
+        true,
+        134
+      ]
+    ]
+  },
+  {
+    "depth": 14,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.45,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        124
+      ],
+      [
+        false,
+        123
+      ]
+    ]
+  },
+  {
+    "depth": 15,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.45,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        138
+      ],
+      [
+        true,
+        105
+      ]
+    ]
+  },
+  {
+    "depth": 15,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.41,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        142
+      ],
+      [
+        true,
+        96
+      ]
+    ]
+  },
+  {
+    "depth": 15,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.37,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        132
+      ],
+      [
+        true,
+        114
+      ]
+    ]
+  },
+  {
+    "depth": 15,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.33,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        109
+      ],
+      [
+        false,
+        136
+      ]
+    ]
+  },
+  {
+    "depth": 15,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.3,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        113
+      ],
+      [
+        true,
+        133
+      ]
+    ]
+  },
+  {
+    "depth": 16,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.3,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        122
+      ],
+      [
+        true,
+        125
+      ]
+    ]
+  },
+  {
+    "depth": 17,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.3,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        125
+      ],
+      [
+        true,
+        122
+      ]
+    ]
+  },
+  {
+    "depth": 17,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.27,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        117
+      ],
+      [
+        false,
+        130
+      ]
+    ]
+  },
+  {
+    "depth": 17,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.24,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        131
+      ],
+      [
+        false,
+        115
+      ]
+    ]
+  },
+  {
+    "depth": 18,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.24,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        132
+      ],
+      [
+        false,
+        114
+      ]
+    ]
+  },
+  {
+    "depth": 19,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.24,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        117
+      ],
+      [
+        false,
+        130
+      ]
+    ]
+  },
+  {
+    "depth": 19,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.22,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        106
+      ],
+      [
+        true,
+        137
+      ]
+    ]
+  },
+  {
+    "depth": 20,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.22,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        116
+      ],
+      [
+        true,
+        131
+      ]
+    ]
+  },
+  {
+    "depth": 21,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.22,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        126
+      ],
+      [
+        true,
+        121
+      ]
+    ]
+  },
+  {
+    "depth": 21,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.2,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        129
+      ],
+      [
+        false,
+        118
+      ]
+    ]
+  },
+  {
+    "depth": 22,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.2,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        121
+      ],
+      [
+        true,
+        126
+      ]
+    ]
+  },
+  {
+    "depth": 23,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.2,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        121
+      ],
+      [
+        false,
+        126
+      ]
+    ]
+  },
+  {
+    "depth": 23,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.18,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        99
+      ],
+      [
+        false,
+        141
+      ]
+    ]
+  },
+  {
+    "depth": 23,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.16,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        124
+      ],
+      [
+        false,
+        123
+      ]
+    ]
+  },
+  {
+    "depth": 24,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.16,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        131
+      ],
+      [
+        false,
+        115
+      ]
+    ]
+  },
+  {
+    "depth": 25,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.16,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        112
+      ],
+      [
+        false,
+        134
+      ]
+    ]
+  },
+  {
+    "depth": 25,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.14,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        122
+      ],
+      [
+        true,
+        125
+      ]
+    ]
+  },
+  {
+    "depth": 26,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.14,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        111
+      ],
+      [
+        false,
+        134
+      ]
+    ]
+  },
+  {
+    "depth": 26,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.13,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        127
+      ],
+      [
+        false,
+        120
+      ]
+    ]
+  },
+  {
+    "depth": 27,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.13,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        99
+      ],
+      [
+        false,
+        141
+      ]
+    ]
+  },
+  {
+    "depth": 27,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.12,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        118
+      ],
+      [
+        true,
+        129
+      ]
+    ]
+  },
+  {
+    "depth": 28,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.12,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        130
+      ],
+      [
+        true,
+        117
+      ]
+    ]
+  },
+  {
+    "depth": 28,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.11,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        119
+      ],
+      [
+        false,
+        128
+      ]
+    ]
+  },
+  {
+    "depth": 28,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.1,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        134
+      ],
+      [
+        false,
+        111
+      ]
+    ]
+  },
+  {
+    "depth": 29,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.1,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        123
+      ],
+      [
+        false,
+        124
+      ]
+    ]
+  },
+  {
+    "depth": 29,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.09,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        126
+      ],
+      [
+        false,
+        121
+      ]
+    ]
+  },
+  {
+    "depth": 30,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.09,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        130
+      ],
+      [
+        true,
+        117
+      ]
+    ]
+  },
+  {
+    "depth": 30,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.08,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        121
+      ],
+      [
+        false,
+        126
+      ]
+    ]
+  },
+  {
+    "depth": 30,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.07,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        101
+      ],
+      [
+        false,
+        140
+      ]
+    ]
+  },
+  {
+    "depth": 30,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.06,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        101
+      ],
+      [
+        true,
+        140
+      ]
+    ]
+  },
+  {
+    "depth": 31,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.06,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        137
+      ],
+      [
+        false,
+        107
+      ]
+    ]
+  },
+  {
+    "depth": 32,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.06,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        135
+      ],
+      [
+        false,
+        110
+      ]
+    ]
+  },
+  {
+    "depth": 33,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.06,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        132
+      ],
+      [
+        false,
+        114
+      ]
+    ]
+  },
+  {
+    "depth": 34,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.06,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        true,
+        114
+      ],
+      [
+        false,
+        132
+      ]
+    ]
+  },
+  {
+    "depth": 34,
+    "scrambling_probability": 0.5,
+    "two_qudit_gate_ratio": 0.05,
+    "n_qubits": 3,
+    "random_elimination": 0.1,
+    "gates_set": [
+      "Gate(name=H, n_qudits=1)",
+      "Gate(name=S, n_qudits=1)",
+      "Gate(name=ZZP, n_qudits=2)",
+      "Gate(name=CX, n_qudits=2)"
+    ],
+    "noise_model": "GenericNoise([(0.9960, Id), (0.0010, X), (0.0010, Y), (0.0020, Z)])",
+    "two_qubit_noise_model": "GenericNoise([(0.9775, Id), (0.0075, X), (0.0075, Y), (0.0075, Z)])",
+    "results": [
+      [
+        false,
+        117
+      ],
+      [
+        true,
+        130
+      ]
+    ]
+  }
+]

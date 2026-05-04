@@ -46,6 +46,15 @@ class SympleqBackend(RMBBackend):
 
         return results
 
+    @classmethod
+    def default_config(cls) -> RMBConfig:
+        return RMBConfig.default()\
+            .with_depth(20)\
+            .with_random_elimination(0.25)\
+            .with_n_qubits(6)\
+            .with_two_qubit_gate_ratio(0.5)\
+            .with_scrambling_probability(0.5)
+
     def to_dict(self) -> dict:
         return {
             "type": self.type,

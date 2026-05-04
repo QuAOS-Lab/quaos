@@ -23,6 +23,12 @@ class RMBBackend(ABC):
         """Run a single fidelity-estimation trial for ``config``."""
         ...
 
+    @classmethod
+    @abstractmethod
+    def default_config(cls) -> RMBConfig:
+        """Returns the default RMB config for the backend."""
+        ...
+
     @abstractmethod
     def to_dict(self) -> dict:
         """Serialize backend parameters to a JSON-friendly dict."""
