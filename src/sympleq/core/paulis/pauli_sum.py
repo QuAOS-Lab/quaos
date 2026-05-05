@@ -1103,6 +1103,9 @@ class PauliSum(PauliObject):
             h_next = string_to_hilbert(self.dimensions, self.x_exp[i, :], self.z_exp[i, :])
             h_next.data *= complex_phase_value(self.phases[i], self.lcm) * self.weights[i]
             h += h_next
+        h.data.real[np.abs(h.data.real) < 1e-15] = 0.0
+        h.data.imag[np.abs(h.data.imag) < 1e-15] = 0.0
+        h.eliminate_zeros()
         return h
 
     def acquire_phase(self,
@@ -1477,6 +1480,8 @@ class PauliSum(PauliObject):
         data = np.empty(d, dtype=np.complex128)
         np.cos(angles, out=data.real)
         np.sin(angles, out=data.imag)
+        data.real[np.abs(data.real) < 1e-15] = 0.0
+        data.imag[np.abs(data.imag) < 1e-15] = 0.0
 
         return sp.csr_matrix(
             (data, indices, indptr),
@@ -1528,6 +1533,8 @@ def string_to_hilbert(dimensions: DimensionsLike, x_exp: IntArrayLike, z_exp: In
     data = np.empty(D, dtype=np.complex128)
     np.cos(phase_angle, out=data.real)
     np.sin(phase_angle, out=data.imag)
+    data.real[np.abs(data.real) < 1e-15] = 0.0
+    data.imag[np.abs(data.imag) < 1e-15] = 0.0
 
     return sp.csr_matrix(
         (data, indices, indptr),

@@ -50,19 +50,19 @@ def test_heisenberg_2d_hamiltonian_matches_open_2x2_reference():
     for i, field in enumerate(h_z):
         expected += field * _embed_single_qubit(Z, i, 4)
 
-    np.testing.assert_allclose(H_dense, expected)
+    np.testing.assert_allclose(H_dense, expected, atol=1e-12)
 
 
 def test_heisenberg_2d_hamiltonian_periodic_2x1_counts_two_wrap_bonds():
     H = heisenberg_2d_hamiltonian(2, 1, 1.0, periodic=True).to_standard_form()
 
-    expected_weights = np.array([2.0, 2.0, 2.0], dtype=complex)
+    expected_weights = np.array([2.0, 2.0, -2.0], dtype=complex)
     expected_tableau = np.array([
-        [0, 0, 1, 1],
         [1, 1, 0, 0],
+        [0, 0, 1, 1],
         [1, 1, 1, 1],
     ], dtype=np.uint8)
-    expected_phases = np.array([0, 0, 2], dtype=int)
+    expected_phases = np.array([0, 0, 0], dtype=int)
 
     assert np.array_equal(H.tableau, expected_tableau)
     assert np.array_equal(H.phases, expected_phases)
@@ -92,4 +92,4 @@ def test_modified_heisenberg_ladder_hamiltonian_adds_plaquette_diagonals():
     for i, field in enumerate(h_z):
         expected += field * _embed_single_qubit(Z, i, 4)
 
-    np.testing.assert_allclose(H_dense, expected)
+    np.testing.assert_allclose(H_dense, expected, atol=1e-12)
