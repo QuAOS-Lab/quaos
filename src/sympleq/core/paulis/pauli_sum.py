@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import overload, Sequence, TYPE_CHECKING, Union, cast
+from typing import overload, Sequence, TYPE_CHECKING, Union
 import numpy as np
 import math
 import scipy.sparse as sp
@@ -1175,13 +1175,16 @@ class PauliSum(PauliObject):
 
         # Convert PauliSum to matrix form
         sparse_matrix = self.to_hilbert_space()
-        shape = cast(tuple[int, int], sparse_matrix.shape)
+        matrix_shape = sparse_matrix.shape
+        if matrix_shape is None:
+            raise ValueError("Hilbert-space matrix shape is unavailable.")
+        matrix_size = matrix_shape[0]
 
         if num_eigens is None:
-            num_eigens = shape[0]
+            num_eigens = matrix_size
 
         # Get eigenvalues and eigenvectors
-        if num_eigens == 1 and shape[0] > 3:
+        if num_eigens == 1 and matrix_size > 3:
             if return_eigenvectors:
                 val, vec = spla.eigsh(sparse_matrix, k=1, which="SA")
             else:
@@ -1200,7 +1203,7 @@ class PauliSum(PauliObject):
                                rtol=1e-10), "Eigenvector is not normalized."
 
             return energy, normalized_state.reshape(1, -1)
-        elif num_eigens >= shape[0] - 2:
+        if num_eigens >= matrix_size - 2:
             val, vec = np.linalg.eigh(sparse_matrix.toarray())
             val = val[:num_eigens]
             if return_eigenvectors:

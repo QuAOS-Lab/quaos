@@ -144,7 +144,7 @@ def _multi_index_to_linear(index: list[int] | np.ndarray, dims: list[int] | np.n
 
 
 def embed_unitary(U_local: HilbertOperator,
-                  qudit_indices: list[int] | np.ndarray,
+                  qudit_indices: tuple[int, ...] | list[int] | np.ndarray,
                   total_dimensions: DimensionsType) -> HilbertOperator:
     """
     Embed a local unitary acting on a subset of qudits into the full Hilbert space.
@@ -152,53 +152,47 @@ def embed_unitary(U_local: HilbertOperator,
     - Basis ordering: |q0> ⊗ |q1> ⊗ ... ⊗ |qN-1>
     - Linear index mapping: idx(q) = sum_k q[k] * prod_{l>k} d[l]
 
-    The local unitary is assumed to act on qudits in the order given by `qudit_indices`.
+    The local unitary is assumed to act on qudits in the order given by
+    `qudit_indices`.
 
-    Args:
-        U_local: Local unitary of shape (D_loc, D_loc) where D_loc = prod(d[qudit_indices]).
-        qudit_indices: Indices of the qudits the local unitary acts on.
-        total_dimensions: Dimensions of each qudit in the full system.
+    Parameters
+    ----------
+    U_local : HilbertOperator
+        Local unitary of shape ``(D_loc, D_loc)`` where
+        ``D_loc = prod(d[qudit_indices])``.
+    qudit_indices : tuple[int, ...] | list[int] | np.ndarray
+        Indices of the qudits the local unitary acts on.
+    total_dimensions : DimensionsType
+        Dimensions of each qudit in the full system.
 
-    Returns:
-        Full unitary of shape (D_total, D_total) with D_total = prod(total_dimensions).
+    Returns
+    -------
+    HilbertOperator
+        Full unitary of shape ``(D_total, D_total)`` with
+        ``D_total = prod(total_dimensions)``.
     """
-    qudit_indices = list(map(int, qudit_indices))
-    dims = list(map(int, total_dimensions))
+    dims = np.asarray(total_dimensions)
     N = len(dims)
-    sel = qudit_indices
+    sel = list(qudit_indices)
     rest = [k for k in range(N) if k not in sel]
+    perm_order = sel + rest
 
-    # Validate local size matches product of selected dims
-    D_loc_expected = int(np.prod([dims[k] for k in sel]))
-    if U_local.shape != (D_loc_expected, D_loc_expected):
-        raise ValueError(
-            f"U_local shape {U_local.shape} doesn't match selected dims product {D_loc_expected}"
-        )
-
-    D_rest = int(np.prod([dims[k] for k in rest]) if rest else 1)
+    D_rest = int(np.prod(dims[rest])) if rest else 1
     D_total = int(np.prod(dims))
 
-    # Build permutation matrix P that reorders tensor factors to [sel..., rest...].
-    # Construct in COO-style triplets and convert once to CSR to avoid expensive
-    # repeated structural updates on CSR.
-    dims_perm = [dims[k] for k in sel + rest]
-    n_states = D_loc_expected * D_rest
-    rows = np.empty(n_states, dtype=int)
-    cols = np.empty(n_states, dtype=int)
-    data = np.ones(n_states, dtype=complex)
+    # Vectorized permutation: decompose all linear indices into multi-indices,
+    # permute the qudit axes, then recompute linear indices
+    all_idx = np.arange(D_total)
+    multi = np.array(np.unravel_index(all_idx, tuple(dims)))  # (N, D_total)
+    dims_perm = tuple(dims[perm_order])
+    new_idx = np.ravel_multi_index(tuple(multi[perm_order]), dims_perm)
 
-    for idx, q in enumerate(np.ndindex(*dims)):
-        q = list(q)
-        old_idx = _multi_index_to_linear(q, dims)
-        q_perm = [q[k] for k in (sel + rest)]
-        new_idx = _multi_index_to_linear(q_perm, dims_perm)
-        rows[idx] = new_idx
-        cols[idx] = old_idx
-    P = sp.csr_matrix((data, (rows, cols)), shape=(n_states, D_total))
+    # Sparse permutation matrix (real-valued, D_total nonzeros): P[new, old] = 1
+    P = sp.csc_matrix((np.ones(D_total), (new_idx, all_idx)), shape=(D_total, D_total))
 
-    # Construct full operator: P^T (U_local ⊗ I_rest) P
-    U_kron = sp.kron(U_local, sp.eye(D_rest))
-    return P.conj().T @ U_kron @ P
+    # P^T @ (U_local ⊗ I_rest) @ P
+    U_kron = sp.kron(U_local, sp.eye(D_rest, format='csr'), format='csr')
+    return P.T @ U_kron @ P
 
 
 def tensor(mm: list[HilbertOperator]) -> HilbertOperator:

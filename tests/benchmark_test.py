@@ -2,7 +2,8 @@ import pytest
 import numpy as np
 
 from sympleq.core.circuits.circuits import Circuit
-from sympleq.core.circuits.gates import GATES
+from sympleq.core.circuits.gates import GATES, Gate
+from sympleq.core.circuits.utils import embed_unitary
 from sympleq.core.paulis.pauli_string import PauliString
 from sympleq.core.paulis.pauli_sum import PauliSum
 
@@ -108,3 +109,16 @@ def test_circuit_composite_gate(benchmark, n_qudits: int, n_gates: int):
         _ = circuit.composite_gate()
 
     benchmark(comp_gate)
+
+
+@pytest.mark.benchmark(group="Circuit")
+@pytest.mark.parametrize("gate", [GATES.H, GATES.S, GATES.CX])
+@pytest.mark.parametrize("dimension", [2, 3, 5])
+@pytest.mark.parametrize("n_qudits", [2, 3, 5])
+def test_embed_unitary(benchmark, gate: Gate, dimension: int, n_qudits: int):
+    local_unitary = gate.local_unitary(dimension)
+
+    def comp_unitary():
+        _ = embed_unitary(local_unitary, tuple(range(gate.n_qudits)), [dimension] * n_qudits)
+
+    benchmark(comp_unitary)

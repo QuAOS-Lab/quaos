@@ -225,3 +225,35 @@ class TestSymplecticSolver:
                 "The matrix M is:\n"
                 f"{F}\n"
             )
+
+    def test_map_pauli_sum_to_target_complete_basis_fast_path(self):
+        n = 2
+        input_tab = np.eye(2 * n, dtype=int)
+        F_expected = np.block([
+            [np.zeros((n, n), dtype=int), np.eye(n, dtype=int)],
+            [np.eye(n, dtype=int), np.zeros((n, n), dtype=int)],
+        ])
+        target_tab = input_tab @ F_expected % 2
+
+        F = map_pauli_sum_to_target_tableau(input_tab, target_tab, p=2)
+
+        assert np.array_equal(F, F_expected)
+        assert np.array_equal((input_tab @ F) % 2, target_tab)
+
+    def test_map_pauli_sum_to_target_complete_basis_with_dependent_row(self):
+        n = 2
+        p = 3
+        input_basis = np.eye(2 * n, dtype=int)
+        dependent_row = (input_basis[0] + 2 * input_basis[2]) % p
+        input_tab = np.vstack([input_basis, dependent_row])
+
+        F_expected = np.block([
+            [np.zeros((n, n), dtype=int), np.eye(n, dtype=int)],
+            [-np.eye(n, dtype=int), np.zeros((n, n), dtype=int)],
+        ]) % p
+        target_tab = input_tab @ F_expected % p
+
+        F = map_pauli_sum_to_target_tableau(input_tab, target_tab, p=p)
+
+        assert np.array_equal(F, F_expected)
+        assert np.array_equal((input_tab @ F) % p, target_tab)
