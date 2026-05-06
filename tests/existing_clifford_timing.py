@@ -1,21 +1,35 @@
 import multiprocessing as mp
 import csv
+import os
 from pathlib import Path
 from queue import Empty
 from time import perf_counter
 
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
+
 import igraph as ig
 import numpy as np
 
-from sympleq.core.finite_field_solvers import get_linear_dependencies, _select_row_basis_indices
-from sympleq.core.graphs.graph_automorphism import _LeafContext, _check_leaf_with_reason
-from sympleq.core.graphs.graph_coloring import _build_base_partition
+from sympleq.core.graphs.graph_automorphism_leaf import check_leaf
+from sympleq.core.graphs.graph_automorphism_search import prepare_clifford_ga_search
+from sympleq.core.circuits import Circuit, GATES
 from sympleq.core.symmetries.clifford import find_clifford_symmetries
-from sympleq.core.circuits import GATES
 from sympleq.models.fermi_hubbard import disordered_tv_chain_model
-from sympleq.models.heisenberg import all_to_all_heisenberg_hamiltonian
-from sympleq.models.Ising import ising_2d_hamiltonian
-# from sympleq.models.random_hamiltonian import random_gate_symmetric_hamiltonian
+from sympleq.models.fermionic_chain import fermionic_chain_hamiltonian
+from sympleq.models.heisenberg import (
+    all_to_all_heisenberg_hamiltonian,
+    heisenberg_2d_hamiltonian,
+    modified_heisenberg_ladder_hamiltonian,
+)
+from sympleq.models.Ising import (
+    ising_2d_hamiltonian,
+    ising_chain_hamiltonian,
+    ising_lower_triangular_hamiltonian,
+    modified_ising_ladder_hamiltonian,
+)
+from sympleq.models.pxp import pxp_model
+from sympleq.models.random_hamiltonian import random_gate_symmetric_hamiltonian
+from sympleq.models.syk import syk4_majorana_hamiltonian
 from sympleq.models.toric_code import ToricCode
 
 TIMEOUT_SECONDS = 10**6
@@ -25,12 +39,22 @@ MAX_QUBITS = 1000
 
 
 def build_model_pauli_sum(model_name, nx, ny, periodic):
-    if model_name == "toric":
+    model_key = str(model_name).strip().lower()
+    if model_key in ("toric", "toric_code"):
         return ToricCode(Nx=nx, Ny=ny, c_x=1.0, c_z=2.0, c_g=0.1, periodic=periodic).hamiltonian()
-    if model_name == "ising_ladder":
+    if model_key == "ising_chain":
+        return ising_chain_hamiltonian(n_spins=ny, J_zz=1.0, h_x=0.5, periodic=periodic)
+    if model_key in ("open ising chain", "open_ising_chain", "ising_chain_open"):
+        return ising_chain_hamiltonian(n_spins=ny, J_zz=1.0, h_x=0.5, periodic=False)
+    if model_key in ("square ising", "square_ising", "ising_2d"):
         return ising_2d_hamiltonian(n_x=nx, n_y=ny, J_zz=1.0, h_x=0.5, periodic=periodic)
-    if model_name == "tv_chain":
-
+    if model_key in ("ising ladder", "ising_ladder"):
+        return ising_2d_hamiltonian(n_x=nx, n_y=ny, J_zz=1.0, h_x=0.5, periodic=periodic)
+    if model_key in ("modified_ising_ladder", "modified ising ladder"):
+        return modified_ising_ladder_hamiltonian(n_x=nx, n_y=ny, J_zz=1.0, h_x=0.5)
+    if model_key in ("triangle ising", "triangle_ising"):
+        return ising_lower_triangular_hamiltonian(L=ny, J_zz=1.0, h_x=0.5)
+    if model_key == "tv_chain":
         return disordered_tv_chain_model(
             n_sites=ny,
             tunneling=1.0,
@@ -39,33 +63,57 @@ def build_model_pauli_sum(model_name, nx, ny, periodic):
             periodic=periodic,
             seed=10_000 + ny,
         )
-    if model_name == "heisenberg_chain":
+    if model_key in ("heisenberg_chain", "heisenberg", "all_to_all_heisenberg"):
         return all_to_all_heisenberg_hamiltonian(
             n=ny,
             J=1.0,
             delta_z=0.5,
         )
-    if model_name == "fermi_hubbard":
+    if model_key in ("heisenberg_2d", "square_heisenberg"):
+        return heisenberg_2d_hamiltonian(n_x=nx, n_y=ny, J=1.0, h_z=0.5, periodic=periodic)
+    if model_key in ("modified_heisenberg_ladder", "heisenberg_ladder_xxz", "modified heisenberg ladder"):
+        return modified_heisenberg_ladder_hamiltonian(n_x=nx, n_y=ny, J=1.0, h_z=0.5)
+    if model_key in ("pxp", "pxp_model"):
+        return pxp_model(n_qubits=ny, coupling=1.0, periodic=periodic, normalized_projectors=False)
+    if model_key in ("syk", "syk4", "syk4_majorana"):
+        return syk4_majorana_hamiltonian(n_qubits=ny, J_scale=1.0, seed=1_234_567 + 1009 * ny)
+    if model_key == "fermionic_chain":
+        return fermionic_chain_hamiltonian(n=ny, J=1.0, V=1.0, D_vec=np.zeros(ny), periodic=periodic)
+    if model_key == "random_fermionic_chain":
+        rng = np.random.default_rng(20_000 + ny)
+        return fermionic_chain_hamiltonian(
+            n=ny,
+            J=1.0,
+            V=0.5,
+            D_vec=rng.uniform(-0.5, 0.5, size=ny),
+            periodic=periodic,
+        )
+    if model_key == "fermi_hubbard":
         from sympleq.models.fermi_hubbard import fermi_hubbard_model
         return fermi_hubbard_model(
             x_dimension=ny,
-            y_dimension=1,
+            y_dimension=2,
             tunneling=1.0,
             coulomb=4.0,
             chemical_potential=0.0,
-            periodic=periodic,
+            periodic=False,
             spinless=False,
         )
-    # if model_name == "random_swap_symmetric":
-    #     return random_gate_symmetric_hamiltonian(
-    #         GATES.SWAP,
-    #         dimension=2,
-    #         qudit_indices=(0, 1),
-    #         n_qudits=ny,
-    #         n_paulis=2 * ny,
-    #         weight_mode="uniform",
-    #         scrambled=True,
-    #     )
+    if model_key == "random_swap_symmetric":
+        p = 2
+        n_qudits = int(ny)
+        dims = [p] * n_qudits
+        all_qudits = tuple(range(n_qudits))
+        swap = Circuit.from_gates_and_qudits(dims, [GATES.SWAP], [(0, 1)]).composite_gate()
+        return random_gate_symmetric_hamiltonian(
+            swap,
+            p,
+            all_qudits,
+            n_qudits,
+            n_paulis=2 * n_qudits,
+            weight_mode="uniform",
+            scrambled=True,
+        )
     raise ValueError(f"Unknown model: {model_name}")
 
 
@@ -94,45 +142,13 @@ def existing_find_worker(model_name, nx, ny, periodic, queue):
 
 
 def build_leaf_context(pauli_sum):
-    pauli = pauli_sum.copy()
-    pauli.weight_to_phase()
-
-    independent_labels, dependencies = get_linear_dependencies(pauli.tableau, 2)
-    labels = sorted(set(independent_labels) | set(dependencies.keys()))
-    S_mod = pauli.symplectic_product_matrix()
-    G, basis_order = pauli.matroid()
-
-    pauli_standard = pauli.to_standard_form()
-    pauli_standard.weight_to_phase()
-
-    base_tableau = pauli.tableau.astype(int, copy=False)
-    dims_array = np.asarray(pauli.dimensions, dtype=int)
-    row_basis_cache = {}
-    if dims_array.size and np.all(dims_array == dims_array[0]):
-        p_uni = int(dims_array[0])
-        cache = _select_row_basis_indices(base_tableau % p_uni, p_uni, base_tableau.shape[1])
-        row_basis_cache["gf2" if p_uni == 2 else "gfp"] = cache
-
-    return _LeafContext(
-        p=int(pauli.lcm),
-        two_lcm=2 * pauli_sum.lcm,
-        n_qudits=pauli_sum.n_qudits(),
-        identity_perm=np.arange(pauli.n_paulis(), dtype=np.int64),
-        S_mod=S_mod,
-        G=G,
-        basis_order=basis_order,
-        labels=labels,
-        pauli_sum=pauli,
-        ref_tableau=pauli_standard.tableau.astype(int, copy=False),
-        ref_phases=np.asarray(pauli_standard.phases, dtype=int),
-        ref_weights=np.asarray(pauli_standard.weights),
-        base_tableau=base_tableau,
-        base_weights=np.asarray(pauli.weights),
-        base_phases=np.asarray(pauli.phases, dtype=int),
-        basis_indices=np.asarray(independent_labels, dtype=int),
-        basis_source_ps=pauli[np.asarray(independent_labels, dtype=int)],
-        row_basis_cache=row_basis_cache,
-    )
+    return prepare_clifford_ga_search(
+        pauli_sum,
+        extra_column_invariants="none",
+        p2_bitset="auto",
+        color_mode="wl",
+        max_wl_rounds=0,
+    ).leaf_ctx
 
 
 def build_subdivision_graph_from_s_mod(S_mod, vertex_colors):
@@ -196,8 +212,9 @@ def generated_group_permutations(generators, n_vertices):
                 yield candidate, candidate_word
 
 
-def first_clifford_from_igraph_generators(pauli_sum, h, generators):
-    ctx = build_leaf_context(pauli_sum)
+def first_clifford_from_igraph_generators(pauli_sum, h, generators, ctx=None):
+    if ctx is None:
+        ctx = build_leaf_context(pauli_sum)
     n_paulis = pauli_sum.n_paulis()
     identity_pauli_perm = tuple(range(n_paulis))
     checked = 0
@@ -207,18 +224,18 @@ def first_clifford_from_igraph_generators(pauli_sum, h, generators):
         if tuple(pi) == identity_pauli_perm:
             continue
         checked += 1
-        gate, reason = _check_leaf_with_reason(pi, ctx)
+        gate = check_leaf(pi, ctx)
         if gate is not None:
-            return True, 1, ((idx, "generator"),), checked, reason
+            return True, 1, ((idx, "generator"),), checked, "ok"
 
     for full_perm, word in generated_group_permutations(generators, h.vcount()):
         pi_tuple = tuple(full_perm[:n_paulis])
         if pi_tuple == identity_pauli_perm:
             continue
         checked += 1
-        gate, reason = _check_leaf_with_reason(np.asarray(pi_tuple, dtype=np.int64), ctx)
+        gate = check_leaf(np.asarray(pi_tuple, dtype=np.int64), ctx)
         if gate is not None:
-            return True, 1, word, checked, reason
+            return True, 1, word, checked, "ok"
 
     return False, 0, None, checked, "no Clifford lift found"
 
@@ -228,21 +245,24 @@ def igraph_find_worker(model_name, nx, ny, periodic, queue):
         pauli_sum = build_model_pauli_sum(model_name, nx, ny, periodic)
         start = perf_counter()
 
-        pauli_for_graph = pauli_sum.copy()
-        pauli_for_graph.weight_to_phase()
-        S_mod = pauli_for_graph.symplectic_product_matrix()
-        colors, _ = _build_base_partition(
-            S_mod,
-            int(pauli_for_graph.lcm),
-            coeffs=pauli_for_graph.weights,
-            col_invariants=None,
-            max_rounds=0,
+        prepared = prepare_clifford_ga_search(
+            pauli_sum,
+            extra_column_invariants="none",
+            p2_bitset="auto",
             color_mode="wl",
+            max_wl_rounds=0,
         )
+        S_mod = prepared.S_mod
+        colors = prepared.base_colors
         h, h_colors = build_subdivision_graph_from_s_mod(S_mod, colors)
         automorphism_group = h.automorphism_group(color=h_colors)
         generators = automorphism_group.generators if hasattr(automorphism_group, "generators") else automorphism_group
-        found, count, word, checked, reason = first_clifford_from_igraph_generators(pauli_sum, h, generators)
+        found, count, word, checked, reason = first_clifford_from_igraph_generators(
+            pauli_sum,
+            h,
+            generators,
+            ctx=prepared.leaf_ctx,
+        )
 
         queue.put({
             "seconds": perf_counter() - start,
@@ -443,16 +463,48 @@ def load_results_csv(filename="existing_clifford_timing.csv"):
 
 
 def qubits_for_job(model_name, nx, ny, periodic):
-    if model_name == "toric":
+    model_key = str(model_name).strip().lower()
+    if model_key in ("toric", "toric_code"):
         return 2 * nx * ny if periodic else nx * (ny - 1) + ny * (nx - 1)
-    if model_name == "ising_ladder":
+    if model_key in (
+        "ising_ladder",
+        "ising ladder",
+        "square_ising",
+        "square ising",
+        "ising_2d",
+        "modified_ising_ladder",
+        "modified ising ladder",
+        "heisenberg_2d",
+        "square_heisenberg",
+        "modified_heisenberg_ladder",
+        "heisenberg_ladder_xxz",
+        "modified heisenberg ladder",
+    ):
         return nx * ny
-    if model_name in ("tv_chain", "heisenberg_chain"):
+    if model_key in (
+        "ising_chain",
+        "open ising chain",
+        "open_ising_chain",
+        "ising_chain_open",
+        "tv_chain",
+        "heisenberg_chain",
+        "heisenberg",
+        "all_to_all_heisenberg",
+        "pxp",
+        "pxp_model",
+        "syk",
+        "syk4",
+        "syk4_majorana",
+        "fermionic_chain",
+        "random_fermionic_chain",
+    ):
         return ny
-    # if model_name == "random_swap_symmetric":
-    #     return ny
-    if model_name == "fermi_hubbard":
-        return 2 * ny
+    if model_key in ("triangle ising", "triangle_ising"):
+        return ny * (ny + 1) // 2
+    if model_key == "random_swap_symmetric":
+        return ny
+    if model_key == "fermi_hubbard":
+        return 4 * ny
     raise ValueError(f"Unknown model: {model_name}")
 
 
@@ -479,31 +531,77 @@ def warmup_existing_find():
 
 
 def main():
-    ny_range = [2, 4, 6, 8, 10, 20, 30, 40, 50, 100, 200, 300, 400, 500]
+    ny_range = [2, 4, 6, 8, 10, 20, 30, 40, 50, 100, 200, 300, 400, 500, 1000]   # 
+    sq_side_sizes = [2, 4, 6, 8, 10]  # , 100
+    heisenberg_sizes = [2, 4, 6, 8, 10, 20, 30, 40, 50]   # , 200, 300, 400, 500
+    pxp_range = [4, 6, 8, 10, 20, 30, 40, 50, 100]
     existing_toric_sizes = [(1, ny) for ny in range(2, 51)]
+    existing_ising_chain_sizes = [(1, ny) for ny in ny_range]
+    existing_open_ising_chain_sizes = [(1, ny) for ny in ny_range]
+    existing_square_ising_sizes = [(side, side) for side in ny_range]
     existing_ising_ladder_sizes = [(2, ny) for ny in ny_range]
+    existing_triangle_ising_sizes = [(1, side) for side in ny_range]
+    existing_ising_2d_sizes = [(2, ny) for ny in ny_range]
     existing_tv_chain_sizes = [(1, ny) for ny in ny_range]
     existing_heisenberg_sizes = [(1, ny) for ny in ny_range]
+    existing_heisenberg_2d_sizes = [(2, ny) for ny in ny_range]
+    existing_modified_heisenberg_ladder_sizes = [(ny, 2) for ny in ny_range]
+    existing_pxp_sizes = [(1, ny) for ny in pxp_range]
+    existing_syk_sizes = [(1, ny) for ny in ny_range]
+    existing_fermionic_chain_sizes = [(1, ny) for ny in ny_range]
+    existing_random_fermionic_chain_sizes = [(1, ny) for ny in ny_range]
     existing_fermi_hubbard_sizes = [(1, ny) for ny in ny_range]
-    # existing_random_swap_symmetric_sizes = [(1, ny) for ny in ny_range]
+    existing_random_swap_symmetric_sizes = [(1, ny) for ny in ny_range]
     igraph_toric_sizes = [(1, ny) for ny in range(2, 501,10)]
+    igraph_ising_chain_sizes = [(1, ny) for ny in ny_range]
+    igraph_open_ising_chain_sizes = [(1, ny) for ny in ny_range]
+    igraph_square_ising_sizes = [(side, side) for side in sq_side_sizes]
     igraph_ising_ladder_sizes = [(2, ny) for ny in ny_range]
+    igraph_triangle_ising_sizes = [(1, side) for side in sq_side_sizes]
+    igraph_ising_2d_sizes = [(2, ny) for ny in ny_range]
     igraph_tv_chain_sizes = [(1, ny) for ny in ny_range]
-    igraph_heisenberg_sizes = [(1, ny) for ny in ny_range]
+    igraph_heisenberg_sizes = [(1, ny) for ny in heisenberg_sizes]
+    igraph_heisenberg_2d_sizes = [(2, ny) for ny in ny_range]
+    igraph_modified_heisenberg_ladder_sizes = [(ny, 2) for ny in ny_range]
+    igraph_pxp_sizes = [(1, ny) for ny in pxp_range]
+    igraph_syk_sizes = [(1, ny) for ny in ny_range]
+    igraph_fermionic_chain_sizes = [(1, ny) for ny in ny_range]
+    igraph_random_fermionic_chain_sizes = [(1, ny) for ny in ny_range]
     igraph_fermi_hubbard_sizes = [(1, ny) for ny in ny_range]
-    # igraph_random_swap_symmetric_sizes = [(1, ny) for ny in ny_range]
+    igraph_random_swap_symmetric_sizes = [(1, ny) for ny in ny_range]
     jobs = [
-        # ("toric", True, existing_toric_sizes, igraph_toric_sizes),
+        # ("toric_code", True, existing_toric_sizes, igraph_toric_sizes),
+        # ("ising_chain", False, existing_ising_chain_sizes, igraph_ising_chain_sizes),
+        ("open_ising_chain", False, existing_open_ising_chain_sizes, igraph_open_ising_chain_sizes),
+        ("square_ising", False, existing_square_ising_sizes, igraph_square_ising_sizes),
         ("ising_ladder", False, existing_ising_ladder_sizes, igraph_ising_ladder_sizes),
+        ("triangle_ising", False, existing_triangle_ising_sizes, igraph_triangle_ising_sizes),
+        # ("ising_2d", False, existing_ising_2d_sizes, igraph_ising_2d_sizes),
         ("tv_chain", False, existing_tv_chain_sizes, igraph_tv_chain_sizes),
-        ("heisenberg_chain", False, existing_heisenberg_sizes, igraph_heisenberg_sizes),
+        ("heisenberg", False, existing_heisenberg_sizes, igraph_heisenberg_sizes),
+        ("heisenberg_2d", False, existing_heisenberg_2d_sizes, igraph_heisenberg_2d_sizes),
+        (
+            "modified_heisenberg_ladder",
+            False,
+            existing_modified_heisenberg_ladder_sizes,
+            igraph_modified_heisenberg_ladder_sizes,
+        ),
+        # ("pxp", False, existing_pxp_sizes, igraph_pxp_sizes),
+        # ("syk", False, existing_syk_sizes, igraph_syk_sizes),
+        ("fermionic_chain", False, existing_fermionic_chain_sizes, igraph_fermionic_chain_sizes),
+        (
+            "random_fermionic_chain",
+            False,
+            existing_random_fermionic_chain_sizes,
+            igraph_random_fermionic_chain_sizes,
+        ),
         ("fermi_hubbard", False, existing_fermi_hubbard_sizes, igraph_fermi_hubbard_sizes),
-        # (
-        #     "random_swap_symmetric",
-        #     False,
-        #     existing_random_swap_symmetric_sizes,
-        #     igraph_random_swap_symmetric_sizes,
-        # ),
+        (
+            "random_swap_symmetric",
+            False,
+            existing_random_swap_symmetric_sizes,
+            igraph_random_swap_symmetric_sizes,
+        ),
     ]
     results = load_results_csv(CSV_FILENAME)
     print_loaded_data_summary(results)
@@ -564,6 +662,11 @@ def main():
                 if timeout_limit is not None and qubits >= timeout_limit:
                     break
 
+                print(
+                    f"Attempting {method} symmetry search for {model_name} "
+                    f"(nx={nx}, ny={ny}, periodic={periodic}, qubits={qubits})",
+                    flush=True,
+                )
                 result = timer(model_name, nx, ny, periodic)
                 results.append(result)
                 completed.add((result["method"], result["model"], result["nx"], result["ny"]))
@@ -588,3 +691,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # plt.show()

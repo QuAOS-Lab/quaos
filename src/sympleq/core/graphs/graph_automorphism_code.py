@@ -73,3 +73,36 @@ def compute_induced_completion_matrix_gf2(
     except np.linalg.LinAlgError:
         return None
     return C
+
+
+def compute_prefix_UG(
+    G: galois.FieldArray,
+    G_mod2: np.ndarray | None,
+    B_cols: np.ndarray,
+    pi: np.ndarray,
+) -> np.ndarray | galois.FieldArray | None:
+    """Return U G for a partial permutation once all basis columns are mapped.
+
+    The current search stores ``pi[i] = image(i)``. Once every basis column has
+    an image, the code automorphism condition determines U from
+    ``U G[:, pi(B)] = G[:, B]``. The search then checks columns incrementally via
+    ``(U G)[:, pi(i)] == G[:, i]``.
+    """
+    PB = np.asarray(pi, dtype=int)[np.asarray(B_cols, dtype=int)]
+    if np.any(PB < 0):
+        return None
+
+    if G_mod2 is not None:
+        C = G_mod2[:, PB]
+        try:
+            C_inv = gf2_inv(C)
+        except np.linalg.LinAlgError:
+            return None
+        return (C_inv @ G_mod2) & 1
+
+    C = G[:, PB]
+    try:
+        U = np.linalg.inv(C)
+    except np.linalg.LinAlgError:
+        return None
+    return U @ G

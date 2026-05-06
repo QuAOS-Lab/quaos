@@ -7,7 +7,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-CSV_FILENAME = SCRIPT_DIR / "existing_clifford_timing_csv10.csv"
+CSV_FILENAME = SCRIPT_DIR / "clifford_timing_csv10.csv"
 PLOT_FILENAME = SCRIPT_DIR / "clifford_timing_csv10.png"
 MAX_QUBITS = 1000
 # ONLY_MODELS = {"fermi_hubbard"}
@@ -54,12 +54,24 @@ def plot_results(results, filename=PLOT_FILENAME):
         return
 
     model_colors = {
-        "toric": "tab:blue",
-        "ising_ladder": "tab:orange",
-        "tv_chain": "tab:brown",
-        "heisenberg_chain": "tab:green",
-        "fermi_hubbard": "tab:red",
-        "random_swap_symmetric": "tab:purple",
+        "toric": "#1f77b4",
+        "toric_code": "#1f77b4",
+        "ising_chain": "#ff7f0e",
+        "open_ising_chain": "#2ca02c",
+        "square_ising": "#d62728",
+        "ising_ladder": "#9467bd",
+        "triangle_ising": "#8c564b",
+        "ising_2d": "#e377c2",
+        "tv_chain": "#7f7f7f",
+        "heisenberg": "#bcbd22",
+        "heisenberg_2d": "#17becf",
+        "modified_heisenberg_ladder": "#393b79",
+        "pxp": "#637939",
+        "syk": "#8c6d31",
+        "fermionic_chain": "#843c39",
+        "random_fermionic_chain": "#7b4173",
+        "fermi_hubbard": "#3182bd",
+        "random_swap_symmetric": "#e6550d",
     }
     method_styles = {
         "existing": "-",
