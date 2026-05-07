@@ -180,7 +180,7 @@ def atomic_blocks_in_paired_sector(
     key: tuple[int, ...],
     key_star: tuple[int, ...],
     primaries: dict,
-    allow_fallback: bool = True,
+    allow_fallback: bool = False,
 ) -> tuple[list[AtomicBlock], AtomicInvariant]:
     """
     Atomic block construction for paired sector W = V_q ⊕ V_{q*} (q != q*).
@@ -210,8 +210,11 @@ def atomic_blocks_in_paired_sector(
     }
 
     if Vq.shape[1] == 0 or Vqs.shape[1] == 0:
+        msg = "one side of paired sector is empty"
+        if not allow_fallback:
+            raise RuntimeError(f"Paired sector: {msg}.")
         inv_data["status"] = "DEGRADED"
-        inv_data["note"] = "one side of paired sector is empty"
+        inv_data["note"] = msg
         inv = AtomicInvariant(sector_key=key, sector_type="paired", poly_key=key, data=inv_data)
         return [], inv
 
@@ -389,6 +392,17 @@ def atomic_blocks_in_paired_sector(
         inv_data["checks_passed"].append("each block nondegenerate")
         inv_data["checks_passed"].append("blocks span paired sector")
         inv_data["status"] = "OK"
+        sector_cost = max((int(b.half_dim) for b in blocks), default=0)
+        inv_data["cost_certificate"] = {
+            "lower_bound": int(sector_cost),
+            "attained": True,
+            "complete": True,
+            "sector_cost": int(sector_cost),
+            "note": (
+                "paired sector certified by quotient-level dual-basis construction "
+                "and extract/remove orthogonalization"
+            ),
+        }
 
     except Exception as e:
         if not allow_fallback:

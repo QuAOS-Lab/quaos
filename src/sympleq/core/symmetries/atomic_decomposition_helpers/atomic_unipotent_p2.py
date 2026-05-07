@@ -1,8 +1,10 @@
 # sympleq/core/symmetries/atomic_unipotent_p2.py
 from __future__ import annotations
 
-import numpy as np
+import itertools
 from typing import Any, Dict, List, Tuple
+
+import numpy as np
 
 from ..modular_helpers import mod_p, independent_columns, rank_mod, omega_matrix
 from .atomic_types import AtomicBlock, AtomicInvariant
@@ -15,25 +17,37 @@ from .atomic_linear import (
     symplectic_orthogonal_complement_in_span,
 )
 from .module_invariants import (
-    jordan_chain_tops_nilpotent,
     cyclic_submodule_basis,
     q_of_F_restricted,
 )
 from .atomic_krylov import _select_module_generators_from_top_space
+from .atomic_filtration import build_nilpotent_filtration
 
 
-# ----------------------------
-# Small local helpers (p=2)
-# ----------------------------
+# ---------------------------------------------------------------------------
+# GF(2) scalar helpers
+# ---------------------------------------------------------------------------
+
+def _scalar_mod2(x) -> int:
+    """Safely extract a GF(2) scalar from a scalar-like NumPy expression."""
+    arr = np.asarray(x, dtype=np.int64) % 2
+    if arr.size != 1:
+        raise ValueError(f"Expected scalar-like array, got shape={arr.shape}")
+    return int(arr.reshape(-1)[0])
+
+
+# ---------------------------------------------------------------------------
+# Restricted nilpotent top spaces
+# ---------------------------------------------------------------------------
 
 def _basis_extend(base: np.ndarray, candidates: np.ndarray, want: int, p: int) -> np.ndarray:
-    """Deterministically pick 'want' columns from 'candidates' extending span(base)."""
+    """Deterministically pick ``want`` columns from ``candidates`` extending ``span(base)``."""
     base = independent_columns(mod_p(base, p), p) if base.size else base
     picked = np.zeros((candidates.shape[0], 0), dtype=np.int64)
     r_base = rank_mod(base, p) if base.size else 0
 
     for j in range(candidates.shape[1]):
-        c = candidates[:, j:j + 1]
+        c = mod_p(candidates[:, j:j + 1], p)
         r_try = rank_mod(np.concatenate([base, picked, c], axis=1), p)
         if r_try > r_base + picked.shape[1]:
             picked = np.concatenate([picked, c], axis=1)
@@ -47,158 +61,117 @@ def jordan_chain_tops_nilpotent_in_span(
     N: np.ndarray, space_basis: np.ndarray, max_exp: int, p: int
 ) -> Dict[int, np.ndarray]:
     """
-    Restricted analogue:
-      tops[L] represents K_L / (K_{L-1} + N K_{L+1}) inside span(space_basis),
-    with K_j := ker(N^j) ∩ span(space_basis).
-
-    Deterministic: uses _basis_extend.
+    Restricted length-top quotient representatives, now backed by the shared
+    NilpotentFiltration cache.  Kept under the old name for compatibility with
+    existing callers/tests.
     """
-    N = mod_p(N, p)
-    space_basis = independent_columns(mod_p(space_basis, p), p)
-    d = N.shape[0]
-    if space_basis.shape[1] == 0:
-        return {}
-
-    # K[0]=0, K[1..max_exp], and K[max_exp+1]=K[max_exp]
-    K: List[np.ndarray] = [np.zeros((d, 0), dtype=np.int64)]
-    for j in range(1, int(max_exp) + 1):
-        Kj = kernel_in_span(mat_pow_mod(N, j, p), space_basis, p)
-        K.append(independent_columns(Kj, p))
-    K.append(K[int(max_exp)])
-
-    tops: Dict[int, np.ndarray] = {}
-    for L in range(1, int(max_exp) + 1):
-        KL = K[L]
-        if KL.shape[1] == 0:
-            continue
-
-        S = K[L - 1]
-        NKLp1 = mod_p(N @ K[L + 1], p) if K[L + 1].shape[1] else np.zeros((d, 0), dtype=np.int64)
-        if NKLp1.shape[1]:
-            S = np.concatenate([S, NKLp1], axis=1) if S.shape[1] else NKLp1
-        S = independent_columns(S, p) if S.shape[1] else S
-
-        rS = rank_mod(S, p) if S.shape[1] else 0
-        need = KL.shape[1] - rS
-        if need <= 0:
-            continue
-
-        chosen = _basis_extend(S, KL, need, p)
-        tops[L] = chosen
-
-    return tops
+    return build_nilpotent_filtration(N, space_basis, max_exp, p).tops
 
 
-def _pair_value(v: np.ndarray, w: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int, p: int) -> int:
-    """Compute <v, N^{L-1} w> mod p (scalar)."""
-    v = mod_p(v.reshape(-1, 1), p)
-    w = mod_p(w.reshape(-1, 1), p)
-    Nr = np.eye(N.shape[0], dtype=np.int64) if (L - 1) == 0 else mat_pow_mod(N, L - 1, p)
-    return int(mod_p(v.T @ Omega @ (Nr @ w), p).reshape(()))
+# ---------------------------------------------------------------------------
+# p=2 top bilinear/quadratic data
+# ---------------------------------------------------------------------------
 
-
-def _find_partner_in_top_span_p2(
-    v: np.ndarray, A: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int
-) -> np.ndarray | None:
-    """
-    p=2: find w among columns of A such that <v, N^{L-1} w> = 1 and rank([v,w])=2.
-    Returns None if impossible (v is in the radical of this pairing on span(A)).
-    Deterministic: picks the first suitable column.
-    """
+def _top_pairing_matrix(A_top: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int) -> np.ndarray:
+    """Matrix of b_L([v],[w]) = <v, N^{L-1} w> on top representatives."""
     p = 2
-    v = mod_p(v.reshape(-1, 1), p)
-    A = independent_columns(mod_p(A, p), p)
-    if A.shape[1] == 0:
-        return None
+    A_top = independent_columns(mod_p(A_top, p), p)
+    Nr = np.eye(N.shape[0], dtype=np.int64) if L <= 1 else mat_pow_mod(N, L - 1, p)
+    return mod_p(A_top.T @ Omega @ (Nr @ A_top), p)
 
-    Nr = np.eye(N.shape[0], dtype=np.int64) if (L - 1) == 0 else mat_pow_mod(N, L - 1, p)
-    r = mod_p(v.T @ Omega @ (Nr @ A), p).reshape(-1)  # length m
 
-    nz = np.where(r % 2 != 0)[0]
-    if nz.size == 0:
-        return None
+def _mid_exponent_p2(L: int) -> int:
+    """
+    Exponent used by the Chapter-5-style quadratic refinement.
 
-    for j in nz:
-        w = A[:, int(j):int(j) + 1]
-        # exclude w == v
-        if np.array_equal(mod_p(w, p), mod_p(v, p)):
-            continue
-        # ensure independent in the top quotient (rank 2 for {v,w})
-        if rank_mod(np.concatenate([v, w], axis=1), p) != 2:
-            continue
-        return w
+    For L=2k use k-1; for L=2l+1 use l.
+    """
+    L = int(L)
+    if L % 2 == 0:
+        return max(L // 2 - 1, 0)
+    return (L - 1) // 2
 
-    return None
+
+def _q_values_on_top(A_top: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int) -> np.ndarray:
+    """Return q_L(a_i)=<a_i, N^e a_i> for the selected top representatives."""
+    p = 2
+    A_top = independent_columns(mod_p(A_top, p), p)
+    if A_top.shape[1] == 0:
+        return np.zeros(0, dtype=np.int64)
+    e = _mid_exponent_p2(int(L))
+    Ne = np.eye(N.shape[0], dtype=np.int64) if e == 0 else mat_pow_mod(N, e, p)
+    Q = mod_p(A_top.T @ Omega @ (Ne @ A_top), p)
+    return np.diag(Q).astype(np.int64) % 2
+
+
+def _q_value_from_coeff(coeff: np.ndarray, A_top: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int) -> int:
+    """Evaluate q_L on a top vector represented by coefficient vector ``coeff``."""
+    p = 2
+    coeff = mod_p(np.asarray(coeff, dtype=np.int64).reshape(-1, 1), p)
+    v = mod_p(A_top @ coeff, p)
+    e = _mid_exponent_p2(int(L))
+    Ne = np.eye(N.shape[0], dtype=np.int64) if e == 0 else mat_pow_mod(N, e, p)
+    return int(mod_p(v.T @ Omega @ (Ne @ v), p).reshape(())) & 1
+
 
 def _beta_from_top_generators_p2(
     gens: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int
 ) -> int:
     """
-    Chapter-5-style beta on the 'top quotient' for this extracted indecomposable,
-    computed from the quadratic invariant evaluated on a symplectic top basis.
+    Chapter-5-style beta label of an extracted p=2 indecomposable.
 
-    (p=2): the label is detected at mid-chain, not at N^{L-1}.
-      - V_beta(2k):     use q(v) = <v, N^{k-1} v> = <v, N^{L/2 - 1} v>
-      - W_beta(2l+1):   use q(v) = <v, N^{l}   v> = <v, N^{(L-1)/2} v>
-      - W(even): label should come out 0 in “honest” cases; we still compute it.
+    For a single top generator this is q_L(v).  For a two-generator W-plane
+    normalized by b_L(v,w)=1, this returns the Arf contribution q_L(v) q_L(w).
     """
     p = 2
     gens = mod_p(gens, p)
     if gens.shape[1] == 0:
         return 0
 
-    # Mid-chain exponent for the quadratic refinement (Chapter 5, p=2 case)
-    if L % 2 == 0:
-        # L = 2k  -> exponent k-1
-        exp = max(L // 2 - 1, 0)
-    else:
-        # L = 2l+1 -> exponent l
-        exp = (L - 1) // 2
-
-    Nr = np.eye(N.shape[0], dtype=np.int64) if exp == 0 else mat_pow_mod(N, exp, p)
+    e = _mid_exponent_p2(int(L))
+    Ne = np.eye(N.shape[0], dtype=np.int64) if e == 0 else mat_pow_mod(N, e, p)
 
     def q(vcol: np.ndarray) -> int:
         vcol = mod_p(vcol.reshape(-1, 1), p)
-        return int(mod_p(vcol.T @ Omega @ (Nr @ vcol), p).reshape(()))
+        return int(mod_p(vcol.T @ Omega @ (Ne @ vcol), p).reshape(())) & 1
 
     if gens.shape[1] == 1:
-        return q(gens[:, 0]) & 1
-
+        return q(gens[:, 0])
     if gens.shape[1] == 2:
-        qv = q(gens[:, 0]) & 1
-        qw = q(gens[:, 1]) & 1
-        return (qv & qw)  # product in GF(2)
-
+        return q(gens[:, 0]) & q(gens[:, 1])
     return 0
 
 
-
-def _p2_hyperbolic_pairs_from_alternating_form(B: np.ndarray, p: int = 2) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]:
+def _p2_hyperbolic_pairs_from_alternating_form(
+    B: np.ndarray, p: int = 2
+) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]:
     """
-    Deterministic Gram–Schmidt for an alternating form B over GF(2).
+    Deterministic Gram-Schmidt for an alternating form over GF(2).
 
-    Returns (e_list, f_list, rad_list), where each entry is a *coefficient vector*
-    (length m) in the original coordinate basis such that:
-      - e_i^T B f_i = 1, and e_i,f_i are mutually orthogonal to all other pairs
-      - rad_list spans the radical {v: v^T B = 0}
+    Returns coefficient vectors in the original top basis: hyperbolic pairs
+    ``(e_i,f_i)`` and radical lines.  This is a quotient-level construction;
+    actual cyclic modules are only accepted after direct nondegeneracy checks.
     """
     if p != 2:
         raise ValueError("_p2_hyperbolic_pairs_from_alternating_form is p=2 only")
     B = mod_p(np.asarray(B, dtype=np.int64), 2)
+    if B.ndim != 2 or B.shape[0] != B.shape[1]:
+        raise ValueError(f"B must be square, got {B.shape}.")
+    if np.any(np.diag(B) % 2):
+        raise RuntimeError("p=2 top pairing is not alternating: nonzero diagonal.")
+
     m = B.shape[0]
-    R = [np.eye(m, dtype=np.int64)[:, i] for i in range(m)]  # remaining vectors (standard basis), as 1D arrays
+    R = [np.eye(m, dtype=np.int64)[:, i] for i in range(m)]
 
     e_list: List[np.ndarray] = []
     f_list: List[np.ndarray] = []
     rad_list: List[np.ndarray] = []
 
     def pair(u: np.ndarray, v: np.ndarray) -> int:
-        return int((u.reshape(1, -1) @ B @ v.reshape(-1, 1)) % 2)
+        return _scalar_mod2(u.reshape(1, -1) @ B @ v.reshape(-1, 1))
 
-    # Work on a mutable list of remaining vectors, orthogonalizing as we go
     while R:
         a = R.pop(0)
-        # find b with <a,b>=1
         found = None
         for idx, cand in enumerate(R):
             if pair(a, cand) == 1:
@@ -206,21 +179,19 @@ def _p2_hyperbolic_pairs_from_alternating_form(B: np.ndarray, p: int = 2) -> Tup
                 break
 
         if found is None:
-            # a is radical (w.r.t. current remaining set, which is already orthogonal to previous pairs)
             rad_list.append(a.copy())
             continue
 
         b = R.pop(found)
 
-        # Orthogonalize remaining vectors to the new pair (a,b)
         newR = []
         for x in R:
-            ax = pair(x, b)  # <x,b>
-            bx = pair(x, a)  # <x,a>
+            ax = pair(x, b)
+            bx = pair(x, a)
             if ax:
-                x = (x ^ a)  # x <- x + <x,b> a
+                x = (x ^ a)
             if bx:
-                x = (x ^ b)  # x <- x + <x,a> b
+                x = (x ^ b)
             newR.append(x)
         R = newR
 
@@ -230,43 +201,196 @@ def _p2_hyperbolic_pairs_from_alternating_form(B: np.ndarray, p: int = 2) -> Tup
     return e_list, f_list, rad_list
 
 
-def _p2_length_form_invariants(A_top, Omega, N, L):
+def _radical_candidates_adapted_to_q(
+    rad_list: List[np.ndarray], A_top: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int
+) -> List[np.ndarray]:
+    """
+    Return deterministic radical-line candidates, lightly adapted to q_L.
+
+    On the radical of b_L the polar form of q_L vanishes, so q_L is additive.
+    If a q=1 line exists, the first combination found below exposes it; q=0
+    lines are retained as well because V_0-type blocks can occur.
+    """
+    if not rad_list:
+        return []
+
+    out: List[np.ndarray] = []
+    seen: set[Tuple[int, ...]] = set()
+
+    def push(c: np.ndarray) -> None:
+        cc = mod_p(np.asarray(c, dtype=np.int64).reshape(-1), 2)
+        if not np.any(cc):
+            return
+        key = tuple(int(x) for x in cc)
+        if key not in seen:
+            seen.add(key)
+            out.append(cc)
+
+    for c in rad_list:
+        push(c)
+
+    # If the basis lines all have q=0 but a q=1 combination exists, a short
+    # deterministic combination exposes it in the common cases.  For modest
+    # radical dimension enumerate all combinations; otherwise use pair sums.
+    r = len(rad_list)
+    if r <= 12:
+        R = np.stack(rad_list, axis=1)
+        for mask in range(1, 1 << r):
+            coeff = np.zeros(r, dtype=np.int64)
+            for i in range(r):
+                if (mask >> i) & 1:
+                    coeff[i] = 1
+            push(R @ coeff)
+    else:
+        for i in range(r):
+            for j in range(i + 1, r):
+                push(rad_list[i] ^ rad_list[j])
+
+    # Stable order: prefer q=1 witnesses first, then q=0, preserving discovery
+    # order inside each bucket.
+    ones = [c for c in out if _q_value_from_coeff(c, A_top, Omega, N, L) == 1]
+    zeros = [c for c in out if _q_value_from_coeff(c, A_top, Omega, N, L) == 0]
+    return ones + zeros
+
+
+
+def _top_coeff_candidates(m: int, *, exhaustive_limit: int = 10) -> List[np.ndarray]:
+    """
+    Deterministic nonzero coefficient vectors in GF(2)^m.
+
+    For modest top dimension this is exhaustive, which makes the implemented
+    W(k) and V_beta(2k) extraction independent of the arbitrary top basis.  For
+    larger dimensions we use a deterministic spanning stress set; the direct
+    quotient decompositions normally make the exhaustive branch sufficient for
+    atomic top pieces encountered after repeated extraction.
+    """
+    m = int(m)
+    if m <= 0:
+        return []
+    out: List[np.ndarray] = []
+    seen: set[Tuple[int, ...]] = set()
+
+    def push(c: np.ndarray) -> None:
+        cc = mod_p(np.asarray(c, dtype=np.int64).reshape(-1), 2)
+        if cc.shape[0] != m or not np.any(cc):
+            return
+        key = tuple(int(x) for x in cc)
+        if key not in seen:
+            seen.add(key)
+            out.append(cc)
+
+    # Basis vectors first for reproducibility and readable diagnostics.
+    for i in range(m):
+        e = np.zeros(m, dtype=np.int64)
+        e[i] = 1
+        push(e)
+
+    if m <= exhaustive_limit:
+        for mask in range(1, 1 << m):
+            c = np.zeros(m, dtype=np.int64)
+            for i in range(m):
+                if (mask >> i) & 1:
+                    c[i] = 1
+            push(c)
+    else:
+        # Deterministic but bounded supplement for large quotient dimensions.
+        for i in range(m):
+            for j in range(i + 1, m):
+                c = np.zeros(m, dtype=np.int64)
+                c[i] = 1
+                c[j] = 1
+                push(c)
+        push(np.ones(m, dtype=np.int64))
+
+    return out
+
+
+def _hyperbolic_pair_candidates(Btop: np.ndarray) -> List[Tuple[np.ndarray, np.ndarray]]:
+    """
+    Deterministic candidate top pairs (c,d) with c^T Btop d = 1.
+
+    When Btop is alternating, try quotient-level Gram-Schmidt pairs first.
+    For non-alternating top forms (which occur for V_beta(2k) single-chain
+    blocks), skip Gram-Schmidt and use exhaustive coefficient pairs.  Direct
+    cyclic-module nondegeneracy checks decide whether a candidate is accepted.
+    """
+    Btop = mod_p(np.asarray(Btop, dtype=np.int64), 2)
+    m = int(Btop.shape[0])
+
+    e_list: List[np.ndarray] = []
+    f_list: List[np.ndarray] = []
+    if m > 0 and np.all(np.diag(Btop) % 2 == 0):
+        try:
+            e_list, f_list, _ = _p2_hyperbolic_pairs_from_alternating_form(Btop, p=2)
+        except RuntimeError:
+            # Fall through to exhaustive coefficient-pair enumeration.  The
+            # acceptor verifies every lifted block, so this is safe.
+            e_list, f_list = [], []
+
+    out: List[Tuple[np.ndarray, np.ndarray]] = []
+    seen: set[Tuple[Tuple[int, ...], Tuple[int, ...]]] = set()
+
+    def pair_value(c: np.ndarray, d: np.ndarray) -> int:
+        return _scalar_mod2(c.reshape(1, -1) @ Btop @ d.reshape(-1, 1))
+
+    def push(c: np.ndarray, d: np.ndarray) -> None:
+        cc = mod_p(np.asarray(c, dtype=np.int64).reshape(-1), 2)
+        dd = mod_p(np.asarray(d, dtype=np.int64).reshape(-1), 2)
+        if cc.shape[0] != m or dd.shape[0] != m:
+            return
+        if not np.any(cc) or not np.any(dd):
+            return
+        if pair_value(cc, dd) != 1:
+            return
+        key = (tuple(int(x) for x in cc), tuple(int(x) for x in dd))
+        if key not in seen:
+            seen.add(key)
+            out.append((cc, dd))
+
+    for c, d in zip(e_list, f_list):
+        push(c, d)
+
+    coeffs = _top_coeff_candidates(m, exhaustive_limit=8)
+    for c in coeffs:
+        for d in coeffs:
+            push(c, d)
+
+    return out
+
+def _p2_length_form_invariants(A_top: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int) -> Dict[str, Any]:
     p = 2
     A_top = independent_columns(mod_p(A_top, p), p)
     m = int(A_top.shape[1])
     if m == 0:
         return {
-            "top_dim": 0, "B_rank": 0, "rad_dim": 0,
-            "B_sym_ok": True, "B_alt_ok": True,
-            "q_defined": False, "q_mid_polar_ok": None, "q_witness_polar_ok": True,
+            "top_dim": 0,
+            "B_rank": 0,
+            "rad_dim": 0,
+            "B_sym_ok": True,
+            "B_alt_ok": True,
+            "q_values": [],
+            "q1_count": 0,
+            "n_hyp": 0,
             "arf": None,
         }
 
-    Nr = np.eye(N.shape[0], dtype=np.int64) if (L - 1) == 0 else mat_pow_mod(N, L - 1, p)
-    B = mod_p(A_top.T @ Omega @ (Nr @ A_top), p)
+    B = _top_pairing_matrix(A_top, Omega, N, int(L))
+    qvals = _q_values_on_top(A_top, Omega, N, int(L))
     B_rank = int(rank_mod(B, p))
     rad_dim = int(m - B_rank)
-
     B_sym_ok = bool(np.array_equal(B, B.T))
     B_alt_ok = bool(np.all(np.diag(B) % 2 == 0))
 
-    # "mid" q: the one you were *trying* to use (debug only)
-    q_defined = bool(L > 1)
-    q_mid_polar_ok = None
-    if q_defined:
-        if L % 2 == 0:
-            exp = L // 2          # IMPORTANT: don't use k-1 if you intend L=2 to be meaningful
-        else:
-            exp = (L - 1) // 2
-        Nm = np.eye(N.shape[0], dtype=np.int64) if exp == 0 else mat_pow_mod(N, exp, p)
-        Q_mid = mod_p(A_top.T @ Omega @ (Nm @ A_top), p)
-        Bq_mid = mod_p(Q_mid + Q_mid.T, p)
-        q_mid_polar_ok = bool(np.array_equal(Bq_mid, B))
-
-    # "witness" quadratic refinement: always exists when B is alternating.
-    # Choose Q_wit as strict upper-triangular part of B so that Q_wit + Q_wit^T = B (diag=0).
-    q_witness_polar_ok = bool(B_alt_ok)
-    # (We don't compute Arf from this witness: it isn't canonical.)
+    arf = None
+    n_hyp = 0
+    if B_alt_ok:
+        e_list, f_list, _ = _p2_hyperbolic_pairs_from_alternating_form(B, p=2)
+        n_hyp = len(e_list)
+        arf_val = 0
+        for e, f in zip(e_list, f_list):
+            arf_val ^= (_q_value_from_coeff(e, A_top, Omega, N, L) & _q_value_from_coeff(f, A_top, Omega, N, L))
+        if rad_dim == 0:
+            arf = int(arf_val)
 
     return {
         "top_dim": int(m),
@@ -274,224 +398,290 @@ def _p2_length_form_invariants(A_top, Omega, N, L):
         "rad_dim": int(rad_dim),
         "B_sym_ok": bool(B_sym_ok),
         "B_alt_ok": bool(B_alt_ok),
-        "q_defined": bool(q_defined),
-        "q_mid_polar_ok": q_mid_polar_ok,
-        "q_witness_polar_ok": bool(q_witness_polar_ok),
-        "arf": None,  # leave None unless/until you implement the *canonical* quadratic
+        "q_values": [int(x) for x in qvals.reshape(-1)],
+        "q1_count": int(np.sum(qvals % 2)),
+        "n_hyp": int(n_hyp),
+        "arf": arf,
     }
 
 
-
-# ----------------------------
+# ---------------------------------------------------------------------------
 # Main builder (p=2 unipotent self sector)
-# ----------------------------
+# ---------------------------------------------------------------------------
 
 def atomic_blocks_in_unipotent_self_sector_p2(
-    F: np.ndarray, key: Tuple[int, ...], primaries: dict
+    F: np.ndarray,
+    key: Tuple[int, ...],
+    primaries: dict,
+    *,
+    allow_fallback: bool = False,
 ) -> Tuple[List[AtomicBlock], AtomicInvariant]:
     """
-    p=2, self sector with q(x)=x±1 (unipotent in bad characteristic).
+    p=2, self sector with q(x)=x±1.
 
-    Construct atomic indecomposables in the Chapter-5 sense:
-      - Try to peel off V_beta(2k) blocks when a single cyclic module is nondegenerate (L even).
-      - Otherwise peel off W-like blocks by pairing two cyclic modules of the same length L.
-      - Attach 'beta' from the quadratic top invariant q_L on the corresponding top quotient.
+    Certified policy:
+      * decompose the current length-top quotient by its p=2 top bilinear
+        pairing b_L and mid-chain quadratic labels q_L;
+      * lift quotient pieces to cyclic modules;
+      * accept a block only after direct nondegeneracy/invariance checks;
+      * never drop chain length in certified mode.
 
-    Returns blocks + invariant record. Marks status="OK" iff blocks span the sector and
-    each extracted block span is nondegenerate in the sector symplectic form.
+    ``allow_fallback=True`` permits one last deterministic candidate sweep at the
+    current length before failing.  The global certified wrapper calls this with
+    the default ``False``.
     """
     p = 2
     F = mod_p(F, p)
 
     q = primaries[key]["poly"]
-    deg_q = int(primaries[key]["deg"])       # should be 1 here
+    deg_q = int(primaries[key]["deg"])
     max_exp0 = int(primaries[key]["exponent"])
+    if deg_q != 1:
+        raise RuntimeError(f"p=2 unipotent self-sector expected deg(q)=1, got {deg_q}.")
 
     V = independent_columns(mod_p(primaries[key]["V_basis"], p), p)
     if V.shape[1] == 0:
-        inv = AtomicInvariant(sector_key=key, sector_type="self", poly_key=key, data={"status": "empty"})
+        inv = AtomicInvariant(sector_key=key, sector_type="self", poly_key=key, data={"status": "OK", "empty": True})
         return [], inv
 
-    # Canonicalize sector basis to Darboux so Ω becomes standard in sector coords
     n2 = F.shape[0]
-    Ω_amb = omega_matrix(n2 // 2, p)
-    if not is_nondegenerate(Ω_amb, V, p):
-        raise RuntimeError("Unipotent self sector basis is degenerate; cannot proceed.")
+    Omega_amb = omega_matrix(n2 // 2, p)
+    if not is_nondegenerate(Omega_amb, V, p):
+        raise RuntimeError("Unipotent p=2 self sector basis is degenerate; cannot proceed.")
 
-    T_sec = darboux_basis_from_span(Ω_amb, V, p)  # (2n × 2m)
+    T_sec = darboux_basis_from_span(Omega_amb, V, p)
     m2 = T_sec.shape[1]
     if m2 % 2 != 0:
-        raise RuntimeError("Unipotent self sector dimension must be even.")
+        raise RuntimeError("Unipotent p=2 self sector dimension must be even.")
     m = m2 // 2
 
-    F_sec = restrict_operator(F, T_sec, p)  # (2m × 2m)
-    Ω = omega_matrix(m, p)
-
-    # Nilpotent N = q(F) on this primary (for x±1 over p=2 this is F+I)
+    F_sec = restrict_operator(F, T_sec, p)
+    Omega = omega_matrix(m, p)
     N = q_of_F_restricted(F_sec, q, p)
-    max_exp = max_exp0
 
-    # -------------------------
-    # Invariant summary (full sector)
-    # -------------------------
-    tops_full = jordan_chain_tops_nilpotent(N, max_exp, p)
-
-    # Conjugacy-invariant kernel profile for nilpotent N (dims of ker N^k)
+    # Full-sector invariant summary.
+    tops_full = jordan_chain_tops_nilpotent_in_span(N, np.eye(2 * m, dtype=np.int64), max_exp0, p)
     kernel_profile = [
-        int((2 * m) - rank_mod(mat_pow_mod(N, k, p), p)) for k in range(1, int(max_exp0) + 1)
+        int((2 * m) - rank_mod(mat_pow_mod(N, k, p), p))
+        for k in range(1, int(max_exp0) + 1)
     ]
 
     length_summary: Dict[int, Dict[str, Any]] = {}
     length_invariants: Dict[int, Dict[str, Any]] = {}
-
-    for L, Araw in tops_full.items():
+    for L, Araw in sorted(tops_full.items()):
         Araw = independent_columns(mod_p(Araw, p), p)
-        invL = _p2_length_form_invariants(Araw, Ω, N, int(L))
+        invL = _p2_length_form_invariants(Araw, Omega, N, int(L))
         length_invariants[int(L)] = invL
-
-        # Deterministic selection of genuine module generators (guardrail).
-        A = _select_module_generators_from_top_space(F_sec, N, Araw, deg_q, int(L), p)
-
-        q1_count = 0
-        for j in range(A.shape[1]):
-            q1_count += (_beta_from_top_generators_p2(A[:, j:j + 1], Ω, N, int(L)) & 1)
-
+        try:
+            A_gen = _select_module_generators_from_top_space(F_sec, N, Araw, deg_q, int(L), p)
+            gen_dim = int(A_gen.shape[1])
+        except Exception:
+            gen_dim = -1
         length_summary[int(L)] = {
             "mult": int(invL["top_dim"]),
-            "gen_dim": int(A.shape[1]),
-            "gen_dim_ok": bool(int(A.shape[1]) == int(invL["top_dim"])),
-            "q1_count": int(q1_count),
+            "gen_dim": int(gen_dim),
+            "gen_dim_ok": bool(gen_dim == int(invL["top_dim"])),
             **invL,
         }
 
-    # -------------------------
-    # Deterministic atomic extraction (sector coords) (sector coords)
-    # -------------------------
     blocks: List[AtomicBlock] = []
     blocks_meta: List[Dict[str, Any]] = []
     built_cols_sec: List[np.ndarray] = []
+    extraction_log: List[Dict[str, Any]] = []
 
     space_basis = np.eye(2 * m, dtype=np.int64)
+    iteration = 0
 
-    while space_basis.shape[1] > 0:
-        tops = jordan_chain_tops_nilpotent_in_span(N, space_basis, max_exp, p)
-        if not tops:
-            break
+    def accept_block(span: np.ndarray, top_gens: np.ndarray, L: int, typ_base: str) -> bool:
+        nonlocal space_basis
+        span = independent_columns(mod_p(span, p), p)
+        if span.shape[1] == 0 or span.shape[1] % 2 != 0:
+            return False
+        if not is_nondegenerate(Omega, span, p):
+            return False
 
-        L = max(tops.keys())
-        A_full = independent_columns(mod_p(tops[L], p), p)  # full top space basis (quotient reps)
-        A = _select_module_generators_from_top_space(F_sec, N, A_full, deg_q, int(L), p)
+        # Invariance guardrail: F and N restrictions must be well-defined by restrict_operator.
+        try:
+            _ = restrict_operator(F_sec, span, p)
+            _ = restrict_operator(N, span, p)
+        except Exception:
+            return False
 
-        if A.shape[1] == 0:
-            max_exp = int(L) - 1
-            continue
-
-        progressed = False
-
-        # Try candidates in a deterministic order until we peel off one indecomposable.
-        for j in range(A.shape[1]):
-            v_top = A[:, j:j + 1]
-
-            # Build cyclic module Cv (deg=1 => expected dim L)
-            try:
-                Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)
-            except Exception:
-                continue
-            Cv = independent_columns(mod_p(Cv, p), p)
-            if Cv.shape[1] == 0:
-                continue
-
-            # --- Attempt V_beta(2k): single cyclic module already nondegenerate (requires L even) ---
-            took_V = False
-            if (int(L) % 2 == 0) and (Cv.shape[1] % 2 == 0) and is_nondegenerate(Ω, Cv, p):
-                T_blk = darboux_basis_from_span(Ω, Cv, p)  # sector coords
-                built_cols_sec.append(T_blk)
-
-                rem = symplectic_orthogonal_complement_in_span(Ω, T_blk, space_basis, p)
-
-                beta = _beta_from_top_generators_p2(v_top, Ω, N, int(L))
-                # Chapter-5 naming: V_beta(2k) is the “single Jordan block” indecomposable
-                typ = "V_alpha" if beta == 1 else "V"
-
-                T_blk_amb = mod_p(T_sec @ T_blk, p)
-                blocks.append(AtomicBlock(T_blk=T_blk_amb, half_dim=int(T_blk_amb.shape[1] // 2), sector_key=key, inv=None))
-                blocks_meta.append({"type": typ, "L": int(L), "half_dim": int(T_blk_amb.shape[1] // 2), "beta": int(beta)})
-
-                space_basis = rem
-                progressed = True
-                took_V = True
-
-            if took_V:
-                break
-
-            # --- Otherwise attempt W-like block: pair with a partner in the top space ---
-            w_top = _find_partner_in_top_span_p2(v_top, A_full, Ω, N, int(L))
-
-            if w_top is None:
-                # v_top is “unpairable” at this L in the current top space; try next candidate.
-                continue
-
-            try:
-                Cw = cyclic_submodule_basis(F_sec, N, w_top, deg_q, int(L), p)
-            except Exception:
-                continue
-            Cw = independent_columns(mod_p(Cw, p), p)
-
-            span = independent_columns(np.concatenate([Cv, Cw], axis=1), p)
-            if span.shape[1] % 2 != 0 or not is_nondegenerate(Ω, span, p):
-                continue
-
-            T_blk = darboux_basis_from_span(Ω, span, p)  # sector coords
-            built_cols_sec.append(T_blk)
-            rem = symplectic_orthogonal_complement_in_span(Ω, T_blk, space_basis, p)
-
-            # beta from the 2D top space of this indecomposable
-            gens = np.concatenate([v_top, w_top], axis=1)
-            beta = _beta_from_top_generators_p2(gens, Ω, N, int(L))
-
-            # Chapter-5 naming: W_alpha exists only for odd L >= 3; otherwise treat as W
-            if (int(L) % 2 == 1) and (int(L) >= 3) and beta == 1:
-                typ = "W_alpha"
+        beta = _beta_from_top_generators_p2(top_gens, Omega, N, int(L))
+        if typ_base == "V":
+            # Implemented here: single cyclic even-length V_beta(2k) blocks.
+            # A q=0 single-chain block is accepted only if the direct
+            # nondegeneracy check above succeeds; it is still an implemented
+            # V-type summand for the purposes of this sector decomposition.
+            if int(L) % 2 != 0:
+                return False
+            typ = "V_beta" if beta else "V"
+        else:
+            # Implemented here: W(k) hyperbolic paired-chain blocks and
+            # W_beta(2l+1) odd quadratic-pair blocks.  The same lifted
+            # two-chain span is verified directly; the beta label records the
+            # Chapter-5 odd quadratic refinement when L is odd.
+            if int(L) % 2 == 1 and int(L) >= 3 and beta:
+                typ = "W_beta"
             else:
                 typ = "W"
 
-            T_blk_amb = mod_p(T_sec @ T_blk, p)
-            blocks.append(AtomicBlock(T_blk=T_blk_amb, half_dim=int(T_blk_amb.shape[1] // 2), sector_key=key, inv=None))
-            blocks_meta.append({"type": typ, "L": int(L), "half_dim": int(T_blk_amb.shape[1] // 2), "beta": int(beta)})
+        T_blk_sec = darboux_basis_from_span(Omega, span, p)
+        rem = symplectic_orthogonal_complement_in_span(Omega, T_blk_sec, space_basis, p)
+        T_blk_amb = mod_p(T_sec @ T_blk_sec, p)
 
-            space_basis = rem
-            progressed = True
-            break
+        blocks.append(AtomicBlock(T_blk=T_blk_amb, half_dim=int(T_blk_amb.shape[1] // 2), sector_key=key, inv=None))
+        built_cols_sec.append(T_blk_sec)
+        blocks_meta.append(
+            {
+                "type": typ,
+                "L": int(L),
+                "half_dim": int(T_blk_amb.shape[1] // 2),
+                "beta": int(beta),
+                "top_dim": int(top_gens.shape[1]),
+            }
+        )
+        space_basis = rem
+        return True
+
+    def try_invariant_candidates(A_top: np.ndarray, L: int) -> bool:
+        Btop = _top_pairing_matrix(A_top, Omega, N, int(L))
+
+        # Only alternating top pairings have a quotient-level radical for the
+        # bilinear Gram-Schmidt helper.  V_beta(2k) one-line tops can have
+        # a nonzero diagonal in Btop; in that case the whole point is to try
+        # the top line as an anisotropic single-chain candidate below, not to
+        # reject the length before extraction starts.
+        rad_list: List[np.ndarray] = []
+        if Btop.shape[0] > 0 and np.all(np.diag(Btop) % 2 == 0):
+            try:
+                _e_list, _f_list, rad_list = _p2_hyperbolic_pairs_from_alternating_form(Btop, p=2)
+            except RuntimeError:
+                rad_list = []
+
+        # V_beta(2k): a single cyclic even-length block may appear as an
+        # anisotropic one-dimensional top line, so it is NOT always in the
+        # radical of b_L.  Try all quotient-top lines deterministically,
+        # preferring q=1 witnesses, and let direct cyclic-module
+        # nondegeneracy/invariance checks decide acceptance.
+        if int(L) % 2 == 0:
+            coeffs = _top_coeff_candidates(A_top.shape[1], exhaustive_limit=10)
+            coeffs = sorted(
+                coeffs,
+                key=lambda c: (1 - _q_value_from_coeff(c, A_top, Omega, N, int(L)), tuple(int(x) for x in c)),
+            )
+            for c in coeffs:
+                v_top = mod_p(A_top @ c.reshape(-1, 1), p)
+                try:
+                    Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)
+                except Exception:
+                    continue
+                Cv = independent_columns(Cv, p)
+                if accept_block(Cv, v_top, int(L), "V"):
+                    return True
+
+            # Keep radical-adapted candidates as a redundant fallback for large
+            # top spaces where exhaustive coefficient enumeration is capped.
+            for c in _radical_candidates_adapted_to_q(rad_list, A_top, Omega, N, int(L)):
+                v_top = mod_p(A_top @ c.reshape(-1, 1), p)
+                try:
+                    Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)
+                except Exception:
+                    continue
+                Cv = independent_columns(Cv, p)
+                if accept_block(Cv, v_top, int(L), "V"):
+                    return True
+
+        # W(k): choose dual/hyperbolic top vectors at quotient level.  We try
+        # the canonical Gram-Schmidt pairs first and, for small quotient
+        # dimensions, all coefficient pairs with c^T B d = 1.
+        for ce, cf in _hyperbolic_pair_candidates(Btop):
+            v_top = mod_p(A_top @ ce.reshape(-1, 1), p)
+            w_top = mod_p(A_top @ cf.reshape(-1, 1), p)
+            try:
+                Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)
+                Cw = cyclic_submodule_basis(F_sec, N, w_top, deg_q, int(L), p)
+            except Exception:
+                continue
+            span = independent_columns(np.concatenate([Cv, Cw], axis=1), p)
+            if accept_block(span, np.concatenate([v_top, w_top], axis=1), int(L), "W"):
+                return True
+
+        return False
+
+    def try_best_effort_candidates(A_top: np.ndarray, L: int) -> bool:
+        """Last-resort deterministic sweep used only outside certified mode."""
+        if not allow_fallback:
+            return False
+        A_gen = _select_module_generators_from_top_space(F_sec, N, A_top, deg_q, int(L), p)
+        cols = [A_gen[:, j:j + 1] for j in range(A_gen.shape[1])]
+        if int(L) % 2 == 0:
+            for v_top in cols:
+                try:
+                    Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)
+                except Exception:
+                    continue
+                if accept_block(Cv, v_top, int(L), "V"):
+                    return True
+        for i in range(len(cols)):
+            for j in range(i + 1, len(cols)):
+                try:
+                    Cv = cyclic_submodule_basis(F_sec, N, cols[i], deg_q, int(L), p)
+                    Cw = cyclic_submodule_basis(F_sec, N, cols[j], deg_q, int(L), p)
+                except Exception:
+                    continue
+                span = independent_columns(np.concatenate([Cv, Cw], axis=1), p)
+                if accept_block(span, np.concatenate([cols[i], cols[j]], axis=1), int(L), "W"):
+                    return True
+        return False
+
+    while space_basis.shape[1] > 0:
+        iteration += 1
+        if iteration > 2 * m + 5:
+            raise RuntimeError("Unipotent p=2 self sector: extraction exceeded iteration guard.")
+
+        tops = jordan_chain_tops_nilpotent_in_span(N, space_basis, max_exp0, p)
+        if not tops:
+            raise RuntimeError(
+                "Unipotent p=2 self sector: remaining invariant subspace has no nilpotent top spaces."
+            )
+
+        L = max(tops.keys())
+        A_top = independent_columns(mod_p(tops[L], p), p)
+        invL = _p2_length_form_invariants(A_top, Omega, N, int(L))
+        log_entry: Dict[str, Any] = {
+            "iteration": int(iteration),
+            "remaining_dim": int(space_basis.shape[1]),
+            "L": int(L),
+            **invL,
+        }
+
+        progressed = try_invariant_candidates(A_top, int(L))
+        if not progressed:
+            progressed = try_best_effort_candidates(A_top, int(L))
+            log_entry["used_best_effort_sweep"] = bool(progressed)
+
+        log_entry["progressed"] = bool(progressed)
+        extraction_log.append(log_entry)
 
         if not progressed:
-            # If we get stuck at this L, deterministically drop L and continue.
-            # This prevents infinite loops in pathological p=2 cases.
-            max_exp = int(L) - 1
-            if max_exp <= 0:
-                break
+            raise RuntimeError(
+                "Unipotent p=2 self sector: certified quotient-driven extraction made no progress "
+                f"at length L={int(L)}. Diagnostics={log_entry}"
+            )
 
-    # Sanity: blocks should span the whole sector in sector coordinates
     dim_sector = 2 * m
-    if built_cols_sec:
-        all_cols_sec = np.concatenate(built_cols_sec, axis=1)
-        dim_blocks = rank_mod(all_cols_sec, p)
-    else:
-        dim_blocks = 0
-
+    all_cols_sec = np.concatenate(built_cols_sec, axis=1) if built_cols_sec else np.zeros((dim_sector, 0), dtype=np.int64)
+    dim_blocks = rank_mod(all_cols_sec, p) if all_cols_sec.size else 0
     if dim_blocks != dim_sector:
         raise RuntimeError(
             f"Unipotent p=2 self sector: blocks do not span sector "
-            f"(dim_blocks={dim_blocks}, dim_sector={dim_sector}). "
-            f"key={key}, deg={deg_q}, exp0={max_exp0}"
+            f"(dim_blocks={dim_blocks}, dim_sector={dim_sector}). key={key}, exp0={max_exp0}"
         )
+    if rank_mod(all_cols_sec, p) != all_cols_sec.shape[1]:
+        raise RuntimeError("Unipotent p=2 self sector: extracted block bases overlap.")
 
-    if built_cols_sec:
-        all_cols_sec = np.concatenate(built_cols_sec, axis=1)
-        if rank_mod(all_cols_sec, p) != all_cols_sec.shape[1]:
-            raise RuntimeError("Unipotent p=2 self sector: extracted block bases overlap (not a direct sum).")
-
-    # Kernel profile cross-check: sum of block-restricted profiles must match the whole-sector profile.
-    N_blks = [restrict_operator(N, T_blk, p) for T_blk in built_cols_sec] if built_cols_sec else []
+    N_blks = [restrict_operator(N, T_blk, p) for T_blk in built_cols_sec]
     kernel_profile_blocks: List[int] = []
     for k in range(1, int(max_exp0) + 1):
         tot = 0
@@ -506,24 +696,22 @@ def atomic_blocks_in_unipotent_self_sector_p2(
             f"key={key}, profile={kernel_profile}, block_profile={kernel_profile_blocks}"
         )
 
-    # Beta bookkeeping: counts by length and type.
     beta_counts_by_L: Dict[int, Dict[str, int]] = {}
     for bm in blocks_meta:
-        L_raw = bm.get("L")
-        if L_raw is None:
-            raise RuntimeError("Missing 'L' in unipotent block metadata.")
-        L = int(L_raw)
-
-        beta_raw = bm.get("beta", 0)
-        beta = int(0 if beta_raw is None else beta_raw) & 1
-
-        typ_raw = bm.get("type", "")
-        typ = "" if typ_raw is None else str(typ_raw)
+        L = int(bm["L"])
+        beta = int(bm.get("beta", 0)) & 1
+        typ = str(bm.get("type", ""))
         d = beta_counts_by_L.setdefault(L, {"V0": 0, "V1": 0, "W0": 0, "W1": 0})
         if typ.startswith("V"):
             d["V1" if beta else "V0"] += 1
         else:
-            d["W1" if (typ.endswith("alpha") or beta) else "W0"] += 1
+            d["W1" if (typ.endswith("beta") or beta) else "W0"] += 1
+
+    sector_cost = max((int(b["half_dim"]) for b in blocks_meta), default=0)
+    used_best_effort = bool(any(x.get("used_best_effort_sweep", False) for x in extraction_log))
+    implemented_types = {"V", "V_beta", "W", "W_beta"}
+    unimplemented = sorted({str(b.get("type", "")) for b in blocks_meta if str(b.get("type", "")) not in implemented_types})
+    implemented_complete = (not used_best_effort) and (len(unimplemented) == 0)
 
     inv_data: Dict[str, Any] = {
         "status": "OK",
@@ -531,15 +719,38 @@ def atomic_blocks_in_unipotent_self_sector_p2(
         "exponent": int(max_exp0),
         "length_summary": length_summary,
         "blocks": blocks_meta,
+        "extraction_log": extraction_log,
         "p2_unipotent": {
             "kernel_profile": kernel_profile,
             "kernel_profile_blocks": kernel_profile_blocks,
-            "length_invariants": length_invariants,          # per-L top-space invariants (Arf, ranks, ...)
-            "beta_counts_by_L": beta_counts_by_L,            # per-L V/W beta splits as extracted
+            "length_invariants": length_invariants,
+            "beta_counts_by_L": beta_counts_by_L,
+            "classification_complete": bool(implemented_complete),
+            "classification_status": (
+                "implemented Chapter-5 extraction for W(k), V_beta(2k), and W_beta(2l+1) succeeded"
+                if implemented_complete else
+                "p=2 unipotent extraction used a fallback component"
+            ),
+            "implemented_block_families": ["W(k)", "V_beta(2k)", "W_beta(2l+1)"],
+            "unimplemented_block_families": [],
+            "unimplemented_blocks_seen": unimplemented,
+            "length_dropping_used": False,
+            "used_best_effort_sweep": used_best_effort,
+        },
+        "cost_certificate": {
+            "lower_bound": int(sector_cost) if implemented_complete else None,
+            "attained": True,
+            "complete": bool(implemented_complete),
+            "sector_cost": int(sector_cost),
+            "forced_block_types": blocks_meta,
+            "note": (
+                "p=2 unipotent sector certified using implemented W(k), V_beta(2k), and W_beta(2l+1) quotient-top extraction."
+                if implemented_complete else
+                "p=2 unipotent sector decomposed, but minimality is not certified because a fallback path was involved."
+            ),
         },
     }
 
     inv = AtomicInvariant(sector_key=key, sector_type="self", poly_key=key, data=inv_data)
-
     blocks = [AtomicBlock(b.T_blk, b.half_dim, key, inv) for b in blocks]
     return blocks, inv

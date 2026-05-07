@@ -3,11 +3,30 @@ from __future__ import annotations
 import numpy as np
 from typing import Dict, List, Tuple
 
-from sympleq.core.symmetries.modular_helpers import mod_p, independent_columns, rank_mod
+from sympleq.core.symmetries.modular_helpers import mod_p, independent_columns, rank_mod, omega_matrix
 from sympleq.core.symmetries.polynomials_fp import (
     poly_monic, poly_pow, poly_divmod, extended_euclidean, poly_is_zero, poly_reciprocal, poly_mul, poly_eval_matrix
 )
 from sympleq.core.symmetries.minpoly import minimal_polynomial, factor_poly_over_fp
+
+# These imports deliberately sit behind a fallback so the file works both in the
+# installed package layout and when these helper files are copied into a flat
+# scratch directory for review.
+try:  # package layout: symmetries/atomic_decomposition_helpers/*.py
+    from .atomic_types import PrepassContext, SectorContext
+    from .atomic_linear import darboux_basis_from_span, restrict_operator, symplectic_left_inverse
+    from .module_invariants import q_of_F_restricted
+except ImportError:  # legacy/local layout used by some development notebooks
+    from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_types import (
+        PrepassContext,
+        SectorContext,
+    )
+    from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_linear import (
+        darboux_basis_from_span,
+        restrict_operator,
+        symplectic_left_inverse,
+    )
+    from sympleq.core.symmetries.atomic_decomposition_helpers.module_invariants import q_of_F_restricted
 
 
 def _half_dim_floor_from_minpoly_factor(q: np.ndarray, e: int, p: int) -> int:
@@ -85,6 +104,127 @@ def _normalize_factorization_output(factors, p: int) -> List[Tuple[np.ndarray, i
             mult[key] = mult.get(key, 0) + 1
 
     return [(reps[k], mult[k]) for k in reps.keys()]
+
+
+
+def _safe_sector_coordinates(
+    F: np.ndarray,
+    W: np.ndarray,
+    Omega: np.ndarray,
+    p: int,
+) -> tuple[np.ndarray, np.ndarray | None, np.ndarray, np.ndarray | None, str]:
+    """
+    Build a deterministic sector coordinate system.
+
+    If W is a nondegenerate symplectic sector, T_sec is returned as a Darboux
+    basis, so T_sec.T @ Omega @ T_sec is the standard symplectic form.  If W is
+    empty or unexpectedly degenerate, the raw independent W basis is returned
+    and the error is recorded in the final string instead of hiding it.
+
+    Returns (T_sec, T_sec_leftinv, Omega_sec, F_sec, note).
+    """
+    F = mod_p(F, p)
+    W = independent_columns(mod_p(W, p), p)
+    if W.shape[1] == 0:
+        return W, None, np.zeros((0, 0), dtype=np.int64), None, "empty sector basis"
+
+    try:
+        Gram = mod_p(W.T @ Omega @ W, p)
+        if W.shape[1] % 2 != 0 or rank_mod(Gram, p) != W.shape[1]:
+            note = "sector span is not nondegenerate; using raw sector basis"
+            return W, None, Gram, None, note
+
+        T_sec = darboux_basis_from_span(Omega, W, p)
+        T_sec_leftinv = symplectic_left_inverse(T_sec, p)
+        Omega_sec = mod_p(T_sec.T @ Omega @ T_sec, p)
+        F_sec = restrict_operator(F, T_sec, p)
+        return T_sec, T_sec_leftinv, Omega_sec, F_sec, ""
+    except Exception as exc:  # keep legacy prepass behaviour, but make diagnostics explicit
+        Omega_sec = mod_p(W.T @ Omega @ W, p)
+        note = f"failed to construct Darboux sector coordinates: {type(exc).__name__}: {exc}"
+        return W, None, Omega_sec, None, note
+
+
+def _build_prepass_context(
+    *,
+    F: np.ndarray,
+    p: int,
+    n: int,
+    primaries: Dict[Tuple[int, ...], Dict],
+    sectors: list[dict],
+    mF: np.ndarray,
+    factors: List[Tuple[np.ndarray, int]],
+    Lmin_star: int,
+) -> PrepassContext:
+    """
+    Convert the legacy dict prepass output into typed sector contexts.
+
+    The legacy dicts are retained in each context's meta field so older sector
+    builders can be adapted incrementally.  New code should consume the
+    SectorContext rather than taking separate ``sec`` and ``primaries`` objects.
+    """
+    Omega = omega_matrix(n, p)
+    sector_contexts: list[SectorContext] = []
+
+    for index, sec in enumerate(sectors):
+        sector_type = "paired" if sec.get("type") == "paired" else "self"
+        key = tuple(sec["key"])
+        key_star = tuple(sec["key_star"]) if sec.get("key_star") is not None else None
+        poly_key = key
+
+        W = independent_columns(mod_p(sec.get("W_basis", np.zeros((2 * n, 0), dtype=np.int64)), p), p)
+        T_sec, T_sec_leftinv, Omega_sec, F_sec, coord_note = _safe_sector_coordinates(F, W, Omega, p)
+
+        N_sec = None
+        if sector_type == "self" and F_sec is not None:
+            q = primaries[key]["poly"]
+            N_sec = q_of_F_restricted(F_sec, q, p)
+
+        ctx_meta: Dict[str, object] = {
+            "index": int(index),
+            "legacy_sec": sec,
+            "W_basis": W,
+            "primaries": primaries,
+            "primary_info": primaries.get(key),
+            "mF": mF,
+            "factors": factors,
+            "Lmin_star": int(Lmin_star),
+            "coordinate_note": coord_note,
+        }
+        if sector_type == "paired" and key_star is not None:
+            ctx_meta["primary_info_star"] = primaries.get(key_star)
+
+        sector_contexts.append(
+            SectorContext(
+                sector_key=key,
+                sector_type=sector_type,
+                poly_key=poly_key,
+                sector_key_star=key_star,
+                p=int(p),
+                deg_q=int(sec.get("deg", primaries.get(key, {}).get("deg", 0))),
+                max_exp=int(sec.get("exponent", primaries.get(key, {}).get("exponent", 0))),
+                T_sec=T_sec,
+                T_sec_leftinv=T_sec_leftinv,
+                F_sec=F_sec,
+                Omega_sec=Omega_sec,
+                N_sec=N_sec,
+                meta=ctx_meta,
+            )
+        )
+
+    return PrepassContext(
+        p=int(p),
+        n=int(n),
+        Omega=Omega,
+        sectors=sector_contexts,
+        meta={
+            "mF": mF,
+            "factors": factors,
+            "Lmin_star": int(Lmin_star),
+            "legacy_sectors": sectors,
+            "primaries": primaries,
+        },
+    )
 
 
 def primary_components_crt(F: np.ndarray, p: int) -> Dict:
@@ -208,12 +348,25 @@ def primary_components_crt(F: np.ndarray, p: int) -> Dict:
     n = n2 // 2
     Lmin_star = _compute_Lmin(sectors, n)
 
+    prepass_context = _build_prepass_context(
+        F=F,
+        p=p,
+        n=n,
+        primaries=primaries,
+        sectors=sectors,
+        mF=mF,
+        factors=factors,
+        Lmin_star=Lmin_star,
+    )
+
     return {
         "p": int(p),
         "n": int(n),
         "mF": mF,
         "primaries": primaries,
-        "sectors": sectors,
+        "sectors": sectors,                    # legacy API
+        "sector_contexts": prepass_context.sectors,
+        "prepass_context": prepass_context,
         "factors": factors,
         "Lmin_star": int(Lmin_star),
     }
