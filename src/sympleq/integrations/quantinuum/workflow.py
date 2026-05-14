@@ -19,6 +19,26 @@ def _ok(msg: str):
     print(f"\033[1;32m{msg}\033[0m")
 
 
+def default_backend_config(device_name: str) -> qnx.QuantinuumConfig:
+    return qnx.QuantinuumConfig(
+        device_name=device_name,
+        no_opt=True,
+        allow_implicit_swaps=False,
+        leakage_detection=False,
+        attempt_batching=False)
+
+
+def stabilizer_backend_config(device_name: str) -> qnx.QuantinuumConfig:
+    """Backend config selecting Quantinuum's stabilizer emulator (Clifford-only)."""
+    return qnx.QuantinuumConfig(
+        device_name=device_name,
+        simulator="stabilizer",
+        no_opt=True,
+        allow_implicit_swaps=False,
+        leakage_detection=False,
+        attempt_batching=False)
+
+
 def setup(project_name: str):
     if not is_logged_in():
         qnx.login()
@@ -32,14 +52,19 @@ def setup(project_name: str):
 
 
 def build_and_compile_circuits(circuits: list[Circuit],
-                               backend_config: qnx.QuantinuumConfig, project_name: str) -> list[CircuitRef]:
+                               backend_config: qnx.QuantinuumConfig | None = None,
+                               name: str | None = None) -> list[CircuitRef]:
 
     programs = []
+    name = "" if name is None else f"{name}-"
     for idx, circuit in enumerate(circuits):
-        ref = qnx.circuits.upload(circuit=circuit, name=f"{project_name}-Circuit_{idx}")
+        ref = qnx.circuits.upload(circuit=circuit, name=f"{name}Circuit_{idx}")
         programs.append(ref)
 
     _ok("Circuits built and uploaded")
+
+    if backend_config is None:
+        backend_config = default_backend_config(device_name)
 
     ref_compile_job = qnx.start_compile_job(
         programs=programs,
@@ -117,17 +142,10 @@ def run_circuits_on_device(circuits: list[Circuit],
                            n_shots: int,
                            device_name: str,
                            project_name: str,
-                           attempt_batching: bool = False,
                            verbose: bool = False) -> list[EmpiricalDistribution]:
     setup(project_name)
 
-    backend_config = qnx.QuantinuumConfig(
-        device_name=device_name,
-        no_opt=True,
-        allow_implicit_swaps=False,
-        leakage_detection=False,
-        attempt_batching=attempt_batching)
-
+    backend_config = default_backend_config(device_name)
     ref_circuits = build_and_compile_circuits(circuits, backend_config, project_name)
     backend_results = run_compiled_circuits(ref_circuits, n_shots, backend_config)
 

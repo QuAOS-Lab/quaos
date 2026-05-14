@@ -1,0 +1,2739 @@
+{
+  "backend": {
+    "type": "sympleq",
+    "noise_model": {
+      "type": "GenericNoise",
+      "probabilities": [
+        0.999775,
+        7.5e-05,
+        7.5e-05,
+        7.5e-05
+      ],
+      "gates": [
+        "Id",
+        "X",
+        "Y",
+        "Z"
+      ]
+    },
+    "two_qubit_noise_model": {
+      "type": "GenericNoise",
+      "probabilities": [
+        0.99883,
+        0.00039,
+        0.00039,
+        0.00039
+      ],
+      "gates": [
+        "Id",
+        "X",
+        "Y",
+        "Z"
+      ]
+    }
+  },
+  "estimator": {
+    "threshold": 0.001,
+    "min_runs": 100,
+    "max_runs": null
+  },
+  "data": [
+    {
+      "depth": 100,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.4,
+      "max_two_qubit_gate_ratio": 0.6,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          122
+        ],
+        [
+          false,
+          125
+        ]
+      ]
+    },
+    {
+      "depth": 100,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          78
+        ],
+        [
+          true,
+          147
+        ]
+      ]
+    },
+    {
+      "depth": 102,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          139
+        ],
+        [
+          false,
+          104
+        ]
+      ]
+    },
+    {
+      "depth": 103,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          145
+        ],
+        [
+          false,
+          89
+        ]
+      ]
+    },
+    {
+      "depth": 105,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          142
+        ],
+        [
+          false,
+          97
+        ]
+      ]
+    },
+    {
+      "depth": 106,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          145
+        ],
+        [
+          false,
+          86
+        ]
+      ]
+    },
+    {
+      "depth": 108,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          145
+        ],
+        [
+          false,
+          86
+        ]
+      ]
+    },
+    {
+      "depth": 110,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          138
+        ],
+        [
+          false,
+          105
+        ]
+      ]
+    },
+    {
+      "depth": 111,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          100
+        ],
+        [
+          true,
+          141
+        ]
+      ]
+    },
+    {
+      "depth": 112,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          144
+        ],
+        [
+          false,
+          90
+        ]
+      ]
+    },
+    {
+      "depth": 114,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          137
+        ],
+        [
+          false,
+          106
+        ]
+      ]
+    },
+    {
+      "depth": 115,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          81
+        ],
+        [
+          true,
+          146
+        ]
+      ]
+    },
+    {
+      "depth": 117,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          142
+        ],
+        [
+          false,
+          97
+        ]
+      ]
+    },
+    {
+      "depth": 118,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          101
+        ],
+        [
+          true,
+          140
+        ]
+      ]
+    },
+    {
+      "depth": 119,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          103
+        ],
+        [
+          true,
+          139
+        ]
+      ]
+    },
+    {
+      "depth": 120,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          107
+        ],
+        [
+          true,
+          137
+        ]
+      ]
+    },
+    {
+      "depth": 121,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          116
+        ],
+        [
+          true,
+          131
+        ]
+      ]
+    },
+    {
+      "depth": 122,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          113
+        ],
+        [
+          true,
+          133
+        ]
+      ]
+    },
+    {
+      "depth": 123,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          109
+        ],
+        [
+          true,
+          136
+        ]
+      ]
+    },
+    {
+      "depth": 124,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          91
+        ],
+        [
+          true,
+          144
+        ]
+      ]
+    },
+    {
+      "depth": 126,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          114
+        ],
+        [
+          true,
+          132
+        ]
+      ]
+    },
+    {
+      "depth": 127,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          140
+        ],
+        [
+          false,
+          101
+        ]
+      ]
+    },
+    {
+      "depth": 128,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          111
+        ],
+        [
+          true,
+          134
+        ]
+      ]
+    },
+    {
+      "depth": 129,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          110
+        ],
+        [
+          true,
+          135
+        ]
+      ]
+    },
+    {
+      "depth": 130,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          120
+        ],
+        [
+          true,
+          127
+        ]
+      ]
+    },
+    {
+      "depth": 131,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          126
+        ],
+        [
+          false,
+          121
+        ]
+      ]
+    },
+    {
+      "depth": 132,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 0.20000000000000007,
+      "max_two_qubit_gate_ratio": 0.4,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          120
+        ],
+        [
+          false,
+          127
+        ]
+      ]
+    },
+    {
+      "depth": 132,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          146
+        ],
+        [
+          false,
+          81
+        ]
+      ]
+    },
+    {
+      "depth": 134,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          55
+        ],
+        [
+          true,
+          144
+        ]
+      ]
+    },
+    {
+      "depth": 136,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          146
+        ],
+        [
+          false,
+          83
+        ]
+      ]
+    },
+    {
+      "depth": 138,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          147
+        ],
+        [
+          false,
+          71
+        ]
+      ]
+    },
+    {
+      "depth": 140,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          147
+        ],
+        [
+          false,
+          72
+        ]
+      ]
+    },
+    {
+      "depth": 142,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          146
+        ],
+        [
+          false,
+          81
+        ]
+      ]
+    },
+    {
+      "depth": 144,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          147
+        ],
+        [
+          false,
+          76
+        ]
+      ]
+    },
+    {
+      "depth": 146,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          73
+        ],
+        [
+          true,
+          147
+        ]
+      ]
+    },
+    {
+      "depth": 148,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          147
+        ],
+        [
+          false,
+          76
+        ]
+      ]
+    },
+    {
+      "depth": 150,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          143
+        ],
+        [
+          false,
+          93
+        ]
+      ]
+    },
+    {
+      "depth": 152,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          146
+        ],
+        [
+          false,
+          82
+        ]
+      ]
+    },
+    {
+      "depth": 154,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          98
+        ],
+        [
+          true,
+          142
+        ]
+      ]
+    },
+    {
+      "depth": 155,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          147
+        ],
+        [
+          false,
+          73
+        ]
+      ]
+    },
+    {
+      "depth": 157,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          90
+        ],
+        [
+          true,
+          144
+        ]
+      ]
+    },
+    {
+      "depth": 159,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          72
+        ],
+        [
+          true,
+          147
+        ]
+      ]
+    },
+    {
+      "depth": 161,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          144
+        ],
+        [
+          false,
+          91
+        ]
+      ]
+    },
+    {
+      "depth": 163,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          143
+        ],
+        [
+          false,
+          94
+        ]
+      ]
+    },
+    {
+      "depth": 165,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          145
+        ],
+        [
+          false,
+          86
+        ]
+      ]
+    },
+    {
+      "depth": 167,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          146
+        ],
+        [
+          false,
+          83
+        ]
+      ]
+    },
+    {
+      "depth": 169,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          84
+        ],
+        [
+          true,
+          146
+        ]
+      ]
+    },
+    {
+      "depth": 171,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          82
+        ],
+        [
+          true,
+          146
+        ]
+      ]
+    },
+    {
+      "depth": 173,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          144
+        ],
+        [
+          false,
+          91
+        ]
+      ]
+    },
+    {
+      "depth": 175,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          147
+        ],
+        [
+          false,
+          73
+        ]
+      ]
+    },
+    {
+      "depth": 177,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          138
+        ],
+        [
+          false,
+          105
+        ]
+      ]
+    },
+    {
+      "depth": 178,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          97
+        ],
+        [
+          true,
+          142
+        ]
+      ]
+    },
+    {
+      "depth": 179,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          107
+        ],
+        [
+          true,
+          137
+        ]
+      ]
+    },
+    {
+      "depth": 180,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          146
+        ],
+        [
+          false,
+          84
+        ]
+      ]
+    },
+    {
+      "depth": 182,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          92
+        ],
+        [
+          true,
+          144
+        ]
+      ]
+    },
+    {
+      "depth": 184,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          103
+        ],
+        [
+          true,
+          139
+        ]
+      ]
+    },
+    {
+      "depth": 185,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          135
+        ],
+        [
+          false,
+          110
+        ]
+      ]
+    },
+    {
+      "depth": 186,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          137
+        ],
+        [
+          false,
+          106
+        ]
+      ]
+    },
+    {
+      "depth": 187,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          100
+        ],
+        [
+          true,
+          141
+        ]
+      ]
+    },
+    {
+      "depth": 188,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          145
+        ],
+        [
+          false,
+          89
+        ]
+      ]
+    },
+    {
+      "depth": 190,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          143
+        ],
+        [
+          false,
+          94
+        ]
+      ]
+    },
+    {
+      "depth": 192,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          114
+        ],
+        [
+          true,
+          132
+        ]
+      ]
+    },
+    {
+      "depth": 193,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          142
+        ],
+        [
+          false,
+          97
+        ]
+      ]
+    },
+    {
+      "depth": 194,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          84
+        ],
+        [
+          true,
+          146
+        ]
+      ]
+    },
+    {
+      "depth": 196,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          118
+        ],
+        [
+          true,
+          129
+        ]
+      ]
+    },
+    {
+      "depth": 197,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          110
+        ],
+        [
+          true,
+          135
+        ]
+      ]
+    },
+    {
+      "depth": 198,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          141
+        ],
+        [
+          false,
+          99
+        ]
+      ]
+    },
+    {
+      "depth": 199,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          139
+        ],
+        [
+          false,
+          103
+        ]
+      ]
+    },
+    {
+      "depth": 200,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          106
+        ],
+        [
+          true,
+          137
+        ]
+      ]
+    },
+    {
+      "depth": 201,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          100
+        ],
+        [
+          true,
+          141
+        ]
+      ]
+    },
+    {
+      "depth": 202,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          134
+        ],
+        [
+          false,
+          112
+        ]
+      ]
+    },
+    {
+      "depth": 203,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          141
+        ],
+        [
+          false,
+          99
+        ]
+      ]
+    },
+    {
+      "depth": 204,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          98
+        ],
+        [
+          true,
+          142
+        ]
+      ]
+    },
+    {
+      "depth": 205,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          132
+        ],
+        [
+          false,
+          114
+        ]
+      ]
+    },
+    {
+      "depth": 206,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          110
+        ],
+        [
+          true,
+          135
+        ]
+      ]
+    },
+    {
+      "depth": 207,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          118
+        ],
+        [
+          true,
+          129
+        ]
+      ]
+    },
+    {
+      "depth": 208,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          136
+        ],
+        [
+          false,
+          108
+        ]
+      ]
+    },
+    {
+      "depth": 209,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          122
+        ],
+        [
+          true,
+          125
+        ]
+      ]
+    },
+    {
+      "depth": 210,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          103
+        ],
+        [
+          true,
+          139
+        ]
+      ]
+    },
+    {
+      "depth": 211,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          105
+        ],
+        [
+          true,
+          138
+        ]
+      ]
+    },
+    {
+      "depth": 212,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          125
+        ],
+        [
+          false,
+          122
+        ]
+      ]
+    },
+    {
+      "depth": 213,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          137
+        ],
+        [
+          false,
+          106
+        ]
+      ]
+    },
+    {
+      "depth": 214,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          114
+        ],
+        [
+          true,
+          132
+        ]
+      ]
+    },
+    {
+      "depth": 215,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          131
+        ],
+        [
+          false,
+          115
+        ]
+      ]
+    },
+    {
+      "depth": 216,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          109
+        ],
+        [
+          true,
+          136
+        ]
+      ]
+    },
+    {
+      "depth": 217,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          143
+        ],
+        [
+          false,
+          95
+        ]
+      ]
+    },
+    {
+      "depth": 219,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          118
+        ],
+        [
+          true,
+          129
+        ]
+      ]
+    },
+    {
+      "depth": 220,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          130
+        ],
+        [
+          false,
+          117
+        ]
+      ]
+    },
+    {
+      "depth": 221,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          111
+        ],
+        [
+          true,
+          134
+        ]
+      ]
+    },
+    {
+      "depth": 222,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          133
+        ],
+        [
+          false,
+          113
+        ]
+      ]
+    },
+    {
+      "depth": 223,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          137
+        ],
+        [
+          false,
+          106
+        ]
+      ]
+    },
+    {
+      "depth": 224,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          117
+        ],
+        [
+          true,
+          130
+        ]
+      ]
+    },
+    {
+      "depth": 225,
+      "scrambling_probability": 0.5,
+      "min_two_qubit_gate_ratio": 1.1102230246251565e-16,
+      "max_two_qubit_gate_ratio": 0.20000000000000007,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          122
+        ],
+        [
+          false,
+          125
+        ]
+      ]
+    }
+  ]
+}

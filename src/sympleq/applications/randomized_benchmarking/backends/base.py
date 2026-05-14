@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from numpy.random import Generator as RNGGenerator
 
 from sympleq.applications.randomized_benchmarking.config import RMBConfig
+from sympleq.core.bayesian_estimation import BayesianEstimator
 
 
 class RMBBackend(ABC):
@@ -27,6 +28,11 @@ class RMBBackend(ABC):
     @abstractmethod
     def default_config(cls) -> RMBConfig:
         """Returns the default RMB config for the backend."""
+        ...
+
+    @abstractmethod
+    def default_estimator(self) -> BayesianEstimator:
+        """Returns the default BayesianEstimator  for the backend."""
         ...
 
     @abstractmethod

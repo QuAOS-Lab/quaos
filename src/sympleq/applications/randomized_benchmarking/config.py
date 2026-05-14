@@ -82,17 +82,21 @@ class RMBConfig:
         object.__setattr__(self, "dimensions",
                            np.asarray([DEFAULT_QUDIT_DIMENSION] * self.n_qubits, dtype=int))
 
+        state = RMBConfig.initial_state_for_n_qubits(self.n_qubits)
+        object.__setattr__(self, "_initial_state", state)
+
+    @classmethod
+    def initial_state_for_n_qubits(cls, n_qubits: int):
         pauli_strings = []
-        for p_idx in range(self.n_qubits):
+        for p_idx in range(n_qubits):
             pauli_string = ""
-            for q_idx in range(self.n_qubits):
+            for q_idx in range(n_qubits):
                 if p_idx == q_idx:
                     pauli_string += "x0z1"
                 else:
                     pauli_string += "x0z0"
             pauli_strings.append(pauli_string)
-        object.__setattr__(self, "_initial_state",
-                           PauliSum.from_string(pauli_strings, self.dimensions))
+        return PauliSum.from_string(pauli_strings, [DEFAULT_QUDIT_DIMENSION] * n_qubits)
 
     @classmethod
     def default(cls) -> RMBConfig:

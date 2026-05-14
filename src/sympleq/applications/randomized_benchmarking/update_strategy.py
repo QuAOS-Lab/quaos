@@ -36,7 +36,7 @@ def default_update_strategy(data: RMBData, current_config: RMBConfig) -> RMBConf
     else:
         delta = current_config.max_two_qubit_gate_ratio - current_config.min_two_qubit_gate_ratio
         new_max = current_config.min_two_qubit_gate_ratio
-        new_min = new_max - delta
+        new_min = round(max(0.0, new_max - delta), 2)
         new_config = current_config.with_two_qubit_gate_ratio(new_min, new_max)
 
     return new_config

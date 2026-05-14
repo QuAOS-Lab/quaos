@@ -1,8 +1,8 @@
 from __future__ import annotations
 from numpy.random import Generator as RNGGenerator
-from pytket.circuit import OpType
 
 from sympleq.applications.randomized_benchmarking.backends.base import RMBBackend
+from sympleq.applications.randomized_benchmarking.backends.utils import data_from_pytket_circuit_results
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
 from sympleq.core.bayesian_estimation import BayesianEstimator
 from sympleq.integrations.quantinuum.utils import (
@@ -45,15 +45,13 @@ class QuantinuumBackend(RMBBackend):
             if circuit.n_gates == 0:
                 continue
             two_qudit_ratio = circuit.n_2qb_gates() / circuit.n_gates
-            if not (config.min_two_qubit_gate_ratio
-                    <= two_qudit_ratio
-                    <= config.max_two_qubit_gate_ratio):
+            if not (config.min_two_qubit_gate_ratio <= two_qudit_ratio <= config.max_two_qubit_gate_ratio):
                 continue
             circuit.measure_all()
             circuits.append(circuit)
 
         distributions = run_circuits_on_device(
-            circuits, self.n_shots, self.device_name, self.project_name, verbose=True, attempt_batching=False)
+            circuits, self.n_shots, self.device_name, self.project_name, verbose=True)
 
         results = []
         for distribution in distributions:
@@ -100,29 +98,16 @@ class QuantinuumBackend(RMBBackend):
         RMBData
             Mapping of inferred configs to their estimators.
         """
-        data: RMBData = {}
-        for circuit, result in fetch_recent_execute_jobs(
-                self.project_name, n, device_name=self.device_name):
-            n_total = circuit.n_gates - circuit.n_gates_of_type(OpType.Measure)
-            if n_total == 0:
-                continue
-            n_2q = circuit.n_2qb_gates()
-
+        jobs = fetch_recent_execute_jobs(self.project_name, n, device_name=self.device_name)
+        pairs = []
+        for circuit, result in jobs:
             counts = result.get_empirical_distribution().as_counter()
             if not counts:
                 continue
             outcome, _ = counts.most_common()[0]
+            pairs.append(all(bit == 0 for bit in outcome))
 
-            ratio = round(n_2q / n_total, 2)
-            config = RMBConfig(
-                depth=n_total,
-                n_qubits=circuit.n_qubits,
-                min_two_qubit_gate_ratio=ratio,
-                max_two_qubit_gate_ratio=ratio,
-            )
-            estimator = data.setdefault(config, self.default_estimator())
-            estimator.record(all(bit == 0 for bit in outcome))
-        return data
+        return data_from_pytket_circuit_results(pairs, self.default_estimator)
 
     def to_dict(self) -> dict:
         return {
@@ -134,3 +119,7 @@ class QuantinuumBackend(RMBBackend):
     @classmethod
     def from_dict(cls, payload: dict) -> QuantinuumBackend:
         return cls(device_name=payload["device_name"], n_shots=payload["n_shots"])
+
+
+# noise_model = GenericNoise.from_paulis([0.000075, 0.000075, 0.000075], rng=rng)
+# two_qubit_noise_model = GenericNoise.from_paulis([0.00039, 0.00039, 0.00039], rng=rng)

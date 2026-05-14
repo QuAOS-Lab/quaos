@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Iterator
+
 import numpy as np
 import qnexus as qnx
 from pytket.backends.backendresult import BackendResult
@@ -73,6 +75,39 @@ _REVERSE_MAP: dict[OpType, Gate] = {
 }
 
 
+# Clifford X-axis rotations: index k gives Rx(k/2 half-turns), modulo 8 (i.e., 4 half-turns).
+# Up-to-global-phase, since Rx(2 half-turns) = -I.
+_RX_CLIFFORD: dict[int, list[Gate]] = {
+    0: [],                  # Rx(0)
+    1: [GATES.V],           # Rx(0.5) = √X
+    2: [GATES.X],           # Rx(1)   = X (up to phase)
+    3: [GATES.V_inv],       # Rx(1.5)
+    4: [],                  # Rx(2)   = -I
+    5: [GATES.V],           # Rx(2.5)
+    6: [GATES.X],           # Rx(3)
+    7: [GATES.V_inv],       # Rx(3.5)
+}
+
+# Clifford Z-axis rotations.
+_RZ_CLIFFORD: dict[int, list[Gate]] = {
+    0: [],
+    1: [GATES.S],
+    2: [GATES.Z],
+    3: [GATES.S_inv],
+    4: [],
+    5: [GATES.S],
+    6: [GATES.Z],
+    7: [GATES.S_inv],
+}
+
+
+def _clifford_rotation(half_turns: float, table: dict[int, list[Gate]], axis: str) -> list[Gate]:
+    k = round(half_turns * 2)
+    if not np.isclose(half_turns, k / 2.0):
+        raise ValueError(f"Non-Clifford R{axis} angle: {half_turns} half-turns.")
+    return table[k % 8]
+
+
 def to_pytket_circuit(circuit: Circuit) -> PytketCircuit:
     """
     Convert a SympleQ Circuit to a pytket Circuit.
@@ -113,8 +148,11 @@ def to_pytket_circuit(circuit: Circuit) -> PytketCircuit:
             tk_circuit.add_gate(op_type, params, list(qudits))
         else:
             tk_circuit.add_gate(op_type, list(qudits))
-    from pytket.passes import AutoRebase
+    from pytket.passes import AutoRebase, RemovePhaseOps, DecomposeBoxes, FlattenRelabelRegistersPass
+    DecomposeBoxes().apply(tk_circuit)
     AutoRebase({OpType.PhasedX, OpType.Rz, OpType.ZZPhase}).apply(tk_circuit)
+    RemovePhaseOps().apply(tk_circuit)
+    FlattenRelabelRegistersPass().apply(tk_circuit)
     # from pytket.passes import (
     #     SequencePass, SquashRzPhasedX, RemoveRedundancies, CommuteThroughMultis,
     # )
@@ -159,42 +197,42 @@ def from_pytket_circuit(tk_circuit: PytketCircuit) -> Circuit:
         if op_type == OpType.Barrier:
             continue
 
+        decomposition: list[Gate]
         if op_type == OpType.ZZPhase:
             # Only the Clifford angle θ=-0.5 maps back (the inverse of ZZMax).
             theta = float(command.op.params[0]) % 4.0
             if np.isclose(theta, 3.5):
-                sympleq_gate: Gate = GATES.ZZMax_inv
+                decomposition = [GATES.ZZMax_inv]
             elif np.isclose(theta, 0.5):
-                sympleq_gate = GATES.ZZMax
+                decomposition = [GATES.ZZMax]
             else:
                 raise ValueError(
                     f"Only Clifford ZZPhase(±0.5) is supported, got θ={theta} half-turns."
                 )
+        elif op_type == OpType.Rz:
+            decomposition = _clifford_rotation(float(command.op.params[0]), _RZ_CLIFFORD, "z")
+        elif op_type == OpType.Rx:
+            decomposition = _clifford_rotation(float(command.op.params[0]), _RX_CLIFFORD, "x")
         elif op_type == OpType.PhasedX:
-            # Only the Clifford √X axis (φ=0) maps back to a sympleq gate.
-            theta = float(command.op.params[0]) % 4.0
-            phi = float(command.op.params[1]) % 2.0
-            if not np.isclose(phi, 0.0):
-                raise ValueError(
-                    f"Only PhasedX with φ=0 is supported, got φ={phi} half-turns."
-                )
-            if np.isclose(theta, 0.5):
-                sympleq_gate = GATES.V
-            elif np.isclose(theta, 3.5):
-                sympleq_gate = GATES.V_inv
-            else:
-                raise ValueError(
-                    f"Only Clifford PhasedX(±0.5, 0) is supported, got θ={theta} half-turns."
-                )
+            # PhasedX(θ, φ) = Rz(φ)·Rx(θ)·Rz(-φ). For Clifford (θ, φ) — both
+            # multiples of 0.5 half-turns — decompose into a sequence of
+            # {V, V_inv, X} (for Rx) and {S, S_inv, Z} (for Rz).
+            theta = float(command.op.params[0])
+            phi = float(command.op.params[1])
+            decomposition = (
+                _clifford_rotation(-phi, _RZ_CLIFFORD, "z") +
+                _clifford_rotation(theta, _RX_CLIFFORD, "x") +
+                _clifford_rotation(phi, _RZ_CLIFFORD, "z")
+            )
         else:
             mapped = _REVERSE_MAP.get(op_type)
             if mapped is None:
                 raise ValueError(f"No SympleQ mapping for pytket gate '{op_type}'.")
-            sympleq_gate = mapped
+            decomposition = [mapped]
 
         qubits = tuple(qubit.index[0] for qubit in command.qubits)
-        gates.append(sympleq_gate)
-        qudit_indices.append(qubits)
+        gates.extend(decomposition)
+        qudit_indices.extend([qubits] * len(decomposition))
 
     return Circuit(dimensions, gates, qudit_indices)
 
@@ -203,8 +241,8 @@ def fetch_recent_execute_jobs(
     project_name: str,
     n: int,
     device_name: str | None = None,
-) -> list[tuple[PytketCircuit, BackendResult]]:
-    """Return up to ``n`` ``(circuit, result)`` pairs from the most recent execute jobs.
+) -> Iterator[tuple[PytketCircuit, BackendResult]]:
+    """Yield ``(circuit, result)`` pairs from the most recent execute jobs.
 
     Parameters
     ----------
@@ -216,11 +254,11 @@ def fetch_recent_execute_jobs(
         If given, only jobs whose ``system.name`` equals ``device_name``
         are kept (filtered client-side, newest-first).
 
-    Returns
-    -------
-    list[tuple[PytketCircuit, BackendResult]]
-        Flat list of ``(circuit, result)`` pairs across the last ``n`` jobs,
-        ordered newest-first.
+    Yields
+    ------
+    tuple[PytketCircuit, BackendResult]
+        ``(circuit, result)`` pairs across the last ``n`` jobs, ordered
+        newest-first.
     """
     project = qnx.projects.get(name=project_name)
     job_iter = qnx.jobs.get_all(
@@ -240,7 +278,6 @@ def fetch_recent_execute_jobs(
             break
 
     print(f"Fetched {len(jobs)} jobs.")
-    pairs: list[tuple[PytketCircuit, BackendResult]] = []
     for job in jobs:
         for ref in qnx.jobs.results(job):
             if not isinstance(ref, ExecutionResultRef):
@@ -251,7 +288,22 @@ def fetch_recent_execute_jobs(
             input_program = ref.get_input()
             if not isinstance(input_program, CircuitRef):
                 continue
-            pairs.append((input_program.download_circuit(), result))
-        print(len(pairs))
-    print(f"Fetched {len(pairs)} results.")
-    return pairs
+            yield input_program.download_circuit(), result
+
+
+def get_remaining_quotas() -> dict[str, float | None]:
+    """Return remaining Quantinuum quota for each metered resource.
+
+    Returns
+    -------
+    dict[str, float | None]
+        Mapping of quota name to ``quota - usage``, or ``None`` for
+        uncapped resources (``quota == "NO_QUOTA_SET"``).
+    """
+    remaining: dict[str, float | None] = {}
+    for q in qnx.quotas.get_all():
+        if isinstance(q.quota, str):
+            remaining[q.name] = None
+        else:
+            remaining[q.name] = q.quota - q.usage
+    return remaining
