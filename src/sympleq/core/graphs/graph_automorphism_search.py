@@ -8,8 +8,8 @@ import galois
 
 
 from .graph_automorphism_circuits import (
-    extract_circuits_from_nullspace_gf2,
-    augment_S_with_circuits,
+    extract_fundamental_relations_from_matroid,
+    augment_S_with_fundamental_relations,
 )
 
 
@@ -22,6 +22,7 @@ from .graph_automorphism_kernels import _ConsistencyChecker
 from .graph_automorphism_hashing import coeff_ids, choose_base_anchors, compute_anchor_hash
 from .graph_automorphism_leaf import LeafContext, check_leaf
 from .graph_automorphism_code import compute_prefix_UG
+from sympleq.core.symmetries.modular_helpers import inv_mod_mat, mod_p, rank_mod
 
 
 @dataclass
@@ -52,6 +53,29 @@ class PreparedGASearch:
 
     # leaf verification context
     leaf_ctx: LeafContext
+
+
+def _complete_rows_to_full_basis(rows: np.ndarray, p: int) -> np.ndarray | None:
+    """Complete independent row vectors to a full row basis over GF(p)."""
+    basis = mod_p(np.asarray(rows, dtype=int), p)
+    if basis.ndim != 2:
+        return None
+    n2 = basis.shape[1]
+    if basis.shape[0] > n2:
+        return None
+    if rank_mod(basis, p) != basis.shape[0]:
+        return None
+    if basis.shape[0] == n2:
+        return basis
+
+    for idx in range(n2):
+        candidate = np.eye(n2, dtype=np.int64)[idx]
+        trial = np.vstack([basis, candidate])
+        if rank_mod(trial, p) > basis.shape[0]:
+            basis = mod_p(trial, p)
+            if basis.shape[0] == n2:
+                return basis
+    return basis if basis.shape[0] == n2 else None
 
 
 def prepare_clifford_ga_search(
@@ -167,34 +191,50 @@ def prepare_clifford_ga_search(
             col_invariants = np.hstack(feats) if len(feats) > 1 else feats[0]
 
     
-    # ---- optional circuit-augmented graph for WL refinement (p=2 only) ----
-    # This augments the edge-coloured graph with additional "circuit" nodes built from
-    # true circuits (minimal dependence supports) computed from the nullspace of P^T,
-    # where P is the M x 2n Pauli-label matrix (tableau rows reduced mod 2).
+    # ---- optional fundamental-relation augmented graph for WL refinement ----
+    # Add one auxiliary node for each fundamental relation
+    #
+    #     r_j = e_j - sum_t lambda_{tj} e_{B_t},
+    #
+    # where the chosen matroid basis columns B_t are basis_order/B_cols.  This
+    # avoids enumerating all circuits: these relations generate the full linear
+    # relation space.  For p > 2 the incidence edge colour stores the relation
+    # coefficient; for p = 2 this reduces to support-only incidence.
+    #
+    # The auxiliary nodes are used only to refine the WL colouring.  The actual
+    # search still permutes only Pauli-term vertices [0..n), and the exact
+    # relation-preservation condition is handled by the code-prefix/leaf checks.
     S_for_wl = S_mod
     coeffs_for_wl = coeffs
     p_for_wl = p
-    if circuit_augmented_graph and p == 2:
-        circuits = extract_circuits_from_nullspace_gf2(
-            pauli.tableau,
-            max_nullity=int(max_nullity_for_circuits),
-            max_circuits=int(max_circuits),
+    if circuit_augmented_graph:
+        fundamental_relations = extract_fundamental_relations_from_matroid(
+            G,
+            B_cols,
+            p=p,
         )
-        if circuits:
-            S_for_wl = augment_S_with_circuits(S_mod, circuits, incidence_label=2)
-            # Extend coefficient labels with a distinct "circuit" label so WL keeps types separate.
-            coeffs_for_wl = np.asarray(coeffs, dtype=object)
-            circuit_coeffs = np.empty(len(circuits), dtype=object)
-            for idx, circuit in enumerate(circuits):
-                circuit_coeffs[idx] = ("circuit", len(circuit))
-            coeffs_for_wl = np.concatenate(
-                [coeffs_for_wl, circuit_coeffs]
+        if fundamental_relations:
+            S_for_wl, p_for_wl = augment_S_with_fundamental_relations(
+                S_mod,
+                fundamental_relations,
+                p=p,
+                coefficient_labels=True,
             )
+
+            # Extend vertex labels with a distinct relation type, so WL cannot
+            # identify auxiliary relation vertices with Pauli-term vertices.
+            coeffs_for_wl = np.asarray(coeffs, dtype=object)
+            relation_coeffs = np.empty(len(fundamental_relations), dtype=object)
+            for idx, rel in enumerate(fundamental_relations):
+                relation_coeffs[idx] = ("fundamental_relation", rel.size)
+            coeffs_for_wl = np.concatenate([coeffs_for_wl, relation_coeffs])
+
             if col_invariants is not None:
-                circuit_invariants = np.zeros((len(circuits), col_invariants.shape[1]), dtype=col_invariants.dtype)
-                col_invariants = np.vstack([col_invariants, circuit_invariants])
-            # Edge labels now take values in {0,1,2}, so WL uses p=3.
-            p_for_wl = 3
+                relation_invariants = np.zeros(
+                    (len(fundamental_relations), col_invariants.shape[1]),
+                    dtype=col_invariants.dtype,
+                )
+                col_invariants = np.vstack([col_invariants, relation_invariants])
 
 
     base_colors_full, base_classes_full = _build_base_partition(
@@ -237,6 +277,8 @@ def prepare_clifford_ga_search(
     # precompute inverse if full-rank (rank == 2*n_qudits)
     basis_src_inv_gf2: np.ndarray | None = None
     basis_src_inv_gfp: galois.FieldArray | None = None
+    basis_complete_tableau: np.ndarray | None = None
+    basis_complete_inv: np.ndarray | None = None
     basis_src = np.asarray(basis_source_ps.tableau, dtype=int)
     if basis_src.shape[0] == basis_src.shape[1]:
         if p == 2:
@@ -250,6 +292,14 @@ def prepare_clifford_ga_search(
                 basis_src_inv_gfp = cast(galois.FieldArray, np.linalg.inv(GF(basis_src % p)))
             except np.linalg.LinAlgError:
                 basis_src_inv_gfp = None
+    else:
+        basis_complete_tableau = _complete_rows_to_full_basis(basis_src, p)
+        if basis_complete_tableau is not None:
+            try:
+                basis_complete_inv = inv_mod_mat(basis_complete_tableau, p)
+            except ValueError:
+                basis_complete_tableau = None
+                basis_complete_inv = None
 
     dims_array = np.asarray(pauli.dimensions, dtype=int)
     row_basis_cache: dict[str, np.ndarray] = {}
@@ -283,6 +333,8 @@ def prepare_clifford_ga_search(
         basis_source_ps=basis_source_ps,
         basis_src_inv_gf2=basis_src_inv_gf2,
         basis_src_inv_gfp=basis_src_inv_gfp,
+        basis_complete_tableau=basis_complete_tableau,
+        basis_complete_inv=basis_complete_inv,
         row_basis_cache=row_basis_cache,
     )
 
@@ -683,4 +735,5 @@ def clifford_graph_automorphism_search(
         progress_every=progress_every,
         stop_event=stop_event,
         stop_check_every=stop_check_every,
+        use_code_prefix_check=True if use_code_induced_completion is None else bool(use_code_induced_completion),
     )

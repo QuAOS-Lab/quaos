@@ -1,36 +1,217 @@
-# Auto-generated helper for circuit augmentation (true circuits from nullspace)
+from __future__ import annotations
 
-from typing import Optional, Iterable
+from dataclasses import dataclass
 
 import numpy as np
+import galois
 
 
-def _gf2_nullspace_basis(A: np.ndarray) -> list[np.ndarray]:
+@dataclass(frozen=True, slots=True)
+class FundamentalRelation:
+    """A normalized fundamental relation r_j in F_p^M.
+
+    The relation is stored sparsely as (index, coefficient) pairs.  The
+    non-basis index has coefficient +1; basis indices have coefficients
+    -lambda.  For p=2 all nonzero coefficients are 1, so this reduces to an
+    ordinary circuit support.
     """
-    Return a basis for the nullspace of A over GF(2).
+
+    dependent_index: int
+    indices: tuple[int, ...]
+    coefficients: tuple[int, ...]
+
+    @property
+    def support(self) -> tuple[int, ...]:
+        return self.indices
+
+    @property
+    def size(self) -> int:
+        return len(self.indices)
+
+
+def _gf2_inv(A: np.ndarray) -> np.ndarray:
+    """Invert a square binary matrix over GF(2)."""
+    A = (np.asarray(A, dtype=np.uint8) & 1).copy()
+    n, m = A.shape
+    if n != m:
+        raise np.linalg.LinAlgError("matrix must be square")
+
+    aug = np.concatenate([A, np.eye(n, dtype=np.uint8)], axis=1)
+    row = 0
+    for col in range(n):
+        piv = -1
+        for r in range(row, n):
+            if aug[r, col] & 1:
+                piv = r
+                break
+        if piv < 0:
+            raise np.linalg.LinAlgError("matrix is singular over GF(2)")
+        if piv != row:
+            aug[[row, piv]] = aug[[piv, row]]
+        for r in range(n):
+            if r != row and (aug[r, col] & 1):
+                aug[r, :] ^= aug[row, :]
+        row += 1
+    return aug[:, n:] & 1
+
+
+def extract_fundamental_relations_from_matroid(
+    G: np.ndarray | galois.FieldArray,
+    basis_cols: np.ndarray,
+    *,
+    p: int,
+) -> list[FundamentalRelation]:
+    """Construct the fundamental relation generators from a matroid matrix.
 
     Parameters
     ----------
-    A : np.ndarray
-        m x n matrix with entries in {0,1} (will be reduced mod 2).
+    G:
+        n_b x M coordinate/generator matrix whose columns are Pauli labels in
+        some coordinate basis.
+    basis_cols:
+        Column indices that form the chosen basis.  They need not be the first
+        n_b columns.
+    p:
+        Prime field size.
 
     Returns
     -------
-    basis : list[np.ndarray]
-        List of length-r vectors x (shape (n,)) over GF(2) such that A x = 0.
-        If nullity r=0, returns [].
+    list[FundamentalRelation]
+        One normalized relation for each non-basis column j:
+
+            e_j - sum_t X[t, j] e_{basis_cols[t]},
+
+        where X = G[:, basis_cols]^{-1} G, so the chosen basis columns become
+        the identity.
     """
+    p = int(p)
+    basis_cols = np.asarray(basis_cols, dtype=np.int64).reshape(-1)
+    n_b = int(basis_cols.size)
+
+    G_int = np.asarray(G, dtype=int) % p
+    if G_int.ndim != 2:
+        raise ValueError("G must be a 2D matrix")
+    if G_int.shape[0] != n_b:
+        raise ValueError("number of basis columns must equal rank / number of rows of G")
+
+    M = int(G_int.shape[1])
+    basis_mask = np.zeros(M, dtype=bool)
+    basis_mask[basis_cols] = True
+    nonbasis_cols = [j for j in range(M) if not basis_mask[j]]
+
+    C = G_int[:, basis_cols] % p
+    if p == 2:
+        C_inv = _gf2_inv(C)
+        X = (C_inv @ (G_int & 1)) & 1
+    else:
+        GF = galois.GF(p)
+        C_inv = np.linalg.inv(GF(C))
+        X = np.asarray(C_inv @ GF(G_int), dtype=int) % p
+
+    relations: list[FundamentalRelation] = []
+    for j in nonbasis_cols:
+        idxs: list[int] = []
+        coeffs: list[int] = []
+
+        # Basis part: coefficient is -lambda.
+        for t, bcol in enumerate(basis_cols.tolist()):
+            lam = int(X[t, j]) % p
+            if lam:
+                idxs.append(int(bcol))
+                coeffs.append((-lam) % p)
+
+        # Non-basis/dependent part: normalized coefficient +1.
+        idxs.append(int(j))
+        coeffs.append(1 % p)
+
+        # Keep a deterministic order by Pauli index.  Coefficients follow the
+        # same permutation.
+        order = np.argsort(np.asarray(idxs, dtype=np.int64), kind="stable")
+        idxs_t = tuple(int(idxs[k]) for k in order.tolist())
+        coeffs_t = tuple(int(coeffs[k]) for k in order.tolist())
+        relations.append(
+            FundamentalRelation(
+                dependent_index=int(j),
+                indices=idxs_t,
+                coefficients=coeffs_t,
+            )
+        )
+
+    return relations
+
+
+def relation_edge_label(coefficient: int, *, p: int) -> int:
+    """Map a nonzero relation coefficient to an edge colour disjoint from S_mod.
+
+    Term-term symplectic colours occupy 0, ..., p-1.  Relation-incidence
+    colours are encoded as p + coefficient, with coefficient in {1, ..., p-1}.
+    """
+    c = int(coefficient) % int(p)
+    if c == 0:
+        raise ValueError("zero coefficients should not be encoded as incidence edges")
+    return int(p) + c
+
+
+def augment_S_with_fundamental_relations(
+    S_mod: np.ndarray,
+    relations: list[FundamentalRelation],
+    *,
+    p: int,
+    coefficient_labels: bool = True,
+) -> tuple[np.ndarray, int]:
+    """Build an augmented edge-colour matrix using fundamental relation nodes.
+
+    Returns
+    -------
+    S_aug, p_for_wl:
+        S_aug has one auxiliary node for each fundamental relation.  Edge
+        colours between term nodes are unchanged.  Incidence edges from a
+        relation node to its Pauli-label members encode the relation
+        coefficient when coefficient_labels=True.  The returned p_for_wl is one
+        plus the largest edge colour and can be passed to _build_base_partition.
+    """
+    S = np.asarray(S_mod, dtype=np.int64)
+    M = int(S.shape[0])
+    R = len(relations)
+    if R == 0:
+        return S, max(int(np.max(S)) + 1 if S.size else 1, int(p))
+
+    S_aug = np.zeros((M + R, M + R), dtype=np.int64)
+    S_aug[:M, :M] = S
+
+    for ri, rel in enumerate(relations):
+        node = M + ri
+        for idx, coeff in zip(rel.indices, rel.coefficients):
+            if coefficient_labels:
+                label = relation_edge_label(coeff, p=p)
+            else:
+                # Useful for binary support-only experiments.  Keep disjoint
+                # from term-term colours.
+                label = int(p) + 1
+            S_aug[int(idx), node] = label
+            S_aug[node, int(idx)] = label
+
+    p_for_wl = int(np.max(S_aug)) + 1
+    return S_aug, p_for_wl
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compatible helpers for the old all-circuits GF(2) augmentation.
+# These are retained so existing imports/tests do not break, but the preferred
+# helper for the paper's construction is extract_fundamental_relations_from_matroid.
+# ---------------------------------------------------------------------------
+
+
+def _gf2_nullspace_basis(A: np.ndarray) -> list[np.ndarray]:
     A = (np.asarray(A, dtype=np.uint8) & 1).copy()
     m, n = A.shape
     row = 0
     pivots: list[int] = []
-    pivot_rows: list[int] = [-1] * n  # pivot_rows[c] = r if c is pivot
+    pivot_rows: list[int] = [-1] * n
 
-    # Gauss-Jordan to RREF
     for col in range(n):
         if row >= m:
             break
-        # find pivot row with 1 in this column
         piv = -1
         for r in range(row, m):
             if A[r, col] & 1:
@@ -38,45 +219,35 @@ def _gf2_nullspace_basis(A: np.ndarray) -> list[np.ndarray]:
                 break
         if piv < 0:
             continue
-        # swap into position
         if piv != row:
             A[[row, piv]] = A[[piv, row]]
         pivots.append(col)
         pivot_rows[col] = row
-
-        # eliminate other rows
         for r in range(m):
             if r != row and (A[r, col] & 1):
                 A[r, :] ^= A[row, :]
-
         row += 1
 
     pivot_set = set(pivots)
     free_cols = [c for c in range(n) if c not in pivot_set]
-    if not free_cols:
-        return []
-
     basis: list[np.ndarray] = []
     for f in free_cols:
         x = np.zeros(n, dtype=np.uint8)
         x[f] = 1
-        # For each pivot column p at row r: x[p] = A[r, f]
-        for p in pivots:
-            r = pivot_rows[p]
+        for pcol in pivots:
+            r = pivot_rows[pcol]
             if r >= 0 and (A[r, f] & 1):
-                x[p] = 1
+                x[pcol] = 1
         basis.append(x)
     return basis
 
 
 def _gf2_vec_to_bitmask(x: np.ndarray) -> int:
-    """Convert a GF(2) vector x (len M) to a Python int bitmask."""
     x = (np.asarray(x, dtype=np.uint8) & 1).reshape(-1)
     bm = 0
-    # Using Python int shifts; OK for M up to a few thousand.
     for i, b in enumerate(x.tolist()):
         if b:
-            bm |= (1 << i)
+            bm |= 1 << i
     return bm
 
 
@@ -90,31 +261,14 @@ def extract_circuits_from_nullspace_gf2(
     max_nullity: int = 12,
     max_circuits: int = 5000,
 ) -> list[list[int]]:
-    """
-    Compute true matroid circuits (minimal dependent supports) from the nullspace of P^T.
-
-    Here P is the M x d matrix of vectors (rows). Dependencies are a in ker(P^T) \ {0}
-    and circuits are inclusion-minimal supports of such a.
-
-    Only enabled for GF(2) (qubit labels); P is reduced mod 2 internally.
-
-    Safety caps:
-      - if nullity r > max_nullity, returns [] (skip augmentation)
-      - if number of circuits exceeds max_circuits, returns the smallest max_circuits circuits by size
-    """
     P2 = (np.asarray(P, dtype=np.uint8) & 1)
-    M, d = P2.shape
-    A = P2.T  # d x M
-    basis = _gf2_nullspace_basis(A)
+    M, _ = P2.shape
+    basis = _gf2_nullspace_basis(P2.T)
     r = len(basis)
-    if r == 0:
-        return []
-    if r > int(max_nullity):
+    if r == 0 or r > int(max_nullity):
         return []
 
     basis_bm = [_gf2_vec_to_bitmask(v) for v in basis]
-
-    # Enumerate all nonzero combinations (2^r - 1) via XOR
     deps: set[int] = set()
     for mask in range(1, 1 << r):
         bm = 0
@@ -125,30 +279,17 @@ def extract_circuits_from_nullspace_gf2(
                 bm ^= basis_bm[bit]
             mm >>= 1
             bit += 1
-        if bm != 0:
+        if bm:
             deps.add(bm)
 
-    # Convert supports and keep inclusion-minimal ones (circuits)
-    dep_list = sorted(deps, key=_bitcount)
     circuits: list[int] = []
-    for bm in dep_list:
-        # discard if any existing circuit is a subset
-        is_min = True
-        for c in circuits:
-            if (c & bm) == c:
-                is_min = False
-                break
-        if is_min:
+    for bm in sorted(deps, key=_bitcount):
+        if all((c & bm) != c for c in circuits):
             circuits.append(bm)
             if len(circuits) >= int(max_circuits):
                 break
 
-    # Convert to index lists
-    out: list[list[int]] = []
-    for bm in circuits:
-        idxs = [i for i in range(M) if (bm >> i) & 1]
-        out.append(idxs)
-    return out
+    return [[i for i in range(M) if (bm >> i) & 1] for bm in circuits]
 
 
 def augment_S_with_circuits(
@@ -157,21 +298,13 @@ def augment_S_with_circuits(
     *,
     incidence_label: int = 2,
 ) -> np.ndarray:
-    """
-    Build an augmented edge-colour matrix S_aug of size (M+C)x(M+C),
-    where C = len(circuits). Term-term block is S_mod, and each circuit node is
-    connected to its member terms with edge label 'incidence_label'. Circuit nodes
-    are otherwise disconnected (0 labels).
-    """
     S = np.asarray(S_mod, dtype=np.int64)
     M = S.shape[0]
     C = len(circuits)
     if C == 0:
         return S
-
     S_aug = np.zeros((M + C, M + C), dtype=np.int64)
     S_aug[:M, :M] = S
-
     for ci, members in enumerate(circuits):
         node = M + ci
         for i in members:
@@ -179,4 +312,12 @@ def augment_S_with_circuits(
             S_aug[node, i] = incidence_label
     return S_aug
 
-__all__ = ['extract_circuits_from_nullspace_gf2', 'augment_S_with_circuits']
+
+__all__ = [
+    "FundamentalRelation",
+    "extract_fundamental_relations_from_matroid",
+    "augment_S_with_fundamental_relations",
+    "relation_edge_label",
+    "extract_circuits_from_nullspace_gf2",
+    "augment_S_with_circuits",
+]

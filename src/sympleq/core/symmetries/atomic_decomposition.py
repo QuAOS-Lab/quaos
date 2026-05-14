@@ -415,21 +415,46 @@ def _first_nonorthogonal_pair(blocks, p):
     return None
 
 
-def atomic_block_decompose_certified(F: np.ndarray, p: int, *, convention: Convention = "column") -> Tuple[np.ndarray, np.ndarray, Dict]:
+def atomic_block_decompose_certified(
+    F: np.ndarray,
+    p: int,
+    *,
+    convention: Convention = "column",
+) -> Tuple[np.ndarray, np.ndarray, Dict]:
     """
     Certified decomposition (strict):
       - Every sector must return inv.data["status"] == "OK"
       - Block bases must span the full space (no completion allowed)
       - B must be symplectic
     """
-    if convention == "row":
-        Sigma_col, B_col, info = atomic_block_decompose_certified(mod_p(F, p).T, p, convention="column")
-        return _convert_column_result_to_row(Sigma_col, B_col, info, p)
-    if convention != "column":
+    if convention not in ("column", "row"):
         raise ValueError(f"Unknown convention={convention!r}. Expected 'column' or 'row'.")
+
+    F = np.asarray(F, dtype=int)
+
+    if F.ndim != 2:
+        raise ValueError(f"F must be a 2D square matrix, got ndim={F.ndim}.")
+
+    if F.shape[0] != F.shape[1]:
+        raise ValueError(f"F must be square, got shape {F.shape}.")
+
+    n2 = F.shape[0]
+    if n2 % 2 != 0:
+        raise ValueError(f"F must be (2n)x(2n), got shape {F.shape}.")
+
+    F = mod_p(F, p)
+
+    if convention == "row":
+        Sigma_col, B_col, info = atomic_block_decompose_certified(
+            F.T,
+            p,
+            convention="column",
+        )
+        return _convert_column_result_to_row(Sigma_col, B_col, info, p)
 
     if not is_symplectic(F, p):
         raise ValueError("Input F is not symplectic in column-action convention.")
+
 
     F = mod_p(F, p)
     n2 = F.shape[0]

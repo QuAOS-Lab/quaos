@@ -456,12 +456,13 @@ def _hermitian_decompose(field: GF2Extension, H: np.ndarray) -> Tuple[List[Tuple
                 break
 
         # If the current basis is totally isotropic, manufacture an anisotropic
-        # line from a coupled pair.  If a = h(u,v) != 0, then for
-        #
-        #     w = u + v*c,    c = a^{-1} alpha,
-        #
-        # we have h(w,w) = alpha + conjugate(alpha), which is nonzero because
-        # alpha is not fixed by the involution for q != x+1.
+        # line from a coupled pair.  Earlier versions used the closed-form choice
+        # c = a^{-1} alpha for w = u + v*c.  That depends on the exact left/right
+        # Hermitian coordinate convention used when H is reconstructed from the
+        # base symplectic trace pairings.  To avoid convention mistakes, search
+        # deterministically over all field coefficients.  This is only O(|E|) per
+        # coupled pair and is polynomial in deg(q), unlike the old exponential
+        # search over the full GF(2)-top quotient.
         if line_vec is None:
             pair_for_line: Optional[Tuple[int, int, int]] = None
             for i, u in enumerate(remaining):
@@ -477,17 +478,43 @@ def _hermitian_decompose(field: GF2Extension, H: np.ndarray) -> Tuple[List[Tuple
                 i, j, a = pair_for_line
                 u = remaining[i]
                 v = remaining[j]
-                c = field.div(field.alpha, a)
-                w_line = _vec_add_scaled(field, u, v, c)
-                nrm = _h_pair(field, H, w_line, w_line)
-                if nrm == 0:
+
+                w_line: Optional[List[int]] = None
+                nrm = 0
+
+                # Try w = u + v*c first in a canonical coefficient order.
+                for c in range(1, field.mask + 1):
+                    cand = _vec_add_scaled(field, u, v, c)
+                    cand_norm = _h_pair(field, H, cand, cand)
+                    if cand_norm != 0:
+                        w_line = cand
+                        nrm = cand_norm
+                        break
+
+                # Defensive fallback for possible opposite coordinate convention:
+                # w = u*c + v.  This should rarely be needed, but it keeps the
+                # decomposition robust against changes in Hermitian coordinate
+                # orientation while preserving deterministic behavior.
+                if w_line is None:
+                    for c in range(1, field.mask + 1):
+                        cand = _vec_add_scaled(field, v, u, c)
+                        cand_norm = _h_pair(field, H, cand, cand)
+                        if cand_norm != 0:
+                            w_line = cand
+                            nrm = cand_norm
+                            break
+
+                if w_line is None or nrm == 0:
                     raise RuntimeError(
-                        "failed to manufacture anisotropic Hermitian line from isotropic pair; "
-                        f"a={int(a)}, c={int(c)}, alpha={int(field.alpha)}"
+                        "failed to manufacture anisotropic Hermitian line from isotropic pair after exhaustive field-coefficient search; "
+                        f"a={int(a)}, field_size={int(field.mask + 1)}, alpha={int(field.alpha)}"
                     )
+
                 line_vec = w_line
                 line_norm = nrm
-                # Replacing u by u + v*c and keeping v preserves the span.
+                # Replacing one vector of a coupled pair by the anisotropic
+                # combination preserves the span with the other vector still in
+                # the remaining list.  Remove only index i.
                 line_remaining = [remaining[k] for k in range(len(remaining)) if k != i]
 
         if line_vec is not None:

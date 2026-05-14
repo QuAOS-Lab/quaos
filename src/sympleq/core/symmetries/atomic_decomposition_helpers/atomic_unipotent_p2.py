@@ -357,6 +357,121 @@ def _hyperbolic_pair_candidates(Btop: np.ndarray) -> List[Tuple[np.ndarray, np.n
 
     return out
 
+
+def _anisotropic_orthogonal_line_candidates(Btop: np.ndarray) -> List[np.ndarray]:
+    """
+    Deterministically diagonalize the non-alternating part of a symmetric
+    GF(2) top pairing.
+
+    Returns coefficient vectors c in the original top basis such that
+
+        c_i^T Btop c_i = 1,
+        c_i^T Btop c_j = 0  for i != j
+
+    for the extracted anisotropic lines.  In the length-2 unipotent case,
+    these are precisely the quotient lines that should lift to one-qudit
+    V_beta(2)-type blocks when the direct cyclic-module check succeeds.
+
+    If the remaining form becomes alternating, extraction stops and the W-pair
+    path handles that alternating remainder.
+    """
+    B = mod_p(np.asarray(Btop, dtype=np.int64), 2).copy()
+    if B.ndim != 2 or B.shape[0] != B.shape[1]:
+        raise ValueError(f"Btop must be square, got {B.shape}.")
+    m = int(B.shape[0])
+    if m == 0:
+        return []
+
+    # P columns are current basis vectors in the original top coordinates.
+    P = np.eye(m, dtype=np.int64)
+    out: List[np.ndarray] = []
+    k = 0
+
+    def swap(i: int, j: int) -> None:
+        nonlocal B, P
+        if i == j:
+            return
+        B[[i, j], :] = B[[j, i], :]
+        B[:, [i, j]] = B[:, [j, i]]
+        P[:, [i, j]] = P[:, [j, i]]
+
+    def shear_col(i: int, j: int) -> None:
+        """Basis update e_i <- e_i + e_j, with congruence update."""
+        nonlocal B, P
+        B[:, i] = mod_p(B[:, i] + B[:, j], 2)
+        B[i, :] = mod_p(B[i, :] + B[j, :], 2)
+        P[:, i] = mod_p(P[:, i] + P[:, j], 2)
+
+    while k < m:
+        piv = None
+        for i in range(k, m):
+            if int(B[i, i] % 2) == 1:
+                piv = i
+                break
+        if piv is None:
+            break
+        swap(piv, k)
+
+        # Orthogonalize the remaining basis vectors against e_k.  Since
+        # <e_k,e_k>=1, replacing e_t by e_t + <e_k>e_t e_k kills <e_k,e_t>.
+        for t in range(k + 1, m):
+            if int(B[k, t] % 2) == 1:
+                shear_col(t, k)
+
+        c = mod_p(P[:, k].reshape(-1), 2)
+        if np.any(c):
+            out.append(c.copy())
+        k += 1
+
+    # If a greedy anisotropic pivot leaves an alternating hyperbolic remainder,
+    # do not return the bad decomposition [anisotropic] + H.  Over GF(2),
+    # an anisotropic line u orthogonal to a hyperbolic pair (e,f) can be
+    # replaced by three mutually orthogonal anisotropic lines
+    #
+    #     u+e,  u+f,  u+e+f.
+    #
+    # This is the key normalization needed for length-2 p=2 unipotent sectors:
+    # a full-rank non-alternating top form should be diagonalized into V-type
+    # one-qudit lines whenever the lifted cyclic-module checks succeed, rather
+    # than leaving an alternating remainder to be extracted as W blocks.
+    if k < m and out:
+        Brem = mod_p(B[k:, k:], 2)
+        if Brem.size and np.all(np.diag(Brem) % 2 == 0):
+            try:
+                e_rem, f_rem, _rad_rem = _p2_hyperbolic_pairs_from_alternating_form(Brem, p=2)
+            except RuntimeError:
+                e_rem, f_rem = [], []
+
+            if e_rem:
+                Prem = mod_p(P[:, k:], 2)
+
+                def lift_rem(c_rem: np.ndarray) -> np.ndarray:
+                    return mod_p(Prem @ np.asarray(c_rem, dtype=np.int64).reshape(-1, 1), 2).reshape(-1)
+
+                carrier = out.pop()
+                for er, fr in zip(e_rem, f_rem):
+                    e = lift_rem(er)
+                    f = lift_rem(fr)
+                    a = mod_p(carrier + e, 2)
+                    b = mod_p(carrier + f, 2)
+                    c = mod_p(carrier + e + f, 2)
+                    out.append(a.reshape(-1).copy())
+                    out.append(b.reshape(-1).copy())
+                    carrier = c.reshape(-1)
+                out.append(carrier.reshape(-1).copy())
+
+    # Remove accidental duplicates while preserving order.
+    unique: List[np.ndarray] = []
+    seen: set[Tuple[int, ...]] = set()
+    for c in out:
+        cc = mod_p(np.asarray(c, dtype=np.int64).reshape(-1), 2)
+        key = tuple(int(x) for x in cc)
+        if np.any(cc) and key not in seen:
+            seen.add(key)
+            unique.append(cc)
+
+    return unique
+
 def _p2_length_form_invariants(A_top: np.ndarray, Omega: np.ndarray, N: np.ndarray, L: int) -> Dict[str, Any]:
     p = 2
     A_top = independent_columns(mod_p(A_top, p), p)
@@ -565,10 +680,29 @@ def atomic_blocks_in_unipotent_self_sector_p2(
         # preferring q=1 witnesses, and let direct cyclic-module
         # nondegeneracy/invariance checks decide acceptance.
         if int(L) % 2 == 0:
-            coeffs = _top_coeff_candidates(A_top.shape[1], exhaustive_limit=10)
+            # For non-alternating symmetric top forms, first diagonalize the
+            # anisotropic part.  This prevents the greedy extractor from
+            # prematurely grouping diagonalizable V_beta(2k) lines into W pairs.
+            preferred = _anisotropic_orthogonal_line_candidates(Btop)
+            coeffs_all = _top_coeff_candidates(A_top.shape[1], exhaustive_limit=10)
+
+            seen_coeffs: set[Tuple[int, ...]] = set()
+            coeffs: List[np.ndarray] = []
+            for c0 in preferred + coeffs_all:
+                cc = mod_p(np.asarray(c0, dtype=np.int64).reshape(-1), 2)
+                keyc = tuple(int(x) for x in cc)
+                if keyc not in seen_coeffs:
+                    seen_coeffs.add(keyc)
+                    coeffs.append(cc)
+
+            def _top_norm(c: np.ndarray) -> int:
+                return _scalar_mod2(c.reshape(1, -1) @ Btop @ c.reshape(-1, 1))
+
             coeffs = sorted(
                 coeffs,
-                key=lambda c: (1 - _q_value_from_coeff(c, A_top, Omega, N, int(L)), tuple(int(x) for x in c)),
+                # Prefer anisotropic top lines for V_beta extraction; q-value is
+                # only a secondary Chapter-5 label and may vanish for all lines.
+                key=lambda c: (1 - _top_norm(c), 1 - _q_value_from_coeff(c, A_top, Omega, N, int(L)), tuple(int(x) for x in c)),
             )
             for c in coeffs:
                 v_top = mod_p(A_top @ c.reshape(-1, 1), p)

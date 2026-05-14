@@ -5,11 +5,18 @@ from dataclasses import dataclass
 import numpy as np
 import galois
 
-from sympleq.core.circuits.target import find_map_to_target_pauli_sum, get_phase_vector
+from sympleq.core.circuits.target import get_phase_vector
 from sympleq.core.paulis import PauliSum
 from sympleq.core.circuits import Gate
 from sympleq.core.circuits.phase_correction import solve_phase_vector_h_from_residual
 from sympleq.core.finite_field_solvers import solve_gf2
+from sympleq.core.symmetries.modular_helpers import (
+    _solve_linear,
+    mod_p,
+    nullspace_mod,
+    omega_matrix,
+    rank_mod,
+)
 
 from .graph_automorphism_code import check_code_automorphism
 
@@ -37,6 +44,11 @@ class LeafContext:
     # Precomputed inverse of the square row-basis tableau (when rank == 2*n_qudits).
     basis_src_inv_gf2: np.ndarray | None
     basis_src_inv_gfp: galois.FieldArray | None
+    # Full row-basis completion of basis_source_ps.tableau. Used when the
+    # Hamiltonian basis is rank-deficient so each leaf can avoid the generic
+    # transvection/completion mapper.
+    basis_complete_tableau: np.ndarray | None
+    basis_complete_inv: np.ndarray | None
     row_basis_cache: dict[str, np.ndarray]
 
 
@@ -74,6 +86,63 @@ def _solve_qubit_phase_family_correction(base_tableau: np.ndarray, delta: np.nda
     return h_lin
 
 
+def _target_completion_from_source_pairings(
+    target_basis: np.ndarray,
+    source_complete: np.ndarray,
+    p: int,
+) -> np.ndarray | None:
+    """
+    Complete target_basis so it has the same symplectic Gram matrix as
+    source_complete.
+
+    Rows are Pauli tableau vectors and maps act on the right.  If C is the
+    completed source basis and D is the completed target basis with
+    C Ω C^T = D Ω D^T, then F = C^{-1}D is symplectic and maps the constrained
+    source rows to the target rows.
+    """
+    D = mod_p(np.asarray(target_basis, dtype=int), p)
+    C = mod_p(np.asarray(source_complete, dtype=int), p)
+    n2 = C.shape[1]
+    if C.shape != (n2, n2) or D.ndim != 2 or D.shape[1] != n2:
+        return None
+
+    r = int(D.shape[0])
+    if r > n2 or not np.array_equal(
+        mod_p(D @ omega_matrix(n2 // 2, p) @ D.T, p),
+        mod_p(C[:r] @ omega_matrix(n2 // 2, p) @ C[:r].T, p),
+    ):
+        return None
+
+    Omega = omega_matrix(n2 // 2, p)
+    for k in range(r, n2):
+        A = mod_p(D @ Omega, p)
+        b = mod_p(C[:k] @ Omega @ C[k].reshape(-1, 1), p).reshape(-1)
+        try:
+            candidate = _solve_linear(A, b, p).reshape(-1)
+        except RuntimeError:
+            return None
+
+        if rank_mod(np.vstack([D, candidate]), p) <= k:
+            null_basis = nullspace_mod(A, p)
+            found = False
+            for j in range(null_basis.shape[1]):
+                trial = mod_p(candidate + null_basis[:, j], p)
+                if rank_mod(np.vstack([D, trial]), p) > k:
+                    candidate = trial
+                    found = True
+                    break
+            if not found:
+                return None
+
+        D = np.vstack([D, mod_p(candidate, p)])
+
+    if rank_mod(D, p) != n2:
+        return None
+    if not np.array_equal(mod_p(D @ Omega @ D.T, p), mod_p(C @ Omega @ C.T, p)):
+        return None
+    return mod_p(D, p)
+
+
 def check_leaf(pi: np.ndarray, ctx: LeafContext) -> Gate | None:
     """Run all structural and phase-correction checks for a candidate permutation.
 
@@ -93,14 +162,6 @@ def check_leaf(pi: np.ndarray, ctx: LeafContext) -> Gate | None:
 
     # (3) Build the candidate symplectic from the permutation of the (ordered) row-basis.
     tgt_idx = pi[ctx.basis_indices]
-    H_basis_tgt = PauliSum.from_tableau(
-        ctx.base_tableau[tgt_idx],
-        ctx.pauli_sum.dimensions,
-        weights=ctx.base_weights[tgt_idx],
-    )
-    H_basis_tgt.set_phases(np.array(ctx.base_phases[tgt_idx], dtype=int, copy=True))
-    H_basis_src = ctx.basis_source_ps
-
     F: np.ndarray
     h0: np.ndarray
 
@@ -114,8 +175,18 @@ def check_leaf(pi: np.ndarray, ctx: LeafContext) -> Gate | None:
         F_gf = ctx.basis_src_inv_gfp @ T
         F = (np.asarray(F_gf, dtype=int) % ctx.p).astype(int, copy=False)
     else:
-        # Rank-deficient tableau: the basis alone doesn't determine F uniquely.
-        F, _h0, _, _ = find_map_to_target_pauli_sum(H_basis_src, H_basis_tgt)
+        if ctx.basis_complete_tableau is None or ctx.basis_complete_inv is None:
+            return None
+        target_complete = _target_completion_from_source_pairings(
+            ctx.base_tableau[tgt_idx],
+            ctx.basis_complete_tableau,
+            ctx.p,
+        )
+        if target_complete is None:
+            return None
+        F = mod_p(ctx.basis_complete_inv @ target_complete, ctx.p)
+        if not np.array_equal(mod_p(ctx.basis_complete_tableau @ F, ctx.p), target_complete):
+            return None
 
     # Deterministic lift from symplectic -> quadratic phase vector; linear correction solved below.
     h0 = get_phase_vector(F.T, int(ctx.pauli_sum.dimensions[0]))
