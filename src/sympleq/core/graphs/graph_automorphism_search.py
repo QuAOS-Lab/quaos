@@ -411,7 +411,7 @@ def clifford_ga_search_from_prepared(
     k_wanted: int,
     dynamic_refine_every: int = 0,
     random_seed: int = 0,
-    shuffle_domain_order: bool = True,
+    shuffle_domain_order: bool = False,
     progress: bool = False,
     progress_every: int = 2048,
     stop_event: Any | None = None,
