@@ -258,14 +258,22 @@ def _bitcount(bm: int) -> int:
 def extract_circuits_from_nullspace_gf2(
     P: np.ndarray,
     *,
-    max_nullity: int = 12,
-    max_circuits: int = 5000,
+    max_nullity: int = 200,
+    max_circuits: int = 500000,
+    require_complete: bool = False,
 ) -> list[list[int]]:
     P2 = (np.asarray(P, dtype=np.uint8) & 1)
     M, _ = P2.shape
     basis = _gf2_nullspace_basis(P2.T)
     r = len(basis)
-    if r == 0 or r > int(max_nullity):
+    if r == 0:
+        return []
+    if r > int(max_nullity):
+        if require_complete:
+            raise ValueError(
+                "Cannot build complete GF(2) circuit augmentation: "
+                f"nullity={r} exceeds max_nullity={int(max_nullity)}."
+            )
         return []
 
     basis_bm = [_gf2_vec_to_bitmask(v) for v in basis]
@@ -283,11 +291,19 @@ def extract_circuits_from_nullspace_gf2(
             deps.add(bm)
 
     circuits: list[int] = []
+    truncated = False
     for bm in sorted(deps, key=_bitcount):
         if all((c & bm) != c for c in circuits):
             circuits.append(bm)
             if len(circuits) >= int(max_circuits):
+                truncated = True
                 break
+
+    if truncated and require_complete:
+        raise ValueError(
+            "Cannot build complete GF(2) circuit augmentation: "
+            f"number of circuits reached max_circuits={int(max_circuits)}."
+        )
 
     return [[i for i in range(M) if (bm >> i) & 1] for bm in circuits]
 

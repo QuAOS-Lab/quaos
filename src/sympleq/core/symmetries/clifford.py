@@ -7,7 +7,8 @@ from sympleq.core.symmetries.block_decomposition import block_decompose_optimal,
 
 
 def min_qudit_clifford_symmetry(pauli_sum: PauliSum, talk: bool = False, progress: bool = False,
-                                heuristic: bool = False,
+                                heuristic: bool = False, circuit_augmented_graph: bool | str = False,
+                                max_nullity_for_circuits: int = 12, max_circuits: int = 5000,
                                 ) -> tuple[Gate, Gate, Gate]:
     """
     Find a single Clifford symmetry g of the given PauliSum, and decompose it into blocks with a minimal qudit cost
@@ -26,7 +27,10 @@ def min_qudit_clifford_symmetry(pauli_sum: PauliSum, talk: bool = False, progres
 
     G = find_clifford_symmetries(pauli_sum, num_symmetries=1,
                                  dynamic_refine_every=0, progress=progress,
-                                 extra_column_invariants=extra_column_invariants)
+                                 extra_column_invariants=extra_column_invariants,
+                                 circuit_augmented_graph=circuit_augmented_graph,
+                                 max_nullity_for_circuits=max_nullity_for_circuits,
+                                 max_circuits=max_circuits)
     if len(G) == 0:
         # save pauli_sum to file for debugging, tableau, weights, phases
         raise RuntimeError("No non-trivial Clifford symmetry found for the given PauliSum.")
@@ -86,7 +90,7 @@ def find_clifford_symmetries(
     p2_bitset: str = "auto",
     color_mode: str = "wl",
     max_wl_rounds: int = 10,
-    circuit_augmented_graph: bool = False,
+    circuit_augmented_graph: bool | str = False,
     max_nullity_for_circuits: int = 12,
     max_circuits: int = 5000,
     progress: bool = False,
@@ -103,7 +107,7 @@ def find_clifford_symmetries(
         p2_bitset=p2_bitset,
         color_mode=color_mode,
         max_wl_rounds=max_wl_rounds,
-        circuit_augmented_graph=bool(circuit_augmented_graph),
+        circuit_augmented_graph=circuit_augmented_graph,
         max_nullity_for_circuits=int(max_nullity_for_circuits),
         max_circuits=int(max_circuits),
         dynamic_refine_every=int(dynamic_refine_every),

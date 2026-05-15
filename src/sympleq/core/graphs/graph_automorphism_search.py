@@ -10,6 +10,8 @@ import galois
 from .graph_automorphism_circuits import (
     extract_fundamental_relations_from_matroid,
     augment_S_with_fundamental_relations,
+    extract_circuits_from_nullspace_gf2,
+    augment_S_with_circuits,
 )
 
 
@@ -54,6 +56,26 @@ class PreparedGASearch:
     # leaf verification context
     leaf_ctx: LeafContext
 
+    # graph view used by igraph. This may include auxiliary augmentation vertices.
+    graph_S_mod: np.ndarray
+    graph_base_colors: np.ndarray
+    n_pauli_vertices: int
+
+
+def _circuit_augmented_mode(circuit_augmented_graph: bool | str) -> str | None:
+    if isinstance(circuit_augmented_graph, str):
+        mode = circuit_augmented_graph.strip().lower()
+        if mode in {"", "0", "false", "none", "no", "off"}:
+            return None
+        if mode in {"wl", "colour", "color", "colouring", "coloring"}:
+            return "wl"
+        if mode in {"wlf", "wl_fundamental", "wl-fundamental", "fundamental"}:
+            return "wlf"
+        if mode in {"1", "true", "yes", "on", "full", "graph", "augmented"}:
+            return "full"
+        raise ValueError("circuit_augmented_graph must be False, True, 'full', 'wl', or 'wlf'.")
+    return "full" if bool(circuit_augmented_graph) else None
+
 
 def _complete_rows_to_full_basis(rows: np.ndarray, p: int) -> np.ndarray | None:
     """Complete independent row vectors to a full row basis over GF(p)."""
@@ -86,9 +108,9 @@ def prepare_clifford_ga_search(
     p2_bitset: str | bool = "auto",
     color_mode: str = "wl",
     max_wl_rounds: int = 10,
-    circuit_augmented_graph: bool = False,
-    max_nullity_for_circuits: int = 12,
-    max_circuits: int = 5000,
+    circuit_augmented_graph: bool | str = False,
+    max_nullity_for_circuits: int = 200,
+    max_circuits: int = 500000,
 ) -> PreparedGASearch:
     """Precompute all data independent of restart seeds.
 
@@ -191,50 +213,73 @@ def prepare_clifford_ga_search(
             col_invariants = np.hstack(feats) if len(feats) > 1 else feats[0]
 
     
-    # ---- optional fundamental-relation augmented graph for WL refinement ----
-    # Add one auxiliary node for each fundamental relation
-    #
-    #     r_j = e_j - sum_t lambda_{tj} e_{B_t},
-    #
-    # where the chosen matroid basis columns B_t are basis_order/B_cols.  This
-    # avoids enumerating all circuits: these relations generate the full linear
-    # relation space.  For p > 2 the incidence edge colour stores the relation
-    # coefficient; for p = 2 this reduces to support-only incidence.
-    #
-    # The auxiliary nodes are used only to refine the WL colouring.  The actual
-    # search still permutes only Pauli-term vertices [0..n), and the exact
-    # relation-preservation condition is handled by the code-prefix/leaf checks.
+    # ---- optional circuit/relation augmented graph for WL refinement / igraph ----
+    circuit_augmented_mode = _circuit_augmented_mode(circuit_augmented_graph)
+    circuit_augmented_wl_only = circuit_augmented_mode in {"wl", "wlf"}
+
+    # For binary matroids use all minimal circuits when the nullity is bounded:
+    # the set of circuits is invariant under code automorphisms, unlike a
+    # chosen-basis fundamental-circuit presentation.  For p > 2 we currently
+    # fall back to coefficient-labelled fundamental relations.
     S_for_wl = S_mod
     coeffs_for_wl = coeffs
     p_for_wl = p
-    if circuit_augmented_graph:
-        fundamental_relations = extract_fundamental_relations_from_matroid(
-            G,
-            B_cols,
-            p=p,
-        )
-        if fundamental_relations:
-            S_for_wl, p_for_wl = augment_S_with_fundamental_relations(
-                S_mod,
-                fundamental_relations,
-                p=p,
-                coefficient_labels=True,
+    if circuit_augmented_mode is not None:
+        use_fundamental_relations = circuit_augmented_mode == "wlf" or p != 2
+        if not use_fundamental_relations:
+            circuits = extract_circuits_from_nullspace_gf2(
+                np.asarray(G, dtype=int).T,
+                max_nullity=int(max_nullity_for_circuits),
+                max_circuits=int(max_circuits),
+                require_complete=True,
             )
-
-            # Extend vertex labels with a distinct relation type, so WL cannot
-            # identify auxiliary relation vertices with Pauli-term vertices.
-            coeffs_for_wl = np.asarray(coeffs, dtype=object)
-            relation_coeffs = np.empty(len(fundamental_relations), dtype=object)
-            for idx, rel in enumerate(fundamental_relations):
-                relation_coeffs[idx] = ("fundamental_relation", rel.size)
-            coeffs_for_wl = np.concatenate([coeffs_for_wl, relation_coeffs])
-
-            if col_invariants is not None:
-                relation_invariants = np.zeros(
-                    (len(fundamental_relations), col_invariants.shape[1]),
-                    dtype=col_invariants.dtype,
+            if circuits:
+                S_for_wl = augment_S_with_circuits(
+                    S_mod,
+                    circuits,
+                    incidence_label=int(p) + 1,
                 )
-                col_invariants = np.vstack([col_invariants, relation_invariants])
+                p_for_wl = int(np.max(S_for_wl)) + 1
+                coeffs_for_wl = np.asarray(coeffs, dtype=object)
+                circuit_coeffs = np.empty(len(circuits), dtype=object)
+                for idx, circuit in enumerate(circuits):
+                    circuit_coeffs[idx] = ("circuit", len(circuit))
+                coeffs_for_wl = np.concatenate([coeffs_for_wl, circuit_coeffs])
+
+                if col_invariants is not None:
+                    circuit_invariants = np.zeros(
+                        (len(circuits), col_invariants.shape[1]),
+                        dtype=col_invariants.dtype,
+                    )
+                    col_invariants = np.vstack([col_invariants, circuit_invariants])
+        else:
+            fundamental_relations = extract_fundamental_relations_from_matroid(
+                G,
+                B_cols,
+                p=p,
+            )
+            if fundamental_relations:
+                S_for_wl, p_for_wl = augment_S_with_fundamental_relations(
+                    S_mod,
+                    fundamental_relations,
+                    p=p,
+                    coefficient_labels=True,
+                )
+
+                # Extend vertex labels with a distinct relation type, so WL cannot
+                # identify auxiliary relation vertices with Pauli-term vertices.
+                coeffs_for_wl = np.asarray(coeffs, dtype=object)
+                relation_coeffs = np.empty(len(fundamental_relations), dtype=object)
+                for idx, rel in enumerate(fundamental_relations):
+                    relation_coeffs[idx] = ("fundamental_relation", rel.size)
+                coeffs_for_wl = np.concatenate([coeffs_for_wl, relation_coeffs])
+
+                if col_invariants is not None:
+                    relation_invariants = np.zeros(
+                        (len(fundamental_relations), col_invariants.shape[1]),
+                        dtype=col_invariants.dtype,
+                    )
+                    col_invariants = np.vstack([col_invariants, relation_invariants])
 
 
     base_colors_full, base_classes_full = _build_base_partition(
@@ -354,6 +399,9 @@ def prepare_clifford_ga_search(
         is_basis=is_basis,
         consistency=consistency,
         leaf_ctx=leaf_ctx,
+        graph_S_mod=S_mod if circuit_augmented_wl_only else S_for_wl,
+        graph_base_colors=base_colors if circuit_augmented_wl_only else base_colors_full,
+        n_pauli_vertices=n,
     )
 
 
@@ -617,15 +665,13 @@ def clifford_ga_search_from_prepared(
                 ok = True
                 prefix_became_active = False
 
-                if prefix_UG is not None:
+                if use_code_prefix_check and prefix_UG is not None:
                     # basis already fixed: check the single new column constraint
                     if prepared.G_mod2 is not None:
-                        assert isinstance(prefix_UG, np.ndarray)
                         ok = np.array_equal(prefix_UG[:, y], prepared.G_mod2[:, frame.i])
                     else:
-                        assert not isinstance(prefix_UG, np.ndarray)
                         ok = np.array_equal(prefix_UG[:, y], prepared.G[:, frame.i])
-                else:
+                elif use_code_prefix_check:
                     # basis not fixed; if it becomes fixed now, compute U G and validate prefix
                     if basis_mapped_count == k_basis:
                         tmp = compute_prefix_UG(G=prepared.G, G_mod2=prepared.G_mod2, B_cols=B_cols, pi=phi)
@@ -637,7 +683,6 @@ def clifford_ga_search_from_prepared(
 
                             # validate all previously mapped columns against prefix_UG
                             if prepared.G_mod2 is not None:
-                                assert isinstance(prefix_UG, np.ndarray)
                                 for t in range(mapped_len):
                                     j = int(mapped_stack[t])
                                     yj = int(phi[j])
@@ -647,7 +692,6 @@ def clifford_ga_search_from_prepared(
                                 if ok:
                                     ok = np.array_equal(prefix_UG[:, y], prepared.G_mod2[:, frame.i])
                             else:
-                                assert not isinstance(prefix_UG, np.ndarray)
                                 for t in range(mapped_len):
                                     j = int(mapped_stack[t])
                                     yj = int(phi[j])
@@ -701,7 +745,7 @@ def clifford_graph_automorphism_search(
     p2_bitset: str | bool = "auto",
     color_mode: str = "wl",
     max_wl_rounds: int = 10,
-    circuit_augmented_graph: bool = False,
+    circuit_augmented_graph: bool | str = False,
     max_nullity_for_circuits: int = 12,
     max_circuits: int = 5000,
     progress: bool = False,
@@ -721,7 +765,7 @@ def clifford_graph_automorphism_search(
         p2_bitset=p2_bitset,
         color_mode=color_mode,
         max_wl_rounds=max_wl_rounds,
-        circuit_augmented_graph=bool(circuit_augmented_graph),
+        circuit_augmented_graph=circuit_augmented_graph,
         max_nullity_for_circuits=int(max_nullity_for_circuits),
         max_circuits=int(max_circuits),
     )

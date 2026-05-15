@@ -96,7 +96,7 @@ def clifford_graph_automorphism_search_random_restarts(
     p2_bitset: str | bool = "auto",
     color_mode: str = "wl",
     max_wl_rounds: int = 10,
-    circuit_augmented_graph: bool = False,
+    circuit_augmented_graph: bool | str = False,
     max_nullity_for_circuits: int = 12,
     max_circuits: int = 5000,
 ) -> list:
@@ -126,7 +126,7 @@ def clifford_graph_automorphism_search_random_restarts(
         p2_bitset=p2_bitset,
         color_mode=color_mode,
         max_wl_rounds=max_wl_rounds,
-        circuit_augmented_graph=bool(circuit_augmented_graph),
+        circuit_augmented_graph=circuit_augmented_graph,
         max_nullity_for_circuits=int(max_nullity_for_circuits),
         max_circuits=int(max_circuits),
     )
