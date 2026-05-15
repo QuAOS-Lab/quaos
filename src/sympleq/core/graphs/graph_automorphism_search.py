@@ -752,7 +752,7 @@ def clifford_graph_automorphism_search(
     progress_every: int = 2048,
     # --- new for random restarts / parallel ---
     random_seed: int = 0,
-    shuffle_domain_order: bool = True,
+    shuffle_domain_order: bool = False,
     stop_event: Any | None = None,
     stop_check_every: int = 4096,
     use_code_induced_completion: bool | None = None,

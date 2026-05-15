@@ -57,9 +57,19 @@ def _generated_group_permutations(generators: list[Any], n_vertices: int):
 def find_igraph_clifford_symmetries(
     pauli_sum: Any,
     *,
+    num_symmetries: int | None = 1,
     extra_invs: str = "none",
     circuit_augmented_graph: bool | str = False,
 ) -> tuple[list[Any], int]:
+    """Return up to ``num_symmetries`` Clifford lifts from igraph automorphisms.
+
+    Pass ``num_symmetries=None`` to exhaust the generated automorphism group.
+    The second return value is the number of non-identity Pauli-term
+    permutations checked with the Clifford leaf test.
+    """
+    if num_symmetries is not None and int(num_symmetries) <= 0:
+        return [], 0
+
     prepared = prepare_clifford_ga_search(
         pauli_sum,
         extra_column_invariants=str(extra_invs),
@@ -83,26 +93,49 @@ def find_igraph_clifford_symmetries(
     n_paulis = int(getattr(prepared, "n_pauli_vertices", pauli_sum.n_paulis()))
     identity_pauli_perm = tuple(range(n_paulis))
     checked = 0
+    symmetries: list[Any] = []
+    seen_pauli_perms: set[tuple[int, ...]] = set()
+    seen_gates: set[tuple[tuple[int, ...], tuple[int, ...]]] = set()
+
+    def wanted_enough() -> bool:
+        return num_symmetries is not None and len(symmetries) >= int(num_symmetries)
+
+    def add_if_clifford(pi_tuple: tuple[int, ...]) -> None:
+        nonlocal checked
+        if pi_tuple in seen_pauli_perms:
+            return
+        seen_pauli_perms.add(pi_tuple)
+        checked += 1
+        gate = check_leaf(np.asarray(pi_tuple, dtype=np.int64), prepared.leaf_ctx)
+        if gate is None:
+            return
+        key = (
+            tuple(np.asarray(gate.symplectic, dtype=int).reshape(-1).tolist()),
+            tuple(np.asarray(gate.phase_vector(), dtype=int).reshape(-1).tolist()),
+        )
+        if key in seen_gates:
+            return
+        seen_gates.add(key)
+        symmetries.append(gate)
+
     for generator in generators:
         full_perm = _permutation_to_tuple(generator)
         pi_tuple = _extract_pauli_permutation(full_perm, n_paulis)
         if pi_tuple is None or pi_tuple == identity_pauli_perm:
             continue
-        checked += 1
-        gate = check_leaf(np.asarray(pi_tuple, dtype=np.int64), prepared.leaf_ctx)
-        if gate is not None:
-            return [gate], checked
+        add_if_clifford(pi_tuple)
+        if wanted_enough():
+            return symmetries, checked
 
     for full_perm, _word in _generated_group_permutations(generators, graph.vcount()):
         pi_tuple = _extract_pauli_permutation(full_perm, n_paulis)
         if pi_tuple is None or pi_tuple == identity_pauli_perm:
             continue
-        checked += 1
-        gate = check_leaf(np.asarray(pi_tuple, dtype=np.int64), prepared.leaf_ctx)
-        if gate is not None:
-            return [gate], checked
+        add_if_clifford(pi_tuple)
+        if wanted_enough():
+            return symmetries, checked
 
-    return [], checked
+    return symmetries, checked
 
 
 __all__ = ["find_igraph_clifford_symmetries"]

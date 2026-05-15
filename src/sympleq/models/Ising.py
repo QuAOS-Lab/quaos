@@ -304,7 +304,7 @@ def modified_ising_ladder_hamiltonian(n_x: int, n_y: int, J_zz: float, h_x: floa
 
 def heuristic_clifford_symmetry(n_spins: int, periodic: bool = False) -> Gate:
     A = np.zeros((n_spins, n_spins), dtype=int)
-    B = np.ones((n_spins, n_spins), dtype=int)
+    B = np.zeros((n_spins, n_spins), dtype=int)
     C = np.zeros((n_spins, n_spins), dtype=int)
 
     if periodic:

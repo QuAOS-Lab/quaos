@@ -93,6 +93,7 @@ def find_clifford_symmetries(
     circuit_augmented_graph: bool | str = False,
     max_nullity_for_circuits: int = 12,
     max_circuits: int = 5000,
+    shuffle_domain_order: bool = False,
     progress: bool = False,
     progress_every: int = 2048,
 ) -> list[Gate]:
@@ -110,6 +111,7 @@ def find_clifford_symmetries(
         circuit_augmented_graph=circuit_augmented_graph,
         max_nullity_for_circuits=int(max_nullity_for_circuits),
         max_circuits=int(max_circuits),
+        shuffle_domain_order=bool(shuffle_domain_order),
         dynamic_refine_every=int(dynamic_refine_every),
         progress=progress,
         progress_every=int(progress_every),
