@@ -1,0 +1,48 @@
+% Minimal representation S
+\begin{center}
+\begin{quantikz}[row sep={0.35cm,between origins}, column sep=0.38cm]
+& \Vgate & \gate{Z} \\
+& \swap{1} & \qw \\
+& \targX{} & \qw \\
+& \swap{1} & \qw \\
+& \targX{} & \qw \\
+& \swap{1} & \qw \\
+& \targX{} & \qw \\
+& \swap{1} & \qw \\
+& \targX{} & \qw \\
+& \qw & \qw \\
+\end{quantikz}
+\end{center}
+
+% Basis transformation T
+\begin{center}
+\begin{quantikz}[row sep={0.35cm,between origins}, column sep=0.18cm]
+& \qw & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \swap{1} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw \\
+& \qw & \qw & \qw & \qw & \targX{} & \qw & \swap{2} & \SUMtarg{} & \SUMtarg{} & \qw & \qw & \qw & \qw & \qw & \qw & \qw \\
+& \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \swap{3} & \SUMtarg{} & \qw & \qw & \qw & \qw & \qw & \qw \\
+& \qw & \qw & \qw & \qw & \qw & \SUMctrl{-3} & \targX{} & \qw & \qw & \qw & \swap{4} & \qw & \qw & \qw & \qw & \qw \\
+& \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \swap{3} & \Hgate & \qw & \qw & \qw \\
+& \qw & \qw & \qw & \qw & \qw & \qw & \SUMctrl{-5} & \SUMctrl{-4} & \targX{} & \swap{4} & \qw & \qw & \qw & \qw & \qw & \qw \\
+& \qw & \qw & \qw & \qw & \SUMtarg{} & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \SUMctrl{2} & \qw & \qw \\
+& \Hgate & \SUMctrl{-7} & \Hgate & \qw & \qw & \qw & \qw & \SUMctrl{-7} & \SUMctrl{-6} & \SUMctrl{-5} & \targX{} & \targX{} & \swap{1} & \qw & \qw & \qw \\
+& \Hgate & \qw & \SUMctrl{-8} & \Hgate & \SUMctrl{-2} & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \targX{} & \SUMtarg{} & \SUMtarg{} & \SUMctrl{1} \\
+& \Hgate & \qw & \qw & \SUMctrl{-9} & \Hgate & \qw & \qw & \qw & \qw & \targX{} & \qw & \qw & \qw & \qw & \SUMctrl{-1} & \SUMtarg{} \\
+\end{quantikz}
+\end{center}
+
+% Full standard-basis symmetry F
+\begin{center}
+\begin{quantikz}[row sep={0.35cm,between origins}, column sep=0.10cm]
+& \Hgate & \Vgate & \Hgate & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \swap{8} & \qw & \gate{X} \\
+& \Hgate & \Vgate & \qw & \SUMctrl{-1} & \Hgate & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \swap{8} & \gate{X} \\
+& \Hgate & \Vgate & \qw & \qw & \SUMctrl{-2} & \SUMctrl{-1} & \Hgate & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \qw & \qw & \qw & \qw & \swap{4} & \qw & \qw & \qw & \gate{X} \\
+& \Hgate & \Vgate & \qw & \qw & \qw & \SUMctrl{-3} & \SUMctrl{-2} & \SUMctrl{-1} & \Hgate & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \qw & \qw & \qw & \qw & \swap{4} & \qw & \qw & \gate{X} \\
+& \Hgate & \Vgate & \qw & \qw & \qw & \qw & \SUMctrl{-4} & \SUMctrl{-3} & \SUMctrl{-2} & \SUMctrl{-1} & \Hgate & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \qw & \qw & \qw & \qw & \qw & \qw & \gate{X} \\
+& \Hgate & \Vgate & \qw & \qw & \qw & \qw & \qw & \SUMctrl{-5} & \SUMctrl{-4} & \SUMctrl{-3} & \SUMctrl{-2} & \SUMctrl{-1} & \Hgate & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \qw & \qw & \qw & \qw & \qw & \gate{X} \\
+& \Hgate & \Vgate & \qw & \qw & \qw & \qw & \qw & \qw & \SUMctrl{-6} & \SUMctrl{-5} & \SUMctrl{-4} & \SUMctrl{-3} & \SUMctrl{-2} & \SUMctrl{-1} & \Hgate & \SUMtarg{} & \SUMtarg{} & \SUMtarg{} & \targX{} & \qw & \qw & \qw & \gate{X} \\
+& \Hgate & \Vgate & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \SUMctrl{-7} & \SUMctrl{-6} & \SUMctrl{-5} & \SUMctrl{-4} & \SUMctrl{-3} & \SUMctrl{-2} & \SUMctrl{-1} & \Hgate & \SUMtarg{} & \SUMtarg{} & \targX{} & \qw & \qw & \gate{X} \\
+& \Hgate & \Vgate & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \SUMctrl{-8} & \SUMctrl{-7} & \SUMctrl{-6} & \SUMctrl{-5} & \SUMctrl{-4} & \SUMctrl{-3} & \SUMctrl{-2} & \SUMctrl{-1} & \Hgate & \SUMtarg{} & \targX{} & \qw & \gate{X} \\
+& \Hgate & \Vgate & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \qw & \SUMctrl{-9} & \SUMctrl{-8} & \SUMctrl{-7} & \SUMctrl{-6} & \SUMctrl{-5} & \SUMctrl{-4} & \SUMctrl{-3} & \SUMctrl{-2} & \SUMctrl{-1} & \Hgate & \targX{} & \gate{X} \\
+\end{quantikz}
+\end{center}
+
