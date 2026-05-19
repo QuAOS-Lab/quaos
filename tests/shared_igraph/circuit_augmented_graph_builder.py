@@ -1,7 +1,6 @@
 """Build a circuit-augmented graph from a Pauli Hamiltonian.
 
-This is only a graph-construction sandbox. It does not run the Clifford graph
-automorphism search. The flow is:
+This is only a graph-construction sandbox. The flow is:
 
 1. Build a small PauliSum model.
 2. Build the ordinary colored graph from the symplectic-product matrix.
