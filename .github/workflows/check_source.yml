@@ -4,6 +4,9 @@ on:
   pull_request:
     branches: [main, dev]
 
+permissions:
+  contents: read
+
 jobs:
   check-allowed-branches:
     runs-on: ubuntu-latest
