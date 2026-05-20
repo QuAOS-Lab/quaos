@@ -1375,8 +1375,7 @@ class PauliSum(PauliObject):
 
         F, h, qudit_indices, gate_dimension = find_map_to_target_pauli_sum(stabilizer_input, desired_stabilizer)
 
-        diagonalizing_gate = Gate("custom", F, h)
-        # gate = Gate.solve_from_target(stabilizer_input.tableau, desired_tableau)
+        diagonalizing_gate = Gate("custom", F.T, h)
 
         # Apply that circuit to the input stabilizer
         stabilizer_diagonalized = diagonalizing_gate.act(stabilizer_input, tuple(qudit_indices))

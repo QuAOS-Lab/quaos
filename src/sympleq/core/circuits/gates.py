@@ -91,57 +91,6 @@ class Gate(ABC):
 
         return _GenericGate("random", symplectic, phase_vector)
 
-    @classmethod
-    def solve_from_target(cls, input_tableau: TableauLike, target_tableau: TableauLike) -> Gate:
-        """
-        Find a Clifford gate that maps the input Pauli tableau to the target tableau.
-
-        Uses symplectic transvections to find a symplectic matrix F such that
-        input_tableau @ F = target_tableau (mod 2).
-
-        Parameters
-        ----------
-        input_tableau : np.ndarray
-            Input Pauli tableau of shape (m, 2n) where m is the number of Paulis
-            and n is the number of qudits.
-        target_tableau : np.ndarray
-            Target Pauli tableau of the same shape.
-
-        Returns
-        -------
-        Gate
-            A Clifford gate whose symplectic matrix performs the mapping.
-
-        Raises
-        ------
-        ValueError
-            If the tableaus have different shapes or are not mappable via Clifford.
-
-        Notes
-        -----
-        Currently only works for GF(2) (qubits). The input and target must have
-        matching symplectic product matrices for a Clifford mapping to exist.
-        """
-
-        input_tableau = np.asarray(input_tableau, dtype=int)
-        target_tableau = np.asarray(target_tableau, dtype=int)
-
-        if input_tableau.shape != target_tableau.shape:
-            raise ValueError(
-                f"Tableau shapes must match: {input_tableau.shape} vs {target_tableau.shape}"
-            )
-
-        if input_tableau.ndim == 1:
-            input_tableau = input_tableau.reshape(1, -1)
-            target_tableau = target_tableau.reshape(1, -1)
-
-        n_qudits = input_tableau.shape[1] // 2
-
-        symplectic = map_pauli_sum_to_target_tableau(input_tableau, target_tableau)
-        phase_vector = np.zeros(2 * n_qudits, dtype=int)
-
-        return _GenericGate("target", symplectic, phase_vector)
-
     @property
     def name(self) -> str:
         return self._name

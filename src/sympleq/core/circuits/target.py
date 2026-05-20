@@ -13,7 +13,21 @@ def find_map_to_target_pauli_sum(input_pauli: PauliSum, target_pauli: PauliSum) 
     """
     TODO: For efficiency improvement act only on target qudits
 
-    Find a gate that maps Pauli P to target Pauli.
+    Find a right-action symplectic that maps Pauli P to target Pauli.
+
+    Note
+    ----
+    Gate.act applies stored gate matrices as:
+
+        pauli.tableau @ gate.symplectic.T
+
+    Therefore, to build a Gate from the returned map, use:
+
+        gate = Gate("custom", F.T, h)
+
+    not:
+
+        gate = Gate("custom", F, h)
 
     Args:
         P (Pauli): The Pauli to be mapped.
