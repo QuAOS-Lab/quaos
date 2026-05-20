@@ -686,9 +686,6 @@ class PauliSum(PauliObject):
         if isinstance(A, PauliString):
             A = PauliSum.from_pauli_strings(A)
 
-        new_dimensions = np.concatenate((self.dimensions, A.dimensions))
-        new_lcm = np.lcm.reduce(new_dimensions)
-
         n1, n2 = self.n_qudits(), A.n_qudits()
         p1, p2 = self.n_paulis(), A.n_paulis()
 

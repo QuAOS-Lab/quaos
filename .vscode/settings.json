@@ -45,6 +45,19 @@
 
   // Python analysis and testing
   "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.diagnosticMode": "workspace",
+  "python.analysis.include": [
+    "**/src",
+    "**/tests",
+  ],
+  "python.analysis.exclude": [
+    "**/.github",
+    "**/.vscode",
+    "**/docs",
+    "**/scripts",
+    "**/venv",
+    "**/vcpkg",
+  ],
   "python.testing.pytestArgs": ["tests"],
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,

@@ -340,7 +340,8 @@ class TestGates():
 
     @pytest.mark.parametrize("d", [2, 3, 5])
     @pytest.mark.parametrize("gate", [GATES.H, GATES.H_inv, GATES.S, GATES.S_inv,
-                                      GATES.CX, GATES.CX_inv, GATES.SWAP, GATES.CZ])
+                                      GATES.CX, GATES.CX_inv, GATES.SWAP, GATES.CZ,
+                                      GATES.ZZPhase, GATES.ZZPhase_inv])
     def test_unitary_is_unitary(self, d: int, gate: Gate):
         """Test that all gate unitaries are actually unitary matrices."""
         U = gate.local_unitary(d).toarray()
@@ -469,6 +470,60 @@ class TestGates():
                 assert np.allclose(out_state, expected), (
                     f"CX(d={d}) failed for |{j},{k}⟩"
                 )
+
+    @pytest.mark.parametrize("d", [2, 3, 5])
+    def test_ZZPhase_unitary_inverse(self, d: int):
+        """ZZPhase @ ZZPhase_inv should be the identity."""
+        U = GATES.ZZPhase.local_unitary(d).toarray()
+        U_inv = GATES.ZZPhase_inv.local_unitary(d).toarray()
+        assert np.allclose(U @ U_inv, np.eye(d * d)), f"ZZPhase @ ZZPhase_inv != I for d={d}"
+        assert np.allclose(U_inv @ U, np.eye(d * d)), f"ZZPhase_inv @ ZZPhase != I for d={d}"
+
+    @pytest.mark.parametrize("d", [2, 3, 5])
+    @pytest.mark.parametrize("gate", [GATES.ZZPhase, GATES.ZZPhase_inv])
+    def test_ZZPhase_clifford_property(self, d: int, gate: Gate):
+        """U P U† should equal the symplectically-predicted Pauli up to a global phase."""
+        from sympleq.core.circuits.utils import pauli_unitary_qudit
+
+        U = gate.local_unitary(d).toarray()
+
+        for x0, x1, z0, z1 in [(1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)]:
+            P0 = pauli_unitary_qudit(d, x0, z0).toarray()
+            P1 = pauli_unitary_qudit(d, x1, z1).toarray()
+            P = np.kron(P0, P1)
+
+            P_conj = U @ P @ U.conj().T
+
+            v_out = (gate.symplectic @ np.array([x0, x1, z0, z1])) % d
+            x0_out, x1_out, z0_out, z1_out = v_out
+            P0_exp = pauli_unitary_qudit(d, x0_out, z0_out).toarray()
+            P1_exp = pauli_unitary_qudit(d, x1_out, z1_out).toarray()
+            P_exp = np.kron(P0_exp, P1_exp)
+
+            mask = np.abs(P_exp) > 0.1
+            ratio = P_conj[mask] / P_exp[mask]
+            assert np.allclose(np.abs(ratio), 1.0), (
+                f"{gate.name}(d={d}) Clifford property failed for {(x0, x1, z0, z1)}"
+            )
+
+    def test_ZZPhase_act_matches_unitary_qubits(self):
+        """For qubits, acting on each single-qudit basis Pauli via .act() should match the
+        unitary conjugation including the ±i phase captured in the exceptional_phase_vector."""
+        dims = [2, 2]
+        # X on qudit 0: expect phase +i  (encoded as phase_vector entry 1 -> phases units of lcm=2)
+        input_ps = PauliString.from_string("x1z0 x0z0", dimensions=dims)
+        out = GATES.ZZPhase.act(input_ps, (0, 1))
+        # symplectic image: X0 -> X0 Z0 Z1 with phase +i
+        expected_tableau = PauliString.from_string("x1z1 x0z1", dimensions=dims)
+        assert out.has_equal_tableau(expected_tableau), "ZZPhase X0 tableau mismatch"
+
+        # Inverse acts with -i on the same tableau image
+        out_inv = GATES.ZZPhase_inv.act(input_ps, (0, 1))
+        assert out_inv.has_equal_tableau(expected_tableau), "ZZPhase_inv X0 tableau mismatch"
+        # Phases should differ by a full i^2 = -1 (i.e. by the lcm=2 factor in phase units)
+        assert ((out.phases - out_inv.phases) % (2 * input_ps.lcm)).any(), (
+            "ZZPhase and ZZPhase_inv should produce different phases on X0"
+        )
 
     @pytest.mark.parametrize("d", [2, 3, 5])
     def test_pauli_gate_unitary(self, d: int):
