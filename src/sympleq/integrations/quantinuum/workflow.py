@@ -22,17 +22,7 @@ def _ok(msg: str):
 def default_backend_config(device_name: str) -> qnx.QuantinuumConfig:
     return qnx.QuantinuumConfig(
         device_name=device_name,
-        no_opt=True,
-        allow_implicit_swaps=False,
-        leakage_detection=False,
-        attempt_batching=False)
-
-
-def stabilizer_backend_config(device_name: str) -> qnx.QuantinuumConfig:
-    """Backend config selecting Quantinuum's stabilizer emulator (Clifford-only)."""
-    return qnx.QuantinuumConfig(
-        device_name=device_name,
-        simulator="stabilizer",
+        simulator="stabilizer",  # Clifford-only
         no_opt=True,
         allow_implicit_swaps=False,
         leakage_detection=False,
