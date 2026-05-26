@@ -1339,7 +1339,7 @@ class TestPaulis:
             # Ensure the state stabilizes all PauliStrings in the shuffled stabilizer
             for idx, phi in enumerate(phases):
 
-                phase = complex_phase_value(phi / 2, lcm)
+                phase = complex_phase_value(phi, lcm)
 
                 ps_test = stabilizer[[idx]].copy()
                 ps_test.phases[0] = 0
