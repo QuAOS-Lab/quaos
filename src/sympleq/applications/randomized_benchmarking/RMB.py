@@ -124,6 +124,8 @@ class RMB:
                 verbose,
             )
             self.save()
+
+            # Pick next config, i.e. pick next point in parameter space, based on the update_strategy
             config = self._update_strategy(self._data, config)
 
         RMB.print_data(self._data)
@@ -323,6 +325,9 @@ class RMB:
             rmb._data[config] = estimator
         return rmb
 
+    def plot(self, axes=None, show: bool = True, skip_incomplete: bool = True):
+        RMB.plot_data(self._data, axes, show, skip_incomplete)
+
     @classmethod
     def plot_data(cls, data: RMBData, axes=None, show: bool = True, skip_incomplete: bool = True):
         """Scatter fidelity per ``n_qubits``: x = depth, y = two-qudit ratio, color = fidelity.
@@ -418,47 +423,47 @@ def sympleq_pipeline() -> RMB:
     backend = SympleqBackend(noise_model, two_qubit_noise_model)
     rmb = RMB.default(rng).with_backend(backend)
 
-    for n_qubits in range(11, 15):
+    for n_qubits in range(2, 9):
+        if n_qubits != 5:
+            continue
         folder_name = f"synthetic-{n_qubits}q"
-        for depth in range(120 - 6 * n_qubits, 170 - 6 * n_qubits, 2):
-            initial_config = RMBConfig.default()\
-                .with_n_qubits(n_qubits)\
-                .with_depth(depth)\
-                .with_two_qubit_gate_ratio(0.2, 0.4)\
-                .with_scrambling_probability(0.5)\
-                .with_gates_set(tuple(NATIVE_GATES_SET))
-            generate_random_pytket_circuits(initial_config, 20, folder_name)
-        # data = backend.simulate_pytket_circuits(folder_name)
-        # rmb = RMB.default(rng).with_backend(backend)
-        # rmb.update(data)
-        # rmb.save(f"{folder_name}_data.json")
+        # for depth in range(120 - 6 * n_qubits, 170 - 6 * n_qubits, 2):
+        #     initial_config = RMBConfig.default()\
+        #         .with_n_qubits(n_qubits)\
+        #         .with_depth(depth)\
+        #         .with_two_qubit_gate_ratio(0.2, 0.4)\
+        #         .with_scrambling_probability(0.5)\
+        #         .with_gates_set(tuple(NATIVE_GATES_SET))
+        #     generate_random_pytket_circuits(initial_config, 20, folder_name)
+        data = backend.simulate_pytket_circuits(folder_name)
+        rmb.update(data)
+        rmb.save(f"{folder_name}_data.json")
         # _rmb = RMB.load(f"{folder_name}_data.json")
-        # rmb.update(_rmb._data)
 
     # data = backend.populate_from_recent_jobs()
+    rmb.save("sympleq_from_fetched.json")
     return rmb
 
 
 def quantinuum_pipeline() -> RMB:
     backend = QuantinuumBackend(device_name="H2-Emulator")
     rmb = RMB.default().with_backend(backend)
-    # data = backend.populate_from_recent_jobs(1000)
-    # rmb._data = data
-    # rmb.save("quantinuum_fetched.json")
-    rmb = RMB.load("quantinuum_fetched.json")
+    data = backend.populate_from_recent_jobs(1000)
+    rmb.update(data)
+    rmb.save("quantinuum_fetched.json")
     return rmb
 
 
 def filter_data(data: RMBData) -> RMBData:
-    merged_data = RMB.merge_close_configs(data, depth_bin=25, ratio_digits=1)
+    merged_data = RMB.merge_close_configs(data, depth_bin=20, ratio_digits=1)
     filtered_data: RMBData = {}
     for config, estimator in sorted(
             merged_data.items(),
             key=lambda item: (item[0].depth, item[0].min_two_qubit_gate_ratio)):
-        if config.n_qubits != 5:
-            continue
-        if config.depth >= 1000:
-            continue
+        # if config.n_qubits != 5:
+        #     continue
+        # if config.depth >= 1000:
+        #     continue
         if not (estimator.variance(True) <= 1e-1 and estimator._counts_tot > 10):
             continue
         filtered_data[config] = estimator
@@ -466,8 +471,14 @@ def filter_data(data: RMBData) -> RMBData:
 
 
 def compare():
+
+    # qrmb = quantinuum_pipeline()
+    # srmb = RMB.load("sympleq_from_fetched.json")
+    qrmb = RMB.load("quantinuum_fetched.json")
+    q_data = filter_data(qrmb._data)
+    print("Quantinuum jobs loaded.")
     srmb = sympleq_pipeline()
-    qrmb = quantinuum_pipeline()
+    print("Sympleq jobs loaded.")
     s_data = filter_data(srmb._data)
     q_data = filter_data(qrmb._data)
 
@@ -483,6 +494,33 @@ def compare():
 
 
 if __name__ == "__main__":
-    srmb = sympleq_pipeline()
-    RMB.plot_data(srmb._data, skip_incomplete=False)
+    # srmb = sympleq_pipeline()
+    # RMB.plot_data(srmb._data, skip_incomplete=False)
     # RMB.plot_data(qrmb._data, skip_incomplete=True)
+
+    # rmb = RMB.default().with_backend(QuantinuumBackend(device_name="H2-Emulator", batch_size=3))
+    # initial_config = RMBConfig.default()\
+    #     .with_n_qubits(5)\
+    #     .with_depth(120)\
+    #     .with_two_qubit_gate_ratio(0.4, 0.6)\
+    #     .with_scrambling_probability(0.5)\
+    #     .with_gates_set(tuple(NATIVE_GATES_SET))
+    # rmb.run(initial_config)
+    # compare()
+    noise_model = GenericNoise.from_paulis([0.000075, 0.000075, 0.000075])
+    two_qubit_noise_model = GenericNoise.from_paulis([0.0005, 0.0005, 0.0005])
+
+    backend = SympleqBackend(noise_model=noise_model,
+                             two_qubit_noise_model=two_qubit_noise_model)
+    rmb = RMB.default().with_backend(backend)
+
+    initial_config = RMBConfig.default()\
+        .with_n_qubits(5)\
+        .with_depth(120)\
+        .with_two_qubit_gate_ratio(0.4, 0.6)\
+        .with_scrambling_probability(0.5)\
+        .with_gates_set(tuple(NATIVE_GATES_SET))
+
+    rmb.run(initial_config)
+
+RMB.plot_data(rmb._data)

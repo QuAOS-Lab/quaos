@@ -12,8 +12,7 @@ def default_update_strategy(data: RMBData, current_config: RMBConfig) -> RMBConf
     Parameters
     ----------
     data : RMBData
-        Mapping from previously seen configurations to their
-        Bayesian estimators.
+        Mapping from previously seen configurations to their Bayesian estimators.
     current_config : RMBConfig
         Configuration that was just run (or about to be run).
 

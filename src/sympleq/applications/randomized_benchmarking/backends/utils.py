@@ -112,8 +112,8 @@ def generate_random_pytket_circuits(
         device_name: str = "H2-1LE") -> list[PytketCircuit]:
     folder = _RMB_DATA_DIR / folder_name
     folder.mkdir(parents=True, exist_ok=True)
-    setup(project_name)
     circuits = [to_pytket_circuit(config.random_circuit()) for _ in range(n_circuits)]
+    setup(project_name)
     backend_config = default_backend_config(device_name)
     p_circuits_ref = build_and_compile_circuits(circuits, backend_config)
 
