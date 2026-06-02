@@ -307,3 +307,12 @@ def get_remaining_quotas() -> dict[str, float | None]:
         else:
             remaining[q.name] = q.quota - q.usage
     return remaining
+
+
+def _cost(shot_count: int, one_qubit: int, two_qubits: int, measurements: int) -> float:
+    return round(5 + shot_count * (one_qubit + 10 * two_qubits + 5 * measurements) / 5000, 2)
+
+
+def pytket_simulation_cost(circuit: PytketCircuit, shot_count: int = 1) -> float:
+    # Assume that num of measurements is circuit.n_qubits. If we have intermediate measurements this is not true.
+    return _cost(shot_count, circuit.n_1qb_gates(), circuit.n_2qb_gates(), circuit.n_qubits)
