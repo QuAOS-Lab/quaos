@@ -31,11 +31,12 @@ class QuantinuumBackend(RMBBackend):
 
     type = "quantinuum"
 
-    def __init__(self, device_name: str = "H2-2E", n_shots: int = 1, project_name: str = "Benchmark") -> None:
+    def __init__(self, device_name: str = "H2-2E", n_shots: int = 1,
+                 project_name: str = "Benchmark", batch_size: int = 11) -> None:
         self.device_name = device_name
         self.n_shots = n_shots
         self.project_name = project_name
-        self.batch_size = 11
+        self.batch_size = batch_size
 
     def fidelity_estimation(self, config: RMBConfig, rng: RNGGenerator) -> list[bool]:
         from sympleq.integrations.quantinuum.workflow import run_circuits_on_device

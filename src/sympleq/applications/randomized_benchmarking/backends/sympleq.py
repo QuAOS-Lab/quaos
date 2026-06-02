@@ -94,7 +94,7 @@ class SympleqBackend(RMBBackend):
             if self.two_qubit_noise_model is not None:
                 circuit = circuit.with_two_qudit_noise(self.two_qubit_noise_model)
 
-            for _ in range(11):
+            for _ in range(7):
                 final_state = circuit.act(initial_state)
                 pairs.append((p_circuit, final_state == initial_state))
 
