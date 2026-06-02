@@ -127,6 +127,22 @@ class MonotoneFidelitySurface:
         )
 
 
+def fidelity_colormap():
+    """
+    Colormap with the fidelity=0.5 midpoint shown in green.
+    """
+    from matplotlib.colors import LinearSegmentedColormap
+
+    return LinearSegmentedColormap.from_list(
+        "fidelity_red_green_purple",
+        [
+            (0.0, "#b2182b"),
+            (0.5, "#1a9850"),
+            (1.0, "#542788"),
+        ],
+    )
+
+
 def fit_monotone_surface_from_arrays(
     points: np.ndarray,
     y: np.ndarray,
@@ -842,7 +858,6 @@ def plot_monotone_fidelity_surface_contours(
     axis_padding: float = 0.05,
 ) -> list:
     import matplotlib.pyplot as plt
-    from matplotlib.colors import LinearSegmentedColormap
 
     groups = sorted(grouped_by_n_qubits(data).items())
     if not groups:
@@ -850,10 +865,7 @@ def plot_monotone_fidelity_surface_contours(
 
     _, axes_arr = plt.subplots(1, len(groups), figsize=(5 * len(groups), 4), squeeze=False)
     axes = list(axes_arr[0])
-    cmap = LinearSegmentedColormap.from_list(
-        "darkred_to_lime",
-        ["darkred", "red", "orange", "lime", "green"],
-    )
+    cmap = fidelity_colormap()
 
     depth_span = settings.depth_bounds[1] - settings.depth_bounds[0]
     ratio_span = settings.ratio_bounds[1] - settings.ratio_bounds[0]

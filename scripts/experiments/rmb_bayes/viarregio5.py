@@ -50,12 +50,16 @@ class ContourFirstExperimentConfig(MonotoneBoundaryExperimentConfig):
     trace_depth_search_fraction: float = 0.12
     trace_correction_steps: int = 4
     trace_shots: int = 2
+    trace_decision_min_shots: int = 4
+    crossing_confirm_candidates: int = 3
     trace_accept_probability_width: float = 0.12
     trace_directions: tuple[int, ...] = (1,)
     model_projection_after_fit: bool = True
     refine_after_trace: bool = True
+    trace_anchor_min_shots: int = 6
     refinement_shots: int = 2
     refinement_boundary_width: float = 0.15
+    refinement_empirical_boundary_width: float = 0.20
     save_path: str | Path | None = "viarregio5_boundary.json"
 
 
@@ -150,6 +154,43 @@ def probe_depth(
     return config, measured_probability(data, config)
 
 
+def confirm_trace_candidate_if_needed(
+    *,
+    backend,
+    rng: RNGGenerator,
+    data: RMBData,
+    config: RMBConfig,
+    probability: float,
+    settings: ContourFirstExperimentConfig,
+    budget: BudgetState,
+) -> float:
+    """
+    Re-measure an apparently near-boundary trace candidate before accepting it.
+    """
+    if abs(probability - 0.5) > settings.trace_accept_probability_width:
+        return probability
+    if config not in data:
+        return probability
+
+    target = min(settings.trace_decision_min_shots, settings.max_shots_per_config)
+    current_runs = data[config].num_runs()
+    if current_runs >= target:
+        return probability
+
+    additional_shots = target - current_runs
+    spend_config(
+        backend=backend,
+        rng=rng,
+        data=data,
+        config=config,
+        requested_shots=additional_shots,
+        budget=budget,
+        settings=settings,
+    )
+    updated_probability = measured_probability(data, config)
+    return probability if updated_probability is None else updated_probability
+
+
 def find_depth_crossing_at_ratio(
     *,
     backend,
@@ -198,6 +239,7 @@ def find_depth_crossing_at_ratio(
     )
     if low_p is None or high_p is None:
         return None
+    candidates: list[tuple[RMBConfig, float]] = [(low_config, low_p), (high_config, high_p)]
 
     if local and not (low_p >= 0.5 and high_p <= 0.5):
         expand = settings.trace_depth_search_fraction * (d_max - d_min)
@@ -217,6 +259,8 @@ def find_depth_crossing_at_ratio(
                     budget=budget,
                     settings=settings,
                 )
+                if low_p is not None:
+                    candidates.append((low_config, low_p))
             if high_p > 0.5:
                 high_depth = min(float(d_max), high_depth + expand)
                 high_config, high_p = probe_depth(
@@ -230,6 +274,8 @@ def find_depth_crossing_at_ratio(
                     budget=budget,
                     settings=settings,
                 )
+                if high_p is not None:
+                    candidates.append((high_config, high_p))
             if low_p is not None and high_p is not None and low_p >= 0.5 and high_p <= 0.5:
                 break
             if low_depth <= d_min and high_depth >= d_max:
@@ -261,6 +307,7 @@ def find_depth_crossing_at_ratio(
         )
         if mid_p is None:
             break
+        candidates.append((mid_config, mid_p))
         error = abs(mid_p - 0.5)
         if error < best_error:
             best_error = error
@@ -274,6 +321,28 @@ def find_depth_crossing_at_ratio(
             high_config = mid_config
             high_p = mid_p
 
+    confirmed_config = best_config
+    confirmed_error = best_error
+    ranked_candidates = sorted(
+        candidates,
+        key=lambda item: abs(item[1] - 0.5),
+    )[: max(1, settings.crossing_confirm_candidates)]
+    for candidate_config, probability in ranked_candidates:
+        confirmed_probability = confirm_trace_candidate_if_needed(
+            backend=backend,
+            rng=rng,
+            data=data,
+            config=candidate_config,
+            probability=probability,
+            settings=settings,
+            budget=budget,
+        )
+        error = abs(confirmed_probability - 0.5)
+        if error < confirmed_error:
+            confirmed_config = candidate_config
+            confirmed_error = error
+
+    best_config = confirmed_config
     return best_config
 
 
@@ -378,6 +447,15 @@ def trace_projected_anchor(
     )
     if best_p is None:
         return None
+    best_p = confirm_trace_candidate_if_needed(
+        backend=backend,
+        rng=rng,
+        data=data,
+        config=best_config,
+        probability=best_p,
+        settings=settings,
+        budget=budget,
+    )
 
     best_error = abs(best_p - 0.5)
     if best_error <= settings.trace_accept_probability_width:
@@ -408,6 +486,15 @@ def trace_projected_anchor(
         )
         if p is None:
             break
+        p = confirm_trace_candidate_if_needed(
+            backend=backend,
+            rng=rng,
+            data=data,
+            config=candidate,
+            probability=p,
+            settings=settings,
+            budget=budget,
+        )
         error = abs(p - 0.5)
         if error < best_error:
             best_config = candidate
@@ -466,6 +553,10 @@ def refinement_score(
 
     variance = fidelity_variance(estimator)
     variance_score = min(1.0, variance / (1.0 / 12.0))
+    mean = fidelity_mean(estimator)
+    empirical_boundary_score = np.exp(
+        -((abs(mean - 0.5) / settings.refinement_empirical_boundary_width) ** 2)
+    )
     try:
         surface = fit_monotone_fidelity_surface(data, settings)
         p_model = float(surface.probability(np.array([[
@@ -473,9 +564,10 @@ def refinement_score(
             float(config.min_two_qubit_gate_ratio),
         ]]))[0])
     except (RuntimeError, ValueError):
-        p_model = fidelity_mean(estimator)
+        p_model = mean
 
-    boundary_score = np.exp(-((abs(p_model - 0.5) / settings.refinement_boundary_width) ** 2))
+    model_boundary_score = np.exp(-((abs(p_model - 0.5) / settings.refinement_boundary_width) ** 2))
+    boundary_score = max(model_boundary_score, empirical_boundary_score)
     return float(variance_score * boundary_score)
 
 
@@ -500,12 +592,34 @@ def refine_uncertain_boundary_points(
         if not measured_configs:
             break
 
-        best_config = max(
-            measured_configs,
-            key=lambda config: refinement_score(config, data, settings),
+        ranked_configs = sorted(
+            (
+                (refinement_score(config, data, settings), config)
+                for config in measured_configs
+            ),
+            key=lambda item: item[0],
+            reverse=True,
         )
-        best_score = refinement_score(best_config, data, settings)
-        if best_score <= 0.0:
+
+        selected_config = None
+        selected_shots = 0
+        for score, config in ranked_configs:
+            if score <= 0.0:
+                break
+            remaining_for_config = settings.max_shots_per_config - data[config].num_runs()
+            requested_shots = min(settings.refinement_shots, remaining_for_config)
+            affordable_shots = affordable_shot_count(
+                config=config,
+                requested_shots=requested_shots,
+                remaining_hqc=budget.remaining_hqc,
+                settings=settings,
+            )
+            if affordable_shots > 0:
+                selected_config = config
+                selected_shots = affordable_shots
+                break
+
+        if selected_config is None:
             break
 
         before = total_measurements(data)
@@ -513,8 +627,8 @@ def refine_uncertain_boundary_points(
             backend=backend,
             rng=rng,
             data=data,
-            config=best_config,
-            requested_shots=settings.refinement_shots,
+            config=selected_config,
+            requested_shots=selected_shots,
             budget=budget,
             settings=settings,
         )
@@ -523,6 +637,83 @@ def refine_uncertain_boundary_points(
         refinements += 1
 
     return refinements
+
+
+def confirm_traced_anchors(
+    *,
+    backend,
+    rng: RNGGenerator,
+    data: RMBData,
+    anchors: list[RMBConfig],
+    settings: ContourFirstExperimentConfig,
+    budget: BudgetState,
+) -> int:
+    """
+    Revisit traced contour anchors until each has a minimum repeat count.
+    """
+    unique_anchors = []
+    seen = set()
+    for anchor in anchors:
+        if anchor in seen:
+            continue
+        seen.add(anchor)
+        unique_anchors.append(anchor)
+
+    confirmations = 0
+    while budget.can_spend():
+        candidates = [
+            anchor
+            for anchor in unique_anchors
+            if anchor in data
+            and data[anchor].num_runs() < min(
+                settings.trace_anchor_min_shots,
+                settings.max_shots_per_config,
+            )
+        ]
+        if not candidates:
+            break
+
+        candidates.sort(
+            key=lambda config: (
+                data[config].num_runs(),
+                -fidelity_variance(data[config]),
+            )
+        )
+
+        selected_config = None
+        selected_shots = 0
+        for config in candidates:
+            target = min(settings.trace_anchor_min_shots, settings.max_shots_per_config)
+            remaining_to_target = target - data[config].num_runs()
+            requested_shots = min(settings.refinement_shots, remaining_to_target)
+            affordable_shots = affordable_shot_count(
+                config=config,
+                requested_shots=requested_shots,
+                remaining_hqc=budget.remaining_hqc,
+                settings=settings,
+            )
+            if affordable_shots > 0:
+                selected_config = config
+                selected_shots = affordable_shots
+                break
+
+        if selected_config is None:
+            break
+
+        spent = spend_config(
+            backend=backend,
+            rng=rng,
+            data=data,
+            config=selected_config,
+            requested_shots=selected_shots,
+            budget=budget,
+            settings=settings,
+        )
+        if spent <= 0:
+            break
+        confirmations += 1
+
+    return confirmations
 
 
 def estimate_boundary(settings: ContourFirstExperimentConfig) -> RMB:
@@ -540,6 +731,7 @@ def estimate_boundary(settings: ContourFirstExperimentConfig) -> RMB:
     )
     stop_reason = "budget not exhausted"
     batch_count = 0
+    traced_anchors: list[RMBConfig] = []
 
     for n_qubits in settings.n_qubits_values:
         if not budget.can_spend():
@@ -572,6 +764,7 @@ def estimate_boundary(settings: ContourFirstExperimentConfig) -> RMB:
             settings=settings,
             budget=budget,
         )
+        traced_anchors.extend(anchors)
         batch_count += max(0, len(anchors) - 1)
         if settings.verbose:
             print(
@@ -583,17 +776,35 @@ def estimate_boundary(settings: ContourFirstExperimentConfig) -> RMB:
 
     refinements = 0
     if settings.refine_after_trace and budget.can_spend():
-        refinements = refine_uncertain_boundary_points(
+        confirmations = confirm_traced_anchors(
+            backend=backend,
+            rng=rng,
+            data=data,
+            anchors=traced_anchors,
+            settings=settings,
+            budget=budget,
+        )
+        refinements += confirmations
+        batch_count += confirmations
+        if confirmations > 0 and settings.verbose:
+            print(
+                f"\nTrace anchor confirmation complete: {confirmations} extra circuit executions, "
+                f"measurements {total_measurements(data)} / {settings.measurement_budget}."
+            )
+            print_fit_reports(data, settings)
+
+        extra_refinements = refine_uncertain_boundary_points(
             backend=backend,
             rng=rng,
             data=data,
             settings=settings,
             budget=budget,
         )
-        batch_count += refinements
-        if refinements > 0 and settings.verbose:
+        refinements += extra_refinements
+        batch_count += extra_refinements
+        if extra_refinements > 0 and settings.verbose:
             print(
-                f"\nRefinement complete: {refinements} extra circuit executions, "
+                f"\nRefinement complete: {extra_refinements} extra circuit executions, "
                 f"measurements {total_measurements(data)} / {settings.measurement_budget}."
             )
             print_fit_reports(data, settings)
@@ -636,7 +847,7 @@ if __name__ == "__main__":
     settings = ContourFirstExperimentConfig(
         measurement_budget=1000,
         hqc_budget=200.0,
-        n_qubits_values=(10,),
+        n_qubits_values=(20,),
         depth_bounds=(4, 300),
         ratio_bounds=(0.08, 0.8),
         random_elimination=0.1,
@@ -663,9 +874,12 @@ if __name__ == "__main__":
         trace_depth_search_fraction=0.06,
         trace_correction_steps=2,
         trace_shots=2,
+        trace_decision_min_shots=4,
+        crossing_confirm_candidates=3,
         trace_accept_probability_width=0.12,
         trace_directions=(1,),
         refine_after_trace=True,
+        trace_anchor_min_shots=6,
         refinement_shots=2,
         refinement_boundary_width=0.15,
         hqc_cost_informed_acquisition=True,
