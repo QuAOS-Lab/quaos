@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Generator, overload
+from typing import TYPE_CHECKING, Generator, overload
 import json
 import numpy as np
 import scipy.sparse as sp
@@ -8,7 +8,8 @@ from pathlib import Path
 from collections import defaultdict
 import warnings
 
-from sympleq.core.noise.noise_model import NoiseModel
+if TYPE_CHECKING:
+    from sympleq.core.noise.noise_model import NoiseModel
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis._typing import TableauType, DimensionsLike, DimensionsType, PhasesType, HilbertOperator
 
@@ -101,7 +102,7 @@ class Circuit:
     @classmethod
     def from_random(cls, n_gates: int,
                     dimensions: DimensionsLike,
-                    gates_set: tuple[Gate] | list[Gate] | set[Gate] | None = None,
+                    gates_set: tuple[Gate, ...] | list[Gate] | set[Gate] | None = None,
                     two_qudit_gate_ratio: float = 0.3,
                     rng: RNGGenerator | None = None) -> Circuit:
         """
@@ -113,7 +114,7 @@ class Circuit:
             Number of gates in the circuit.
         dimensions : DimensionsLike
             The dimension of each qudit.
-        gates_set : tuple[Gate] | list[Gate] | set[Gate]
+        gates_set : tuple[Gate, ...] | list[Gate] | set[Gate]
             The set of gates from which to draw.
         two_qudit_gate_ratio : float
             Probability of choosing a two-qudit gate vs single-qudit gate.
@@ -245,6 +246,117 @@ class Circuit:
         return C
 
     @classmethod
+    def from_depth(cls,
+                   depth: int,
+                   dimensions: DimensionsLike,
+                   gates_set: tuple[Gate, ...] | list[Gate] | set[Gate] | None = None,
+                   two_qudit_gate_ratio: float = 0.3,
+                   rng: RNGGenerator | None = None) -> Circuit:
+        """
+        Creates a random circuit with the given depth. Similar to from_random, but the circuit
+        is created with layers of gates, acting on each qudit.
+
+        Parameters
+        ----------
+        depth : int
+            Number of gates per qudit in the circuit.
+        dimensions : DimensionsLike
+            The dimension of each qudit.
+        gates_set : tuple[Gate, ...] | list[Gate] | set[Gate] | None, default None
+            The set of gates from which to draw. If ``None`` a default gate set is used.
+        two_qudit_gate_ratio : float, default 0.3
+            Probability of choosing a two-qudit gate vs single-qudit gate.
+        rng : numpy.random.Generator or None, default None
+            Random number generator. If ``None``, a default generator is used.
+
+        Returns
+        -------
+        Circuit
+            A new random Circuit.
+        """
+
+        if gates_set is None:
+            single_qudit_gates: list[Gate] = [GATES.H, GATES.S]
+            two_qudit_gates: list[Gate] = [GATES.CX, GATES.CZ, GATES.SWAP]
+        elif isinstance(gates_set, (tuple, list, set)):
+            single_qudit_gates = [gate for gate in gates_set if gate.n_qudits == 1]
+            two_qudit_gates = [gate for gate in gates_set if gate.n_qudits == 2]
+            if any([gate.n_qudits > 2 for gate in gates_set]):
+                warnings.warn("Only single qudit and 2-qudits gates are used to generate the circuit.")
+        else:
+            raise ValueError("Invalid gates_set type.")
+
+        if two_qudit_gate_ratio < 0.0 or two_qudit_gate_ratio > 1.0:
+            raise ValueError(
+                f"Invalid two_qudit_gate_ratio, it should be between 0 and 1 (got {two_qudit_gate_ratio}).")
+
+        if rng is None:
+            rng = default_rng()
+
+        dimensions = np.asarray(dimensions, dtype=int)
+        # generate list of lists of indexes for each dimension
+        groups: dict[int, list[int]] = defaultdict(list)
+        for i, val in enumerate(dimensions):
+            groups[val].append(i)
+        two_qudits_gates_index_sets = [v for v in groups.values() if len(v) >= 2]
+
+        n_qudits = len(dimensions)
+        num_gates = n_qudits * depth
+        # Divide by two since each gate applies to 2 qudits
+        num_two_qudits_gates = int(two_qudit_gate_ratio * num_gates) // 2
+
+        # First assign only 1-qudit gates
+        layers: list[dict[tuple[int, ...], Gate]] = []
+        for _ in range(depth):
+            layer = {}
+
+            for q in range(n_qudits):
+                gate = single_qudit_gates[rng.integers(0, len(single_qudit_gates))]
+                layer[(q,)] = gate
+            layers.append(layer)
+
+        # Distribute num_two_qudits_gates over depth layers randomly,
+        # with max max_two_qudits_gates_per_layer per layer.
+        if num_two_qudits_gates > 0 and two_qudit_gates:
+            # available_qudits is a list of set_idxs (one per layer). Each element is a list of qudit indices,
+            # indicating which qudits can be combined in a 2-qudit gate.
+            available_qudits: list[list[list[int]]] = [[list(s) for s in two_qudits_gates_index_sets]
+                                                       for _ in range(depth)]
+            for _ in range(num_two_qudits_gates):
+                layer_choices = [i for i in range(depth) if available_qudits[i]]
+                if not layer_choices:
+                    warnings.warn("Could not satisfy the required number of 2-qudit gates.")
+                    break
+                layer_idx = int(rng.choice(layer_choices))
+                layer = layers[layer_idx]
+                # By construction, len(qudits_set) >= 2
+                qudits_set_idx = int(rng.choice(range(len(available_qudits[layer_idx]))))
+                qudits_set = available_qudits[layer_idx][qudits_set_idx]
+                assert len(qudits_set) >= 2
+                indices = tuple(int(idx) for idx in rng.choice(qudits_set, 2, replace=False))
+
+                # Remove single qudit gates assigned for the qudits.
+                for idx in indices:
+                    layer.pop((idx,))
+                    available_qudits[layer_idx][qudits_set_idx].remove(idx)
+
+                # If after assigning 2 qudits from the set, the set is too small to assign more,
+                # remove it from available_qudits[layer_idx].
+                if len(available_qudits[layer_idx][qudits_set_idx]) < 2:
+                    available_qudits[layer_idx].pop(qudits_set_idx)
+
+                gate = two_qudit_gates[rng.integers(0, len(two_qudit_gates))]
+                layer[indices] = gate
+
+        gates = [g for layer in layers for g in layer.values()]
+        qudit_indices = [idxs for layer in layers for idxs in layer.keys()]
+
+        C = cls(dimensions, gates, qudit_indices)
+        C._sanity_check()
+
+        return C
+
+    @classmethod
     def from_string(cls, s: str) -> Circuit:
         """
         Create a Circuit from a JSON string.
@@ -287,6 +399,7 @@ class Circuit:
         qudit_indices = []
         noise_model_per_gate = []
 
+        from sympleq.core.noise.noise_model import NoiseModel
         for gate_spec in gate_data:
             gate_name = gate_spec[0]
             indices = tuple(gate_spec[1])
@@ -343,6 +456,7 @@ class Circuit:
             This circuit instance (for method chaining).
         """
 
+        from sympleq.core.noise.noise_model import NoiseModel
         if isinstance(noise_model, NoiseModel):
             self._noise_model_per_gate = [noise_model] * self.n_gates()
         elif isinstance(noise_model, list):
@@ -353,6 +467,46 @@ class Circuit:
         else:
             raise ValueError("Invalid noise input: must be either a NoiseModel (set global noise) or \
                              a list of noise models with length equal to the number of gates.")
+
+        return self
+
+    def with_two_qudit_noise(self, noise_model: NoiseModel | list[NoiseModel | None]) -> Circuit:
+        """
+        Attach a noise model to all two-qudits gates and return self for chaining.
+
+        Parameters
+        ----------
+        noise_model : NoiseModel | list[NoiseModel | None]
+            A single noise model applied after every two-qudits gate, or a list of
+            per-two-qudit-gate noise models (with ``None`` for noiseless gates).
+            A list must have length equal to the number of two-qudit gates in
+            the circuit (single-qudit gates are skipped).
+
+        Returns
+        -------
+        Circuit
+            This circuit instance (for method chaining).
+        """
+
+        from sympleq.core.noise.noise_model import NoiseModel
+        if isinstance(noise_model, NoiseModel):
+            for i, gate in enumerate(self._gates):
+                if gate.n_qudits == 2:
+                    self._noise_model_per_gate[i] = noise_model
+        elif isinstance(noise_model, list):
+            n_two_qudit_gates = len([g for g in self._gates if g.n_qudits == 2])
+            if len(noise_model) != n_two_qudit_gates:
+                raise ValueError(f"Invalid noise input. A list of noise models should have exactly "
+                                 f"one element per two-qudit gate "
+                                 f"(got {len(noise_model)}, expected {n_two_qudit_gates}).")
+            j = 0
+            for i, gate in enumerate(self._gates):
+                if gate.n_qudits == 2:
+                    self._noise_model_per_gate[i] = noise_model[j]
+                    j += 1
+        else:
+            raise ValueError("Invalid noise input: must be either a NoiseModel (set global noise) or \
+                             a list of noise models with length equal to the number of two-qudit gates.")
 
         return self
 
@@ -370,6 +524,23 @@ class Circuit:
             self._noise_model_per_gate = [None] * self.n_gates()
         else:
             self = self.with_noise(noise_model)
+
+    def set_two_qudit_noise(self, noise_model: NoiseModel | None | list[NoiseModel | None]):
+        """
+        Attach a noise model to all two-qudits gates of this circuit.
+
+        Parameters
+        ----------
+        noise_model : NoiseModel | None | list[NoiseModel | None]
+            A single noise model applied after every two-qudits gate, ``None`` to
+            remove noise from two-qudits gates, or a list of per-gate noise models.
+        """
+        if noise_model is None:
+            for i, gate in enumerate(self._gates):
+                if gate.n_qudits == 2:
+                    self._noise_model_per_gate[i] = None
+        else:
+            self = self.with_two_qudit_noise(noise_model)
 
     def _sanity_check(self):
         """

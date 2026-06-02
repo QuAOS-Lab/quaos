@@ -4,7 +4,7 @@ from pytket.circuit import Circuit as PytketCircuit, OpType
 
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.circuits.gates import GATES
-from sympleq.integrations.quantinuum.utils import to_pytket_circuit, from_pytket_circuit
+from sympleq.integrations.quantinuum.utils import to_pytket_circuit, from_pytket_circuit, NATIVE_GATES_SET
 
 
 class TestToPytketCircuit:
@@ -103,22 +103,49 @@ class TestToPytketCircuit:
         assert commands[0].op.type == OpType.H
         assert commands[1].op.type == OpType.CX
 
-    def test_zzphase_gates(self):
-        """GATES.ZZPhase maps to OpType.ZZPhase with angle +0.5; inverse with -0.5."""
+    def test_ZZMax_gates(self):
+        """GATES.ZZMax → OpType.ZZMax (fixed-angle); GATES.ZZMax_inv → OpType.ZZPhase(-0.5)."""
         circuit = Circuit.from_tuples([2, 2], [
-            (GATES.ZZPhase, 0, 1),
-            (GATES.ZZPhase_inv, 0, 1),
+            (GATES.ZZMax, 0, 1),
+            (GATES.ZZMax_inv, 0, 1),
         ])
         tk = to_pytket_circuit(circuit)
 
         commands = tk.get_commands()
         assert len(commands) == 2
-        assert commands[0].op.type == OpType.ZZPhase
-        assert np.isclose(float(commands[0].op.params[0]), 0.5)
+        assert commands[0].op.type == OpType.ZZMax
         assert commands[1].op.type == OpType.ZZPhase
-        # pytket normalizes -0.5 modulo the gate's 4-half-turn period, so we accept either form.
-        inv_angle = float(commands[1].op.params[0]) % 4.0
-        assert np.isclose(inv_angle, 3.5)
+        # pytket normalises -0.5 mod 4.0
+        inv_theta = float(commands[1].op.params[0]) % 4.0
+        assert np.isclose(inv_theta, 3.5)
+
+    def test_V_gates(self):
+        """GATES.V maps to PhasedX(0.5, 0); GATES.V_inv to PhasedX(-0.5, 0)."""
+        circuit = Circuit.from_tuples([2], [
+            (GATES.V, 0),
+            (GATES.V_inv, 0),
+        ])
+        tk = to_pytket_circuit(circuit)
+
+        commands = tk.get_commands()
+        assert len(commands) == 2
+        assert commands[0].op.type == OpType.PhasedX
+        assert np.isclose(float(commands[0].op.params[0]), 0.5)
+        assert np.isclose(float(commands[0].op.params[1]), 0.0)
+        assert commands[1].op.type == OpType.PhasedX
+        # pytket normalises -0.5 mod 4.0
+        inv_theta = float(commands[1].op.params[0]) % 4.0
+        assert np.isclose(inv_theta, 3.5)
+        assert np.isclose(float(commands[1].op.params[1]), 0.0)
+
+    def test_NATIVE_GATES_SET_all_convert(self):
+        """Every gate in NATIVE_GATES_SET should convert to pytket without error."""
+        for gate in NATIVE_GATES_SET:
+            qudits = tuple(range(gate.n_qudits))
+            dims = [2] * max(2, gate.n_qudits)
+            circuit = Circuit.from_tuples(dims, [(gate, *qudits)])
+            tk = to_pytket_circuit(circuit)
+            assert len(tk.get_commands()) == 1, f"{gate.name} produced != 1 native op"
 
 
 class TestFromPytketCircuit:
@@ -186,19 +213,19 @@ class TestFromPytketCircuit:
         with pytest.raises(ValueError, match="No SympleQ mapping"):
             from_pytket_circuit(tk)
 
-    def test_zzphase_gates(self):
-        """ZZPhase(±0.5) should map to GATES.ZZPhase and GATES.ZZPhase_inv."""
+    def test_ZZMax_gates(self):
+        """OpType.ZZMax (no params) maps to GATES.ZZMax; ZZPhase(-0.5) maps to GATES.ZZMax_inv."""
         tk = PytketCircuit(2)
-        tk.add_gate(OpType.ZZPhase, [0.5], [0, 1])
+        tk.add_gate(OpType.ZZMax, [0, 1])
         tk.add_gate(OpType.ZZPhase, [-0.5], [0, 1])
 
         circuit = from_pytket_circuit(tk)
 
         assert circuit.n_gates() == 2
-        assert circuit.gates[0] is GATES.ZZPhase
-        assert circuit.gates[1] is GATES.ZZPhase_inv
+        assert circuit.gates[0] is GATES.ZZMax
+        assert circuit.gates[1] is GATES.ZZMax_inv
 
-    def test_zzphase_non_clifford_angle_raises(self):
+    def test_ZZPhase_non_clifford_angle_raises(self):
         """Non-Clifford ZZPhase angles should raise ValueError."""
         tk = PytketCircuit(2)
         tk.add_gate(OpType.ZZPhase, [0.25], [0, 1])
@@ -244,17 +271,17 @@ class TestRoundtrip:
             assert oc.op.type == rc.op.type
             assert [q.index[0] for q in oc.qubits] == [q.index[0] for q in rc.qubits]
 
-    def test_zzphase_roundtrip(self):
-        """SympleQ -> pytket -> SympleQ roundtrip preserves ZZPhase and its inverse."""
+    def test_ZZMax_roundtrip(self):
+        """SympleQ -> pytket -> SympleQ roundtrip preserves ZZMax and its inverse."""
         original = Circuit.from_tuples([2, 2], [
-            (GATES.ZZPhase, 0, 1),
-            (GATES.ZZPhase_inv, 0, 1),
+            (GATES.ZZMax, 0, 1),
+            (GATES.ZZMax_inv, 0, 1),
         ])
         restored = from_pytket_circuit(to_pytket_circuit(original))
 
         assert restored.n_gates() == 2
-        assert restored.gates[0] is GATES.ZZPhase
-        assert restored.gates[1] is GATES.ZZPhase_inv
+        assert restored.gates[0] is GATES.ZZMax
+        assert restored.gates[1] is GATES.ZZMax_inv
 
     def test_random_circuit_roundtrip(self):
         """Roundtrip random qubit circuits preserves gate count and gate set."""
