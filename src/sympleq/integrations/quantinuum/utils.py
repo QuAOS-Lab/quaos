@@ -148,6 +148,9 @@ def to_pytket_circuit(circuit: Circuit) -> PytketCircuit:
             tk_circuit.add_gate(op_type, params, list(qudits))
         else:
             tk_circuit.add_gate(op_type, list(qudits))
+
+    tk_circuit.measure_all()
+
     from pytket.passes import AutoRebase, RemovePhaseOps, DecomposeBoxes, FlattenRelabelRegistersPass
     DecomposeBoxes().apply(tk_circuit)
     AutoRebase({OpType.PhasedX, OpType.Rz, OpType.ZZPhase}).apply(tk_circuit)

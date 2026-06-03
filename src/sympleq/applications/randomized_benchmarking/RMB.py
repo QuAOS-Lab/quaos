@@ -6,7 +6,6 @@ import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 import datetime
 
-from sympleq.applications.randomized_benchmarking.backends.utils import generate_random_pytket_circuits
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
 from sympleq.applications.randomized_benchmarking.backends import RMBBackend, SympleqBackend, QuantinuumBackend
 from sympleq.applications.randomized_benchmarking.backends.base import backend_from_dict
@@ -495,32 +494,13 @@ def compare():
 
 if __name__ == "__main__":
     # srmb = sympleq_pipeline()
-    # RMB.plot_data(srmb._data, skip_incomplete=False)
-    # RMB.plot_data(qrmb._data, skip_incomplete=True)
 
-    # rmb = RMB.default().with_backend(QuantinuumBackend(device_name="H2-Emulator", batch_size=3))
-    # initial_config = RMBConfig.default()\
-    #     .with_n_qubits(5)\
-    #     .with_depth(120)\
-    #     .with_two_qubit_gate_ratio(0.4, 0.6)\
-    #     .with_scrambling_probability(0.5)\
-    #     .with_gates_set(tuple(NATIVE_GATES_SET))
-    # rmb.run(initial_config)
-    # compare()
-    noise_model = GenericNoise.from_paulis([0.000075, 0.000075, 0.000075])
-    two_qubit_noise_model = GenericNoise.from_paulis([0.0005, 0.0005, 0.0005])
-
-    backend = SympleqBackend(noise_model=noise_model,
-                             two_qubit_noise_model=two_qubit_noise_model)
-    rmb = RMB.default().with_backend(backend)
-
+    rmb = RMB.default().with_backend(QuantinuumBackend(device_name="H2-Emulator", batch_size=1))
     initial_config = RMBConfig.default()\
-        .with_n_qubits(5)\
-        .with_depth(120)\
+        .with_n_qubits(2)\
+        .with_depth(30)\
         .with_two_qubit_gate_ratio(0.4, 0.6)\
         .with_scrambling_probability(0.5)\
         .with_gates_set(tuple(NATIVE_GATES_SET))
 
     rmb.run(initial_config)
-
-RMB.plot_data(rmb._data)
