@@ -77,20 +77,32 @@ def make_settings(
         ray_probe_shots=2,
         ray_bisection_steps=5,
         ray_bisection_shots=2,
+        crossing_decision_confirm_shots=args.crossing_decision_confirm_shots,
+        crossing_decision_probability_width=args.crossing_decision_probability_width,
+        crossing_ambiguous_as_failure=not args.no_crossing_ambiguous_as_failure,
+        initial_crossing_interior_bracket=not args.no_initial_crossing_interior_bracket,
+        initial_crossing_center_fraction=args.initial_crossing_center_fraction,
+        initial_crossing_half_width_fraction=args.initial_crossing_half_width_fraction,
+        initial_crossing_expand_factor=args.initial_crossing_expand_factor,
+        crossing_confirm_candidates=args.crossing_confirm_candidates,
+        crossing_confirm_shots=args.crossing_confirm_shots,
+        initial_anchor_refine=not args.no_initial_anchor_refine,
+        initial_anchor_refine_shots=args.initial_anchor_refine_shots,
+        initial_anchor_refine_steps=args.initial_anchor_refine_steps,
+        initial_anchor_search_fraction=args.initial_anchor_search_fraction,
+        initial_anchor_min_runs=args.initial_anchor_min_runs,
         trace_ratio_step_fraction=args.trace_ratio_step_fraction,
         trace_depth_search_fraction=0.06,
+        trace_local_crossing=args.trace_local_crossing,
+        trace_enforce_monotone_depth=not args.no_trace_monotone_depth,
         trace_correction_steps=4,
         trace_shots=2,
-        trace_decision_min_shots=args.trace_decision_min_shots,
-        crossing_confirm_candidates=args.crossing_confirm_candidates,
         trace_accept_probability_width=0.12,
         trace_directions=(1,),
         model_projection_after_fit=True,
         refine_after_trace=True,
-        trace_anchor_min_shots=args.trace_anchor_min_shots,
         refinement_shots=args.refinement_shots,
         refinement_boundary_width=0.15,
-        refinement_empirical_boundary_width=args.refinement_empirical_boundary_width,
         hqc_cost_informed_acquisition=(args.budget_mode == "hqc" or hqc_budget is not None),
         hqc_cost_power=1.0,
         rng_seed=seed,
@@ -245,9 +257,19 @@ def cache_path(
         f"{args.n_qubits}q_"
         f"d{args.depth_min}-{args.depth_max}_"
         f"r{args.ratio_min:g}-{args.ratio_max:g}_"
-        f"seed{seed}{reference_suffix}_affref5_td{args.trace_decision_min_shots}"
-        f"_cc{args.crossing_confirm_candidates}"
-        f"_ta{args.trace_anchor_min_shots}.json"
+        f"seed{seed}{reference_suffix}_trace"
+        f"{'local' if args.trace_local_crossing else 'projected'}"
+        f"{'mono' if not args.no_trace_monotone_depth else 'free'}"
+        f"_dc{args.crossing_decision_confirm_shots}"
+        f"w{args.crossing_decision_probability_width:g}"
+        f"{'af' if not args.no_crossing_ambiguous_as_failure else 'ap'}"
+        f"_ib{'y' if not args.no_initial_crossing_interior_bracket else 'n'}"
+        f"c{args.initial_crossing_center_fraction:g}"
+        f"h{args.initial_crossing_half_width_fraction:g}"
+        f"_ia{'r' if not args.no_initial_anchor_refine else 'n'}"
+        f"{args.initial_anchor_refine_shots}"
+        f"m{args.initial_anchor_min_runs}"
+        f"_cc{args.crossing_confirm_candidates}s{args.crossing_confirm_shots}5.json"
     )
     return cache_dir / name
 
@@ -357,24 +379,27 @@ def plot_surface_panel(
     settings: ContourFirstExperimentConfig,
     budget_label: str,
     true_contour: np.ndarray,
+    show_points: bool = True,
 ) -> None:
     import matplotlib.pyplot as plt
 
     contour, surface = extract_contour(rmb, settings)
-    depths, ratios, fidelities, sizes = point_arrays(rmb)
     cmap = fidelity_colormap()
-    scatter = ax.scatter(
-        depths,
-        ratios,
-        c=fidelities,
-        s=sizes,
-        cmap=cmap,
-        vmin=0.0,
-        vmax=1.0,
-        edgecolors="black",
-        linewidths=0.35,
-        zorder=3,
-    )
+    scatter = None
+    if show_points:
+        depths, ratios, fidelities, sizes = point_arrays(rmb)
+        scatter = ax.scatter(
+            depths,
+            ratios,
+            c=fidelities,
+            s=sizes,
+            cmap=cmap,
+            vmin=0.0,
+            vmax=1.0,
+            edgecolors="black",
+            linewidths=0.35,
+            zorder=3,
+        )
 
     if surface is not None:
         depth_grid, ratio_grid, probabilities = surface.probability_grid(settings)
@@ -478,13 +503,16 @@ def make_plots(
     scatter = None
     contours = []
     for ax, (label, rmb, settings) in zip(flat_axes, surface_runs):
-        scatter = plot_surface_panel(
+        panel_scatter = plot_surface_panel(
             ax,
             rmb=rmb,
             settings=settings,
             budget_label=label,
             true_contour=true_contour,
+            show_points=(label != true_label or args.show_reference_points),
         )
+        if panel_scatter is not None:
+            scatter = panel_scatter
         contour, _ = extract_contour(rmb, settings)
         if label != true_label:
             contours.append((label, contour))
@@ -555,12 +583,40 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-adaptive-shots", type=int, default=5)
     parser.add_argument("--max-shots-per-config", type=int, default=10)
     parser.add_argument("--ray-ratio-count", type=int, default=5)
+    parser.add_argument("--crossing-decision-confirm-shots", type=int, default=4)
+    parser.add_argument("--crossing-decision-probability-width", type=float, default=0.20)
+    parser.add_argument(
+        "--no-crossing-ambiguous-as-failure",
+        action="store_true",
+        help="Let ambiguous initial bisection points update the pass side if their mean is above 0.5.",
+    )
+    parser.add_argument(
+        "--no-initial-crossing-interior-bracket",
+        action="store_true",
+        help="Start initial crossing searches at min/max depth instead of an interior bracket.",
+    )
+    parser.add_argument("--initial-crossing-center-fraction", type=float, default=0.35)
+    parser.add_argument("--initial-crossing-half-width-fraction", type=float, default=0.18)
+    parser.add_argument("--initial-crossing-expand-factor", type=float, default=1.6)
+    parser.add_argument("--crossing-confirm-candidates", type=int, default=0)
+    parser.add_argument("--crossing-confirm-shots", type=int, default=4)
+    parser.add_argument("--no-initial-anchor-refine", action="store_true")
+    parser.add_argument("--initial-anchor-refine-shots", type=int, default=6)
+    parser.add_argument("--initial-anchor-refine-steps", type=int, default=3)
+    parser.add_argument("--initial-anchor-search-fraction", type=float, default=0.06)
+    parser.add_argument("--initial-anchor-min-runs", type=int, default=8)
     parser.add_argument("--trace-ratio-step-fraction", type=float, default=0.06)
-    parser.add_argument("--trace-decision-min-shots", type=int, default=4)
-    parser.add_argument("--crossing-confirm-candidates", type=int, default=3)
-    parser.add_argument("--trace-anchor-min-shots", type=int, default=6)
+    parser.add_argument(
+        "--trace-local-crossing",
+        action="store_true",
+        help="Use local fixed-ratio depth crossings for trace steps. More principled, but costly at low budgets.",
+    )
+    parser.add_argument(
+        "--no-trace-monotone-depth",
+        action="store_true",
+        help="Allow the traced contour depth to increase when the two-qubit ratio increases.",
+    )
     parser.add_argument("--refinement-shots", type=int, default=2)
-    parser.add_argument("--refinement-empirical-boundary-width", type=float, default=0.20)
     parser.add_argument(
         "--cache-dir",
         type=str,
@@ -575,6 +631,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=str, default="scripts/experiments/rmb_bayes/benchmarkv5.png")
     parser.add_argument("--dpi", type=int, default=180)
     parser.add_argument("--columns", type=int, default=3)
+    parser.add_argument(
+        "--hide-reference-points",
+        dest="show_reference_points",
+        action="store_false",
+        help="Hide dense-reference probe points and show only the fitted reference contour.",
+    )
+    parser.set_defaults(show_reference_points=True)
     parser.add_argument("--no-show", action="store_true", help="Save the figure without opening a window.")
     parser.add_argument("--warn-spend-fraction", type=float, default=0.8)
     parser.add_argument("--verbose", action="store_true")
