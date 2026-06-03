@@ -111,6 +111,13 @@ def make_settings(
         hqc_cost_power=1.0,
         rng_seed=seed,
         save_path=None,
+        diagnostics_path=(
+            Path(args.diagnostics_dir).expanduser().resolve()
+            / f"{args.budget_mode}_{budget:g}_seed{seed}_diagnostics.json"
+            if args.diagnostics_dir is not None
+            else None
+        ),
+        print_diagnostics=args.print_diagnostics,
         verbose=args.verbose,
     )
 
@@ -629,6 +636,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--trace-reject-probability-width", type=float, default=0.25)
     parser.add_argument("--trace-anchor-min-shots", type=int, default=8)
     parser.add_argument("--refinement-shots", type=int, default=2)
+    parser.add_argument("--diagnostics-dir", type=str, default=None)
+    parser.add_argument("--print-diagnostics", action="store_true")
     parser.add_argument(
         "--cache-dir",
         type=str,
