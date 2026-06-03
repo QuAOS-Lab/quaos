@@ -246,6 +246,99 @@ class Circuit:
         return C
 
     @classmethod
+    def from_number_of_gates(cls,
+                             n_1qb_gates: int,
+                             n_2qb_gates: int,
+                             dimensions: DimensionsLike,
+                             gates_set: tuple[Gate, ...] | list[Gate] | set[Gate] | None = None,
+                             rng: RNGGenerator | None = None) -> Circuit:
+        """
+        Creates a random circuit with the given number of gates.
+
+        Parameters
+        ----------
+        n_1qb_gates : int
+            Number of 1-qubit gates in the circuit.
+        n_2qb_gates : int
+            Number of 2-qubit gates in the circuit.
+        dimensions : DimensionsLike
+            The dimension of each qudit.
+        gates_set : tuple[Gate, ...] | list[Gate] | set[Gate] | None, default None
+            The set of gates from which to draw. If ``None`` a default gate set is used.
+        rng : numpy.random.Generator or None, default None
+            Random number generator. If ``None``, a default generator is used.
+
+        Returns
+        -------
+        Circuit
+            A new random Circuit.
+        """
+
+        if gates_set is None:
+            single_qudit_gates: list[Gate] = [GATES.H, GATES.S]
+            two_qudit_gates: list[Gate] = [GATES.CX, GATES.CZ, GATES.SWAP]
+        elif isinstance(gates_set, (tuple, list, set)):
+            single_qudit_gates = [gate for gate in gates_set if gate.n_qudits == 1]
+            two_qudit_gates = [gate for gate in gates_set if gate.n_qudits == 2]
+            if any([gate.n_qudits > 2 for gate in gates_set]):
+                warnings.warn("Only single qudit and 2-qudits gates are used to generate the circuit.")
+        else:
+            raise ValueError("Invalid gates_set type.")
+
+        if len(two_qudit_gates) == 0 and n_2qb_gates > 0:
+            raise ValueError("Invalid n_2qb_gates and gates_set.")
+
+        if n_1qb_gates < 0:
+            raise ValueError(
+                f"Invalid n_1qb_gates, it should be larger than 0 (got {n_1qb_gates}).")
+
+        if n_2qb_gates < 0:
+            raise ValueError(
+                f"Invalid n_2qb_gates, it should be larger than 0 (got {n_2qb_gates}).")
+
+        if rng is None:
+            rng = default_rng()
+
+        dimensions = np.asarray(dimensions, dtype=int)
+        n_qudits = len(dimensions)
+
+        _gates: list[Gate] = []
+        _qudit_indices: list[tuple[int, ...]] = []
+
+        # Assign all 1-qubit gates at random
+        min_1qb_gate_per_qudit = n_1qb_gates // n_qudits
+        for _ in range(min_1qb_gate_per_qudit):
+            for q_idx in range(n_qudits):
+                gate = single_qudit_gates[rng.integers(0, len(single_qudit_gates))]
+                _gates.append(gate)
+                _qudit_indices.append((q_idx,))
+
+        extra_1qb_gates = n_1qb_gates - min_1qb_gate_per_qudit * n_qudits
+        for _ in range(extra_1qb_gates):
+            gate = single_qudit_gates[rng.integers(0, len(single_qudit_gates))]
+            q_idx = rng.integers(0, n_qudits)
+            _gates.append(gate)
+            _qudit_indices.append((q_idx,))
+
+        # Assign all 2-qubit gates at random
+        for _ in range(n_2qb_gates):
+            gate = two_qudit_gates[rng.integers(0, len(two_qudit_gates))]
+            q_idxs = tuple(int(idx) for idx in rng.choice(range(n_qudits), 2, replace=False))
+            _gates.append(gate)
+            _qudit_indices.append(q_idxs)
+
+        shuffling_indices = list(range(len(_gates)))
+        rng.shuffle(shuffling_indices)
+
+        gates = [_gates[idx] for idx in shuffling_indices]
+        qudit_indices = [_qudit_indices[idx] for idx in shuffling_indices]
+
+        C = cls(dimensions, gates, qudit_indices)
+        C._sanity_check()
+
+        return C
+
+    @classmethod
     def from_depth(cls,
                    depth: int,
                    dimensions: DimensionsLike,
@@ -617,6 +710,18 @@ class Circuit:
         Returns the number of gates in the circuit.
         """
         return len(self.gates)
+
+    def n_1qb_gates(self) -> int:
+        """
+        Returns the number of 1-qubit gates in the circuit.
+        """
+        return len([g for g in self.gates if g.n_qudits == 1])
+
+    def n_2qb_gates(self) -> int:
+        """
+        Returns the number of 2-qubit gates in the circuit.
+        """
+        return len([g for g in self.gates if g.n_qudits == 2])
 
     def set_use_unitary_cache(self, value: bool):
         """

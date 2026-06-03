@@ -31,23 +31,20 @@ def reset_operations(
 
 
 def circuit_stitching(
-    circuit_1: Circuit,
-    circuit_2: Circuit,
+    input_circuits: list[Circuit],
 ) -> Circuit:
-    r"""Stitch two circuits depth-wise into a single circuit.
+    r"""Generate a stitched circuit based on a list of input circuits.
+    The circuit is depth-wise.
 
-    The two circuits run sequentially on the same qubits, separated by a
-    Reset, each writing its measurements to its own classical register so the
-    results can later be de-stitched. Either input may itself be an
-    already-stitched circuit (carrying several classical registers).
-
-    :param circuit_1: First circuit to stitch.
-    :param circuit_2: Second circuit to stitch.
+    :param input_circuits: Circuit instances to stitch.
+    :param backend_info: BackendInfo instance containing information on number
+        of device qubits, number of allowed classical register and maximum width
+        for each classical register.
     :returns: Circuit
     """
 
-    n_qubits = circuit_1.n_qubits
-    if circuit_1.n_qubits != circuit_2.n_qubits:
+    n_qubits = input_circuits[0].n_qubits
+    if any(n_qubits != c.n_qubits for c in input_circuits[1:]):
         raise ValueError("All circuits should have the same number of qubits.")
 
     sum_circuit = Circuit(n_qubits)
@@ -55,7 +52,8 @@ def circuit_stitching(
     qreg = sum_circuit.q_registers
 
     creg_index = 0
-    for s_circuit in (circuit_1, circuit_2):
+    for idx in range(len(input_circuits)):
+        s_circuit = input_circuits[idx]
         # An input may carry several classical registers (e.g. when it is
         # itself an already-stitched circuit), so wire every one of its bit
         # registers, in the lexicographic order add_circbox_regwise expects.
@@ -64,6 +62,8 @@ def circuit_stitching(
             cregs.append(sum_circuit.add_c_register(f"creg_{creg_index}", src_creg.size))
             creg_index += 1
         sum_circuit.add_circbox_regwise(CircBox(s_circuit), qreg, cregs)
+        if idx == len(input_circuits) - 1:
+            continue
         sum_circuit.add_circbox(reset_box, sum_circuit.qubits)
 
     # Flatten the CircBoxes into native gates so the stitched circuit is a
