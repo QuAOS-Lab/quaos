@@ -138,7 +138,73 @@ def config_from_parameters(
 ) -> RMBConfig:
     ratio = round(float(np.clip(ratio, 0.0, 1.0)), ratio_digits)
     depth = max(1, int(round(depth)))
-    return template.with_depth(depth).with_two_qubit_gate_ratio(ratio)
+    n_slots = template.n_qubits * depth
+    n_2qb_before_inverse = int(ratio * n_slots) // 2
+    n_1qb_before_inverse = n_slots - 2 * n_2qb_before_inverse
+
+    return (
+        template
+        .with_n_1qb_gates(2 * (n_1qb_before_inverse + template.n_qubits))
+        .with_n_2qb_gates(2 * n_2qb_before_inverse)
+    )
+
+
+def config_depth(config: RMBConfig) -> int:
+    """
+    Return the legacy depth coordinate represented by a gate-count RMBConfig.
+    """
+    n_1qb_before_inverse = max(0, config.n_1qb_gates // 2 - config.n_qubits)
+    n_2qb_before_inverse = max(0, config.n_2qb_gates // 2)
+    n_slots = n_1qb_before_inverse + 2 * n_2qb_before_inverse
+    return max(1, int(round(n_slots / config.n_qubits)))
+
+
+def config_two_qubit_gate_ratio(config: RMBConfig) -> float:
+    """
+    Return the legacy two-qubit slot ratio represented by a gate-count config.
+    """
+    n_1qb_before_inverse = max(0, config.n_1qb_gates // 2 - config.n_qubits)
+    n_2qb_before_inverse = max(0, config.n_2qb_gates // 2)
+    n_slots = n_1qb_before_inverse + 2 * n_2qb_before_inverse
+    if n_slots <= 0:
+        return 0.0
+    return float(2 * n_2qb_before_inverse / n_slots)
+
+
+def _legacy_with_depth(config: RMBConfig, depth: int) -> RMBConfig:
+    return config_from_parameters(
+        template=config,
+        depth=depth,
+        ratio=config_two_qubit_gate_ratio(config),
+    )
+
+
+def _legacy_with_two_qubit_gate_ratio(
+    config: RMBConfig,
+    min_ratio: float,
+    max_ratio: float | None = None,
+) -> RMBConfig:
+    if max_ratio is None:
+        ratio = min_ratio
+    else:
+        ratio = 0.5 * (min_ratio + max_ratio)
+    return config_from_parameters(
+        template=config,
+        depth=config_depth(config),
+        ratio=ratio,
+    )
+
+
+if not hasattr(RMBConfig, "depth"):
+    RMBConfig.depth = property(config_depth)  # type: ignore[attr-defined]
+if not hasattr(RMBConfig, "min_two_qubit_gate_ratio"):
+    RMBConfig.min_two_qubit_gate_ratio = property(config_two_qubit_gate_ratio)  # type: ignore[attr-defined]
+if not hasattr(RMBConfig, "max_two_qubit_gate_ratio"):
+    RMBConfig.max_two_qubit_gate_ratio = property(config_two_qubit_gate_ratio)  # type: ignore[attr-defined]
+if not hasattr(RMBConfig, "with_depth"):
+    RMBConfig.with_depth = _legacy_with_depth  # type: ignore[attr-defined]
+if not hasattr(RMBConfig, "with_two_qubit_gate_ratio"):
+    RMBConfig.with_two_qubit_gate_ratio = _legacy_with_two_qubit_gate_ratio  # type: ignore[attr-defined]
 
 
 def template_config(settings: BoundaryExperimentConfig, n_qubits: int) -> RMBConfig:
@@ -347,7 +413,12 @@ def spend_measurements(
         for outcome in outcomes:
             if spent >= n_measurements:
                 break
-            estimator.record(bool(outcome))
+            record_estimator = estimator
+            fidelity = outcome
+            if isinstance(outcome, tuple) and len(outcome) == 2:
+                outcome_config, fidelity = outcome
+                record_estimator = estimator_for(data, outcome_config)
+            record_estimator.record(bool(fidelity))
             spent += 1
 
     return spent

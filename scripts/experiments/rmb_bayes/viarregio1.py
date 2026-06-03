@@ -11,6 +11,11 @@ from scipy.optimize import minimize
 from scipy.special import expit
 
 from sympleq.applications.randomized_benchmarking.update_strategy import default_update_strategy
+from viarregio2 import (
+    config_depth,
+    config_from_parameters,
+    config_two_qubit_gate_ratio,
+)
 
 
 @dataclass(frozen=True)
@@ -90,15 +95,10 @@ def config_to_theta(config: RMBConfig) -> np.ndarray:
 
     Adjust this if you want more parameters in the model.
     """
-    two_qubit_ratio = 0.5 * (
-        config.min_two_qubit_gate_ratio
-        + config.max_two_qubit_gate_ratio
-    )
-
     return np.array(
         [
-            float(config.depth),
-            float(two_qubit_ratio),
+            float(config_depth(config)),
+            float(config_two_qubit_gate_ratio(config)),
         ]
     )
 
@@ -112,16 +112,7 @@ def theta_to_config(theta: np.ndarray, template: RMBConfig) -> RMBConfig:
     depth = max(1, int(round(theta[0])))
 
     ratio = float(np.clip(theta[1], 0.0, 1.0))
-    width = 0.02
-
-    new_min = round(max(0.0, ratio - width / 2), 2)
-    new_max = round(min(1.0, ratio + width / 2), 2)
-
-    return (
-        template
-        .with_depth(depth)
-        .with_two_qubit_gate_ratio(new_min, new_max)
-    )
+    return config_from_parameters(template=template, depth=depth, ratio=ratio)
 
 
 def fit_monotone_logistic(
@@ -343,7 +334,12 @@ if __name__ == "__main__":
 
     rmb = RMB.default().with_backend(backend).with_update_strategy(logistic_boundary_update_strategy)  # takes a config and maps to bayesian eztimator
 
-    config = RMBConfig.default().with_depth(10).with_two_qubit_gate_ratio(0.2, 0.4).with_n_qubits(3).with_scrambling_probability(0.85)
+    template = (
+        RMBConfig.default()
+        .with_n_qubits(3)
+        .with_scrambling_probability(0.85)
+    )
+    config = config_from_parameters(template=template, depth=10, ratio=0.3)
 
     rmb.run(config) 
 
