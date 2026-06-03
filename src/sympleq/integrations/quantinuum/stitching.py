@@ -1,0 +1,105 @@
+"""
+Modified from https://docs.quantinuum.com/systems/trainings/knowledge_articles/circuit_stitching.html
+"""
+
+import sys
+
+from pytket.circuit import BitRegister, Circuit, CircBox
+from pytket.passes import DecomposeBoxes
+from pytket.qasm.qasm import circuit_to_qasm_str
+from pytket.backends.backendresult import BackendResult
+from pytket.utils.outcomearray import OutcomeArray
+
+
+MAX_QASM_PROGRAM_SIZE: int = 6 * 1024 * 1024
+
+
+def reset_operations(
+    n_qubits: int
+) -> CircBox:
+    r"""Generate a n-qubit CircBox instance containing OpType.Reset operations.
+
+    :param n_qubits: Number of qubits used in the CircBox instance
+    :param_type int:
+    :returns: CircBox
+    """
+    circuit = Circuit(n_qubits)
+    circuit.name = "Reset"
+    for q in circuit.qubits:
+        circuit.Reset(q)
+    return CircBox(circuit)
+
+
+def circuit_stitching(
+    circuit_1: Circuit,
+    circuit_2: Circuit,
+) -> Circuit:
+    r"""Stitch two circuits depth-wise into a single circuit.
+
+    The two circuits run sequentially on the same qubits, separated by a
+    Reset, each writing its measurements to its own classical register so the
+    results can later be de-stitched. Either input may itself be an
+    already-stitched circuit (carrying several classical registers).
+
+    :param circuit_1: First circuit to stitch.
+    :param circuit_2: Second circuit to stitch.
+    :returns: Circuit
+    """
+
+    n_qubits = circuit_1.n_qubits
+    if circuit_1.n_qubits != circuit_2.n_qubits:
+        raise ValueError("All circuits should have the same number of qubits.")
+
+    sum_circuit = Circuit(n_qubits)
+    reset_box = reset_operations(n_qubits)
+    qreg = sum_circuit.q_registers
+
+    creg_index = 0
+    for s_circuit in (circuit_1, circuit_2):
+        # An input may carry several classical registers (e.g. when it is
+        # itself an already-stitched circuit), so wire every one of its bit
+        # registers, in the lexicographic order add_circbox_regwise expects.
+        cregs = []
+        for src_creg in sorted(s_circuit.c_registers, key=lambda r: r.name):
+            cregs.append(sum_circuit.add_c_register(f"creg_{creg_index}", src_creg.size))
+            creg_index += 1
+        sum_circuit.add_circbox_regwise(CircBox(s_circuit), qreg, cregs)
+        sum_circuit.add_circbox(reset_box, sum_circuit.qubits)
+
+    # Flatten the CircBoxes into native gates so the stitched circuit is a
+    # single genuine circuit. This is what lets gate-count-based cost and
+    # QASM-size estimates see the stitched contents - gates inside an
+    # undecomposed CircBox are invisible to n_1qb_gates()/n_2qb_gates(), so
+    # without this the running cost never grows as more circuits are stitched.
+    DecomposeBoxes().apply(sum_circuit)
+
+    return sum_circuit
+
+
+def destitch_results(
+    stitched_result: BackendResult,
+    registers: list[BitRegister],
+) -> list[BackendResult]:
+    r"""Split a stitched result into one result per classical register.
+
+    Each stitched sub-circuit writes its measurements to its own classical
+    register, so de-stitching reads back the shots restricted to each
+    register's bits.
+
+    :param stitched_result: Result of running the stitched circuit.
+    :param registers: Classical registers, one per stitched sub-circuit.
+    :returns: One :class:`BackendResult` per register, in the given order.
+    """
+    destitched_results = []
+    for register in registers:
+        bits = [register[i] for i in range(register.size)]
+        outcome_array = OutcomeArray.from_readouts(stitched_result.get_shots(cbits=bits))
+        destitched_results.append(BackendResult(shots=outcome_array))
+    return destitched_results
+
+
+def estimate_qasm_program_size(
+    circuit: Circuit
+) -> int:
+    qasm_str = circuit_to_qasm_str(circuit, header="hqslib1")
+    return sys.getsizeof(qasm_str) // 1024**2

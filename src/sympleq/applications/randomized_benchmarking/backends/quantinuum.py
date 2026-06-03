@@ -1,5 +1,6 @@
 from __future__ import annotations
 from numpy.random import Generator as RNGGenerator
+from pytket.circuit import Circuit as PytketCircuit
 
 from sympleq.applications.randomized_benchmarking.backends.base import RMBBackend
 from sympleq.applications.randomized_benchmarking.backends.utils import data_from_pytket_circuit_results
@@ -10,6 +11,8 @@ from sympleq.integrations.quantinuum.utils import (
     fetch_recent_execute_jobs,
     to_pytket_circuit,
 )
+
+MAX_COST_PER_RUN: float = 50.0
 
 
 class QuantinuumBackend(RMBBackend):
@@ -32,40 +35,79 @@ class QuantinuumBackend(RMBBackend):
     type = "quantinuum"
 
     def __init__(self, device_name: str = "H2-2E", n_shots: int = 1,
-                 project_name: str = "Benchmark", batch_size: int = 11) -> None:
+                 project_name: str = "Benchmark", batch_size: int = 11, max_cost_per_run: float = 10.0) -> None:
         self.device_name = device_name
         self.n_shots = n_shots
         self.project_name = project_name
         self.batch_size = batch_size
+        self.max_cost_per_run = max_cost_per_run
 
     def fidelity_estimation(self, config: RMBConfig, rng: RNGGenerator) -> list[bool]:
         from sympleq.integrations.quantinuum.workflow import run_circuits_on_device
-        circuits = []
-        while len(circuits) < self.batch_size:
-            circuit = to_pytket_circuit(config.random_circuit(rng=rng))
-            if circuit.n_gates == 0:
-                continue
-            two_qudit_ratio = circuit.n_2qb_gates() / circuit.n_gates
-            if not (config.min_two_qubit_gate_ratio <= two_qudit_ratio <= config.max_two_qubit_gate_ratio):
-                continue
-            circuit.measure_all()
-            circuits.append(circuit)
+        from sympleq.integrations.quantinuum.stitching import circuit_stitching, destitch_results, \
+            estimate_qasm_program_size, MAX_QASM_PROGRAM_SIZE
+        from sympleq.integrations.quantinuum.utils import pytket_simulation_cost
 
-        distributions = run_circuits_on_device(
-            circuits, self.n_shots, self.device_name, self.project_name, verbose=True)
+        def generate_compatible_circuit() -> PytketCircuit:
+            while True:
+                circuit = to_pytket_circuit(config.random_circuit(rng=rng))
+                if circuit.n_gates == 0:
+                    continue
+                two_qudit_ratio = circuit.n_2qb_gates() / circuit.n_gates
+                if not (config.min_two_qubit_gate_ratio <= two_qudit_ratio <= config.max_two_qubit_gate_ratio):
+                    continue
+                return circuit
 
-        results = []
-        for distribution in distributions:
-            counts = distribution.as_counter()
-            if not counts:
-                continue
+        # We stitch the list circuits into a (smaller) list of stitched circuits.
+        stitched_circuits: list[PytketCircuit] = []
+        # We keep track of how many underlying circuits were stitched together in the corresponing
+        # circuit in stitched_circuits
+        stitch_sizes: list[int] = []
 
-            outcome, count = counts.most_common()[0]
-            assert count <= self.n_shots
-            # FIXME: compare to initial state
-            results.append(all(bit == 0 for bit in outcome))
+        while len(stitched_circuits) < self.batch_size:
+            stitched_circuit = generate_compatible_circuit()
+            stitch_size = 1
+            while True:
+                append_circuit = generate_compatible_circuit()
+                tmp_stitch_circuit = circuit_stitching(stitched_circuit, append_circuit)
+                if estimate_qasm_program_size(tmp_stitch_circuit) > MAX_QASM_PROGRAM_SIZE:
+                    break
 
-        return results
+                if pytket_simulation_cost(tmp_stitch_circuit) > self.max_cost_per_run:
+                    break
+
+                stitched_circuit = tmp_stitch_circuit
+                print(f"Running cost: {pytket_simulation_cost(stitched_circuit)}")
+                stitch_size += 1
+
+            stitched_circuits.append(stitched_circuit)
+            stitch_sizes.append(stitch_size)
+
+        print(f"Generated {len(stitched_circuits)} stitched circuits with sizes {stitch_sizes}.")
+
+        stitched_costs = [pytket_simulation_cost(c) for c in stitched_circuits]
+        native_costs = [pytket_simulation_cost(c) + 5 * (size - 1) for c, size in zip(stitched_circuits, stitch_sizes)]
+        print(f"Stitched costs: {stitched_costs}")
+        print(f"Native costs:   {native_costs}")
+        print(f"You saved {sum(native_costs) - sum(stitched_costs)} credits.")
+        results = run_circuits_on_device(
+            stitched_circuits, self.n_shots, self.device_name, self.project_name, verbose=True)
+
+        fidelities = []
+        for (res, circuit) in zip(results, stitched_circuits):
+            unstitched_results = destitch_results(res, circuit.c_registers)
+            for u_res in unstitched_results:
+                distribution = u_res.get_empirical_distribution()
+                counts = distribution.as_counter()
+                if not counts:
+                    continue
+
+                outcome, count = counts.most_common()[0]
+                assert count <= self.n_shots
+                # Compare to initial state
+                fidelities.append(all(bit == 0 for bit in outcome))
+
+        return fidelities
 
     @classmethod
     def default_config(cls) -> RMBConfig:

@@ -3,7 +3,6 @@ import qnexus as qnx
 from qnexus.client.auth import is_logged_in
 from qnexus.models.references import IncompleteJobItemRef, CircuitRef
 from pytket.backends.backendresult import BackendResult
-from pytket.utils.distribution import EmpiricalDistribution
 from numpy.random import default_rng
 
 from sympleq.core.circuits import Circuit as SympleqCircuit
@@ -132,7 +131,7 @@ def run_circuits_on_device(circuits: list[Circuit],
                            n_shots: int,
                            device_name: str,
                            project_name: str,
-                           verbose: bool = False) -> list[EmpiricalDistribution]:
+                           verbose: bool = False) -> list[BackendResult]:
     setup(project_name)
 
     backend_config = default_backend_config(device_name)
@@ -148,7 +147,7 @@ def run_circuits_on_device(circuits: list[Circuit],
             for state, count in counts.most_common():
                 _info(f"{state}: {count / total:.4f} ({count}/{total})")
 
-    return distributions
+    return backend_results
 
 
 if __name__ == "__main__":
