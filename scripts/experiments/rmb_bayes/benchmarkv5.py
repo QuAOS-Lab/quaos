@@ -91,16 +91,20 @@ def make_settings(
         initial_anchor_refine_steps=args.initial_anchor_refine_steps,
         initial_anchor_search_fraction=args.initial_anchor_search_fraction,
         initial_anchor_min_runs=args.initial_anchor_min_runs,
+        trace_reserve_budget_fraction=args.trace_reserve_budget_fraction,
+        trace_reserve_min_hqc=args.trace_reserve_min_hqc,
         trace_ratio_step_fraction=args.trace_ratio_step_fraction,
         trace_depth_search_fraction=0.06,
         trace_local_crossing=args.trace_local_crossing,
         trace_enforce_monotone_depth=not args.no_trace_monotone_depth,
-        trace_correction_steps=4,
+        trace_correction_steps=args.trace_correction_steps,
         trace_shots=2,
         trace_accept_probability_width=0.12,
+        trace_reject_probability_width=args.trace_reject_probability_width,
         trace_directions=(1,),
         model_projection_after_fit=True,
         refine_after_trace=True,
+        trace_anchor_min_shots=args.trace_anchor_min_shots,
         refinement_shots=args.refinement_shots,
         refinement_boundary_width=0.15,
         hqc_cost_informed_acquisition=(args.budget_mode == "hqc" or hqc_budget is not None),
@@ -269,7 +273,10 @@ def cache_path(
         f"_ia{'r' if not args.no_initial_anchor_refine else 'n'}"
         f"{args.initial_anchor_refine_shots}"
         f"m{args.initial_anchor_min_runs}"
-        f"_cc{args.crossing_confirm_candidates}s{args.crossing_confirm_shots}5.json"
+        f"_tr{args.trace_reserve_budget_fraction:g}m{args.trace_reserve_min_hqc:g}"
+        f"_tc{args.trace_correction_steps}rw{args.trace_reject_probability_width:g}"
+        f"_ta{args.trace_anchor_min_shots}"
+        f"_cc{args.crossing_confirm_candidates}s{args.crossing_confirm_shots}7.json"
     )
     return cache_dir / name
 
@@ -605,6 +612,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--initial-anchor-refine-steps", type=int, default=3)
     parser.add_argument("--initial-anchor-search-fraction", type=float, default=0.06)
     parser.add_argument("--initial-anchor-min-runs", type=int, default=8)
+    parser.add_argument("--trace-reserve-budget-fraction", type=float, default=0.35)
+    parser.add_argument("--trace-reserve-min-hqc", type=float, default=25.0)
     parser.add_argument("--trace-ratio-step-fraction", type=float, default=0.06)
     parser.add_argument(
         "--trace-local-crossing",
@@ -616,6 +625,9 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Allow the traced contour depth to increase when the two-qubit ratio increases.",
     )
+    parser.add_argument("--trace-correction-steps", type=int, default=2)
+    parser.add_argument("--trace-reject-probability-width", type=float, default=0.25)
+    parser.add_argument("--trace-anchor-min-shots", type=int, default=8)
     parser.add_argument("--refinement-shots", type=int, default=2)
     parser.add_argument(
         "--cache-dir",
@@ -632,12 +644,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dpi", type=int, default=180)
     parser.add_argument("--columns", type=int, default=3)
     parser.add_argument(
+        "--show-reference-points",
+        dest="show_reference_points",
+        action="store_true",
+        help="Show dense-reference probe points as well as the fitted reference contour.",
+    )
+    parser.add_argument(
         "--hide-reference-points",
         dest="show_reference_points",
         action="store_false",
         help="Hide dense-reference probe points and show only the fitted reference contour.",
     )
-    parser.set_defaults(show_reference_points=True)
+    parser.set_defaults(show_reference_points=False)
     parser.add_argument("--no-show", action="store_true", help="Save the figure without opening a window.")
     parser.add_argument("--warn-spend-fraction", type=float, default=0.8)
     parser.add_argument("--verbose", action="store_true")
