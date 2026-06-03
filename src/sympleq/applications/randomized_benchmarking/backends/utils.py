@@ -10,18 +10,14 @@ from sympleq.integrations.quantinuum.utils import fetch_recent_execute_jobs, to_
 from sympleq.integrations.quantinuum.workflow import build_and_compile_circuits, default_backend_config, setup
 
 
-def config_from_pytket_circuit(circuit: PytketCircuit) -> RMBConfig | None:
+def config_from_pytket_circuit(circuit: PytketCircuit) -> RMBConfig:
     n_total = circuit.n_gates - circuit.n_gates_of_type(OpType.Measure)
     if n_total == 0:
-        return None
-    n_2q = circuit.n_2qb_gates()
-
-    ratio = round(n_2q / n_total, 2)
+        raise ValueError("Invalid input circuit")
     return RMBConfig(
-        depth=n_total,  # FIXME: this should be / n_qubits
+        n_1qb_gates=circuit.n_1qb_gates(),
+        n_2qb_gates=circuit.n_2qb_gates(),
         n_qubits=circuit.n_qubits,
-        min_two_qubit_gate_ratio=ratio,
-        max_two_qubit_gate_ratio=ratio,
     )
 
 
@@ -112,8 +108,8 @@ def generate_random_pytket_circuits(
         device_name: str = "H2-1LE") -> list[PytketCircuit]:
     folder = _RMB_DATA_DIR / folder_name
     folder.mkdir(parents=True, exist_ok=True)
-    setup(project_name)
     circuits = [to_pytket_circuit(config.random_circuit()) for _ in range(n_circuits)]
+    setup(project_name)
     backend_config = default_backend_config(device_name)
     p_circuits_ref = build_and_compile_circuits(circuits, backend_config)
 

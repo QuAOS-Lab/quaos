@@ -12,8 +12,7 @@ def default_update_strategy(data: RMBData, current_config: RMBConfig) -> RMBConf
     Parameters
     ----------
     data : RMBData
-        Mapping from previously seen configurations to their
-        Bayesian estimators.
+        Mapping from previously seen configurations to their Bayesian estimators.
     current_config : RMBConfig
         Configuration that was just run (or about to be run).
 
@@ -28,15 +27,12 @@ def default_update_strategy(data: RMBData, current_config: RMBConfig) -> RMBConf
         return RMBConfig.default()
     # probability(True) is the fidelity
     if estimator.probability(True) >= 0.8:
-        new_config = current_config.with_depth(current_config.depth + 4)
+        new_config = current_config.with_n_1qb_gates(current_config.n_1qb_gates + 4 * current_config.n_qubits)
     elif estimator.probability(True) >= 0.6:
-        new_config = current_config.with_depth(current_config.depth + 2)
+        new_config = current_config.with_n_1qb_gates(current_config.n_1qb_gates + 2 * current_config.n_qubits)
     elif estimator.probability(True) >= 0.5:
-        new_config = current_config.with_depth(current_config.depth + 1)
+        new_config = current_config.with_n_1qb_gates(current_config.n_1qb_gates + 1 * current_config.n_qubits)
     else:
-        delta = current_config.max_two_qubit_gate_ratio - current_config.min_two_qubit_gate_ratio
-        new_max = current_config.min_two_qubit_gate_ratio
-        new_min = round(max(0.0, new_max - delta), 2)
-        new_config = current_config.with_two_qubit_gate_ratio(new_min, new_max)
+        new_config = current_config.with_n_2qb_gates(max(0, current_config.n_2qb_gates - 1 * current_config.n_qubits))
 
     return new_config

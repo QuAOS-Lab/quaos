@@ -35,7 +35,7 @@ class SympleqBackend(RMBBackend):
         self.noise_model = noise_model
         self.two_qubit_noise_model = two_qubit_noise_model
 
-    def fidelity_estimation(self, config: RMBConfig, rng: RNGGenerator) -> list[bool]:
+    def fidelity_estimation(self, config: RMBConfig, rng: RNGGenerator) -> list[tuple[RMBConfig, bool]]:
         initial_state = config.initial_state()
         n_runs = 1
         results = []
@@ -46,17 +46,17 @@ class SympleqBackend(RMBBackend):
             if self.two_qubit_noise_model is not None:
                 circuit = circuit.with_two_qudit_noise(self.two_qubit_noise_model)
             final_state = circuit.act(initial_state)
-            results.append(final_state == initial_state)
+            results.append((config, final_state == initial_state))
 
         return results
 
     @classmethod
     def default_config(cls) -> RMBConfig:
         return RMBConfig.default()\
-            .with_depth(20)\
+            .with_n_1qb_gates(20 * 6)\
+            .with_n_2qb_gates(5 * 6)\
             .with_random_elimination(0.25)\
             .with_n_qubits(6)\
-            .with_two_qubit_gate_ratio(0.5)\
             .with_scrambling_probability(0.5)
 
     def default_estimator(self) -> BayesianEstimator:
@@ -94,7 +94,7 @@ class SympleqBackend(RMBBackend):
             if self.two_qubit_noise_model is not None:
                 circuit = circuit.with_two_qudit_noise(self.two_qubit_noise_model)
 
-            for _ in range(11):
+            for _ in range(7):
                 final_state = circuit.act(initial_state)
                 pairs.append((p_circuit, final_state == initial_state))
 

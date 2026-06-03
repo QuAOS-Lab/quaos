@@ -3,7 +3,6 @@ import qnexus as qnx
 from qnexus.client.auth import is_logged_in
 from qnexus.models.references import IncompleteJobItemRef, CircuitRef
 from pytket.backends.backendresult import BackendResult
-from pytket.utils.distribution import EmpiricalDistribution
 from numpy.random import default_rng
 
 from sympleq.core.circuits import Circuit as SympleqCircuit
@@ -132,23 +131,22 @@ def run_circuits_on_device(circuits: list[Circuit],
                            n_shots: int,
                            device_name: str,
                            project_name: str,
-                           verbose: bool = False) -> list[EmpiricalDistribution]:
+                           verbose: bool = False) -> list[BackendResult]:
     setup(project_name)
 
     backend_config = default_backend_config(device_name)
     ref_circuits = build_and_compile_circuits(circuits, backend_config, project_name)
     backend_results = run_compiled_circuits(ref_circuits, n_shots, backend_config)
 
-    distributions = [backend_result.get_empirical_distribution() for backend_result in backend_results]
-
     if verbose:
+        distributions = [backend_result.get_empirical_distribution() for backend_result in backend_results]
         for distribution in distributions:
             counts = distribution.as_counter()
             total = distribution.total
             for state, count in counts.most_common():
                 _info(f"{state}: {count / total:.4f} ({count}/{total})")
 
-    return distributions
+    return backend_results
 
 
 if __name__ == "__main__":

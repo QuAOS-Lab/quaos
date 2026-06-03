@@ -6,7 +6,6 @@ import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 import datetime
 
-from sympleq.applications.randomized_benchmarking.backends.utils import generate_random_pytket_circuits
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
 from sympleq.applications.randomized_benchmarking.backends import RMBBackend, SympleqBackend, QuantinuumBackend
 from sympleq.applications.randomized_benchmarking.backends.base import backend_from_dict
@@ -124,6 +123,8 @@ class RMB:
                 verbose,
             )
             self.save()
+
+            # Pick next config, i.e. pick next point in parameter space, based on the update_strategy
             config = self._update_strategy(self._data, config)
 
         RMB.print_data(self._data)
@@ -131,8 +132,8 @@ class RMB:
     @classmethod
     def merge_close_configs(cls,
                             data: RMBData,
-                            depth_bin: int = 10,
-                            ratio_digits: int = 1) -> RMBData:
+                            n_1qb_gates_bin: int = 10,
+                            n_2qb_gates_bin: int = 10) -> RMBData:
         """Return a copy of ``data`` with close configs collapsed and their estimators merged.
 
         Parameters
@@ -153,12 +154,15 @@ class RMB:
         """
         merged: RMBData = {}
         for config, estimator in data.items():
-            coarse_depth = max(depth_bin, round(config.depth / depth_bin) * depth_bin)
+            coarse_n_1qb_gates = max(n_1qb_gates_bin, round(config.n_1qb_gates / n_1qb_gates_bin) * n_1qb_gates_bin)
             coarse = replace(
                 config,
-                depth=coarse_depth,
-                min_two_qubit_gate_ratio=round(config.min_two_qubit_gate_ratio, ratio_digits),
-                max_two_qubit_gate_ratio=round(config.max_two_qubit_gate_ratio, ratio_digits),
+                n_1qb_gates=coarse_n_1qb_gates
+            )
+            coarse_n_2qb_gates = max(n_2qb_gates_bin, round(config.n_2qb_gates / n_2qb_gates_bin) * n_2qb_gates_bin)
+            coarse = replace(
+                config,
+                n_2qb_gates=coarse_n_2qb_gates
             )
             target = merged.setdefault(coarse, BayesianEstimator(
                 threshold=estimator.threshold,
@@ -175,14 +179,9 @@ class RMB:
         headers = ["depth", "two_qubit_gate_ratio", "n_qubits", "random_elimination", "fidelity"]
         rows = []
         for config, estimator in data.items():
-            ratio = (
-                f"{config.min_two_qubit_gate_ratio}"
-                if config.min_two_qubit_gate_ratio == config.max_two_qubit_gate_ratio
-                else f"[{config.min_two_qubit_gate_ratio}, {config.max_two_qubit_gate_ratio}]"
-            )
             rows.append([
-                f"{config.depth}",
-                ratio,
+                f"{config.n_1qb_gates}",
+                f"{config.n_2qb_gates}",
                 f"{config.n_qubits}",
                 f"{config.random_elimination}",
                 f"{estimator.probability(True):.4f} ± {estimator.variance(True):.4f}",
@@ -244,10 +243,9 @@ class RMB:
         records = []
         for config, estimator in self._data.items():
             records.append({
-                "depth": config.depth,
+                "n_1qb_gates": config.n_1qb_gates,
+                "n_2qb_gates": config.n_2qb_gates,
                 "scrambling_probability": config.scrambling_probability,
-                "min_two_qubit_gate_ratio": config.min_two_qubit_gate_ratio,
-                "max_two_qubit_gate_ratio": config.max_two_qubit_gate_ratio,
                 "n_qubits": config.n_qubits,
                 "random_elimination": config.random_elimination,
                 "gates_set": [g.name for g in config.gates_set],
@@ -310,10 +308,9 @@ class RMB:
 
         for rec in payload["data"]:
             config = RMBConfig(
-                depth=rec["depth"],
+                n_1qb_gates=rec["n_1qb_gates"],
+                n_2qb_gates=rec["n_2qb_gates"],
                 scrambling_probability=rec["scrambling_probability"],
-                min_two_qubit_gate_ratio=rec["min_two_qubit_gate_ratio"],
-                max_two_qubit_gate_ratio=rec["max_two_qubit_gate_ratio"],
                 n_qubits=rec["n_qubits"],
                 random_elimination=rec["random_elimination"],
             )
@@ -322,6 +319,9 @@ class RMB:
                 estimator.record(outcome, count)
             rmb._data[config] = estimator
         return rmb
+
+    def plot(self, axes=None, show: bool = True, skip_incomplete: bool = True):
+        RMB.plot_data(self._data, axes, show, skip_incomplete)
 
     @classmethod
     def plot_data(cls, data: RMBData, axes=None, show: bool = True, skip_incomplete: bool = True):
@@ -350,7 +350,7 @@ class RMB:
         import matplotlib.pyplot as plt
         from matplotlib.colors import LinearSegmentedColormap
 
-        data = RMB.merge_close_configs(data, depth_bin=20, ratio_digits=2)
+        data = RMB.merge_close_configs(data, n_1qb_gates_bin=20, n_2qb_gates_bin=10)
 
         groups: dict[int, RMBData] = {}
         for config, estimator in data.items():
@@ -382,9 +382,9 @@ class RMB:
             ["darkred", "red", "orange", "lime", "green"])
 
         for ax, (n_qubits, group) in zip(axes_list, sorted_groups):
-            depths = np.array([c.depth for c in group])
+            n_gates = np.array([c.n_gates for c in group])
             ratios = np.array(
-                [0.5 * (c.min_two_qubit_gate_ratio + c.max_two_qubit_gate_ratio) for c in group])
+                [c.ratio_2_qb_gates for c in group])
             fidelities = np.array([e.probability(True) for e in group.values()])
             stds = np.array([np.sqrt(e.variance(True)) for e in group.values()])
 
@@ -392,11 +392,11 @@ class RMB:
             middle_color = fidelities
             inner_color = np.clip(fidelities + stds, 0.0, 1.0)
 
-            ax.scatter(depths, ratios, c=outer_color, cmap=cmap,
+            ax.scatter(n_gates, ratios, c=outer_color, cmap=cmap,
                        vmin=0.0, vmax=1.0, s=200, edgecolors="none", zorder=1)
-            sc = ax.scatter(depths, ratios, c=middle_color, cmap=cmap,
+            sc = ax.scatter(n_gates, ratios, c=middle_color, cmap=cmap,
                             vmin=0.0, vmax=1.0, s=100, edgecolors="none", zorder=2)
-            ax.scatter(depths, ratios, c=inner_color, cmap=cmap,
+            ax.scatter(n_gates, ratios, c=inner_color, cmap=cmap,
                        vmin=0.0, vmax=1.0, s=30, edgecolors="none", zorder=3)
 
             ax.set_xlabel("# Gates")
@@ -418,47 +418,47 @@ def sympleq_pipeline() -> RMB:
     backend = SympleqBackend(noise_model, two_qubit_noise_model)
     rmb = RMB.default(rng).with_backend(backend)
 
-    for n_qubits in range(11, 15):
+    for n_qubits in range(2, 9):
+        if n_qubits != 5:
+            continue
         folder_name = f"synthetic-{n_qubits}q"
-        for depth in range(120 - 6 * n_qubits, 170 - 6 * n_qubits, 2):
-            initial_config = RMBConfig.default()\
-                .with_n_qubits(n_qubits)\
-                .with_depth(depth)\
-                .with_two_qubit_gate_ratio(0.2, 0.4)\
-                .with_scrambling_probability(0.5)\
-                .with_gates_set(tuple(NATIVE_GATES_SET))
-            generate_random_pytket_circuits(initial_config, 20, folder_name)
-        # data = backend.simulate_pytket_circuits(folder_name)
-        # rmb = RMB.default(rng).with_backend(backend)
-        # rmb.update(data)
-        # rmb.save(f"{folder_name}_data.json")
+        # for depth in range(120 - 6 * n_qubits, 170 - 6 * n_qubits, 2):
+        #     initial_config = RMBConfig.default()\
+        #         .with_n_qubits(n_qubits)\
+        #         .with_depth(depth)\
+        #         .with_two_qubit_gate_ratio(0.2, 0.4)\
+        #         .with_scrambling_probability(0.5)\
+        #         .with_gates_set(tuple(NATIVE_GATES_SET))
+        #     generate_random_pytket_circuits(initial_config, 20, folder_name)
+        data = backend.simulate_pytket_circuits(folder_name)
+        rmb.update(data)
+        rmb.save(f"{folder_name}_data.json")
         # _rmb = RMB.load(f"{folder_name}_data.json")
-        # rmb.update(_rmb._data)
 
     # data = backend.populate_from_recent_jobs()
+    rmb.save("sympleq_from_fetched.json")
     return rmb
 
 
 def quantinuum_pipeline() -> RMB:
     backend = QuantinuumBackend(device_name="H2-Emulator")
     rmb = RMB.default().with_backend(backend)
-    # data = backend.populate_from_recent_jobs(1000)
-    # rmb._data = data
-    # rmb.save("quantinuum_fetched.json")
-    rmb = RMB.load("quantinuum_fetched.json")
+    data = backend.populate_from_recent_jobs(1000)
+    rmb.update(data)
+    rmb.save("quantinuum_fetched.json")
     return rmb
 
 
 def filter_data(data: RMBData) -> RMBData:
-    merged_data = RMB.merge_close_configs(data, depth_bin=25, ratio_digits=1)
+    merged_data = RMB.merge_close_configs(data, n_1qb_gates_bin=20, n_2qb_gates_bin=10)
     filtered_data: RMBData = {}
     for config, estimator in sorted(
             merged_data.items(),
-            key=lambda item: (item[0].depth, item[0].min_two_qubit_gate_ratio)):
-        if config.n_qubits != 5:
-            continue
-        if config.depth >= 1000:
-            continue
+            key=lambda item: (item[0].n_gates, item[0].ratio_2_qb_gates)):
+        # if config.n_qubits != 5:
+        #     continue
+        # if config.depth >= 1000:
+        #     continue
         if not (estimator.variance(True) <= 1e-1 and estimator._counts_tot > 10):
             continue
         filtered_data[config] = estimator
@@ -466,23 +466,37 @@ def filter_data(data: RMBData) -> RMBData:
 
 
 def compare():
+
+    # qrmb = quantinuum_pipeline()
+    # srmb = RMB.load("sympleq_from_fetched.json")
+    qrmb = RMB.load("quantinuum_fetched.json")
+    q_data = filter_data(qrmb._data)
+    print("Quantinuum jobs loaded.")
     srmb = sympleq_pipeline()
-    qrmb = quantinuum_pipeline()
+    print("Sympleq jobs loaded.")
     s_data = filter_data(srmb._data)
     q_data = filter_data(qrmb._data)
 
     shared = s_data.keys() & q_data.keys()
     diffs = [
         (c, s_data[c].probability(True) - q_data[c].probability(True))
-        for c in sorted(shared, key=lambda c: (c.depth, c.min_two_qubit_gate_ratio))
+        for c in sorted(shared, key=lambda c: (c.n_gates, c.ratio_2_qb_gates))
     ]
     fom = sum(d * d for _, d in diffs)
     print(f"shared configs: {len(shared)}; sum of squared fidelity differences: {fom:.6f}")
     for c, d in diffs:
-        print(f"  depth={c.depth:>4} 2qr={c.min_two_qubit_gate_ratio:.2f} -> Δ={d:+.4f}")
+        print(f"  n_gates={c.n_gates:>4} 2qr={c.ratio_2_qb_gates:.2f} -> Δ={d:+.4f}")
 
 
 if __name__ == "__main__":
-    srmb = sympleq_pipeline()
-    RMB.plot_data(srmb._data, skip_incomplete=False)
-    # RMB.plot_data(qrmb._data, skip_incomplete=True)
+    # srmb = sympleq_pipeline()
+
+    rmb = RMB.default().with_backend(QuantinuumBackend(device_name="H2-Emulator", batch_size=1, max_cost_per_run=30.0))
+    initial_config = RMBConfig.default()\
+        .with_n_qubits(5)\
+        .with_n_1qb_gates(80 * 5)\
+        .with_n_2qb_gates(40 * 5)\
+        .with_scrambling_probability(0.5)\
+        .with_gates_set(tuple(NATIVE_GATES_SET))
+
+    rmb.run(initial_config, max_iterations=1)
