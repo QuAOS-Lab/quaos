@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -77,6 +78,8 @@ class ContourFirstExperimentConfig(MonotoneBoundaryExperimentConfig):
     trace_anchor_min_shots: int = 8
     refinement_shots: int = 2
     refinement_boundary_width: float = 0.15
+    diagnostics_path: str | Path | None = "viarregio5_diagnostics.json"
+    print_diagnostics: bool = False
     save_path: str | Path | None = "viarregio5_boundary.json"
 
 
@@ -116,6 +119,27 @@ def measured_probability(data: RMBData, config: RMBConfig) -> float | None:
     if config not in data or data[config].num_runs() == 0:
         return None
     return fidelity_mean(data[config])
+
+
+def measured_std(data: RMBData, config: RMBConfig) -> float:
+    if config not in data or data[config].num_runs() == 0:
+        return float("inf")
+    return float(np.sqrt(fidelity_variance(data[config])))
+
+
+def add_diagnostic(
+    diagnostics: list[dict] | None,
+    event: str,
+    **values,
+) -> None:
+    if diagnostics is None:
+        return
+    clean_values = {}
+    for key, value in values.items():
+        if isinstance(value, np.generic):
+            value = value.item()
+        clean_values[key] = value
+    diagnostics.append({"event": event, **clean_values})
 
 
 def spend_config(
@@ -237,6 +261,8 @@ def find_depth_crossing_at_ratio(
     center_depth: float | None = None,
     local: bool = False,
     reserve_hqc: float = 0.0,
+    diagnostics: list[dict] | None = None,
+    stage: str = "crossing",
 ) -> RMBConfig | None:
     """
     Find a monotone crossing in depth at fixed ratio.
@@ -282,6 +308,14 @@ def find_depth_crossing_at_ratio(
         reserve_hqc=reserve_hqc,
     )
     if low_p is None or high_p is None:
+        add_diagnostic(
+            diagnostics,
+            "crossing_failed",
+            stage=stage,
+            ratio=round(float(ratio), 4),
+            local=local,
+            reason="missing_probe",
+        )
         return None
     crossing_candidates: list[tuple[RMBConfig, float]] = [(low_config, low_p), (high_config, high_p)]
 
@@ -338,7 +372,31 @@ def find_depth_crossing_at_ratio(
             expand *= 1.5
 
     if not (low_p >= 0.5 and high_p <= 0.5):
+        add_diagnostic(
+            diagnostics,
+            "crossing_failed",
+            stage=stage,
+            ratio=round(float(ratio), 4),
+            local=local,
+            low_depth=round(float(low_depth), 4),
+            low_p=None if low_p is None else round(float(low_p), 4),
+            high_depth=round(float(high_depth), 4),
+            high_p=None if high_p is None else round(float(high_p), 4),
+            reason="no_bracket",
+        )
         return None
+
+    add_diagnostic(
+        diagnostics,
+        "crossing_bracketed",
+        stage=stage,
+        ratio=round(float(ratio), 4),
+        local=local,
+        low_depth=round(float(low_depth), 4),
+        low_p=round(float(low_p), 4),
+        high_depth=round(float(high_depth), 4),
+        high_p=round(float(high_p), 4),
+    )
 
     best_config = low_config if abs(low_p - 0.5) <= abs(high_p - 0.5) else high_config
     best_error = min(abs(low_p - 0.5), abs(high_p - 0.5))
@@ -431,9 +489,44 @@ def find_depth_crossing_at_ratio(
         or best_config.depth >= d_max - 1
     )
     if at_depth_bound and best_error > settings.trace_accept_probability_width:
+        add_diagnostic(
+            diagnostics,
+            "crossing_rejected",
+            stage=stage,
+            ratio=round(float(ratio), 4),
+            local=local,
+            depth=int(best_config.depth),
+            p=round(float(measured_probability(data, best_config)), 4),
+            std=round(measured_std(data, best_config), 4),
+            runs=data[best_config].num_runs(),
+            reason="depth_bound",
+        )
         return None
     if best_error <= settings.trace_reject_probability_width:
+        add_diagnostic(
+            diagnostics,
+            "crossing_accepted",
+            stage=stage,
+            ratio=round(float(ratio), 4),
+            local=local,
+            depth=int(best_config.depth),
+            p=round(float(measured_probability(data, best_config)), 4),
+            std=round(measured_std(data, best_config), 4),
+            runs=data[best_config].num_runs(),
+        )
         return best_config
+    add_diagnostic(
+        diagnostics,
+        "crossing_rejected",
+        stage=stage,
+        ratio=round(float(ratio), 4),
+        local=local,
+        depth=int(best_config.depth),
+        p=round(float(measured_probability(data, best_config)), 4),
+        std=round(measured_std(data, best_config), 4),
+        runs=data[best_config].num_runs(),
+        reason="outside_reject_width",
+    )
     return None
 
 
@@ -445,6 +538,7 @@ def find_initial_anchor(
     n_qubits: int,
     settings: ContourFirstExperimentConfig,
     budget: BudgetState,
+    diagnostics: list[dict] | None = None,
 ) -> RMBConfig | None:
     template = template_config(settings, n_qubits)
     reserve_hqc = trace_reserve_hqc(settings)
@@ -466,6 +560,8 @@ def find_initial_anchor(
             budget=budget,
             local=False,
             reserve_hqc=reserve_hqc,
+            diagnostics=diagnostics,
+            stage="initial",
         )
         if anchor is not None:
             return anchor
@@ -480,6 +576,7 @@ def confirm_initial_anchor(
     anchor: RMBConfig,
     settings: ContourFirstExperimentConfig,
     budget: BudgetState,
+    diagnostics: list[dict] | None = None,
 ) -> RMBConfig:
     reserve_hqc = trace_reserve_hqc(settings)
     if not settings.initial_anchor_refine or not budget.can_spend(reserve_hqc=reserve_hqc):
@@ -503,6 +600,8 @@ def confirm_initial_anchor(
         center_depth=float(anchor.depth),
         local=True,
         reserve_hqc=reserve_hqc,
+        diagnostics=diagnostics,
+        stage="initial_refine",
     )
     confirmed_anchor = refined if refined is not None else anchor
 
@@ -521,6 +620,15 @@ def confirm_initial_anchor(
                 reserve_hqc=reserve_hqc,
             )
 
+    add_diagnostic(
+        diagnostics,
+        "initial_anchor_confirmed",
+        depth=int(confirmed_anchor.depth),
+        ratio=round(float(confirmed_anchor.min_two_qubit_gate_ratio), 4),
+        p=None if measured_probability(data, confirmed_anchor) is None else round(float(measured_probability(data, confirmed_anchor)), 4),
+        std=round(measured_std(data, confirmed_anchor), 4),
+        runs=data[confirmed_anchor].num_runs() if confirmed_anchor in data else 0,
+    )
     return confirmed_anchor
 
 
@@ -583,6 +691,7 @@ def trace_projected_anchor(
     direction: int,
     settings: ContourFirstExperimentConfig,
     budget: BudgetState,
+    diagnostics: list[dict] | None = None,
 ) -> RMBConfig | None:
     """
     Measure the projected contour point.  Optionally solve a local fixed-ratio
@@ -600,6 +709,15 @@ def trace_projected_anchor(
             lower_depth = max(lower_depth, float(current.depth))
 
     if lower_depth > upper_depth:
+        add_diagnostic(
+            diagnostics,
+            "trace_candidate_rejected",
+            reason="empty_depth_bounds",
+            current_depth=int(current.depth),
+            current_ratio=round(float(current.min_two_qubit_gate_ratio), 4),
+            proposed_ratio=round(float(ratio), 4),
+            depth_guess=round(float(depth_guess), 4),
+        )
         return None
 
     depth = float(np.clip(depth_guess, lower_depth, upper_depth))
@@ -614,6 +732,8 @@ def trace_projected_anchor(
             settings=settings,
             center_depth=depth,
             local=True,
+            diagnostics=diagnostics,
+            stage="trace_local",
         )
 
     best_config, best_p = probe_depth(
@@ -628,10 +748,27 @@ def trace_projected_anchor(
         settings=settings,
     )
     if best_p is None:
+        add_diagnostic(
+            diagnostics,
+            "trace_candidate_rejected",
+            reason="no_measurement",
+            proposed_depth=round(float(depth), 4),
+            proposed_ratio=round(float(ratio), 4),
+        )
         return None
 
     best_error = abs(best_p - 0.5)
     if best_error <= settings.trace_accept_probability_width:
+        add_diagnostic(
+            diagnostics,
+            "trace_candidate_accepted",
+            reason="projected_accept",
+            depth=int(best_config.depth),
+            ratio=round(float(best_config.min_two_qubit_gate_ratio), 4),
+            p=round(float(best_p), 4),
+            std=round(measured_std(data, best_config), 4),
+            runs=data[best_config].num_runs(),
+        )
         return best_config
 
     correction_step = settings.trace_depth_search_fraction * (d_max - d_min)
@@ -664,9 +801,30 @@ def trace_projected_anchor(
             best_p = p
             best_error = error
         if error <= settings.trace_accept_probability_width:
+            add_diagnostic(
+                diagnostics,
+                "trace_candidate_accepted",
+                reason="correction_accept",
+                depth=int(candidate.depth),
+                ratio=round(float(candidate.min_two_qubit_gate_ratio), 4),
+                p=round(float(p), 4),
+                std=round(measured_std(data, candidate), 4),
+                runs=data[candidate].num_runs(),
+            )
             return candidate
         correction_step *= 0.5
 
+    add_diagnostic(
+        diagnostics,
+        "trace_candidate_accepted",
+        reason="best_available",
+        depth=int(best_config.depth),
+        ratio=round(float(best_config.min_two_qubit_gate_ratio), 4),
+        p=round(float(best_p), 4),
+        std=round(measured_std(data, best_config), 4),
+        runs=data[best_config].num_runs(),
+        error=round(float(best_error), 4),
+    )
     return best_config
 
 
@@ -678,6 +836,7 @@ def trace_from_anchor(
     anchor: RMBConfig,
     settings: ContourFirstExperimentConfig,
     budget: BudgetState,
+    diagnostics: list[dict] | None = None,
 ) -> list[RMBConfig]:
     anchors = [anchor]
     for direction in settings.trace_directions:
@@ -695,7 +854,26 @@ def trace_from_anchor(
                     step_fraction=step_fraction,
                 )
                 if abs(ratio - current.min_two_qubit_gate_ratio) < 1e-9:
+                    add_diagnostic(
+                        diagnostics,
+                        "trace_stopped",
+                        reason="ratio_bounds",
+                        direction=direction,
+                        current_depth=int(current.depth),
+                        current_ratio=round(float(current.min_two_qubit_gate_ratio), 4),
+                    )
                     break
+                add_diagnostic(
+                    diagnostics,
+                    "trace_proposed",
+                    direction=direction,
+                    attempt=attempt,
+                    step_fraction=round(float(step_fraction), 4),
+                    current_depth=int(current.depth),
+                    current_ratio=round(float(current.min_two_qubit_gate_ratio), 4),
+                    depth_guess=round(float(depth_guess), 4),
+                    proposed_ratio=round(float(ratio), 4),
+                )
                 next_anchor = trace_projected_anchor(
                     backend=backend,
                     rng=rng,
@@ -706,11 +884,30 @@ def trace_from_anchor(
                     direction=direction,
                     settings=settings,
                     budget=budget,
+                    diagnostics=diagnostics,
                 )
                 if next_anchor is not None:
                     break
             if next_anchor is None:
+                add_diagnostic(
+                    diagnostics,
+                    "trace_stopped",
+                    reason="candidate_failed",
+                    direction=direction,
+                    current_depth=int(current.depth),
+                    current_ratio=round(float(current.min_two_qubit_gate_ratio), 4),
+                )
                 break
+            add_diagnostic(
+                diagnostics,
+                "trace_accepted",
+                direction=direction,
+                depth=int(next_anchor.depth),
+                ratio=round(float(next_anchor.min_two_qubit_gate_ratio), 4),
+                p=None if measured_probability(data, next_anchor) is None else round(float(measured_probability(data, next_anchor)), 4),
+                std=round(measured_std(data, next_anchor), 4),
+                runs=data[next_anchor].num_runs() if next_anchor in data else 0,
+            )
             anchors.append(next_anchor)
             current = next_anchor
     return anchors
@@ -749,6 +946,7 @@ def refine_uncertain_boundary_points(
     data: RMBData,
     settings: ContourFirstExperimentConfig,
     budget: BudgetState,
+    diagnostics: list[dict] | None = None,
 ) -> int:
     """
     Spend leftover budget on uncertain measured points near the fitted contour.
@@ -783,6 +981,17 @@ def refine_uncertain_boundary_points(
         )
         if spent <= 0 or total_measurements(data) == before:
             break
+        add_diagnostic(
+            diagnostics,
+            "refinement",
+            depth=int(best_config.depth),
+            ratio=round(float(best_config.min_two_qubit_gate_ratio), 4),
+            p=round(float(measured_probability(data, best_config)), 4),
+            std=round(measured_std(data, best_config), 4),
+            runs=data[best_config].num_runs(),
+            score=round(float(best_score), 6),
+            spent=spent,
+        )
         refinements += 1
 
     return refinements
@@ -796,6 +1005,7 @@ def confirm_traced_anchors(
     anchors: list[RMBConfig],
     settings: ContourFirstExperimentConfig,
     budget: BudgetState,
+    diagnostics: list[dict] | None = None,
 ) -> int:
     """
     Spend leftover budget by repeating already traced contour anchors.
@@ -844,6 +1054,16 @@ def confirm_traced_anchors(
         )
         if spent <= 0:
             break
+        add_diagnostic(
+            diagnostics,
+            "trace_anchor_backfill",
+            depth=int(selected.depth),
+            ratio=round(float(selected.min_two_qubit_gate_ratio), 4),
+            p=round(float(measured_probability(data, selected)), 4),
+            std=round(measured_std(data, selected), 4),
+            runs=data[selected].num_runs(),
+            spent=spent,
+        )
         confirmations += 1
 
     return confirmations
@@ -865,6 +1085,7 @@ def estimate_boundary(settings: ContourFirstExperimentConfig) -> RMB:
     stop_reason = "budget not exhausted"
     batch_count = 0
     traced_anchors: list[RMBConfig] = []
+    diagnostics: list[dict] = []
 
     for n_qubits in settings.n_qubits_values:
         if not budget.can_spend():
@@ -876,6 +1097,7 @@ def estimate_boundary(settings: ContourFirstExperimentConfig) -> RMB:
             n_qubits=n_qubits,
             settings=settings,
             budget=budget,
+            diagnostics=diagnostics,
         )
         if anchor is None:
             stop_reason = "no initial contour crossing found"
@@ -887,6 +1109,7 @@ def estimate_boundary(settings: ContourFirstExperimentConfig) -> RMB:
             anchor=anchor,
             settings=settings,
             budget=budget,
+            diagnostics=diagnostics,
         )
         if settings.verbose:
             print(
@@ -904,6 +1127,7 @@ def estimate_boundary(settings: ContourFirstExperimentConfig) -> RMB:
             anchor=anchor,
             settings=settings,
             budget=budget,
+            diagnostics=diagnostics,
         )
         traced_anchors.extend(anchors)
         batch_count += max(0, len(anchors) - 1)
@@ -924,6 +1148,7 @@ def estimate_boundary(settings: ContourFirstExperimentConfig) -> RMB:
             anchors=traced_anchors,
             settings=settings,
             budget=budget,
+            diagnostics=diagnostics,
         )
         refinements += confirmations
         batch_count += confirmations
@@ -940,6 +1165,7 @@ def estimate_boundary(settings: ContourFirstExperimentConfig) -> RMB:
             data=data,
             settings=settings,
             budget=budget,
+            diagnostics=diagnostics,
         )
         refinements += extra_refinements
         batch_count += extra_refinements
@@ -980,6 +1206,35 @@ def estimate_boundary(settings: ContourFirstExperimentConfig) -> RMB:
         rmb.save(settings.save_path)
         if settings.verbose:
             print(f"\nSaved boundary data to {settings.save_path}")
+
+    if settings.diagnostics_path is not None:
+        payload = {
+            "settings": {
+                "measurement_budget": settings.measurement_budget,
+                "hqc_budget": settings.hqc_budget,
+                "n_qubits_values": settings.n_qubits_values,
+                "depth_bounds": settings.depth_bounds,
+                "ratio_bounds": settings.ratio_bounds,
+                "ray_ratio_count": settings.ray_ratio_count,
+                "trace_ratio_step_fraction": settings.trace_ratio_step_fraction,
+                "trace_depth_search_fraction": settings.trace_depth_search_fraction,
+                "trace_accept_probability_width": settings.trace_accept_probability_width,
+                "trace_reject_probability_width": settings.trace_reject_probability_width,
+                "trace_anchor_min_shots": settings.trace_anchor_min_shots,
+            },
+            "stop_reason": stop_reason,
+            "total_measurements": total_measurements(data),
+            "n_configs": len(data),
+            "events": diagnostics,
+        }
+        diagnostics_path = Path(settings.diagnostics_path)
+        diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
+        diagnostics_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        if settings.verbose or settings.print_diagnostics:
+            print(f"\nSaved diagnostics to {diagnostics_path}")
+            if settings.print_diagnostics:
+                for event in diagnostics:
+                    print(event)
 
     return rmb
 
