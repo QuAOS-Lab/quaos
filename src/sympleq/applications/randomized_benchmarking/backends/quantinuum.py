@@ -86,8 +86,8 @@ class QuantinuumBackend(RMBBackend):
                 append_circuit = generate_compatible_circuit()
                 append_program_size = estimate_qasm_program_size(append_circuit)
                 append_simulation_cost = pytket_bare_simulation_cost(append_circuit)
-
-                running_cost = BASE_SIMULATION_COST + sum(simulation_costs)
+                num_resets = len(circuits_to_stich) * config.n_qubits
+                running_cost = BASE_SIMULATION_COST + sum(simulation_costs) + num_resets / 5000
                 if sum(program_sizes) + append_program_size > MAX_QASM_PROGRAM_SIZE:
                     break
 
