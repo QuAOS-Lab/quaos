@@ -377,21 +377,11 @@ def expected_gate_counts(config: RMBConfig) -> tuple[int, int, int]:
     """
     Expected (N_1, N_2, N_m) for the RB circuit represented by a config.
 
-    `Circuit.from_depth` creates `n_qubits * depth` gate slots before the
-    inverse. A two-qubit gate occupies two of those slots. The RMB construction
-    appends the inverse circuit, so the random-circuit gate counts are doubled.
-    Scrambler X gates are included in expectation. Identity scrambler gates are
-    not charged as physical one-qubit gates.
+    RMBConfig now stores gate counts directly, so HQC accounting should use
+    those fields rather than reconstructing counts from the legacy depth/ratio
+    coordinates used by these experiments.
     """
-    n_slots = config.n_qubits * config.depth
-    ratio = 0.5 * (config.min_two_qubit_gate_ratio + config.max_two_qubit_gate_ratio)
-    two_qubit_base = int(ratio * n_slots) // 2
-    one_qubit_base = n_slots - 2 * two_qubit_base
-    scrambler_one_qubit = int(round(2 * config.n_qubits * config.scrambling_probability))
-    n_one_qubit = 2 * one_qubit_base + scrambler_one_qubit
-    n_two_qubit = 2 * two_qubit_base
-    n_measurements = config.n_qubits
-    return n_one_qubit, n_two_qubit, n_measurements
+    return config.n_1qb_gates, config.n_2qb_gates, config.n_qubits
 
 
 def hqc_cost(
