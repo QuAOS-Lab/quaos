@@ -138,9 +138,8 @@ def run_circuits_on_device(circuits: list[Circuit],
     ref_circuits = build_and_compile_circuits(circuits, backend_config, project_name)
     backend_results = run_compiled_circuits(ref_circuits, n_shots, backend_config)
 
-    distributions = [backend_result.get_empirical_distribution() for backend_result in backend_results]
-
     if verbose:
+        distributions = [backend_result.get_empirical_distribution() for backend_result in backend_results]
         for distribution in distributions:
             counts = distribution.as_counter()
             total = distribution.total
