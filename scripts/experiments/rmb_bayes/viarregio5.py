@@ -333,7 +333,7 @@ def find_depth_crossing_at_ratio(
         for _ in range(3):
             if not budget.can_spend(reserve_hqc=reserve_hqc):
                 return None
-            if low_p < 0.5:
+            if low_p is not None and low_p < 0.5:
                 low_depth = max(float(d_min), low_depth - expand)
                 low_config, low_p = probe_depth(
                     backend=backend,
@@ -349,7 +349,7 @@ def find_depth_crossing_at_ratio(
                 )
                 if low_p is not None:
                     crossing_candidates.append((low_config, low_p))
-            if high_p > 0.5:
+            if high_p is not None and high_p > 0.5:
                 high_depth = min(float(d_max), high_depth + expand)
                 high_config, high_p = probe_depth(
                     backend=backend,
@@ -371,7 +371,7 @@ def find_depth_crossing_at_ratio(
                 break
             expand *= 1.5
 
-    if not (low_p >= 0.5 and high_p <= 0.5):
+    if low_p is None or high_p is None or not (low_p >= 0.5 and high_p <= 0.5):
         add_diagnostic(
             diagnostics,
             "crossing_failed",
@@ -1140,7 +1140,7 @@ def estimate_boundary(settings: ContourFirstExperimentConfig) -> RMB:
             print_fit_reports(data, settings)
 
     refinements = 0
-    if settings.refine_after_trace and budget.can_spend():
+    if settings.refine_after_trace and traced_anchors and budget.can_spend():
         confirmations = confirm_traced_anchors(
             backend=backend,
             rng=rng,
