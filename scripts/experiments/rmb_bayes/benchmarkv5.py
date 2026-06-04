@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
+import tempfile
 from math import ceil
 from pathlib import Path
 
@@ -8,6 +11,7 @@ import numpy as np
 from numpy.random import default_rng
 
 from sympleq.applications.randomized_benchmarking.RMB import RMB
+from sympleq.core.bayesian_estimation import BayesianEstimator
 
 from viarregio2 import (
     config_from_parameters,
@@ -27,6 +31,26 @@ from viarregio4 import (
 )
 from viarregio5 import ContourFirstExperimentConfig
 from viarregio5 import estimate_boundary as estimate_boundary_v5
+
+
+def configure_plot_caches() -> None:
+    """
+    Keep Matplotlib/fontconfig caches in a writable temp directory.
+
+    The benchmark imports Matplotlib lazily, but the sandbox/user environment
+    may point its default cache under an unwritable home config directory.
+    Setting these before plotting avoids a slow warning-heavy startup.
+    """
+    cache_root = Path(tempfile.gettempdir()) / "sympleq_benchmarkv5_cache"
+    mpl_cache = cache_root / "matplotlib"
+    xdg_cache = cache_root / "xdg"
+    mpl_cache.mkdir(parents=True, exist_ok=True)
+    xdg_cache.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("MPLCONFIGDIR", str(mpl_cache))
+    os.environ.setdefault("XDG_CACHE_HOME", str(xdg_cache))
+
+
+configure_plot_caches()
 
 
 def parse_budget_list(value: str) -> list[float]:
@@ -102,8 +126,8 @@ def make_settings(
         trace_accept_probability_width=0.12,
         trace_reject_probability_width=args.trace_reject_probability_width,
         trace_directions=(1,),
-        model_projection_after_fit=True,
-        refine_after_trace=True,
+        model_projection_after_fit=args.model_projection_after_fit,
+        refine_after_trace=args.refine_after_trace,
         trace_anchor_min_shots=args.trace_anchor_min_shots,
         refinement_shots=args.refinement_shots,
         refinement_boundary_width=0.15,
@@ -283,6 +307,8 @@ def cache_path(
         f"_tr{args.trace_reserve_budget_fraction:g}m{args.trace_reserve_min_hqc:g}"
         f"_tc{args.trace_correction_steps}rw{args.trace_reject_probability_width:g}"
         f"_ta{args.trace_anchor_min_shots}"
+        f"_{'mp' if args.model_projection_after_fit else 'nmp'}"
+        f"_{'ref' if args.refine_after_trace else 'noref'}"
         f"_cc{args.crossing_confirm_candidates}s{args.crossing_confirm_shots}7.json"
     )
     return cache_dir / name
@@ -320,6 +346,52 @@ def print_budget_warning(
         )
 
 
+def load_legacy_depth_ratio_cache(
+    path: Path,
+    settings: ContourFirstExperimentConfig,
+    seed: int,
+) -> RMB:
+    """
+    Load a pre-gate-count RMB cache and convert configs to current RMBConfig.
+    """
+    with path.open(encoding="utf-8") as handle:
+        payload = json.load(handle)
+
+    estimator_params = payload.get("estimator", {})
+    default_estimator = BayesianEstimator(
+        estimator_params.get("threshold", 10 ** -3),
+        estimator_params.get("min_runs", 100),
+        estimator_params.get("max_runs"),
+    )
+    rmb = RMB.default(default_rng(seed)).with_backend(make_backend()).with_bayesian_estimator(default_estimator)
+
+    for rec in payload["data"]:
+        template = (
+            template_config(settings, rec["n_qubits"])
+            .with_random_elimination(rec["random_elimination"])
+            .with_scrambling_probability(rec["scrambling_probability"])
+        )
+        ratio = 0.5 * (
+            float(rec["min_two_qubit_gate_ratio"])
+            + float(rec.get("max_two_qubit_gate_ratio", rec["min_two_qubit_gate_ratio"]))
+        )
+        config = config_from_parameters(
+            template=template,
+            depth=float(rec["depth"]),
+            ratio=ratio,
+        )
+        estimator = BayesianEstimator(
+            default_estimator.threshold,
+            default_estimator.min_runs,
+            default_estimator.max_runs,
+        )
+        for outcome, count in rec["results"]:
+            estimator.record(bool(outcome), int(count))
+        rmb._data[config] = estimator
+
+    return rmb
+
+
 def run_or_load(
     *,
     label: str,
@@ -331,9 +403,24 @@ def run_or_load(
     path = cache_path(label=label, budget=budget, seed=seed, args=args)
     if path.exists() and not args.rebuild:
         print(f"Loading {label} budget {budget:g} from {path}")
-        rmb = RMB.load(path)
-        print_budget_warning(label=label, rmb=rmb, settings=settings, args=args)
-        return rmb, settings
+        try:
+            rmb = RMB.load(path)
+        except (KeyError, TypeError, ValueError) as exc:
+            try:
+                rmb = load_legacy_depth_ratio_cache(path, settings=settings, seed=seed)
+            except (KeyError, TypeError, ValueError) as legacy_exc:
+                print(
+                    f"Cached {label} budget {budget:g} at {path} is incompatible "
+                    f"with the current RMBConfig format ({exc}) and could not be "
+                    f"converted ({legacy_exc}); rebuilding it."
+                )
+            else:
+                print(f"Converted legacy cache for {label} budget {budget:g}.")
+                print_budget_warning(label=label, rmb=rmb, settings=settings, args=args)
+                return rmb, settings
+        else:
+            print_budget_warning(label=label, rmb=rmb, settings=settings, args=args)
+            return rmb, settings
 
     print(f"Running {label} budget {budget:g}...")
     if label == "true" and args.true_method == "dense":
@@ -373,6 +460,39 @@ def sorted_contour(contour: np.ndarray) -> np.ndarray:
         return contour
     order = np.lexsort((contour[:, 0], contour[:, 1]))
     return contour[order]
+
+
+def scaled_points(points: np.ndarray, settings: ContourFirstExperimentConfig) -> np.ndarray:
+    lower = np.array([settings.depth_bounds[0], settings.ratio_bounds[0]], dtype=float)
+    upper = np.array([settings.depth_bounds[1], settings.ratio_bounds[1]], dtype=float)
+    return (points - lower) / (upper - lower)
+
+
+def contour_chamfer_distance(
+    contour: np.ndarray,
+    reference_contour: np.ndarray,
+    settings: ContourFirstExperimentConfig,
+) -> float:
+    if len(contour) == 0 or len(reference_contour) == 0:
+        return float("nan")
+    scaled_contour = scaled_points(contour, settings)
+    scaled_reference = scaled_points(reference_contour, settings)
+    distances = np.linalg.norm(
+        scaled_contour[:, None, :] - scaled_reference[None, :, :],
+        axis=2,
+    )
+    return float(
+        0.5 * (
+            np.mean(np.min(distances, axis=1))
+            + np.mean(np.min(distances, axis=0))
+        )
+    )
+
+
+def contour_calibration_error(contour: np.ndarray, reference_surface) -> float:
+    if len(contour) == 0 or reference_surface is None:
+        return float("nan")
+    return float(np.mean(np.abs(reference_surface.probability(contour) - 0.5)))
 
 
 def point_arrays(rmb: RMB) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -445,7 +565,7 @@ def plot_surface_panel(
     else:
         hqc_text = ""
     ax.set_title(f"{budget_label}\n{used} outcomes, {len(rmb._data)} configs{hqc_text}")
-    ax.set_xlabel("# Gates")
+    ax.set_xlabel("Depth")
     ax.set_ylabel("Two-qubit gate ratio")
     ax.set_xlim(settings.depth_bounds)
     ax.set_ylim(settings.ratio_bounds)
@@ -494,7 +614,7 @@ def make_plots(
     from matplotlib.gridspec import GridSpec
 
     true_label, true_rmb, true_settings = true_run
-    true_contour, _ = extract_contour(true_rmb, true_settings)
+    true_contour, true_surface = extract_contour(true_rmb, true_settings)
 
     surface_runs = runs + [true_run]
     n_panels = len(surface_runs) + 1
@@ -530,6 +650,11 @@ def make_plots(
         contour, _ = extract_contour(rmb, settings)
         if label != true_label:
             contours.append((label, contour))
+            print(
+                f"{label}: contour points={len(contour)}, "
+                f"Chamfer={contour_chamfer_distance(contour, true_contour, settings):.4f}, "
+                f"calibration={contour_calibration_error(contour, true_surface):.4f}"
+            )
 
     overlay_ax = flat_axes[len(surface_runs)]
     plot_overlay_panel(
@@ -625,7 +750,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--trace-local-crossing",
         action="store_true",
-        help="Use local fixed-ratio depth crossings for trace steps. More principled, but costly at low budgets.",
+        help="Use local fixed-ratio depth crossings for trace steps.",
+    )
+    parser.add_argument(
+        "--projected-trace",
+        dest="trace_local_crossing",
+        action="store_false",
+        help="Use cheaper projected trace steps without local fixed-ratio crossings.",
     )
     parser.add_argument(
         "--no-trace-monotone-depth",
@@ -635,6 +766,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--trace-correction-steps", type=int, default=2)
     parser.add_argument("--trace-reject-probability-width", type=float, default=0.25)
     parser.add_argument("--trace-anchor-min-shots", type=int, default=8)
+    parser.add_argument(
+        "--model-projection-after-fit",
+        action="store_true",
+        help=(
+            "Use a refitted monotone surface to project every trace step. "
+            "This is expensive because it runs an L-BFGS fit inside the trace loop."
+        ),
+    )
+    parser.add_argument(
+        "--refine-after-trace",
+        action="store_true",
+        help=(
+            "After tracing, spend leftover budget on anchor confirmation and "
+            "uncertainty refinement."
+        ),
+    )
+    parser.add_argument(
+        "--no-refine-after-trace",
+        dest="refine_after_trace",
+        action="store_false",
+        help=(
+            "Skip post-trace anchor confirmation and uncertainty refinement."
+        ),
+    )
     parser.add_argument("--refinement-shots", type=int, default=2)
     parser.add_argument("--diagnostics-dir", type=str, default=None)
     parser.add_argument("--print-diagnostics", action="store_true")
@@ -665,6 +820,8 @@ def parse_args() -> argparse.Namespace:
         help="Hide dense-reference probe points and show only the fitted reference contour.",
     )
     parser.set_defaults(show_reference_points=False)
+    parser.set_defaults(trace_local_crossing=True)
+    parser.set_defaults(refine_after_trace=True)
     parser.add_argument("--no-show", action="store_true", help="Save the figure without opening a window.")
     parser.add_argument("--warn-spend-fraction", type=float, default=0.8)
     parser.add_argument("--verbose", action="store_true")
