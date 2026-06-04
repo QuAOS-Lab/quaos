@@ -1,8 +1,11 @@
-from typing import Callable
+from typing import Protocol
 
 from .config import RMBConfig, RMBData
 
-type UpdateStrategy = Callable[[RMBData, RMBConfig], RMBConfig]
+
+class UpdateStrategy(Protocol):
+    def __call__(self, data: RMBData, current_config: RMBConfig) -> RMBConfig:
+        ...
 
 
 def default_update_strategy(data: RMBData, current_config: RMBConfig) -> RMBConfig:

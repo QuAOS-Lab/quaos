@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field, replace
+from typing import TypeAlias
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 
@@ -9,7 +10,7 @@ from sympleq.core.circuits.gates import DEFAULT_GATES_SET, GATES, Gate
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis.pauli_sum import PauliSum
 
-type RMBData = dict[RMBConfig, BayesianEstimator]
+RMBData: TypeAlias = dict["RMBConfig", BayesianEstimator]
 
 
 @dataclass(frozen=True)  # Frozen to avoid possible mistakes in using references

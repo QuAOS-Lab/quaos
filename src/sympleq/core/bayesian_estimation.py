@@ -1,8 +1,9 @@
 from __future__ import annotations
-from typing import Any, Callable, Generator, Hashable
+from typing import Any, Callable, Generator, Hashable, TypeAlias, TypeVar
 
 
-type EstimatorCallable[T: Hashable] = Callable[[], T | list[T]]
+T = TypeVar("T", bound=Hashable)
+EstimatorCallable: TypeAlias = Callable[[], T | list[T]]
 
 
 class BayesianEstimator:
@@ -149,7 +150,7 @@ class BayesianEstimator:
         and every variance is at or below ``threshold``."""
         return (self._counts_tot >= self.min_runs and all(v <= self.threshold for v in self._variances.values()))
 
-    def run[T: Hashable](self, callable: EstimatorCallable[T], verbose: bool = False):
+    def run(self, callable: EstimatorCallable[T], verbose: bool = False):
         """
         Run the estimator to convergence.
 
@@ -164,8 +165,8 @@ class BayesianEstimator:
         for _ in self.run_iter(callable, verbose):
             pass
 
-    def run_iter[T: Hashable](self, callable: EstimatorCallable[T],
-                              verbose: bool = False) -> Generator[None, None, None]:
+    def run_iter(self, callable: EstimatorCallable[T],
+                 verbose: bool = False) -> Generator[None, None, None]:
         """
         Run the estimator, yielding after each sample.
 
