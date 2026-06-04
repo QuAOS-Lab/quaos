@@ -219,6 +219,11 @@ class MeasurementTrialRecord:
 
 
 _ORIGINAL_VIARREGIO5_SPEND_CONFIG = _viarregio5.spend_config
+_ORIGINAL_VIARREGIO5_FIND_DEPTH_CROSSING_AT_RATIO = _viarregio5.find_depth_crossing_at_ratio
+
+
+def is_target_fidelity(probability: float | None) -> bool:
+    return probability is not None and bool(np.isclose(float(probability), TARGET, atol=1e-12, rtol=0.0))
 
 
 def ensure_trial_log(budget: BudgetState) -> list[MeasurementTrialRecord]:
@@ -329,8 +334,219 @@ def logged_spend_config(
     return spent
 
 
+def find_depth_crossing_at_ratio(
+    *,
+    backend,
+    rng,
+    data: RMBData,
+    template: RMBConfig,
+    ratio: float,
+    settings: HybridContourGPConfig,
+    budget: BudgetState,
+    center_depth: float | None = None,
+    local: bool = False,
+) -> RMBConfig | None:
+    """Find a fixed-ratio depth crossing, exiting immediately on exact target fidelity."""
+    d_min, d_max = settings.depth_bounds
+    if center_depth is None or not local:
+        if settings.initial_crossing_interior_bracket and not local:
+            depth_span = d_max - d_min
+            center = d_min + settings.initial_crossing_center_fraction * depth_span
+            half_width = settings.initial_crossing_half_width_fraction * depth_span
+            low_depth = max(float(d_min), center - half_width)
+            high_depth = min(float(d_max), center + half_width)
+        else:
+            low_depth = float(d_min)
+            high_depth = float(d_max)
+    else:
+        span = settings.trace_depth_search_fraction * (d_max - d_min)
+        low_depth = max(float(d_min), center_depth - span)
+        high_depth = min(float(d_max), center_depth + span)
+
+    low_config, low_p = _viarregio5.probe_depth(
+        backend=backend,
+        rng=rng,
+        data=data,
+        template=template,
+        depth=low_depth,
+        ratio=ratio,
+        shots=settings.ray_probe_shots if not local else settings.trace_shots,
+        budget=budget,
+        settings=settings,
+    )
+    if is_target_fidelity(low_p):
+        return low_config
+
+    high_config, high_p = _viarregio5.probe_depth(
+        backend=backend,
+        rng=rng,
+        data=data,
+        template=template,
+        depth=high_depth,
+        ratio=ratio,
+        shots=settings.ray_probe_shots if not local else settings.trace_shots,
+        budget=budget,
+        settings=settings,
+    )
+    if is_target_fidelity(high_p):
+        return high_config
+    if low_p is None or high_p is None:
+        return None
+
+    crossing_candidates: list[tuple[RMBConfig, float]] = [(low_config, low_p), (high_config, high_p)]
+
+    if (
+        not (low_p >= TARGET and high_p <= TARGET)
+        and (local or settings.initial_crossing_interior_bracket)
+    ):
+        expand = (
+            settings.trace_depth_search_fraction * (d_max - d_min)
+            if local
+            else settings.initial_crossing_half_width_fraction
+            * settings.initial_crossing_expand_factor
+            * (d_max - d_min)
+        )
+        for _ in range(3):
+            if not budget.can_spend():
+                return None
+            if low_p < TARGET:
+                low_depth = max(float(d_min), low_depth - expand)
+                low_config, low_p = _viarregio5.probe_depth(
+                    backend=backend,
+                    rng=rng,
+                    data=data,
+                    template=template,
+                    depth=low_depth,
+                    ratio=ratio,
+                    shots=settings.trace_shots,
+                    budget=budget,
+                    settings=settings,
+                )
+                if is_target_fidelity(low_p):
+                    return low_config
+                if low_p is not None:
+                    crossing_candidates.append((low_config, low_p))
+            if high_p > TARGET:
+                high_depth = min(float(d_max), high_depth + expand)
+                high_config, high_p = _viarregio5.probe_depth(
+                    backend=backend,
+                    rng=rng,
+                    data=data,
+                    template=template,
+                    depth=high_depth,
+                    ratio=ratio,
+                    shots=settings.trace_shots,
+                    budget=budget,
+                    settings=settings,
+                )
+                if is_target_fidelity(high_p):
+                    return high_config
+                if high_p is not None:
+                    crossing_candidates.append((high_config, high_p))
+            if low_p is not None and high_p is not None and low_p >= TARGET and high_p <= TARGET:
+                break
+            if low_depth <= d_min and high_depth >= d_max:
+                break
+            expand *= 1.5
+
+    if not (low_p >= TARGET and high_p <= TARGET):
+        return None
+
+    best_config = low_config if abs(low_p - TARGET) <= abs(high_p - TARGET) else high_config
+    best_error = min(abs(low_p - TARGET), abs(high_p - TARGET))
+    n_steps = settings.trace_correction_steps if local else settings.ray_bisection_steps
+    shots = settings.trace_shots if local else settings.ray_bisection_shots
+
+    for _ in range(n_steps):
+        if not budget.can_spend():
+            break
+        mid_depth = 0.5 * (low_depth + high_depth)
+        mid_config, mid_p = _viarregio5.probe_depth(
+            backend=backend,
+            rng=rng,
+            data=data,
+            template=template,
+            depth=mid_depth,
+            ratio=ratio,
+            shots=shots,
+            budget=budget,
+            settings=settings,
+        )
+        if mid_p is None:
+            break
+        if is_target_fidelity(mid_p):
+            return mid_config
+        mid_p = _viarregio5.confirm_crossing_decision_if_needed(
+            backend=backend,
+            rng=rng,
+            data=data,
+            config=mid_config,
+            probability=mid_p,
+            settings=settings,
+            budget=budget,
+            local=local,
+        )
+        crossing_candidates.append((mid_config, mid_p))
+        error = abs(mid_p - TARGET)
+        if error < best_error:
+            best_error = error
+            best_config = mid_config
+        if is_target_fidelity(mid_p):
+            return mid_config
+        ambiguous = abs(mid_p - TARGET) <= settings.crossing_decision_probability_width
+        if mid_p >= TARGET and not (
+            not local and settings.crossing_ambiguous_as_failure and ambiguous
+        ):
+            low_depth = float(mid_config.depth)
+            low_config = mid_config
+            low_p = mid_p
+        else:
+            high_depth = float(mid_config.depth)
+            high_config = mid_config
+            high_p = mid_p
+
+    if (
+        not local
+        and settings.crossing_confirm_candidates > 0
+        and settings.crossing_confirm_shots > 0
+    ):
+        unique_candidates = {}
+        for config, probability in crossing_candidates:
+            unique_candidates[config] = probability
+        ranked_candidates = sorted(
+            unique_candidates.items(),
+            key=lambda item: abs(item[1] - TARGET),
+        )[: settings.crossing_confirm_candidates]
+
+        for candidate_config, probability in ranked_candidates:
+            current_runs = data[candidate_config].num_runs() if candidate_config in data else 0
+            extra_shots = settings.crossing_confirm_shots - current_runs
+            if extra_shots > 0:
+                spend_config(
+                    backend=backend,
+                    rng=rng,
+                    data=data,
+                    config=candidate_config,
+                    requested_shots=extra_shots,
+                    budget=budget,
+                    settings=settings,
+                )
+            confirmed_probability = _viarregio5.measured_probability(data, candidate_config)
+            if confirmed_probability is None:
+                confirmed_probability = probability
+            if is_target_fidelity(confirmed_probability):
+                return candidate_config
+            error = abs(confirmed_probability - TARGET)
+            if error < best_error:
+                best_error = error
+                best_config = candidate_config
+
+    return best_config
+
+
 # Patch viarregio5 so imported contour-first routines also get logged.
 _viarregio5.spend_config = logged_spend_config
+_viarregio5.find_depth_crossing_at_ratio = find_depth_crossing_at_ratio
 spend_config = logged_spend_config
 
 
@@ -1237,14 +1453,16 @@ def estimate_boundary_hybrid(settings: HybridContourGPConfig) -> RMB:
             stop_reason = "no initial contour crossing found"
             continue
 
-        anchor = confirm_initial_anchor(
-            backend=backend,
-            rng=rng,
-            data=data,
-            anchor=anchor,
-            settings=settings,
-            budget=budget,
-        )
+        anchor_probability = fidelity_mean(data[anchor]) if anchor in data else None
+        if not is_target_fidelity(anchor_probability):
+            anchor = confirm_initial_anchor(
+                backend=backend,
+                rng=rng,
+                data=data,
+                anchor=anchor,
+                settings=settings,
+                budget=budget,
+            )
 
         if settings.verbose:
             print(
@@ -1405,12 +1623,12 @@ def estimate_boundary_hybrid(settings: HybridContourGPConfig) -> RMB:
 if __name__ == "__main__":
     settings = HybridContourGPConfig(
         measurement_budget=10_000_000,
-        hqc_budget=300.0,
-        n_qubits_values=(20,),
-        depth_bounds=(10, 80),
-        ratio_bounds=(0.08, 0.8),
-        random_elimination=0.3,
-        scrambling_probability=0.85,
+        hqc_budget=500.0,
+        n_qubits_values=(50,),
+        depth_bounds=(4, 80),
+        ratio_bounds=(0.08, 0.6),
+        random_elimination=0.0,
+        scrambling_probability=0.0,
         min_adaptive_shots_per_config=1,
         max_adaptive_shots_per_config=5,
         max_shots_per_config=5,
@@ -1437,7 +1655,7 @@ if __name__ == "__main__":
         trace_directions=(-1, 1),
         refine_after_trace=False,  # replaced by GP uncertainty-aware refinement
         gp_refine_after_trace=True,
-        gp_reserved_hqc_fraction=0.25,
+        gp_reserved_hqc_fraction=0.3,
         gp_refinement_shots=10,
         gp_max_refinement_executions=None,
         gp_candidate_grid_size=(80, 80),
