@@ -29,8 +29,8 @@ from viarregio4 import (
     fit_monotone_fidelity_surface,
     hqc_cost,
 )
-from viarregio5 import ContourFirstExperimentConfig
-from viarregio5 import estimate_boundary as estimate_boundary_v5
+from viarregio7 import ContourFirstExperimentConfig
+from viarregio7 import estimate_boundary as estimate_boundary_v7
 
 
 def configure_plot_caches() -> None:
@@ -41,7 +41,7 @@ def configure_plot_caches() -> None:
     may point its default cache under an unwritable home config directory.
     Setting these before plotting avoids a slow warning-heavy startup.
     """
-    cache_root = Path(tempfile.gettempdir()) / "sympleq_benchmarkv5_cache"
+    cache_root = Path(tempfile.gettempdir()) / "sympleq_benchmarkv7_cache"
     mpl_cache = cache_root / "matplotlib"
     xdg_cache = cache_root / "xdg"
     mpl_cache.mkdir(parents=True, exist_ok=True)
@@ -60,6 +60,12 @@ def parse_budget_list(value: str) -> list[float]:
     if any(budget <= 0.0 for budget in budgets):
         raise ValueError("Budgets must be positive.")
     return budgets
+
+
+def parse_optional_float(value: str) -> float | None:
+    if value.strip().lower() in {"none", "null", "off"}:
+        return None
+    return float(value)
 
 
 def make_settings(
@@ -131,6 +137,15 @@ def make_settings(
         trace_anchor_min_shots=args.trace_anchor_min_shots,
         refinement_shots=args.refinement_shots,
         refinement_boundary_width=0.15,
+        batching_enabled=not args.no_batching,
+        batch_max_configs=args.batch_max_configs,
+        max_cost_per_batch=args.max_cost_per_batch,
+        batch_reset_weight=args.batch_reset_weight,
+        batch_candidate_multiplier=args.batch_candidate_multiplier,
+        batch_refinement_shots=args.batch_refinement_shots,
+        batch_refinement_fit_passes=args.batch_refinement_fit_passes,
+        batch_acquisition_passes=args.batch_acquisition_passes,
+        batch_post_trace_reserve_fraction=args.batch_post_trace_reserve_fraction,
         hqc_cost_informed_acquisition=(args.budget_mode == "hqc" or hqc_budget is not None),
         hqc_cost_power=1.0,
         rng_seed=seed,
@@ -287,7 +302,7 @@ def cache_path(
             f"_rc{args.reference_confirm_shots}"
         )
     name = (
-        f"v5_{label}_"
+        f"v7_{label}_"
         f"{args.budget_mode}{budget:g}_"
         f"{args.n_qubits}q_"
         f"d{args.depth_min}-{args.depth_max}_"
@@ -309,9 +324,39 @@ def cache_path(
         f"_ta{args.trace_anchor_min_shots}"
         f"_{'mp' if args.model_projection_after_fit else 'nmp'}"
         f"_{'ref' if args.refine_after_trace else 'noref'}"
-        f"_cc{args.crossing_confirm_candidates}s{args.crossing_confirm_shots}7.json"
+        f"_cc{args.crossing_confirm_candidates}s{args.crossing_confirm_shots}"
+        f"_b{'y' if not args.no_batching else 'n'}"
+        f"mc{args.batch_max_configs}"
+        f"h{args.max_cost_per_batch if args.max_cost_per_batch is not None else 'none'}"
+        f"rw{args.batch_reset_weight:g}"
+        f"cm{args.batch_candidate_multiplier}"
+        f"rs{args.batch_refinement_shots}"
+        f"fp{args.batch_refinement_fit_passes}"
+        f"ap{args.batch_acquisition_passes}"
+        f"ptr{args.batch_post_trace_reserve_fraction:g}"
+        f"_v7.json"
     )
     return cache_dir / name
+
+
+def batch_summary_cache_path(path: Path) -> Path:
+    return path.with_suffix(path.suffix + ".batch_summary.json")
+
+
+def save_batch_summary_cache(path: Path, rmb: RMB) -> None:
+    summary = getattr(rmb, "_batch_cost_summary", None)
+    if not summary:
+        return
+    summary_path = batch_summary_cache_path(path)
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+
+def load_batch_summary_cache(path: Path, rmb: RMB) -> None:
+    summary_path = batch_summary_cache_path(path)
+    if not summary_path.exists():
+        return
+    with summary_path.open(encoding="utf-8") as handle:
+        rmb._batch_cost_summary = json.load(handle)
 
 
 def requested_budget_value(settings: ContourFirstExperimentConfig) -> float:
@@ -322,6 +367,9 @@ def requested_budget_value(settings: ContourFirstExperimentConfig) -> float:
 
 def spent_budget_value(rmb: RMB, settings: ContourFirstExperimentConfig) -> float:
     if settings.hqc_budget is not None:
+        summary = getattr(rmb, "_batch_cost_summary", None)
+        if summary:
+            return float(summary["stitched_hqc_spent"])
         return hqc_spent(rmb, settings)
     return float(total_measurements(rmb._data))
 
@@ -392,6 +440,21 @@ def load_legacy_depth_ratio_cache(
     return rmb
 
 
+def print_batch_cost_summary(label: str, budget: float, rmb: RMB) -> None:
+    summary = getattr(rmb, "_batch_cost_summary", None)
+    if not summary:
+        return
+    stitched = float(summary["stitched_hqc_spent"])
+    native = float(summary["native_hqc_estimate"])
+    saving = float(summary["estimated_batching_saving_hqc"])
+    fraction = float(summary["estimated_batching_saving_fraction"])
+    print(
+        f"{label} budget {budget:g} batching: stitched HQC {stitched:.1f}, "
+        f"native separate-job estimate {native:.1f}, saving {saving:.1f} "
+        f"({fraction:.1%})."
+    )
+
+
 def run_or_load(
     *,
     label: str,
@@ -419,6 +482,8 @@ def run_or_load(
                 print_budget_warning(label=label, rmb=rmb, settings=settings, args=args)
                 return rmb, settings
         else:
+            load_batch_summary_cache(path, rmb)
+            print_batch_cost_summary(label=label, budget=budget, rmb=rmb)
             print_budget_warning(label=label, rmb=rmb, settings=settings, args=args)
             return rmb, settings
 
@@ -426,10 +491,12 @@ def run_or_load(
     if label == "true" and args.true_method == "dense":
         rmb = dense_reference_run(settings=settings, seed=seed, args=args)
     else:
-        rmb = estimate_boundary_v5(settings)
+        rmb = estimate_boundary_v7(settings)
     path.parent.mkdir(parents=True, exist_ok=True)
     rmb.save(path)
+    save_batch_summary_cache(path, rmb)
     print(f"Saved {label} budget {budget:g} to {path}")
+    print_batch_cost_summary(label=label, budget=budget, rmb=rmb)
     print_budget_warning(label=label, rmb=rmb, settings=settings, args=args)
     return rmb, settings
 
@@ -448,6 +515,9 @@ def extract_contour(
 def hqc_spent(rmb: RMB, settings: ContourFirstExperimentConfig) -> float:
     if settings.hqc_budget is None:
         return float("nan")
+    summary = getattr(rmb, "_batch_cost_summary", None)
+    if summary:
+        return float(summary["stitched_hqc_spent"])
     return float(sum(
         hqc_cost(config, estimator.num_runs(), settings)
         for config, estimator in rmb._data.items()
@@ -690,7 +760,7 @@ def make_plots(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Plot viarregio5 contour estimates across budgets against a high-budget reference."
+        description="Plot viarregio7 batched contour estimates across budgets against a high-budget reference."
     )
     parser.add_argument("--budgets", type=str, default="100,250,500,1000")
     parser.add_argument("--true-budget", type=float, default=5000.0)
@@ -791,6 +861,31 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--refinement-shots", type=int, default=2)
+    parser.add_argument(
+        "--no-batching",
+        action="store_true",
+        help="Disable v7 stitched-cost batching and charge each request independently.",
+    )
+    parser.add_argument("--batch-max-configs", type=int, default=42)
+    parser.add_argument(
+        "--max-cost-per-batch",
+        type=parse_optional_float,
+        dest="max_cost_per_batch",
+        default=50.0,
+        help="Maximum estimated stitched HQC cost for one planned v7 batch. Use --max-cost-per-batch none to disable.",
+    )
+    parser.add_argument(
+        "--batch-max-hqc-cost",
+        type=parse_optional_float,
+        dest="max_cost_per_batch",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument("--batch-reset-weight", type=float, default=1.0)
+    parser.add_argument("--batch-candidate-multiplier", type=int, default=4)
+    parser.add_argument("--batch-refinement-shots", type=int, default=4)
+    parser.add_argument("--batch-refinement-fit-passes", type=int, default=3)
+    parser.add_argument("--batch-acquisition-passes", type=int, default=2)
+    parser.add_argument("--batch-post-trace-reserve-fraction", type=float, default=0.0)
     parser.add_argument("--diagnostics-dir", type=str, default=None)
     parser.add_argument("--print-diagnostics", action="store_true")
     parser.add_argument(
@@ -804,7 +899,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Rebuild all cached benchmark runs and overwrite the output plot.",
     )
-    parser.add_argument("--output", type=str, default="scripts/experiments/rmb_bayes/benchmarkv5.png")
+    parser.add_argument("--output", type=str, default="scripts/experiments/rmb_bayes/benchmarkv7.png")
     parser.add_argument("--dpi", type=int, default=180)
     parser.add_argument("--columns", type=int, default=3)
     parser.add_argument(
@@ -832,7 +927,7 @@ def main(**overrides) -> None:
     args = parse_args()
     for name, value in overrides.items():
         if not hasattr(args, name):
-            raise ValueError(f"Unknown benchmarkv5 option: {name}")
+            raise ValueError(f"Unknown benchmarkv7 option: {name}")
         setattr(args, name, value)
     if args.overwrite:
         args.rebuild = True

@@ -15,6 +15,7 @@ from viarregio2 import (
     config_depth,
     config_from_parameters,
     config_two_qubit_gate_ratio,
+    require_sympleq_backend,
 )
 
 
@@ -330,7 +331,9 @@ if __name__ == "__main__":
     noise_model = GenericNoise.from_paulis([0.00075, 0.00075, 0.00075])   # 000025
     two_qubit_noise_model = GenericNoise.from_paulis([0.005, 0.005, 0.005])  # 00079
 
-    backend = SympleqBackend(noise_model=noise_model, two_qubit_noise_model=two_qubit_noise_model)
+    backend = require_sympleq_backend(
+        SympleqBackend(noise_model=noise_model, two_qubit_noise_model=two_qubit_noise_model)
+    )
 
     rmb = RMB.default().with_backend(backend).with_update_strategy(logistic_boundary_update_strategy)  # takes a config and maps to bayesian eztimator
 
