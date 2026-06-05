@@ -176,18 +176,14 @@ class RMBConfig:
             rng = default_rng()
 
         target_n_2qb_gates = self.n_2qb_gates // 2
-
         _scrambler = Circuit.empty(self.dimensions)
-        scrambling_gates = 0
+        scrambling_gates = [GATES.X, GATES.Y, GATES.Z]
         for q_idx in range(self.n_qubits):
-            if rng.random() <= self.scrambling_probability:
-                scrambling_gates += 1
-                _scrambler.add_gate(GATES.X, q_idx)
-            else:
-                pass
+            gate_idx = rng.integers(0, len(scrambling_gates))
+            gate = scrambling_gates[gate_idx]
+            _scrambler.add_gate(gate, q_idx)
 
-        target_n_1qb_gates = self.n_1qb_gates // 2 - scrambling_gates
-
+        target_n_1qb_gates = self.n_1qb_gates // 2 - self.n_qubits
         _circuit = Circuit.from_number_of_gates(target_n_1qb_gates,
                                                 target_n_2qb_gates,
                                                 self.dimensions,
