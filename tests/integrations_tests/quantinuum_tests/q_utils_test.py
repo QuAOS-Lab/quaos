@@ -4,13 +4,36 @@ from pytket.circuit import Circuit as PytketCircuit, OpType
 
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.circuits.gates import GATES
+from sympleq.core.paulis import PauliString
 from sympleq.integrations.quantinuum.utils import to_pytket_circuit, from_pytket_circuit, NATIVE_GATES_SET
 
 
+def _action_signature(circuit: Circuit) -> list[PauliString]:
+    """Conjugation action of a qubit Clifford circuit on all X/Z generators."""
+    n = circuit.n_qudits()
+    signature = []
+    for i in range(n):
+        for label in ("x1z0", "x0z1"):
+            s = " ".join(label if j == i else "x0z0" for j in range(n))
+            signature.append(circuit.act(PauliString.from_string(s, dimensions=[2] * n)))
+    return signature
+
+
+_H_SERIES_NATIVE_OPS = {OpType.Rz, OpType.PhasedX, OpType.ZZPhase, OpType.Measure, OpType.Barrier}
+
+
+def _assert_native(tk: PytketCircuit):
+    """Assert that a compiled circuit contains only H-series native ops."""
+    for command in tk.get_commands():
+        assert command.op.type in _H_SERIES_NATIVE_OPS, f"non-native op {command.op.type}"
+
+
 class TestToPytketCircuit:
+    """``to_pytket_circuit`` measures all qubits and compiles with the Nexus
+    default pass, so outputs contain only H-series native ops."""
 
     def test_single_qubit_gates(self):
-        """Convert circuit with H and S gates."""
+        """H/S/Sdg compile to native Rz/PhasedX ops."""
         circuit = Circuit.from_tuples([2, 2], [
             (GATES.H, 0),
             (GATES.S, 1),
@@ -19,14 +42,10 @@ class TestToPytketCircuit:
         tk = to_pytket_circuit(circuit)
 
         assert tk.n_qubits == 2
-        commands = tk.get_commands()
-        assert len(commands) == 3
-        assert commands[0].op.type == OpType.H
-        assert commands[1].op.type == OpType.S
-        assert commands[2].op.type == OpType.Sdg
+        _assert_native(tk)
 
     def test_two_qubit_gates(self):
-        """Convert circuit with CX, SWAP, and CZ gates."""
+        """CX/SWAP/CZ compile to native ZZPhase-based ops."""
         circuit = Circuit.from_tuples([2, 2, 2], [
             (GATES.CX, 0, 1),
             (GATES.SWAP, 1, 2),
@@ -35,31 +54,27 @@ class TestToPytketCircuit:
         tk = to_pytket_circuit(circuit)
 
         assert tk.n_qubits == 3
-        commands = tk.get_commands()
-        assert len(commands) == 3
-        assert commands[0].op.type == OpType.CX
-        assert commands[1].op.type == OpType.SWAP
-        assert commands[2].op.type == OpType.CZ
+        _assert_native(tk)
 
-    def test_qudit_indices_preserved(self):
-        """Qudit indices are correctly mapped to pytket qubits."""
-        circuit = Circuit.from_tuples([2, 2, 2], [
-            (GATES.CX, 2, 0),
-            (GATES.H, 1),
-        ])
+    def test_all_qubits_measured(self):
+        """measure_all() runs before compilation: every qubit gets a Measure."""
+        circuit = Circuit.from_tuples([2, 2, 2], [(GATES.H, 0)])
         tk = to_pytket_circuit(circuit)
 
-        commands = tk.get_commands()
-        assert [q.index[0] for q in commands[0].qubits] == [2, 0]
-        assert [q.index[0] for q in commands[1].qubits] == [1]
+        measured = sorted(
+            cmd.qubits[0].index[0]
+            for cmd in tk.get_commands()
+            if cmd.op.type == OpType.Measure
+        )
+        assert measured == [0, 1, 2]
 
     def test_empty_circuit(self):
-        """Convert an empty circuit."""
+        """An empty circuit compiles to measurements only."""
         circuit = Circuit.empty([2, 2])
         tk = to_pytket_circuit(circuit)
 
         assert tk.n_qubits == 2
-        assert len(tk.get_commands()) == 0
+        assert all(cmd.op.type == OpType.Measure for cmd in tk.get_commands())
 
     def test_non_qubit_raises(self):
         """Raise ValueError for non-qubit dimensions."""
@@ -67,85 +82,42 @@ class TestToPytketCircuit:
         with pytest.raises(ValueError, match="dimension=2"):
             to_pytket_circuit(circuit)
 
-    def test_pauli_gates(self):
-        """Convert circuit with X, Y, Z gates."""
-        circuit = Circuit.from_tuples([2, 2], [
-            (GATES.X, 0),
-            (GATES.Y, 1),
-            (GATES.Z, 0),
-        ])
-        tk = to_pytket_circuit(circuit)
-
-        commands = tk.get_commands()
-        assert len(commands) == 3
-        assert commands[0].op.type == OpType.X
-        assert commands[1].op.type == OpType.Y
-        assert commands[2].op.type == OpType.Z
-
-    def test_identity_gate(self):
-        """Convert circuit with Id gate."""
-        circuit = Circuit.from_tuples([2], [(GATES.Id, 0)])
-        tk = to_pytket_circuit(circuit)
-
-        commands = tk.get_commands()
-        assert len(commands) == 1
-        assert commands[0].op.type == OpType.noop
-
-    def test_inverse_gates(self):
-        """H_inv and CX_inv map to their pytket equivalents."""
-        circuit = Circuit.from_tuples([2, 2], [
-            (GATES.H_inv, 0),
-            (GATES.CX_inv, 0, 1),
-        ])
-        tk = to_pytket_circuit(circuit)
-
-        commands = tk.get_commands()
-        assert commands[0].op.type == OpType.H
-        assert commands[1].op.type == OpType.CX
-
     def test_ZZMax_gates(self):
-        """GATES.ZZMax → OpType.ZZMax (fixed-angle); GATES.ZZMax_inv → OpType.ZZPhase(-0.5)."""
+        """GATES.ZZMax compiles to ZZPhase(0.5); GATES.ZZMax_inv to ZZPhase(3.5)."""
         circuit = Circuit.from_tuples([2, 2], [
             (GATES.ZZMax, 0, 1),
             (GATES.ZZMax_inv, 0, 1),
         ])
         tk = to_pytket_circuit(circuit)
 
-        commands = tk.get_commands()
-        assert len(commands) == 2
-        assert commands[0].op.type == OpType.ZZMax
-        assert commands[1].op.type == OpType.ZZPhase
-        # pytket normalises -0.5 mod 4.0
-        inv_theta = float(commands[1].op.params[0]) % 4.0
-        assert np.isclose(inv_theta, 3.5)
+        zz = [cmd for cmd in tk.get_commands() if cmd.op.type == OpType.ZZPhase]
+        assert len(zz) == 2
+        assert np.isclose(float(zz[0].op.params[0]) % 4.0, 0.5)
+        assert np.isclose(float(zz[1].op.params[0]) % 4.0, 3.5)
 
     def test_V_gates(self):
-        """GATES.V maps to PhasedX(0.5, 0); GATES.V_inv to PhasedX(-0.5, 0)."""
+        """GATES.V compiles to PhasedX(0.5, 0); GATES.V_inv to PhasedX(3.5, 0)."""
         circuit = Circuit.from_tuples([2], [
             (GATES.V, 0),
             (GATES.V_inv, 0),
         ])
         tk = to_pytket_circuit(circuit)
 
-        commands = tk.get_commands()
-        assert len(commands) == 2
-        assert commands[0].op.type == OpType.PhasedX
-        assert np.isclose(float(commands[0].op.params[0]), 0.5)
-        assert np.isclose(float(commands[0].op.params[1]), 0.0)
-        assert commands[1].op.type == OpType.PhasedX
-        # pytket normalises -0.5 mod 4.0
-        inv_theta = float(commands[1].op.params[0]) % 4.0
-        assert np.isclose(inv_theta, 3.5)
-        assert np.isclose(float(commands[1].op.params[1]), 0.0)
+        px = [cmd for cmd in tk.get_commands() if cmd.op.type == OpType.PhasedX]
+        assert len(px) == 2
+        assert np.isclose(float(px[0].op.params[0]) % 4.0, 0.5)
+        assert np.isclose(float(px[0].op.params[1]) % 4.0, 0.0)
+        assert np.isclose(float(px[1].op.params[0]) % 4.0, 3.5)
+        assert np.isclose(float(px[1].op.params[1]) % 4.0, 0.0)
 
     def test_NATIVE_GATES_SET_all_convert(self):
-        """Every gate in NATIVE_GATES_SET should convert to pytket without error."""
+        """Every gate in NATIVE_GATES_SET compiles to native ops without error."""
         for gate in NATIVE_GATES_SET:
             qudits = tuple(range(gate.n_qudits))
             dims = [2] * max(2, gate.n_qudits)
             circuit = Circuit.from_tuples(dims, [(gate, *qudits)])
             tk = to_pytket_circuit(circuit)
-            assert len(tk.get_commands()) == 1, f"{gate.name} produced != 1 native op"
+            _assert_native(tk)
 
 
 class TestFromPytketCircuit:
@@ -237,7 +209,7 @@ class TestFromPytketCircuit:
 class TestRoundtrip:
 
     def test_sympleq_to_pytket_and_back(self):
-        """Roundtrip: SympleQ -> pytket -> SympleQ preserves gates."""
+        """Roundtrip: SympleQ -> pytket -> SympleQ preserves the Clifford action."""
         original = Circuit.from_tuples([2, 2, 2], [
             (GATES.H, 0),
             (GATES.S, 1),
@@ -249,27 +221,37 @@ class TestRoundtrip:
 
         restored = from_pytket_circuit(to_pytket_circuit(original))
 
-        assert original.n_gates() == restored.n_gates()
-        for i in range(original.n_gates()):
-            assert original.gates[i] is restored.gates[i]
-            assert original.qudit_indices[i] == restored.qudit_indices[i]
+        assert restored.n_qudits() == original.n_qudits()
+        assert _action_signature(restored) == _action_signature(original)
 
     def test_pytket_to_sympleq_and_back(self):
-        """Roundtrip: pytket -> SympleQ -> pytket preserves structure."""
+        """Roundtrip: pytket -> SympleQ -> pytket preserves the Clifford action."""
         tk_original = PytketCircuit(3)
         tk_original.H(0)
         tk_original.S(1)
         tk_original.CX(0, 2)
         tk_original.add_gate(OpType.Sdg, [1])
 
-        tk_restored = to_pytket_circuit(from_pytket_circuit(tk_original))
+        s_original = from_pytket_circuit(tk_original)
+        s_restored = from_pytket_circuit(to_pytket_circuit(s_original))
 
-        orig_cmds = tk_original.get_commands()
-        rest_cmds = tk_restored.get_commands()
-        assert len(orig_cmds) == len(rest_cmds)
-        for oc, rc in zip(orig_cmds, rest_cmds):
-            assert oc.op.type == rc.op.type
-            assert [q.index[0] for q in oc.qubits] == [q.index[0] for q in rc.qubits]
+        assert _action_signature(s_restored) == _action_signature(s_original)
+
+    def test_every_mapped_gate_roundtrips(self):
+        """Each supported SympleQ gate survives compile + back-conversion."""
+        one_qubit = [GATES.Id, GATES.H, GATES.H_inv, GATES.S, GATES.S_inv,
+                     GATES.X, GATES.X_inv, GATES.Y, GATES.Y_inv,
+                     GATES.Z, GATES.Z_inv, GATES.V, GATES.V_inv]
+        two_qubit = [GATES.CX, GATES.CX_inv, GATES.SWAP, GATES.CZ,
+                     GATES.ZZMax, GATES.ZZMax_inv]
+        for gate in one_qubit:
+            original = Circuit.from_tuples([2, 2], [(gate, 0)])
+            restored = from_pytket_circuit(to_pytket_circuit(original))
+            assert _action_signature(restored) == _action_signature(original), gate.name
+        for gate in two_qubit:
+            original = Circuit.from_tuples([2, 2], [(gate, 0, 1)])
+            restored = from_pytket_circuit(to_pytket_circuit(original))
+            assert _action_signature(restored) == _action_signature(original), gate.name
 
     def test_ZZMax_roundtrip(self):
         """SympleQ -> pytket -> SympleQ roundtrip preserves ZZMax and its inverse."""
@@ -284,7 +266,7 @@ class TestRoundtrip:
         assert restored.gates[1] is GATES.ZZMax_inv
 
     def test_random_circuit_roundtrip(self):
-        """Roundtrip random qubit circuits preserves gate count and gate set."""
+        """Roundtrip random qubit circuits preserves the Clifford action."""
         for _ in range(20):
             n_qudits = np.random.randint(2, 6)
             n_gates = np.random.randint(0, 15)
@@ -292,6 +274,49 @@ class TestRoundtrip:
 
             restored = from_pytket_circuit(to_pytket_circuit(original))
 
-            # pytket may reorder independent gates, so just check counts match
-            assert original.n_gates() == restored.n_gates()
-            assert original.n_qudits() == restored.n_qudits()
+            assert restored.n_qudits() == original.n_qudits()
+            assert _action_signature(restored) == _action_signature(original)
+
+
+class TestImplicitPermutation:
+    """Compilation with ``allow_swaps=True`` absorbs SWAPs into an implicit
+    wire permutation; ``from_pytket_circuit`` must restore it explicitly."""
+
+    def test_swap_only_circuit(self):
+        """A bare SWAP is fully absorbed into the implicit permutation."""
+        original = Circuit.from_tuples([2, 2], [(GATES.SWAP, 0, 1)])
+        restored = from_pytket_circuit(to_pytket_circuit(original))
+
+        assert _action_signature(restored) == _action_signature(original)
+
+    def test_swap_cycle(self):
+        """Two chained SWAPs produce a 3-cycle wire permutation."""
+        original = Circuit.from_tuples([2, 2, 2], [
+            (GATES.SWAP, 0, 1),
+            (GATES.SWAP, 1, 2),
+        ])
+        restored = from_pytket_circuit(to_pytket_circuit(original))
+
+        assert _action_signature(restored) == _action_signature(original)
+
+    def test_random_circuits_with_swaps(self):
+        """Compiled circuits with interleaved SWAPs stay Clifford-equivalent."""
+        rng = np.random.default_rng(7)
+        one_qubit = [GATES.H, GATES.S, GATES.S_inv, GATES.X, GATES.Z, GATES.V, GATES.V_inv]
+        two_qubit = [GATES.CX, GATES.CZ, GATES.SWAP, GATES.ZZMax]
+        for _ in range(10):
+            n_qubits = int(rng.integers(2, 5))
+            tuples = []
+            for _ in range(12):
+                if rng.random() < 0.5:
+                    gate = two_qubit[rng.integers(len(two_qubit))]
+                    a, b = rng.choice(n_qubits, size=2, replace=False)
+                    tuples.append((gate, int(a), int(b)))
+                else:
+                    gate = one_qubit[rng.integers(len(one_qubit))]
+                    tuples.append((gate, int(rng.integers(n_qubits))))
+            original = Circuit.from_tuples([2] * n_qubits, tuples)
+
+            restored = from_pytket_circuit(to_pytket_circuit(original))
+
+            assert _action_signature(restored) == _action_signature(original)

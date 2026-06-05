@@ -6,13 +6,15 @@ import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 import datetime
 
+from sympleq.applications.randomized_benchmarking.backends.utils import config_from_pytket_circuit
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
 from sympleq.applications.randomized_benchmarking.backends import RMBBackend, SympleqBackend, QuantinuumBackend
 from sympleq.applications.randomized_benchmarking.backends.base import backend_from_dict
 from sympleq.applications.randomized_benchmarking.update_strategy import UpdateStrategy, default_update_strategy
 from sympleq.core.bayesian_estimation import BayesianEstimator
 from sympleq.core.noise.noise_model import GenericNoise
-from sympleq.integrations.quantinuum.utils import NATIVE_GATES_SET
+from sympleq.integrations.quantinuum.utils import NATIVE_GATES_SET, from_pytket_circuit, to_pytket_circuit
+from sympleq.integrations.quantinuum.workflow import build_and_compile_circuits, setup
 
 DATA_DIR = Path(__file__).parent / "rmb_data"
 
@@ -488,10 +490,24 @@ def compare():
         print(f"  n_gates={c.n_gates:>4} 2qr={c.ratio_2_qb_gates:.2f} -> Δ={d:+.4f}")
 
 
+def generate_circuits_db(initial_config: RMBConfig) -> dict[RMBConfig, list[str]]:
+    data: dict[RMBConfig, list[str]] = {}
+    s_circ = initial_config.random_circuit()
+    pk_circ = to_pytket_circuit(s_circ)
+    cpk_circ = build_and_compile_circuits([pk_circ])[0]
+    current_config = config_from_pytket_circuit(cpk_circ.download_circuit())
+    if current_config not in data:
+        data[current_config] = []
+
+    data[current_config].append(cpk_circ.id.hex)
+
+    return data
+
+
 if __name__ == "__main__":
     # srmb = sympleq_pipeline()
 
-    rmb = RMB.default().with_backend(QuantinuumBackend(device_name="H2-Emulator", batch_size=1, max_cost_per_run=30.0))
+    # rmb = RMB.default().with_backend(QuantinuumBackend(device_name="H2-Emulator", batch_size=1, max_cost_per_run=30.0))
     initial_config = RMBConfig.default()\
         .with_n_qubits(5)\
         .with_n_1qb_gates(80 * 5)\
@@ -499,4 +515,22 @@ if __name__ == "__main__":
         .with_scrambling_probability(0.5)\
         .with_gates_set(tuple(NATIVE_GATES_SET))
 
-    rmb.run(initial_config, max_iterations=1)
+    # rmb.run(initial_config, max_iterations=1)
+
+    s_circ = initial_config.random_circuit()
+    pk_circ = to_pytket_circuit(s_circ)
+    setup("Benchmark")
+    cpk_circ = build_and_compile_circuits([pk_circ])[0]
+
+    back_from_compiled_pk_circ = cpk_circ.download_circuit()
+    back_from_pk_s_circ = from_pytket_circuit(back_from_compiled_pk_circ)
+
+    print(f"original sympleq circuit: #1qb_gates {s_circ.n_1qb_gates()}; #2qb_gates {s_circ.n_2qb_gates()}")
+    print(f"original pytket  circuit: #1qb_gates {pk_circ.n_1qb_gates()}; #2qb_gates {pk_circ.n_2qb_gates()}")
+    print(
+        f"compiled pytket  circuit: #1qb_gates {back_from_compiled_pk_circ.n_1qb_gates()}; #2qb_gates {back_from_compiled_pk_circ.n_2qb_gates()}")
+    print(
+        f"recover sympleq  circuit: #1qb_gates {back_from_pk_s_circ.n_1qb_gates()}; #2qb_gates {back_from_pk_s_circ.n_2qb_gates()}")
+
+
+
