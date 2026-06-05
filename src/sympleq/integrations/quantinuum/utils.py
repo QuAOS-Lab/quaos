@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Iterator
 
 import numpy as np
 import qnexus as qnx
 from pytket.backends.backendresult import BackendResult
 from pytket.circuit import Circuit as PytketCircuit, OpType
+from pytket.extensions.quantinuum.backends.quantinuum import QuantinuumBackend
+from pytket.extensions.quantinuum.backends.api_wrappers import QuantinuumAPI
+from pytket.passes import BasePass
 from qnexus.models.filters import SortFilterEnum
 from qnexus.models.job_status import JobStatusEnum
 from qnexus.models.references import (
     CircuitRef,
+    CompilationResultRef,
     ExecutionResultRef,
     JobType
 )
@@ -109,9 +114,23 @@ def _clifford_rotation(half_turns: float, table: dict[int, list[Gate]], axis: st
     return table[k % 8]
 
 
+@lru_cache(maxsize=None)
+def _nexus_compilation_pass(optimisation_level: int = 0) -> BasePass:
+    """The compilation pass Nexus runs server-side for H-series devices.
+
+    Built from offline H2-1 device data, whose gate set is identical to the
+    one H2-Emulator reports.
+    """
+    backend = QuantinuumBackend(device_name="H2-1", api_handler=QuantinuumAPI())
+    return backend.default_compilation_pass(optimisation_level=optimisation_level)
+
+
 def to_pytket_circuit(circuit: Circuit) -> PytketCircuit:
     """
     Convert a SympleQ Circuit to a pytket Circuit.
+
+    All qubits are measured and the result is compiled with the same
+    default pass Nexus applies server-side (optimisation level 0).
 
     Only qubit circuits (all dimensions equal to 2) are supported.
 
@@ -152,19 +171,7 @@ def to_pytket_circuit(circuit: Circuit) -> PytketCircuit:
 
     tk_circuit.measure_all()
 
-    from pytket.passes import AutoRebase, RemovePhaseOps, DecomposeBoxes, FlattenRelabelRegistersPass
-    DecomposeBoxes().apply(tk_circuit)
-    AutoRebase({OpType.PhasedX, OpType.Rz, OpType.ZZPhase}).apply(tk_circuit)
-    RemovePhaseOps().apply(tk_circuit)
-    FlattenRelabelRegistersPass().apply(tk_circuit)
-    # from pytket.passes import (
-    #     SequencePass, SquashRzPhasedX, RemoveRedundancies, CommuteThroughMultis,
-    # )
-    # SequencePass([
-    #     CommuteThroughMultis(),
-    #     SquashRzPhasedX(),
-    #     RemoveRedundancies(),
-    # ]).apply(tk_circuit)
+    _nexus_compilation_pass().apply(tk_circuit)
     return tk_circuit
 
 
@@ -200,6 +207,8 @@ def from_pytket_circuit(tk_circuit: PytketCircuit) -> Circuit:
         op_type = command.op.type
         if op_type == OpType.Barrier:
             continue
+        if op_type == OpType.Measure:
+            continue
 
         decomposition: list[Gate]
         if op_type == OpType.ZZPhase:
@@ -223,11 +232,18 @@ def from_pytket_circuit(tk_circuit: PytketCircuit) -> Circuit:
             # {V, V_inv, X} (for Rx) and {S, S_inv, Z} (for Rz).
             theta = float(command.op.params[0])
             phi = float(command.op.params[1])
-            decomposition = (
-                _clifford_rotation(-phi, _RZ_CLIFFORD, "z") +
-                _clifford_rotation(theta, _RX_CLIFFORD, "x") +
-                _clifford_rotation(phi, _RZ_CLIFFORD, "z")
-            )
+            k = round(theta * 2)
+            if np.isclose(theta, k / 2.0) and k % 4 == 2:
+                # Odd θ is a π rotation about an axis in the XY plane, equal to
+                # Rz(2φ)·X up to global phase. This covers the diagonal-axis
+                # Cliffords (φ an odd multiple of 0.25) the squash emits.
+                decomposition = [GATES.X] + _clifford_rotation(2 * phi, _RZ_CLIFFORD, "z")
+            else:
+                decomposition = (
+                    _clifford_rotation(-phi, _RZ_CLIFFORD, "z") +
+                    _clifford_rotation(theta, _RX_CLIFFORD, "x") +
+                    _clifford_rotation(phi, _RZ_CLIFFORD, "z")
+                )
         else:
             mapped = _REVERSE_MAP.get(op_type)
             if mapped is None:
@@ -238,7 +254,88 @@ def from_pytket_circuit(tk_circuit: PytketCircuit) -> Circuit:
         gates.extend(decomposition)
         qudit_indices.extend([qubits] * len(decomposition))
 
+    # Rebasing with implicit swaps enabled absorbs SWAPs into a virtual wire
+    # permutation (initial -> final) instead of emitting gates; restore it as
+    # explicit SWAP gates so the reconstructed circuit is equivalent.
+    permutation = {
+        qubit.index[0]: target.index[0]
+        for qubit, target in tk_circuit.implicit_qubit_permutation().items()
+    }
+    for pair in _permutation_to_swaps(permutation):
+        gates.append(GATES.SWAP)
+        qudit_indices.append(pair)
+
     return Circuit(dimensions, gates, qudit_indices)
+
+
+def _permutation_to_swaps(permutation: dict[int, int]) -> list[tuple[int, int]]:
+    """Decompose a wire permutation (initial -> final) into a SWAP sequence."""
+    swaps: list[tuple[int, int]] = []
+    visited: set[int] = set()
+    for start in permutation:
+        if start in visited:
+            continue
+        cycle = [start]
+        nxt = permutation[start]
+        while nxt != start:
+            cycle.append(nxt)
+            nxt = permutation[nxt]
+        visited.update(cycle)
+        for i in range(len(cycle) - 1, 0, -1):
+            swaps.append((cycle[i - 1], cycle[i]))
+    return swaps
+
+
+def fetch_recent_compile_jobs(
+    project_name: str,
+    n: int,
+    device_name: str | None = None,
+) -> Iterator[PytketCircuit]:
+    """Yield ``(circuit, result)`` pairs from the most recent compilation jobs.
+
+    Parameters
+    ----------
+    project_name : str
+        Name of the Nexus project to query.
+    n : int
+        Maximum number of compile jobs to fetch.
+    device_name : str | None
+        If given, only jobs whose ``system.name`` equals ``device_name``
+        are kept (filtered client-side, newest-first).
+
+    Yields
+    ------
+    PytketCircuit
+        ``circuit`` across the last ``n`` jobs, ordered
+        newest-first.
+    """
+    project = qnx.projects.get(name=project_name)
+    job_iter = qnx.jobs.get_all(
+        project=project,
+        job_type=[JobType.COMPILE],
+        sort_filters=[SortFilterEnum.CREATED_DESC],
+    )
+
+    jobs = []
+    for job in job_iter:
+        if device_name is not None and (job.system is None or job.system.name != device_name):
+            continue
+        if job.last_status != JobStatusEnum.COMPLETED:
+            continue
+        jobs.append(job)
+        if len(jobs) >= n:
+            break
+
+    print(f"Fetched {len(jobs)} compile jobs.")
+
+    for job in jobs:
+        for ref in qnx.jobs.results(job):
+            if not isinstance(ref, CompilationResultRef):
+                continue
+            result = ref.get_output()
+            print(ref.get_passes())
+            input()
+            yield result.download_circuit()
 
 
 def fetch_recent_execute_jobs(
@@ -281,7 +378,7 @@ def fetch_recent_execute_jobs(
         if len(jobs) >= n:
             break
 
-    print(f"Fetched {len(jobs)} jobs.")
+    print(f"Fetched {len(jobs)} execution jobs.")
     for job in jobs:
         for ref in qnx.jobs.results(job):
             if not isinstance(ref, ExecutionResultRef):

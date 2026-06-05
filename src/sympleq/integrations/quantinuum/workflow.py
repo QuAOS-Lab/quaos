@@ -42,6 +42,7 @@ def setup(project_name: str):
 
 def build_and_compile_circuits(circuits: list[Circuit],
                                backend_config: qnx.QuantinuumConfig | None = None,
+                               device_name: str | None = None,
                                name: str | None = None) -> list[CircuitRef]:
 
     programs = []
@@ -53,6 +54,8 @@ def build_and_compile_circuits(circuits: list[Circuit],
     _ok("Circuits built and uploaded")
 
     if backend_config is None:
+        if device_name is None:
+            device_name = "H2-Emulator"
         backend_config = default_backend_config(device_name)
 
     ref_compile_job = qnx.start_compile_job(
