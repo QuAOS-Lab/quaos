@@ -2,6 +2,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
+from pytket import OpType
+from pytket.circuit import Circuit as PytketCircuit
 
 from sympleq.core.bayesian_estimation import BayesianEstimator
 from sympleq.core.circuits.circuits import Circuit
@@ -88,6 +90,25 @@ class RMBConfig:
     def default(cls) -> RMBConfig:
         """Return a sensible default configuration for an RMB sweep."""
         return cls()
+
+    @classmethod
+    def from_pytket_circuit(cls, circuit: PytketCircuit) -> RMBConfig:
+        n_total = circuit.n_gates - circuit.n_gates_of_type(OpType.Measure)
+        if n_total == 0:
+            raise ValueError("Invalid input circuit")
+        return RMBConfig(
+            n_1qb_gates=circuit.n_1qb_gates(),
+            n_2qb_gates=circuit.n_2qb_gates(),
+            n_qubits=circuit.n_qubits,
+        )
+
+    @classmethod
+    def from_sympleq_circuit(cls, circuit: Circuit) -> RMBConfig:
+        return RMBConfig(
+            n_1qb_gates=circuit.n_1qb_gates(),
+            n_2qb_gates=circuit.n_2qb_gates(),
+            n_qubits=circuit.n_qudits(),
+        )
 
     def with_n_1qb_gates(self, n_gates: int) -> RMBConfig:
         """Return a copy of this config with ``n_1qb_gates`` replaced."""

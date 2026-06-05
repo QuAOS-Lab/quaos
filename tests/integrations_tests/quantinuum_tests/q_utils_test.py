@@ -253,6 +253,31 @@ class TestRoundtrip:
             restored = from_pytket_circuit(to_pytket_circuit(original))
             assert _action_signature(restored) == _action_signature(original), gate.name
 
+    def test_native_gate_counts_preserved(self):
+        """NATIVE_GATES_SET gates (plus Id) rebase 1:1, so 1- and 2-qubit gate
+        counts survive compilation and the roundtrip."""
+        rng = np.random.default_rng(11)
+        gate_pool = NATIVE_GATES_SET + [GATES.Id]
+        for _ in range(5):
+            n_qubits = int(rng.integers(2, 5))
+            tuples = []
+            for _ in range(15):
+                gate = gate_pool[rng.integers(len(gate_pool))]
+                if gate.n_qudits == 2:
+                    a, b = rng.choice(n_qubits, size=2, replace=False)
+                    tuples.append((gate, int(a), int(b)))
+                else:
+                    tuples.append((gate, int(rng.integers(n_qubits))))
+            original = Circuit.from_tuples([2] * n_qubits, tuples)
+
+            tk = to_pytket_circuit(original)
+            assert tk.n_1qb_gates() == original.n_1qb_gates()
+            assert tk.n_2qb_gates() == original.n_2qb_gates()
+
+            restored = from_pytket_circuit(tk)
+            assert restored.n_1qb_gates() == original.n_1qb_gates()
+            assert restored.n_2qb_gates() == original.n_2qb_gates()
+
     def test_ZZMax_roundtrip(self):
         """SympleQ -> pytket -> SympleQ roundtrip preserves ZZMax and its inverse."""
         original = Circuit.from_tuples([2, 2], [
