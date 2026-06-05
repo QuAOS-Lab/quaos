@@ -1,6 +1,7 @@
 from __future__ import annotations
 from numpy.random import Generator as RNGGenerator
 from pytket.circuit import Circuit as PytketCircuit
+import warnings
 
 from sympleq.applications.randomized_benchmarking.backends.base import RMBBackend
 from sympleq.applications.randomized_benchmarking.backends.utils import data_from_pytket_circuit_results
@@ -55,17 +56,18 @@ class QuantinuumBackend(RMBBackend):
         from sympleq.integrations.quantinuum.utils import pytket_simulation_cost
 
         def generate_compatible_circuit() -> PytketCircuit:
-            MIN_TOLERANCE = 0.95
-            MAX_TOLERANCE = 1.05
             while True:
                 circuit = to_pytket_circuit(config.random_circuit(rng=rng))
                 if circuit.n_gates == 0:
                     continue
-                if not (MIN_TOLERANCE * config.n_1qb_gates <=
-                        circuit.n_1qb_gates() <= MAX_TOLERANCE * config.n_1qb_gates):
+                if circuit.n_1qb_gates() != config.n_1qb_gates:
+                    warnings.warn(
+                        Warning(f"Generated circuit \
+has mismatching number of 1qb gates ({circuit.n_1qb_gates()} vs {config.n_1qb_gates})."))
                     continue
-                if not (MIN_TOLERANCE * config.n_2qb_gates <=
-                        circuit.n_2qb_gates() <= MAX_TOLERANCE * config.n_2qb_gates):
+                if circuit.n_2qb_gates() != config.n_2qb_gates:
+                    Warning(f"Generated circuit \
+has mismatching number of 1qb gates ({circuit.n_2qb_gates()} vs {config.n_2qb_gates}).")
                     continue
                 return circuit
 
