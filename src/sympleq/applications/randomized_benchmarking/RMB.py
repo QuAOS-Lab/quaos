@@ -6,7 +6,6 @@ import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 import datetime
 
-from sympleq.applications.randomized_benchmarking.backends.utils import config_from_pytket_circuit
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
 from sympleq.applications.randomized_benchmarking.backends import RMBBackend, SympleqBackend, QuantinuumBackend
 from sympleq.applications.randomized_benchmarking.backends.base import backend_from_dict
@@ -495,7 +494,7 @@ def generate_circuits_db(initial_config: RMBConfig) -> dict[RMBConfig, list[str]
     s_circ = initial_config.random_circuit()
     pk_circ = to_pytket_circuit(s_circ)
     cpk_circ = build_and_compile_circuits([pk_circ])[0]
-    current_config = config_from_pytket_circuit(cpk_circ.download_circuit())
+    current_config = RMBConfig.from_pytket_circuit(cpk_circ.download_circuit())
     if current_config not in data:
         data[current_config] = []
 
@@ -519,14 +518,15 @@ if __name__ == "__main__":
 
     s_circ = initial_config.random_circuit()
     pk_circ = to_pytket_circuit(s_circ)
+    print(f"original sympleq circuit: #1qb_gates {s_circ.n_1qb_gates()}; #2qb_gates {s_circ.n_2qb_gates()}")
+    print(f"original pytket  circuit: #1qb_gates {pk_circ.n_1qb_gates()}; #2qb_gates {pk_circ.n_2qb_gates()}")
+
     setup("Benchmark")
     cpk_circ = build_and_compile_circuits([pk_circ])[0]
 
     back_from_compiled_pk_circ = cpk_circ.download_circuit()
     back_from_pk_s_circ = from_pytket_circuit(back_from_compiled_pk_circ)
 
-    print(f"original sympleq circuit: #1qb_gates {s_circ.n_1qb_gates()}; #2qb_gates {s_circ.n_2qb_gates()}")
-    print(f"original pytket  circuit: #1qb_gates {pk_circ.n_1qb_gates()}; #2qb_gates {pk_circ.n_2qb_gates()}")
     print(
         f"compiled pytket  circuit: #1qb_gates {back_from_compiled_pk_circ.n_1qb_gates()}; #2qb_gates {back_from_compiled_pk_circ.n_2qb_gates()}")
     print(

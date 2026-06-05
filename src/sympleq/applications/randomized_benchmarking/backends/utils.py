@@ -2,23 +2,12 @@ import datetime
 import os
 from pathlib import Path
 from typing import Callable, Iterator
-from pytket.circuit import Circuit as PytketCircuit, OpType
+from pytket.circuit import Circuit as PytketCircuit
 
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
 from sympleq.core.bayesian_estimation import BayesianEstimator
 from sympleq.integrations.quantinuum.utils import fetch_recent_execute_jobs, to_pytket_circuit
 from sympleq.integrations.quantinuum.workflow import build_and_compile_circuits, default_backend_config, setup
-
-
-def config_from_pytket_circuit(circuit: PytketCircuit) -> RMBConfig:
-    n_total = circuit.n_gates - circuit.n_gates_of_type(OpType.Measure)
-    if n_total == 0:
-        raise ValueError("Invalid input circuit")
-    return RMBConfig(
-        n_1qb_gates=circuit.n_1qb_gates(),
-        n_2qb_gates=circuit.n_2qb_gates(),
-        n_qubits=circuit.n_qubits,
-    )
 
 
 _RMB_DATA_DIR = Path(__file__).resolve().parent.parent / "rmb_data"
@@ -92,7 +81,7 @@ def data_from_pytket_circuit_results(
     """
     data: RMBData = {}
     for circuit, result in jobs:
-        config = config_from_pytket_circuit(circuit)
+        config = RMBConfig.from_pytket_circuit(circuit)
         if config is None:
             continue
 

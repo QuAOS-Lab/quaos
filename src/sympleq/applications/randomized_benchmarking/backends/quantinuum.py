@@ -3,8 +3,7 @@ from numpy.random import Generator as RNGGenerator
 from pytket.circuit import Circuit as PytketCircuit
 
 from sympleq.applications.randomized_benchmarking.backends.base import RMBBackend
-from sympleq.applications.randomized_benchmarking.backends.utils import config_from_pytket_circuit, \
-    data_from_pytket_circuit_results
+from sympleq.applications.randomized_benchmarking.backends.utils import data_from_pytket_circuit_results
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
 from sympleq.core.bayesian_estimation import BayesianEstimator
 from sympleq.integrations.quantinuum.utils import (
@@ -103,7 +102,7 @@ class QuantinuumBackend(RMBBackend):
             stitched_circuit = circuit_stitching(circuits_to_stich)
             stitched_circuits.append(stitched_circuit)
             stitch_sizes.append(len(circuits_to_stich))
-            sub_circuit_configs.append(config_from_pytket_circuit(append_circuit))
+            sub_circuit_configs.append(RMBConfig.from_pytket_circuit(append_circuit))
 
         print(f"Generated {len(stitched_circuits)} stitched circuits with sizes {stitch_sizes}.")
 

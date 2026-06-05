@@ -29,7 +29,9 @@ BASE_SIMULATION_COST: int = 5
 # Map SympleQ gate singletons to (pytket OpType, params) pairs (qubit-only).
 # `params` are angle parameters in half-turns for parameterized gates.
 _GATE_MAP: dict[Gate, tuple[OpType, list[float]]] = {
-    GATES.Id: (OpType.noop, []),
+    # Id is encoded as Rz(0), a native H-series op the Nexus rebase keeps,
+    # so 1-qubit gate counts survive compilation (OpType.noop gets removed).
+    GATES.Id: (OpType.Rz, [0.0]),
     GATES.H: (OpType.H, []),
     GATES.H_inv: (OpType.H, []),       # H is self-inverse for qubits
     GATES.S: (OpType.S, []),
@@ -223,7 +225,14 @@ def from_pytket_circuit(tk_circuit: PytketCircuit) -> Circuit:
                     f"Only Clifford ZZPhase(±0.5) is supported, got θ={theta} half-turns."
                 )
         elif op_type == OpType.Rz:
-            decomposition = _clifford_rotation(float(command.op.params[0]), _RZ_CLIFFORD, "z")
+            half_turns = float(command.op.params[0])
+            k = round(half_turns * 2)
+            if np.isclose(half_turns, k / 2.0) and k % 8 == 0:
+                # Rz(0) encodes GATES.Id (see _GATE_MAP); keep it explicit so
+                # gate counts survive the roundtrip.
+                decomposition = [GATES.Id]
+            else:
+                decomposition = _clifford_rotation(half_turns, _RZ_CLIFFORD, "z")
         elif op_type == OpType.Rx:
             decomposition = _clifford_rotation(float(command.op.params[0]), _RX_CLIFFORD, "x")
         elif op_type == OpType.PhasedX:
@@ -237,7 +246,13 @@ def from_pytket_circuit(tk_circuit: PytketCircuit) -> Circuit:
                 # Odd θ is a π rotation about an axis in the XY plane, equal to
                 # Rz(2φ)·X up to global phase. This covers the diagonal-axis
                 # Cliffords (φ an odd multiple of 0.25) the squash emits.
-                decomposition = [GATES.X] + _clifford_rotation(2 * phi, _RZ_CLIFFORD, "z")
+                rz_gates = _clifford_rotation(2 * phi, _RZ_CLIFFORD, "z")
+                if rz_gates == [GATES.Z]:
+                    # Z·X ~ Y up to global phase; keep it a single gate so
+                    # counts are preserved (Y compiles to PhasedX(1, 0.5)).
+                    decomposition = [GATES.Y]
+                else:
+                    decomposition = [GATES.X] + rz_gates
             else:
                 decomposition = (
                     _clifford_rotation(-phi, _RZ_CLIFFORD, "z") +
