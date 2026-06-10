@@ -30,9 +30,6 @@ class RMBConfig:
         Total number of 2-qubits gates in the random circuit.
     n_qubits : int
         Number of qudits in the system (must be >= 1).
-    scrambling_probability : float
-        Probability of inserting an X gate (vs Id) on each qudit in the
-        scrambler layer wrapping the random circuit. In ``[0, 1]``.
     gates_set : tuple[Gate, ...]
         Gates available to sample from when building the random circuit.
     random_elimination : float
@@ -41,7 +38,6 @@ class RMBConfig:
     """
     n_1qb_gates: int = 1
     n_2qb_gates: int = 0
-    scrambling_probability: float = 0.0
     gates_set: tuple[Gate, ...] = tuple(DEFAULT_GATES_SET)
     n_qubits: int = 1
     random_elimination: float = 0.0
@@ -50,9 +46,6 @@ class RMBConfig:
 
     def __post_init__(self) -> None:
         """Validate fields and initialize the derived ``dimensions`` array and ``_initial_state``."""
-        if not 0.0 <= self.scrambling_probability <= 1.0:
-            raise ValueError(
-                f"Invalid scrambling_probability, it should be between 0 and 1 (got {self.scrambling_probability}).")
         if not 0.0 <= self.random_elimination <= 1.0:
             raise ValueError(
                 f"Invalid random_elimination, it should be between 0 and 1 (got {self.random_elimination}).")
@@ -118,10 +111,6 @@ class RMBConfig:
         """Return a copy of this config with ``n_2qb_gates`` replaced."""
         return replace(self, n_2qb_gates=n_gates)
 
-    def with_scrambling_probability(self, scrambling_probability: float) -> RMBConfig:
-        """Return a copy of this config with ``scrambling_probability`` replaced."""
-        return replace(self, scrambling_probability=scrambling_probability)
-
     def with_n_qubits(self, n_qubits: int) -> RMBConfig:
         """Return a copy of this config with ``n_qubits`` replaced."""
         return replace(self, n_qubits=n_qubits)
@@ -155,8 +144,7 @@ class RMBConfig:
 
         Builds a random circuit of depth ``self.depth`` from
         ``self.gates_set`` with the configured two-qudit gate ratio,
-        wraps it with a scrambler layer (X or Id per qudit, sampled
-        with ``self.scrambling_probability``) and its inverse plus
+        wraps it with a scrambler layer of Pauli gates and its inverse plus
         the inverse of the random circuit, applies the configured
         noise models, and finally optionally turns matching single-qudit
         gates into identities according to ``self.random_elimination``.

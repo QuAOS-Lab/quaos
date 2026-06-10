@@ -246,7 +246,6 @@ class RMB:
             records.append({
                 "n_1qb_gates": config.n_1qb_gates,
                 "n_2qb_gates": config.n_2qb_gates,
-                "scrambling_probability": config.scrambling_probability,
                 "n_qubits": config.n_qubits,
                 "random_elimination": config.random_elimination,
                 "gates_set": [g.name for g in config.gates_set],
@@ -311,7 +310,6 @@ class RMB:
             config = RMBConfig(
                 n_1qb_gates=rec["n_1qb_gates"],
                 n_2qb_gates=rec["n_2qb_gates"],
-                scrambling_probability=rec["scrambling_probability"],
                 n_qubits=rec["n_qubits"],
                 random_elimination=rec["random_elimination"],
             )
@@ -511,7 +509,6 @@ if __name__ == "__main__":
         .with_n_qubits(5)\
         .with_n_1qb_gates(80 * 5)\
         .with_n_2qb_gates(40 * 5)\
-        .with_scrambling_probability(0.5)\
         .with_gates_set(tuple(NATIVE_GATES_SET))
 
     # rmb.run(initial_config, max_iterations=1)
