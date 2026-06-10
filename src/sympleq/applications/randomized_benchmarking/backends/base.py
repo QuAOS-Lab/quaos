@@ -20,7 +20,7 @@ class RMBBackend(ABC):
     type: str
 
     @abstractmethod
-    def fidelity_estimation(self, config: RMBConfig, rng: RNGGenerator) -> list[tuple[RMBConfig, bool]]:
+    def fidelity_estimation(self, config: RMBConfig, rng: RNGGenerator) -> list[bool]:
         """Run a single fidelity-estimation trial for ``config``."""
         ...
 
