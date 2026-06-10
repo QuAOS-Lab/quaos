@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC
 import numpy as np
-from typing import Self, TypeVar, overload
+from typing import Self, overload
 
 from sympleq._typing import IntArrayLike
 from sympleq.core.paulis import PauliObject
@@ -15,9 +15,6 @@ from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.circuits.target import get_phase_vector
 from sympleq.core.paulis.pauli_string import PauliString
 from sympleq.core.paulis.pauli_sum import PauliSum
-
-
-PauliType = TypeVar("PauliType", bound=PauliObject)
 
 
 class Gate(ABC):
