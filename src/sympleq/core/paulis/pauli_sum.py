@@ -1175,12 +1175,16 @@ class PauliSum(PauliObject):
 
         # Convert PauliSum to matrix form
         sparse_matrix = self.to_hilbert_space()
+        matrix_shape = sparse_matrix.shape
+        if matrix_shape is None:
+            raise ValueError("Hilbert-space matrix shape is unavailable.")
+        matrix_size = matrix_shape[0]
 
         if num_eigens is None:
-            num_eigens = sparse_matrix.shape[0]
+            num_eigens = matrix_size
 
         # Get eigenvalues and eigenvectors
-        if num_eigens >= sparse_matrix.shape[0] - 2:
+        if num_eigens >= matrix_size - 2:
             val, vec = np.linalg.eigh(sparse_matrix.toarray())
             val = val[:num_eigens]
             vec = vec[:, :num_eigens]
