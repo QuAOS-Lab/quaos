@@ -302,7 +302,7 @@ class Circuit:
         n_qudits = len(dimensions)
         num_gates = n_qudits * depth
         # Divide by two since each gate applies to 2 qudits
-        num_two_qudits_gates = int(two_qudit_gate_ratio * num_gates) // 2
+        num_two_qudits_gates = int(two_qudit_gate_ratio * num_gates) // 2 if n_qudits > 1 else 0
 
         # First assign only 1-qudit gates
         layers: list[dict[tuple[int, ...], Gate]] = []
@@ -314,8 +314,7 @@ class Circuit:
                 layer[(q,)] = gate
             layers.append(layer)
 
-        # Distribute num_two_qudits_gates over depth layers randomly,
-        # with max max_two_qudits_gates_per_layer per layer.
+        # Distribute num_two_qudits_gates over depth layers randomly.
         if num_two_qudits_gates > 0 and two_qudit_gates:
             # available_qudits is a list of set_idxs (one per layer). Each element is a list of qudit indices,
             # indicating which qudits can be combined in a 2-qudit gate.
