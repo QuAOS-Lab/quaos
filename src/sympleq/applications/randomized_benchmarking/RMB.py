@@ -18,6 +18,14 @@ from sympleq.integrations.quantinuum.workflow import build_and_compile_circuits,
 DATA_DIR = Path(__file__).parent / "rmb_data"
 
 
+def resolve_data_path(path: str | Path) -> Path:
+    """Resolve bare file names (no separators) inside the package's ``rmb_data`` directory."""
+    path = Path(path)
+    if not path.is_absolute() and path.parent == Path("."):
+        path = DATA_DIR / path
+    return path
+
+
 class RMB:
     def __init__(self,
                  update_strategy: UpdateStrategy,
@@ -156,13 +164,10 @@ class RMB:
         merged: RMBData = {}
         for config, estimator in data.items():
             coarse_n_1qb_gates = max(n_1qb_gates_bin, round(config.n_1qb_gates / n_1qb_gates_bin) * n_1qb_gates_bin)
-            coarse = replace(
-                config,
-                n_1qb_gates=coarse_n_1qb_gates
-            )
             coarse_n_2qb_gates = max(n_2qb_gates_bin, round(config.n_2qb_gates / n_2qb_gates_bin) * n_2qb_gates_bin)
             coarse = replace(
                 config,
+                n_1qb_gates=coarse_n_1qb_gates,
                 n_2qb_gates=coarse_n_2qb_gates
             )
             target = merged.setdefault(coarse, BayesianEstimator(
@@ -236,9 +241,7 @@ class RMB:
         if path is None:
             path = self._save_filename
 
-        path = Path(path)
-        if not path.is_absolute() and path.parent == Path("."):
-            path = DATA_DIR / path
+        path = resolve_data_path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
         records = []
@@ -288,9 +291,7 @@ class RMB:
             The reconstructed RMB instance.
         """
         import json
-        path = Path(path)
-        if not path.is_absolute() and path.parent == Path("."):
-            path = DATA_DIR / path
+        path = resolve_data_path(path)
         with open(path) as f:
             payload = json.load(f)
 
@@ -319,11 +320,13 @@ class RMB:
             rmb._data[config] = estimator
         return rmb
 
-    def plot(self, axes=None, show: bool = True, skip_incomplete: bool = True):
-        RMB.plot_data(self._data, axes, show, skip_incomplete)
+    def plot(self, axes=None, show: bool = True, skip_incomplete: bool = True,
+             level_line: list[RMBConfig] | None = None):
+        RMB.plot_data(self._data, axes, show, skip_incomplete, level_line)
 
     @classmethod
-    def plot_data(cls, data: RMBData, axes=None, show: bool = True, skip_incomplete: bool = True):
+    def plot_data(cls, data: RMBData, axes=None, show: bool = True, skip_incomplete: bool = True,
+                  level_line: list[RMBConfig] | None = None):
         """Scatter fidelity per ``n_qubits``: x = depth, y = two-qudit ratio, color = fidelity.
 
         Parameters
@@ -340,6 +343,10 @@ class RMB:
             If ``True``, drop any estimator that has not converged.
             ``n_qubits`` groups left empty after filtering are not given a
             subplot.
+        level_line : list[RMBConfig] | None
+            Configs lying on the fidelity = 0.5 line. They are drawn as a
+            black line on the subplot matching their ``n_qubits``, in the
+            same (total gates, two-qubit gate ratio) coordinates as the data.
 
         Returns
         -------
@@ -397,6 +404,17 @@ class RMB:
                             vmin=0.0, vmax=1.0, s=100, edgecolors="none", zorder=2)
             ax.scatter(n_gates, ratios, c=inner_color, cmap=cmap,
                        vmin=0.0, vmax=1.0, s=30, edgecolors="none", zorder=3)
+
+            if level_line:
+                points = sorted(
+                    (c.n_gates, c.ratio_2_qb_gates)
+                    for c in level_line if c.n_qubits == n_qubits
+                )
+                if points:
+                    xs, ys = zip(*points)
+                    ax.plot(xs, ys, color="black", marker="o", markersize=4,
+                            linewidth=1.5, label="fidelity = 0.5", zorder=4)
+                    ax.legend(loc="best")
 
             ax.set_xlabel("# Gates")
             ax.set_ylabel("Two-qudit gate ratio")
