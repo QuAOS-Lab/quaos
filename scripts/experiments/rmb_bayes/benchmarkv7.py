@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import tempfile
+from dataclasses import replace
 from math import ceil
 from pathlib import Path
 
@@ -30,7 +32,9 @@ from viarregio4 import (
     hqc_cost,
 )
 from viarregio7 import ContourFirstExperimentConfig
+from viarregio7 import batch_config_key
 from viarregio7 import estimate_boundary as estimate_boundary_v7
+from viarregio7 import script_default_settings
 
 
 def configure_plot_caches() -> None:
@@ -68,6 +72,12 @@ def parse_optional_float(value: str) -> float | None:
     return float(value)
 
 
+def parse_optional_int(value: str) -> int | None:
+    if value.strip().lower() in {"none", "null", "off"}:
+        return None
+    return int(value)
+
+
 def make_settings(
     *,
     budget: float,
@@ -81,7 +91,20 @@ def make_settings(
         measurement_budget = int(round(budget))
         hqc_budget = args.hqc_budget
 
-    return ContourFirstExperimentConfig(
+    base_settings = script_default_settings(
+        save_path=None,
+        diagnostics_path=(
+            Path(args.diagnostics_dir).expanduser().resolve()
+            / f"{args.budget_mode}_{budget:g}_seed{seed}_diagnostics.json"
+            if args.diagnostics_dir is not None
+            else None
+        ),
+        print_diagnostics=args.print_diagnostics,
+        verbose=args.verbose,
+    )
+
+    return replace(
+        base_settings,
         measurement_budget=measurement_budget,
         hqc_budget=hqc_budget,
         n_qubits_values=(args.n_qubits,),
@@ -121,11 +144,24 @@ def make_settings(
         initial_anchor_refine_steps=args.initial_anchor_refine_steps,
         initial_anchor_search_fraction=args.initial_anchor_search_fraction,
         initial_anchor_min_runs=args.initial_anchor_min_runs,
+        batched_initial_anchor_search=not args.no_batched_initial_anchor_search,
+        initial_anchor_depth_grid_count=args.initial_anchor_depth_grid_count,
+        initial_anchor_grid_shots=args.initial_anchor_grid_shots,
         trace_reserve_budget_fraction=args.trace_reserve_budget_fraction,
         trace_reserve_min_hqc=args.trace_reserve_min_hqc,
         trace_ratio_step_fraction=args.trace_ratio_step_fraction,
         trace_depth_search_fraction=0.06,
         trace_local_crossing=args.trace_local_crossing,
+        trace_local_stencil_points=args.trace_local_stencil_points,
+        trace_local_stencil_shots=args.trace_local_stencil_shots,
+        seeded_initial_trace=not args.no_seeded_initial_trace,
+        seeded_trace_ratio_count=args.seeded_trace_ratio_count,
+        seeded_trace_max_batches=args.seeded_trace_max_batches,
+        seeded_trace_ratio_span_fraction=args.seeded_trace_ratio_span_fraction,
+        seeded_trace_depth_power=args.seeded_trace_depth_power,
+        high_ratio_projected_trace=not args.no_high_ratio_projected_trace,
+        high_ratio_projected_threshold=args.high_ratio_projected_threshold,
+        high_ratio_low_depth_fraction=args.high_ratio_low_depth_fraction,
         trace_enforce_monotone_depth=not args.no_trace_monotone_depth,
         trace_correction_steps=args.trace_correction_steps,
         trace_shots=2,
@@ -145,19 +181,28 @@ def make_settings(
         batch_refinement_shots=args.batch_refinement_shots,
         batch_refinement_fit_passes=args.batch_refinement_fit_passes,
         batch_acquisition_passes=args.batch_acquisition_passes,
+        batch_acquisition_ratio_count=args.batch_acquisition_ratio_count,
+        batch_target_fill_fraction=args.batch_target_fill_fraction,
+        batch_fill_repeats=not args.no_batch_fill_repeats,
+        batch_fill_max_shots_per_config=args.batch_fill_max_shots_per_config,
+        batch_discovery_fill_max_shots_per_config=(
+            args.batch_discovery_fill_max_shots_per_config
+        ),
+        batch_fill_all_stages=not args.no_batch_fill_all_stages,
+        high_ratio_acquisition_fraction=args.high_ratio_acquisition_fraction,
+        high_ratio_candidate_fraction=args.high_ratio_candidate_fraction,
+        contour_bracket_probe_shots=args.contour_bracket_probe_shots,
+        contour_bracket_depth_fractions=tuple(args.contour_bracket_depth_fractions),
+        contour_bracket_max_relative_depth=args.contour_bracket_max_relative_depth,
+        acquisition_require_bracket_straddle=not args.no_acquisition_bracket_straddle,
+        acquisition_follow_trace=not args.no_acquisition_follow_trace,
+        acquisition_trace_backtrack_fraction=args.acquisition_trace_backtrack_fraction,
+        acquisition_trace_extension_fraction=args.acquisition_trace_extension_fraction,
+        acquisition_trace_predict_points=args.acquisition_trace_predict_points,
         batch_post_trace_reserve_fraction=args.batch_post_trace_reserve_fraction,
         hqc_cost_informed_acquisition=(args.budget_mode == "hqc" or hqc_budget is not None),
         hqc_cost_power=1.0,
         rng_seed=seed,
-        save_path=None,
-        diagnostics_path=(
-            Path(args.diagnostics_dir).expanduser().resolve()
-            / f"{args.budget_mode}_{budget:g}_seed{seed}_diagnostics.json"
-            if args.diagnostics_dir is not None
-            else None
-        ),
-        print_diagnostics=args.print_diagnostics,
-        verbose=args.verbose,
     )
 
 
@@ -319,8 +364,19 @@ def cache_path(
         f"_ia{'r' if not args.no_initial_anchor_refine else 'n'}"
         f"{args.initial_anchor_refine_shots}"
         f"m{args.initial_anchor_min_runs}"
+        f"g{'y' if not args.no_batched_initial_anchor_search else 'n'}"
+        f"gc{args.initial_anchor_depth_grid_count}"
+        f"gs{args.initial_anchor_grid_shots}"
         f"_tr{args.trace_reserve_budget_fraction:g}m{args.trace_reserve_min_hqc:g}"
         f"_tc{args.trace_correction_steps}rw{args.trace_reject_probability_width:g}"
+        f"ls{args.trace_local_stencil_points}x{args.trace_local_stencil_shots}"
+        f"_st{'y' if not args.no_seeded_initial_trace else 'n'}"
+        f"rc{args.seeded_trace_ratio_count}"
+        f"mb{args.seeded_trace_max_batches}"
+        f"rs{args.seeded_trace_ratio_span_fraction:g}"
+        f"dp{args.seeded_trace_depth_power:g}"
+        f"_hp{'y' if not args.no_high_ratio_projected_trace else 'n'}"
+        f"{args.high_ratio_projected_threshold:g}d{args.high_ratio_low_depth_fraction:g}"
         f"_ta{args.trace_anchor_min_shots}"
         f"_{'mp' if args.model_projection_after_fit else 'nmp'}"
         f"_{'ref' if args.refine_after_trace else 'noref'}"
@@ -333,14 +389,41 @@ def cache_path(
         f"rs{args.batch_refinement_shots}"
         f"fp{args.batch_refinement_fit_passes}"
         f"ap{args.batch_acquisition_passes}"
+        f"arc{args.batch_acquisition_ratio_count}"
+        f"tf{args.batch_target_fill_fraction:g}"
+        f"fr{'y' if not args.no_batch_fill_repeats else 'n'}"
+        f"fm{args.batch_fill_max_shots_per_config if args.batch_fill_max_shots_per_config is not None else 'none'}"
+        f"dfm{args.batch_discovery_fill_max_shots_per_config if args.batch_discovery_fill_max_shots_per_config is not None else 'none'}"
+        f"fa{'y' if not args.no_batch_fill_all_stages else 'n'}"
+        f"ha{args.high_ratio_acquisition_fraction:g}"
+        f"hcf{args.high_ratio_candidate_fraction:g}"
+        f"bs{args.contour_bracket_probe_shots}"
+        f"bd{','.join(f'{value:g}' for value in args.contour_bracket_depth_fractions)}"
+        f"br{args.contour_bracket_max_relative_depth:g}"
+        f"as{'y' if not args.no_acquisition_bracket_straddle else 'n'}"
+        f"aft{'y' if not args.no_acquisition_follow_trace else 'n'}"
+        f"ab{args.acquisition_trace_backtrack_fraction:g}"
+        f"ae{args.acquisition_trace_extension_fraction:g}"
+        f"ap{args.acquisition_trace_predict_points}"
         f"ptr{args.batch_post_trace_reserve_fraction:g}"
         f"_v7.json"
     )
+    if len(name) > 220:
+        digest = hashlib.sha1(name.encode("utf-8")).hexdigest()[:12]
+        compact_prefix = (
+            f"v7_{label}_{args.budget_mode}{budget:g}_"
+            f"{args.n_qubits}q_seed{seed}_"
+        )
+        name = f"{compact_prefix}{digest}_v7.json"
     return cache_dir / name
 
 
 def batch_summary_cache_path(path: Path) -> Path:
     return path.with_suffix(path.suffix + ".batch_summary.json")
+
+
+def batch_config_ids_cache_path(path: Path) -> Path:
+    return path.with_suffix(path.suffix + ".batch_config_ids.json")
 
 
 def save_batch_summary_cache(path: Path, rmb: RMB) -> None:
@@ -349,14 +432,21 @@ def save_batch_summary_cache(path: Path, rmb: RMB) -> None:
         return
     summary_path = batch_summary_cache_path(path)
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    config_ids = getattr(rmb, "_batch_config_ids", None)
+    if config_ids:
+        ids_path = batch_config_ids_cache_path(path)
+        ids_path.write_text(json.dumps(config_ids, indent=2), encoding="utf-8")
 
 
 def load_batch_summary_cache(path: Path, rmb: RMB) -> None:
     summary_path = batch_summary_cache_path(path)
-    if not summary_path.exists():
-        return
-    with summary_path.open(encoding="utf-8") as handle:
-        rmb._batch_cost_summary = json.load(handle)
+    if summary_path.exists():
+        with summary_path.open(encoding="utf-8") as handle:
+            rmb._batch_cost_summary = json.load(handle)
+    ids_path = batch_config_ids_cache_path(path)
+    if ids_path.exists():
+        with ids_path.open(encoding="utf-8") as handle:
+            rmb._batch_config_ids = json.load(handle)
 
 
 def requested_budget_value(settings: ContourFirstExperimentConfig) -> float:
@@ -565,7 +655,7 @@ def contour_calibration_error(contour: np.ndarray, reference_surface) -> float:
     return float(np.mean(np.abs(reference_surface.probability(contour) - 0.5)))
 
 
-def point_arrays(rmb: RMB) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def point_arrays(rmb: RMB) -> tuple[list, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     configs = [config for config, estimator in rmb._data.items() if estimator.num_runs() > 0]
     depths = np.array([config.depth for config in configs], dtype=float)
     ratios = np.array([config.min_two_qubit_gate_ratio for config in configs], dtype=float)
@@ -573,7 +663,7 @@ def point_arrays(rmb: RMB) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarr
     variances = np.array([fidelity_variance(rmb._data[config]) for config in configs], dtype=float)
     certainty = 1.0 - np.clip(variances / (1.0 / 12.0), 0.0, 1.0)
     sizes = 25.0 + 140.0 * certainty
-    return depths, ratios, fidelities, sizes
+    return configs, depths, ratios, fidelities, sizes
 
 
 def plot_surface_panel(
@@ -591,7 +681,7 @@ def plot_surface_panel(
     cmap = fidelity_colormap()
     scatter = None
     if show_points:
-        depths, ratios, fidelities, sizes = point_arrays(rmb)
+        configs, depths, ratios, fidelities, sizes = point_arrays(rmb)
         scatter = ax.scatter(
             depths,
             ratios,
@@ -604,6 +694,31 @@ def plot_surface_panel(
             linewidths=0.35,
             zorder=3,
         )
+        summary = getattr(rmb, "_batch_cost_summary", None)
+        batch_count = int(summary.get("batched_jobs", 0)) if summary else 0
+        batch_ids_by_config = getattr(rmb, "_batch_config_ids", {})
+        if (
+            batch_ids_by_config
+            and batch_count > 0
+            and batch_count <= getattr(settings, "plot_batch_label_limit", 30)
+        ):
+            for config, depth, ratio in zip(configs, depths, ratios):
+                ids = batch_ids_by_config.get(batch_config_key(config))
+                if not ids:
+                    continue
+                label = str(min(int(batch_id) for batch_id in ids))
+                ax.text(
+                    depth,
+                    ratio,
+                    label,
+                    ha="center",
+                    va="center",
+                    fontsize=6,
+                    color="white",
+                    weight="bold",
+                    zorder=6,
+                    clip_on=True,
+                )
 
     if surface is not None:
         depth_grid, ratio_grid, probabilities = surface.probability_grid(settings)
@@ -759,6 +874,7 @@ def make_plots(
 
 
 def parse_args() -> argparse.Namespace:
+    method_defaults = script_default_settings()
     parser = argparse.ArgumentParser(
         description="Plot viarregio7 batched contour estimates across budgets against a high-budget reference."
     )
@@ -780,20 +896,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--measurement-cap", type=int, default=1_000_000_000)
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--true-seed-offset", type=int, default=100_000)
-    parser.add_argument("--n-qubits", type=int, default=10)
+    parser.add_argument("--n-qubits", type=int, default=method_defaults.n_qubits_values[0])
     parser.add_argument("--depth-min", type=int, default=4)
-    parser.add_argument("--depth-max", type=int, default=300)
+    parser.add_argument("--depth-max", type=int, default=50)
     parser.add_argument("--ratio-min", type=float, default=0.08)
     parser.add_argument("--ratio-max", type=float, default=0.8)
     parser.add_argument("--random-elimination", type=float, default=0.1)
     parser.add_argument("--scrambling-probability", type=float, default=0.0)
-    parser.add_argument("--contour-grid", type=int, default=100)
-    parser.add_argument("--surface-smoothing", type=float, default=0.1)
-    parser.add_argument("--max-adaptive-shots", type=int, default=5)
-    parser.add_argument("--max-shots-per-config", type=int, default=10)
-    parser.add_argument("--ray-ratio-count", type=int, default=5)
-    parser.add_argument("--crossing-decision-confirm-shots", type=int, default=4)
-    parser.add_argument("--crossing-decision-probability-width", type=float, default=0.20)
+    parser.add_argument("--contour-grid", type=int, default=method_defaults.candidate_grid_size[0])
+    parser.add_argument("--surface-smoothing", type=float, default=method_defaults.surface_smoothing)
+    parser.add_argument("--max-adaptive-shots", type=int, default=method_defaults.max_adaptive_shots_per_config)
+    parser.add_argument("--max-shots-per-config", type=int, default=method_defaults.max_shots_per_config)
+    parser.add_argument("--ray-ratio-count", type=int, default=method_defaults.ray_ratio_count)
+    parser.add_argument("--crossing-decision-confirm-shots", type=int, default=method_defaults.crossing_decision_confirm_shots)
+    parser.add_argument("--crossing-decision-probability-width", type=float, default=method_defaults.crossing_decision_probability_width)
     parser.add_argument(
         "--no-crossing-ambiguous-as-failure",
         action="store_true",
@@ -804,19 +920,26 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Start initial crossing searches at min/max depth instead of an interior bracket.",
     )
-    parser.add_argument("--initial-crossing-center-fraction", type=float, default=0.35)
-    parser.add_argument("--initial-crossing-half-width-fraction", type=float, default=0.18)
-    parser.add_argument("--initial-crossing-expand-factor", type=float, default=1.6)
-    parser.add_argument("--crossing-confirm-candidates", type=int, default=0)
-    parser.add_argument("--crossing-confirm-shots", type=int, default=4)
+    parser.add_argument("--initial-crossing-center-fraction", type=float, default=method_defaults.initial_crossing_center_fraction)
+    parser.add_argument("--initial-crossing-half-width-fraction", type=float, default=method_defaults.initial_crossing_half_width_fraction)
+    parser.add_argument("--initial-crossing-expand-factor", type=float, default=method_defaults.initial_crossing_expand_factor)
+    parser.add_argument("--crossing-confirm-candidates", type=int, default=method_defaults.crossing_confirm_candidates)
+    parser.add_argument("--crossing-confirm-shots", type=int, default=method_defaults.crossing_confirm_shots)
     parser.add_argument("--no-initial-anchor-refine", action="store_true")
-    parser.add_argument("--initial-anchor-refine-shots", type=int, default=6)
-    parser.add_argument("--initial-anchor-refine-steps", type=int, default=3)
-    parser.add_argument("--initial-anchor-search-fraction", type=float, default=0.06)
-    parser.add_argument("--initial-anchor-min-runs", type=int, default=8)
-    parser.add_argument("--trace-reserve-budget-fraction", type=float, default=0.35)
-    parser.add_argument("--trace-reserve-min-hqc", type=float, default=25.0)
-    parser.add_argument("--trace-ratio-step-fraction", type=float, default=0.06)
+    parser.add_argument("--initial-anchor-refine-shots", type=int, default=method_defaults.initial_anchor_refine_shots)
+    parser.add_argument("--initial-anchor-refine-steps", type=int, default=method_defaults.initial_anchor_refine_steps)
+    parser.add_argument("--initial-anchor-search-fraction", type=float, default=method_defaults.initial_anchor_search_fraction)
+    parser.add_argument("--initial-anchor-min-runs", type=int, default=method_defaults.initial_anchor_min_runs)
+    parser.add_argument(
+        "--no-batched-initial-anchor-search",
+        action="store_true",
+        help="Disable the batched fixed-ratio depth grid used to find the first contour anchor.",
+    )
+    parser.add_argument("--initial-anchor-depth-grid-count", type=int, default=method_defaults.initial_anchor_depth_grid_count)
+    parser.add_argument("--initial-anchor-grid-shots", type=int, default=method_defaults.initial_anchor_grid_shots)
+    parser.add_argument("--trace-reserve-budget-fraction", type=float, default=method_defaults.trace_reserve_budget_fraction)
+    parser.add_argument("--trace-reserve-min-hqc", type=float, default=method_defaults.trace_reserve_min_hqc)
+    parser.add_argument("--trace-ratio-step-fraction", type=float, default=method_defaults.trace_ratio_step_fraction)
     parser.add_argument(
         "--trace-local-crossing",
         action="store_true",
@@ -829,13 +952,31 @@ def parse_args() -> argparse.Namespace:
         help="Use cheaper projected trace steps without local fixed-ratio crossings.",
     )
     parser.add_argument(
+        "--no-seeded-initial-trace",
+        action="store_true",
+        help="Disable the initial batched fixed-ratio trace seeding pass.",
+    )
+    parser.add_argument("--seeded-trace-ratio-count", type=int, default=method_defaults.seeded_trace_ratio_count)
+    parser.add_argument("--seeded-trace-max-batches", type=int, default=method_defaults.seeded_trace_max_batches)
+    parser.add_argument("--seeded-trace-ratio-span-fraction", type=float, default=method_defaults.seeded_trace_ratio_span_fraction)
+    parser.add_argument("--seeded-trace-depth-power", type=float, default=method_defaults.seeded_trace_depth_power)
+    parser.add_argument(
+        "--no-high-ratio-projected-trace",
+        action="store_true",
+        help="Disable projected trace shortcuts in the high-ratio, low-depth contour region.",
+    )
+    parser.add_argument("--high-ratio-projected-threshold", type=float, default=method_defaults.high_ratio_projected_threshold)
+    parser.add_argument("--high-ratio-low-depth-fraction", type=float, default=method_defaults.high_ratio_low_depth_fraction)
+    parser.add_argument(
         "--no-trace-monotone-depth",
         action="store_true",
         help="Allow the traced contour depth to increase when the two-qubit ratio increases.",
     )
-    parser.add_argument("--trace-correction-steps", type=int, default=2)
-    parser.add_argument("--trace-reject-probability-width", type=float, default=0.25)
-    parser.add_argument("--trace-anchor-min-shots", type=int, default=8)
+    parser.add_argument("--trace-correction-steps", type=int, default=method_defaults.trace_correction_steps)
+    parser.add_argument("--trace-reject-probability-width", type=float, default=method_defaults.trace_reject_probability_width)
+    parser.add_argument("--trace-local-stencil-points", type=int, default=method_defaults.trace_local_stencil_points)
+    parser.add_argument("--trace-local-stencil-shots", type=int, default=method_defaults.trace_local_stencil_shots)
+    parser.add_argument("--trace-anchor-min-shots", type=int, default=method_defaults.trace_anchor_min_shots)
     parser.add_argument(
         "--model-projection-after-fit",
         action="store_true",
@@ -860,18 +1001,18 @@ def parse_args() -> argparse.Namespace:
             "Skip post-trace anchor confirmation and uncertainty refinement."
         ),
     )
-    parser.add_argument("--refinement-shots", type=int, default=2)
+    parser.add_argument("--refinement-shots", type=int, default=method_defaults.refinement_shots)
     parser.add_argument(
         "--no-batching",
         action="store_true",
         help="Disable v7 stitched-cost batching and charge each request independently.",
     )
-    parser.add_argument("--batch-max-configs", type=int, default=42)
+    parser.add_argument("--batch-max-configs", type=int, default=method_defaults.batch_max_configs)
     parser.add_argument(
         "--max-cost-per-batch",
         type=parse_optional_float,
         dest="max_cost_per_batch",
-        default=50.0,
+        default=method_defaults.max_cost_per_batch,
         help="Maximum estimated stitched HQC cost for one planned v7 batch. Use --max-cost-per-batch none to disable.",
     )
     parser.add_argument(
@@ -880,12 +1021,71 @@ def parse_args() -> argparse.Namespace:
         dest="max_cost_per_batch",
         help=argparse.SUPPRESS,
     )
-    parser.add_argument("--batch-reset-weight", type=float, default=1.0)
-    parser.add_argument("--batch-candidate-multiplier", type=int, default=4)
-    parser.add_argument("--batch-refinement-shots", type=int, default=4)
-    parser.add_argument("--batch-refinement-fit-passes", type=int, default=3)
-    parser.add_argument("--batch-acquisition-passes", type=int, default=2)
-    parser.add_argument("--batch-post-trace-reserve-fraction", type=float, default=0.0)
+    parser.add_argument("--batch-reset-weight", type=float, default=method_defaults.batch_reset_weight)
+    parser.add_argument("--batch-candidate-multiplier", type=int, default=method_defaults.batch_candidate_multiplier)
+    parser.add_argument("--batch-refinement-shots", type=int, default=method_defaults.batch_refinement_shots)
+    parser.add_argument("--batch-refinement-fit-passes", type=int, default=method_defaults.batch_refinement_fit_passes)
+    parser.add_argument("--batch-acquisition-passes", type=int, default=method_defaults.batch_acquisition_passes)
+    parser.add_argument("--batch-acquisition-ratio-count", type=int, default=method_defaults.batch_acquisition_ratio_count)
+    parser.add_argument("--batch-target-fill-fraction", type=float, default=method_defaults.batch_target_fill_fraction)
+    parser.add_argument(
+        "--no-batch-fill-repeats",
+        action="store_true",
+        help="Do not add extra repeated shots to selected configs to fill each batch.",
+    )
+    parser.add_argument(
+        "--batch-fill-max-shots-per-config",
+        type=parse_optional_int,
+        default=method_defaults.batch_fill_max_shots_per_config,
+        help="Maximum repeated shots per config used only when filling stitched batches. Use none to use max-shots-per-config.",
+    )
+    parser.add_argument(
+        "--batch-discovery-fill-max-shots-per-config",
+        type=parse_optional_int,
+        default=method_defaults.batch_discovery_fill_max_shots_per_config,
+        help=(
+            "Maximum shots per config when lightly filling initial/trace batches. "
+            "Use none to allow the normal max-shots-per-config during discovery."
+        ),
+    )
+    parser.add_argument(
+        "--no-batch-fill-all-stages",
+        dest="no_batch_fill_all_stages",
+        action="store_true",
+        default=not method_defaults.batch_fill_all_stages,
+        help="Only fill post-trace refinement/acquisition batches, not sequential trace/search batches.",
+    )
+    parser.add_argument(
+        "--batch-fill-all-stages",
+        dest="no_batch_fill_all_stages",
+        action="store_false",
+        help="Allow repeat-fill packing during initial and trace/search batches too.",
+    )
+    parser.add_argument("--high-ratio-acquisition-fraction", type=float, default=method_defaults.high_ratio_acquisition_fraction)
+    parser.add_argument("--high-ratio-candidate-fraction", type=float, default=method_defaults.high_ratio_candidate_fraction)
+    parser.add_argument("--contour-bracket-probe-shots", type=int, default=method_defaults.contour_bracket_probe_shots)
+    parser.add_argument(
+        "--contour-bracket-depth-fractions",
+        type=float,
+        nargs="+",
+        default=list(method_defaults.contour_bracket_depth_fractions),
+        help="Depth-span offsets used to measure same-ratio brackets around acquisition candidates.",
+    )
+    parser.add_argument("--contour-bracket-max-relative-depth", type=float, default=method_defaults.contour_bracket_max_relative_depth)
+    parser.add_argument(
+        "--no-acquisition-bracket-straddle",
+        action="store_true",
+        help="Allow boundary acquisition candidates whose same-ratio bracket stack does not straddle the fitted 0.5 contour.",
+    )
+    parser.add_argument(
+        "--no-acquisition-follow-trace",
+        action="store_true",
+        help="Allow post-trace acquisition to search the whole fitted contour instead of extending from the traced anchors.",
+    )
+    parser.add_argument("--acquisition-trace-backtrack-fraction", type=float, default=method_defaults.acquisition_trace_backtrack_fraction)
+    parser.add_argument("--acquisition-trace-extension-fraction", type=float, default=method_defaults.acquisition_trace_extension_fraction)
+    parser.add_argument("--acquisition-trace-predict-points", type=int, default=method_defaults.acquisition_trace_predict_points)
+    parser.add_argument("--batch-post-trace-reserve-fraction", type=float, default=method_defaults.batch_post_trace_reserve_fraction)
     parser.add_argument("--diagnostics-dir", type=str, default=None)
     parser.add_argument("--print-diagnostics", action="store_true")
     parser.add_argument(
@@ -949,4 +1149,4 @@ def main(**overrides) -> None:
 
 
 if __name__ == "__main__":
-    main(overwrite=True)
+    main()

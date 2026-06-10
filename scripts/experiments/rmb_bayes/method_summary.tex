@@ -1,0 +1,1310 @@
+\section{Adaptive estimation of the fidelity--0.5 boundary}
+
+The goal is to estimate the set of randomized benchmarking parameters at which
+the expected Boolean fidelity outcome is equal to one half.  In the present
+experiments the two continuously varied parameters are the circuit depth \(d\)
+and the minimum two-qubit gate ratio \(r\), with a fixed value of \(n\), the
+number of qubits.  The target boundary is therefore
+\[
+    \Gamma_{0.5}
+    =
+    \{(d,r): p(d,r) = 0.5\},
+\]
+where \(p(d,r)\) denotes the probability that the backend returns a successful
+fidelity outcome for a configuration with depth \(d\) and two-qubit ratio \(r\).
+The methods in \texttt{viarregio4.py} and \texttt{viarregio5.py} estimate this
+boundary under the prior structural assumption that fidelity is monotone:
+increasing either \(d\) or \(r\) cannot improve the expected fidelity.
+
+\subsection{Measurement model}
+
+For each configuration \(x=(n,d,r)\), the backend is queried through
+\texttt{fidelity\_estimation}.  Each measurement is converted to a Boolean
+outcome
+\[
+    y_i(x) \in \{0,1\}.
+\]
+The empirical information at a configuration is summarized by the number of
+successes \(s_x\) and failures \(f_x\).  A uniform Beta prior is used for the
+unknown success probability \(p_x\),
+\[
+    p_x \sim \operatorname{Beta}(1,1).
+\]
+After the observations at \(x\), the posterior is
+\[
+    p_x \mid \{y_i(x)\}
+    \sim
+    \operatorname{Beta}(1+s_x, 1+f_x).
+\]
+The posterior mean
+\[
+    \widehat p_x
+    =
+    \mathbb{E}[p_x \mid \{y_i(x)\}]
+    =
+    \frac{s_x+1}{s_x+f_x+2}.
+\]
+is used when reporting or plotting the observed fidelity at a point.  The
+surface fit itself uses the raw counts \(s_x\) and \(f_x\), as described below,
+so that the uncertainty associated with low-shot points is handled directly by
+the likelihood.
+
+\subsection{HQC budget model}
+
+The experimental budget is not simply the number of Boolean outcomes.  The
+hardware quantum credit cost for running one circuit with shot count \(C\) is
+modeled as
+\[
+    \operatorname{HQC}
+    =
+    5
+    +
+    \frac{N_1 + 10N_2 + 5N_m}{5000} C,
+\]
+where \(N_1\) is the number of one-qubit gates, \(N_2\) is the number of
+two-qubit gates, \(N_m\) is the number of measurements, and \(C\) is the number
+of times the same circuit is repeated.
+
+The implementation uses this formula as the real budget when
+\texttt{hqc\_budget} is set.  The older \texttt{measurement\_budget} remains as
+a safety cap on the total number of Boolean outcomes, but the loop stops when
+either the HQC budget or the measurement cap is exhausted.
+
+Because the adaptive algorithm must choose configurations before the random
+benchmarking circuit is explicitly generated, \texttt{viarregio4.py} uses
+expected gate counts from the configuration.  For a configuration with \(n\)
+qubits, depth \(d\), and two-qubit ratio \(r\), the random circuit has
+\[
+    nd
+\]
+gate slots before the inverse is appended.  A two-qubit gate occupies two of
+these slots, so the expected number of two-qubit gates in the forward random
+circuit is approximated by
+\[
+    N_{2,\mathrm{forward}}
+    =
+    \left\lfloor \frac{rnd}{2} \right\rfloor.
+\]
+The remaining occupied slots are one-qubit gates:
+\[
+    N_{1,\mathrm{forward}}
+    =
+    nd - 2N_{2,\mathrm{forward}}.
+\]
+Since the RMB circuit includes the inverse of the random circuit, the estimated
+gate counts used for HQC accounting are
+\[
+    N_1 = 2N_{1,\mathrm{forward}} + N_{1,\mathrm{scrambler}},
+    \qquad
+    N_2 = 2N_{2,\mathrm{forward}},
+    \qquad
+    N_m = n.
+\]
+The scrambler contribution is included in expectation as
+\[
+    N_{1,\mathrm{scrambler}}
+    =
+    \operatorname{round}(2n p_{\mathrm{scramble}}),
+\]
+where \(p_{\mathrm{scramble}}\) is \texttt{scrambling\_probability}.  Identity
+scrambler gates are not charged as physical one-qubit gates.
+
+The fixed cost \(5\) is charged once for each selected configuration execution,
+and the shot-dependent term scales with the number of requested shots for that
+configuration.  This means that taking five shots at one selected configuration
+is cheaper than treating those five shots as five separate circuit submissions,
+because the fixed cost is paid once.
+
+The HQC model is also used during candidate selection.  A candidate's usual
+boundary-information score is multiplied by an efficiency factor
+\[
+    E_{\mathrm{HQC}}(x)
+    =
+    \left(
+        \frac{\operatorname{HQC}(x,C_{\mathrm{plan}})}
+             {\operatorname{HQC}_{\mathrm{base}}}
+    \right)^{-\gamma},
+\]
+where \(C_{\mathrm{plan}}\) is the shot count the adaptive shot rule would
+request for that candidate, \(\operatorname{HQC}_{\mathrm{base}}=5\), and
+\(\gamma=\texttt{hqc\_cost\_power}\).  With the default
+\(\gamma=1\), the candidate score is approximately information per HQC.  If
+\(\gamma=0\), HQC cost is ignored during acquisition and is used only as a hard
+affordability constraint.  Larger values of \(\gamma\) make the method more
+aggressively prefer cheaper circuits.
+
+This cost factor is applied to both global boundary candidates and
+contour-following candidates.  When no fitted surface is available yet, random
+fallback candidates and the initial design are ordered by estimated HQC cost so
+that scarce budget is spent on affordable probes first.
+
+\subsection{Monotone fidelity surface}
+
+For each fixed \(n\), the observed points are fit with a monotone logistic
+surface.  The physical coordinates \((d,r)\) are first scaled to
+\((u,v) \in [0,1]^2\).  This scaling is not a physical assumption; it is a
+numerical convenience.  Depth and two-qubit ratio have different units and very
+different numerical ranges, so using them directly would make the optimizer
+more sensitive to depth than to ratio simply because depth is the larger
+number.  After scaling, a unit change in \(u\) means moving across the full
+allowed depth range, while a unit change in \(v\) means moving across the full
+allowed ratio range.
+
+The model is
+\[
+    p(d,r)
+    =
+    \sigma\!\left(
+        \alpha - \phi(u,v)^\top \beta
+    \right),
+\]
+where \(\sigma(z) = 1/(1+\exp(-z))\), and
+\[
+    \phi(u,v)
+    =
+    \begin{bmatrix}
+    u,& v,& u^2,& v^2,& uv,& u^3,& v^3,& u^2v,& uv^2
+    \end{bmatrix}^{\top}.
+\]
+The function \(\sigma\) is the logistic function.  It converts any real number
+into a value between zero and one, so it is a natural way to model a probability.
+The quantity inside \(\sigma\),
+\[
+    z(d,r) = \alpha - \phi(u,v)^\top\beta,
+\]
+is called the logit of the probability.  Equivalently,
+\[
+    z = \operatorname{logit}(p)
+    =
+    \log\!\left(\frac{p}{1-p}\right).
+\]
+The logit is the log-odds of success.  It is useful because probabilities are
+bounded, whereas logits live on the whole real line.  For example, \(p=0.5\)
+corresponds to \(z=0\), \(p>0.5\) corresponds to \(z>0\), and \(p<0.5\)
+corresponds to \(z<0\).  Therefore finding the fidelity--0.5 boundary is
+equivalent to finding the zero level set of the fitted logit surface:
+\[
+    \Gamma_{0.5}
+    =
+    \{(d,r): z(d,r)=0\}.
+\]
+
+The intercept \(\alpha\) sets the overall easiness of the experiment.  If
+\(\alpha\) is large and positive, the fitted probability near the origin is
+high.  The vector \(\beta\) controls how the probability falls as depth and
+two-qubit ratio increase.  The feature vector \(\phi(u,v)\) contains simple
+polynomial terms:
+\[
+    u,\; v,\; u^2,\; v^2,\; uv,\; u^3,\; v^3,\; u^2v,\; uv^2.
+\]
+The linear terms \(u\) and \(v\) allow depth and two-qubit ratio to have separate
+first-order effects.  The quadratic and cubic terms allow the transition to
+curve rather than being a straight line.  The interaction terms \(uv\),
+\(u^2v\), and \(uv^2\) allow the effect of depth to depend on the two-qubit gate
+ratio, and vice versa.  This is important because a circuit can fail from many
+moderately noisy operations, from fewer high-impact two-qubit operations, or
+from a mixture of both.
+
+This choice is deliberately more structured than a fully flexible interpolator,
+but less restrictive than a straight-line fit.  It gives the boundary enough
+freedom to bend while keeping the low-budget fit stable.
+
+The constraint
+\[
+    \beta_j \geq 0
+    \quad \text{for all } j
+\]
+forces the logit, and therefore the expected fidelity, to be non-increasing as
+either \(d\) or \(r\) increases.  This is the main monotonicity exploitation in
+\texttt{viarregio4.py}: points closer to the origin are assumed to be easier,
+and points farther from the origin are assumed to be harder.
+
+This constraint is easy to see from the fitted logit.  All features in
+\(\phi(u,v)\) are non-negative on \([0,1]^2\).  If each coefficient
+\(\beta_j\) is non-negative, then increasing \(u\) or \(v\) can only increase
+\(\phi(u,v)^\top\beta\).  Because this term is subtracted from \(\alpha\), the
+logit \(z(d,r)\) can only decrease.  Since the logistic function is increasing,
+the probability \(p(d,r)=\sigma(z(d,r))\) can only decrease as well.
+
+The parameters are obtained by minimizing the binomial negative log-likelihood,
+\[
+    \mathcal{L}(\alpha,\beta)
+    =
+    -\sum_x
+    \left[
+        s_x \log p_\theta(x)
+        +
+        f_x\log(1-p_\theta(x))
+    \right]
+    +
+    \frac{\lambda}{2}\|\beta\|_2^2,
+\]
+subject to \(\beta_j\geq 0\).  Here \(s_x\) is the number of successful Boolean
+outcomes at configuration \(x\), \(f_x\) is the number of failed outcomes, and
+\(\lambda\) is the \texttt{monotone\_l2} regularization parameter.
+
+Each term in this loss has a specific role.
+
+\[
+    p_\theta(x)
+\]
+is the probability predicted by the monotone surface at configuration \(x\).
+The subscript \(\theta\) is shorthand for the fitted parameters
+\(\theta=(\alpha,\beta)\).
+
+\[
+    s_x \log p_\theta(x)
+    +
+    f_x\log(1-p_\theta(x))
+\]
+is the binomial log-likelihood contribution from all repeated measurements at
+that configuration.  Each success contributes \(\log p_\theta(x)\), and each
+failure contributes \(\log(1-p_\theta(x))\).  A point with many repeated
+measurements therefore contributes more information to the fit than a point
+with only one or two repeated measurements.
+
+This automatically accounts for unequal point errors.  If a point has only two
+measurements, it contributes only two Bernoulli observations to the loss, so the
+optimizer is free to move the fitted surface away from that noisy estimate if
+the rest of the data disagree.  If a point has twenty measurements, it
+contributes twenty Bernoulli observations and has a much stronger influence.
+There is no separate hand-chosen weight: the number of successes and failures
+is the weight.
+
+This is also better than weighting only by a posterior mean.  Two points may
+have the same posterior mean but very different uncertainty.  For example,
+\(1\) success and \(1\) failure is much less informative than \(50\) successes
+and \(50\) failures, even though both suggest a probability near \(0.5\).  The
+binomial likelihood preserves this distinction.
+
+The minus sign in front of the sum converts a likelihood maximization problem
+into a loss minimization problem.  Maximizing likelihood and minimizing negative
+log-likelihood are the same objective written in opposite directions.
+
+The final term,
+\[
+    \frac{\lambda}{2}\|\beta\|_2^2,
+\]
+is an \(L^2\) regularization penalty.  It discourages unnecessarily large
+coefficients, which would produce a very sharp transition surface.  This is
+especially helpful at low measurement budgets, where a few random outcomes
+could otherwise make the fitted boundary move too aggressively.  The intercept
+\(\alpha\) is not penalized, because it controls the overall vertical placement
+of the logit surface rather than the surface's shape.
+
+The optimization is solved with bound-constrained L-BFGS-B.  The intercept
+\(\alpha\) is unconstrained, while every component of \(\beta\) has the lower
+bound \(0\).  The result is a smooth probability surface that respects the known
+monotonicity of the backend and whose \(p=0.5\) contour can be extracted as the
+estimated boundary.
+
+\subsection{Initial measurements}
+
+The first measurements are not placed on the four corners of the domain.  The
+corners are usually low-information under the monotonicity assumption: the
+lower-left corner is expected to pass, the upper-right corner is expected to
+fail, and the other corners are often dominated by one large stressor.  Instead,
+the initial design combines two ingredients.
+
+First, a Latin hypercube design generates candidate points in the interior of
+the allowed rectangle.  The margin from the edges is controlled by
+\texttt{initial\_edge\_margin}.  Second, a small set of deliberate bracketing
+points is added:
+\[
+    (d_{\mathrm{mid}}, r_{\mathrm{mid}}), \quad
+    (d_{\mathrm{high}}, r_{\mathrm{mid}}), \quad
+    (d_{\mathrm{mid}}, r_{\mathrm{high}}), \quad
+    (d_{\mathrm{high}}, r_{\mathrm{low}}), \quad
+    (d_{\mathrm{low}}, r_{\mathrm{high}}).
+\]
+These are intended to give the model early evidence on both sides of the
+transition without spending measurements at the obvious corners.
+
+The initial stage is budgeted.  The candidate initial design is first limited
+by the measurement cap,
+\[
+    B_{\mathrm{init}}
+    =
+    \min\!\left(
+        B - B_{\mathrm{reserve}},
+        \lfloor \rho_{\mathrm{init}} B \rfloor
+    \right),
+\]
+where \(B\) is the total measurement budget,
+\(B_{\mathrm{reserve}}\) is \texttt{reserve\_adaptive\_measurements}, and
+\(\rho_{\mathrm{init}}\) is \texttt{initial\_budget\_fraction}.  Each selected
+initial configuration receives at most \texttt{initial\_shots\_per\_config}
+measurements.  If \texttt{hqc\_budget} is set, each initial execution is then
+checked against the remaining HQC budget before it is run.  Configurations that
+cannot be afforded under the HQC formula are skipped, and the initial stage
+stops once either budget is exhausted.  If there are too many candidate initial
+configurations, they are thinned by farthest-point sampling, starting near the
+center and then spreading out.
+
+\subsection{Adaptive batches}
+
+After the initial data are collected, the algorithm repeatedly proposes a small
+batch of new configurations until the measurement budget is exhausted.  The
+batch contains configurations, not necessarily one measurement each.  The
+configured \texttt{batch\_size} is the maximum exploratory batch size; in the
+current script the default is \(4\).  In \texttt{viarregio4.py} the actual batch
+size can be adapted during the run.  Early in the experiment the full batch is
+used, because the location of the boundary is poorly known and it is useful to
+collect several diverse measurements before refitting.  Later, once the fitted
+surface contains a contour and there are enough near-boundary anchors, the
+runtime batch can shrink toward \texttt{min\_batch\_size}.  This lets the method
+refit more frequently while it follows the line.
+
+For each adaptive update, the data are grouped by \(n\).  For each group with at
+least \texttt{min\_fit\_points} measured configurations, the monotone surface is
+fit.  The batch proposal then mixes two kinds of candidates:
+\[
+    N_{\mathrm{contour}}
+    =
+    \operatorname{round}
+    \left(
+        \texttt{batch\_size}
+        \times
+        \texttt{contour\_follow\_fraction}
+    \right),
+\]
+and
+\[
+    N_{\mathrm{global}}
+    =
+    \texttt{batch\_size} - N_{\mathrm{contour}}.
+\]
+With the initial defaults, half of the proposed configurations are intended to
+follow the current boundary, while the other half are global boundary-seeking
+proposals.  This split is useful because contour following is efficient once a
+reliable boundary segment has been found, but global proposals protect against
+the method locking onto an incorrect local segment too early.
+
+When adaptive batching is enabled, the split also changes with the maturity of
+the fit.  If no fitted \(p=0.5\) contour exists, the algorithm keeps the
+configured exploratory behavior.  If a contour exists and the number of
+near-boundary anchors is at least \texttt{contour\_min\_anchors}, the runtime
+batch size is reduced to an intermediate value and the contour-following
+fraction is increased.  If the run is past
+\texttt{adaptive\_batch\_late\_budget\_fraction} of the total budget and the
+anchor count is at least
+\[
+    \texttt{adaptive\_batch\_anchor\_multiplier}
+    \times
+    \texttt{contour\_min\_anchors},
+\]
+the algorithm switches to the late-stage behavior:
+\[
+    \texttt{batch\_size}_{\mathrm{runtime}}
+    =
+    \texttt{min\_batch\_size},
+\]
+with a larger contour-following fraction
+\texttt{late\_contour\_follow\_fraction} and a smaller exploration weight
+\texttt{late\_exploration\_weight}.  The purpose of this late-stage rule is to
+move from ``find the boundary'' to ``trace the boundary''.
+
+\subsubsection{Contour-following candidates}
+
+Contour following begins from measured anchor points.  A configuration is an
+anchor if the fitted surface predicts it to be near the boundary:
+\[
+    |p_\theta(d,r)-0.5|
+    \leq
+    \texttt{contour\_ready\_probability\_width}.
+\]
+Contour following is only enabled when at least
+\texttt{contour\_min\_anchors} such anchors are present.
+
+For each anchor, the algorithm estimates the local gradient
+\[
+    \nabla p_\theta(d,r)
+\]
+by finite differences.  This gradient is normal to the contour.  A tangent
+direction is therefore
+\[
+    t = (\partial_r p_\theta, -\partial_d p_\theta).
+\]
+The method steps in both tangent directions by a fraction
+\texttt{contour\_step\_fraction} of the parameter-range scale, clips the trial
+point to the allowed rectangle, and then projects the trial point back toward
+the fitted \(p=0.5\) contour by moving along the normal direction.  The
+projection distance is limited by \texttt{contour\_projection\_fraction}, so the
+candidate remains a local continuation of the known boundary rather than a
+large jump.
+
+Each contour-following candidate is scored by closeness to the fitted boundary
+and by distance from existing measured points:
+\[
+    S_{\mathrm{contour}}(x)
+    =
+    \exp\!\left[
+        -\left(
+            \frac{|p_\theta(x)-0.5|}
+                 {\texttt{boundary\_width}}
+        \right)^2
+    \right]
+    \left(
+        1
+        +
+        \texttt{exploration\_weight}
+        \cdot
+        \operatorname{dist}(x,\mathcal{D})
+    \right).
+\]
+Configurations that have already reached \texttt{max\_shots\_per\_config} are
+not proposed again.
+
+\subsubsection{Global boundary candidates}
+
+The global part of the batch optimizes a continuous acquisition function over
+\((d,r)\).  Candidate points far from the fitted boundary are rejected:
+\[
+    |p_\theta(x)-0.5|
+    >
+    \texttt{max\_boundary\_probability\_distance}
+    \quad \Rightarrow \quad
+    S_{\mathrm{global}}(x)=0.
+\]
+Otherwise the score is
+\[
+    S_{\mathrm{global}}(x)
+    =
+    A(x)
+    E(x)
+    D(x)
+    U(x),
+\]
+where
+\[
+    A(x)
+    =
+    \left[
+    \exp\!\left(
+        -\left(
+            \frac{|p_\theta(x)-0.5|}
+                 {\texttt{boundary\_width}}
+        \right)^2
+    \right)
+    \right]^{\texttt{boundary\_focus\_power}}
+\]
+is the boundary-relevance term,
+\[
+    E(x)
+    =
+    1+\texttt{exploration\_weight}\cdot \operatorname{sparsity}(x)
+\]
+encourages sampling in parts of the boundary region with little previous data,
+\[
+    D(x)
+    =
+    \texttt{diversity\_floor}
+    +
+    (1-\texttt{diversity\_floor})\operatorname{diversity}(x)
+\]
+discourages proposing the same part of the parameter space repeatedly within
+one batch, and
+\[
+    U(x)
+    =
+    1 - \frac{\text{current shots at }x}
+             {\texttt{max\_shots\_per\_config}}
+\]
+discourages oversampling configurations that are already saturated.
+
+This acquisition function is optimized with differential evolution.  The
+continuous optimum is then rounded to an executable \texttt{RMBConfig}: depth is
+rounded to an integer and the two-qubit ratio is rounded to two decimal places.
+
+\subsection{Combining and executing a batch}
+
+All contour-following and global candidates are pooled, sorted by score, and
+deduplicated.  The top runtime batch size of unique configurations is selected.
+If no fitted surface is available yet, because there are too few measured
+points, the missing proposals are filled by random configurations from the
+allowed parameter rectangle.
+
+The batch size is therefore partly user-controlled and partly diagnostic-driven.
+A batch size of one is the most greedy strategy: refit after every single
+proposed configuration.  That can be measurement-efficient once the boundary is
+already known locally, but it is computationally expensive and can be noisy at
+very low budget, because one random Boolean outcome can move the next point too
+strongly.  A larger early batch gives the model several pieces of evidence
+before refitting, allows several circuit configurations to be prepared or run
+together, and includes an explicit diversity term so the batch does not collapse
+onto one rounded parameter value.  Very large batches would be less adaptive,
+because many measurements would be chosen from a stale fitted surface.  The
+adaptive rule uses the configured \texttt{batch\_size=4} for early exploration
+and shrinks toward \texttt{min\_batch\_size=1} only when the observed data show
+that the contour is mature enough to follow.
+
+Once the configurations are chosen, the number of measurements assigned to each
+configuration is adaptive.  If \(m_x\) measurements have already been taken at
+\(x\), the configuration can receive at most
+\[
+    \texttt{max\_shots\_per\_config} - m_x
+\]
+additional measurements.  The requested number of new measurements is larger
+when the current posterior mean is close to \(0.5\) and the posterior variance
+is large:
+\[
+    R(x)
+    =
+    \exp\!\left[
+        -\left(
+            \frac{\widehat p_x-0.5}
+                 {\texttt{shot\_boundary\_width}}
+        \right)^2
+    \right]
+    \cdot
+    \frac{\operatorname{Var}(p_x \mid \mathrm{data})}{1/12}.
+\]
+The value \(1/12\) is the variance of the initial
+\(\operatorname{Beta}(1,1)\) prior.  The final shot count is clipped between
+\texttt{min\_adaptive\_shots\_per\_config} and
+\texttt{max\_adaptive\_shots\_per\_config}, by the per-configuration cap, by
+the remaining measurement cap, and by the remaining HQC budget.  Under HQC
+accounting, the algorithm computes the largest affordable shot count \(C\) for
+the proposed configuration from
+\[
+    5
+    +
+    \frac{N_1 + 10N_2 + 5N_m}{5000} C
+    \leq
+    \operatorname{HQC}_{\mathrm{remaining}}.
+\]
+If even one shot cannot be afforded after paying the fixed cost, the
+configuration is skipped.
+
+\subsection{Current contour-first behaviour in \texttt{viarregio5.py}}
+
+The current \texttt{viarregio5.py} strategy is more specialized than the
+general adaptive batch strategy above.  It is designed around the belief that
+the most efficient experiment is:
+\[
+    \text{find one reliable boundary anchor}
+    \quad \longrightarrow \quad
+    \text{trace the boundary}
+    \quad \longrightarrow \quad
+    \text{backfill uncertain traced points}.
+\]
+It therefore avoids repeatedly proposing global search batches once a plausible
+contour has been found.
+
+\subsubsection{Phase 1: protected initial crossing search}
+
+The first task is to find one point on the \(p=0.5\) contour.  The method
+starts at low two-qubit ratio because this is usually cheaper under the HQC
+formula and often gives a useful entry point to the contour.  More generally,
+it considers up to \texttt{ray\_ratio\_count} fixed-ratio rays between the
+allowed minimum and maximum ratio, but it stops as soon as it finds a crossing.
+
+For a chosen fixed ratio \(r\), the method searches in depth.  The current
+implementation does not begin by probing the minimum and maximum depths.  Those
+extreme probes are often low information: for example, at low two-qubit ratio a
+zero- or near-zero-depth circuit is expected to pass and is not a credible
+crossing point.  Instead, if
+\texttt{initial\_crossing\_interior\_bracket} is enabled, the initial bracket is
+placed in the interior of the depth range:
+\[
+    d_{\mathrm{center}}
+    =
+    d_{\min}
+    +
+    \texttt{initial\_crossing\_center\_fraction}
+    (d_{\max}-d_{\min}),
+\]
+\[
+    d_{\mathrm{low}}
+    =
+    d_{\mathrm{center}}
+    -
+    \texttt{initial\_crossing\_half\_width\_fraction}
+    (d_{\max}-d_{\min}),
+    \qquad
+    d_{\mathrm{high}}
+    =
+    d_{\mathrm{center}}
+    +
+    \texttt{initial\_crossing\_half\_width\_fraction}
+    (d_{\max}-d_{\min}).
+\]
+The bracket is clipped to the allowed depth range.  If the two endpoints do not
+bracket a crossing, the bracket is expanded outward by a factor controlled by
+\texttt{initial\_crossing\_expand\_factor}.  This gives the method a way to
+recover if the interior guess is wrong, while still avoiding the naive
+``start at the extremes'' behaviour.
+
+Once a passing side and a failing side have been found, the method performs a
+short bisection in depth.  Each bisection point receives
+\texttt{ray\_bisection\_shots} repeated measurements.  If the measured
+probability at a bisection point is near \(0.5\), the point can be topped up to
+\texttt{crossing\_decision\_confirm\_shots} measurements before the bracket is
+updated.  This is controlled by
+\texttt{crossing\_decision\_probability\_width}.  The purpose is to avoid
+moving the bracket too far because of one unlucky Boolean outcome.
+
+At very low budgets, an ambiguous point can be dangerous: if it is treated as a
+clear pass, the algorithm may overestimate the crossing depth and then trace
+the wrong contour.  For this reason the current default
+\texttt{crossing\_ambiguous\_as\_failure=True} treats still-ambiguous initial
+crossing decisions conservatively.  This biases the initial anchor toward
+shallower depth rather than allowing a single uncertain point to push the trace
+too deep.
+
+The initial search is also protected by a trace reserve.  A fraction of the HQC
+budget is held back for contour following:
+\[
+    B_{\mathrm{reserve}}
+    =
+    \max\!\left(
+        \texttt{trace\_reserve\_min\_hqc},
+        \texttt{trace\_reserve\_budget\_fraction}
+        \times
+        B_{\mathrm{HQC}}
+    \right),
+\]
+clipped so that it cannot exceed the total HQC budget.  The initial crossing
+search and initial anchor refinement are not allowed to spend this reserve.
+This is important for low-budget runs: the algorithm should not spend all of
+the budget finding a single crossing and then have nothing left to trace the
+contour.
+
+After the first anchor is found, \texttt{initial\_anchor\_refine} optionally
+performs a local fixed-ratio refinement around that anchor.  This uses
+\texttt{initial\_anchor\_refine\_shots},
+\texttt{initial\_anchor\_refine\_steps}, and
+\texttt{initial\_anchor\_search\_fraction}.  The confirmed anchor can also be
+topped up to at least \texttt{initial\_anchor\_min\_runs} measurements, subject
+to the trace reserve and the per-configuration shot cap.
+
+\subsubsection{Phase 2: projected contour tracing}
+
+Once an anchor has been found, \texttt{viarregio5.py} traces the contour in the
+positive ratio direction by default.  The current anchor is denoted
+\[
+    x_k = (d_k,r_k).
+\]
+The next ratio is chosen by a fixed step,
+\[
+    r_{k+1}
+    =
+    r_k
+    +
+    \texttt{trace\_ratio\_step\_fraction}
+    (r_{\max}-r_{\min}),
+\]
+clipped to the allowed range.
+
+If a monotone surface can be fit to the data, the algorithm estimates the local
+gradient \(\nabla p_\theta(d_k,r_k)\).  The gradient is normal to the contour,
+so a tangent direction is
+\[
+    t = (\partial_r p_\theta, -\partial_d p_\theta).
+\]
+The method takes a small step along this tangent and then projects the trial
+point back toward the fitted \(p_\theta=0.5\) contour.  This produces a depth
+guess for the next ratio.  If \texttt{trace\_enforce\_monotone\_depth} is
+enabled, then moving to larger \(r\) is not allowed to increase the depth:
+\[
+    d_{k+1} \leq d_k.
+\]
+This encodes the expected monotonic shape of the boundary: if the two-qubit
+gate ratio becomes more stressful, fewer gates should be needed to reach the
+same failure probability.
+
+The projected point is then measured with \texttt{trace\_shots} repeats.  If
+the measured posterior mean is sufficiently close to \(0.5\),
+\[
+    |\widehat p_x - 0.5|
+    \leq
+    \texttt{trace\_accept\_probability\_width},
+\]
+it is accepted as the next anchor.  If it is not close enough, the method makes
+up to \texttt{trace\_correction\_steps} local depth corrections.  A measured
+point with \(\widehat p_x>0.5\) is too easy, so depth is increased; a point with
+\(\widehat p_x<0.5\) is too hard, so depth is decreased.  Each correction step
+shrinks the depth step size, so the correction behaves like a short local
+search rather than a large vertical sweep.
+
+The current implementation also has a rejection rule.  If the best corrected
+point is still farther than
+\texttt{trace\_reject\_probability\_width} from \(0.5\), it is not accepted as
+a new anchor and tracing stops.  In addition, if a candidate lies on the depth
+boundary and is not already within
+\texttt{trace\_accept\_probability\_width}, it is rejected.  This prevents the
+algorithm from marching along a depth bound and producing wasteful vertical
+bands of points that are not actually on the fidelity contour.
+
+\subsubsection{Phase 3: contour-anchor backfill}
+
+After tracing reaches the parameter bounds or stops because the next point is
+not credible, the algorithm may still have HQC budget left.  The current
+default does not use this remaining budget to start a new broad search.
+Instead, if \texttt{refine\_after\_trace} is enabled, it first revisits the
+anchors already traced along the contour.
+
+Each traced anchor can be repeated until it reaches
+\[
+    \min(
+        \texttt{trace\_anchor\_min\_shots},
+        \texttt{max\_shots\_per\_config}
+    )
+\]
+measurements.  The next anchor to repeat is chosen by posterior variance, so
+the least certain traced points are backfilled first.  This increases
+confidence along the discovered contour without introducing new fixed-depth or
+fixed-ratio exploration bands.
+
+If traced anchors have all reached their target repeat count and budget remains,
+the method can then call the more general
+\texttt{refine\_uncertain\_boundary\_points} rule.  This rule considers measured
+configurations that are not yet saturated and scores them by two factors:
+posterior variance and closeness of the fitted monotone surface to \(0.5\).  It
+therefore spends leftover measurements on uncertain measured points near the
+current fitted boundary.
+
+\subsubsection{Key contour-search parameters}
+
+The following parameters have the largest effect on the current contour search.
+
+\begin{itemize}
+    \item \texttt{ray\_ratio\_count}: maximum number of fixed-ratio rays tried
+    while looking for the first contour anchor.  Larger values give more chances
+    to find a good entry point, but can spend more budget before tracing begins.
+
+    \item \texttt{ray\_probe\_shots}: number of repeats used for the initial
+    low/high depth probes on a fixed-ratio ray.  Larger values make the bracket
+    more reliable but more expensive.
+
+    \item \texttt{ray\_bisection\_steps}: number of depth bisection steps used
+    after a bracket is found.  More steps localize the initial crossing more
+    precisely, but can leave less budget for contour following.
+
+    \item \texttt{ray\_bisection\_shots}: repeats per initial bisection point.
+    Increasing this reduces noise in the initial crossing estimate.
+
+    \item \texttt{initial\_crossing\_interior\_bracket}: if enabled, the first
+    fixed-ratio search starts from an interior depth bracket rather than the
+    minimum and maximum depths.
+
+    \item \texttt{initial\_crossing\_center\_fraction}: location of the interior
+    bracket center as a fraction of the depth range.  Smaller values start the
+    search at shallower depths; larger values start deeper.
+
+    \item \texttt{initial\_crossing\_half\_width\_fraction}: half-width of the
+    initial depth bracket as a fraction of the depth range.  Larger values make
+    the initial bracket broader but may reintroduce low-information probes.
+
+    \item \texttt{initial\_crossing\_expand\_factor}: controls how aggressively
+    the interior bracket expands if it does not initially contain a crossing.
+
+    \item \texttt{crossing\_decision\_confirm\_shots}: target number of repeats
+    for an initial bisection point whose measured probability is near \(0.5\).
+    This is used to avoid updating the bracket from a very noisy near-boundary
+    measurement.
+
+    \item \texttt{crossing\_decision\_probability\_width}: defines what
+    ``near \(0.5\)'' means for the initial crossing decision.  Larger values
+    confirm more points; smaller values make the algorithm cheaper but more
+    reactive to noise.
+
+    \item \texttt{crossing\_ambiguous\_as\_failure}: when enabled, ambiguous
+    initial bisection points are treated conservatively after confirmation.
+    This helps avoid overestimating the initial crossing depth.
+
+    \item \texttt{initial\_anchor\_refine}: enables a local refinement pass at
+    the first found anchor before contour tracing begins.
+
+    \item \texttt{initial\_anchor\_refine\_shots}: repeats per point in the
+    local initial-anchor refinement.
+
+    \item \texttt{initial\_anchor\_refine\_steps}: number of local refinement
+    steps around the first anchor.
+
+    \item \texttt{initial\_anchor\_search\_fraction}: depth range used for local
+    initial-anchor refinement, as a fraction of the full depth range.
+
+    \item \texttt{initial\_anchor\_min\_runs}: minimum repeat count requested
+    for the confirmed first anchor, subject to budget and shot caps.
+
+    \item \texttt{trace\_reserve\_budget\_fraction}: fraction of the HQC budget
+    reserved for tracing and not available to the initial crossing search.
+
+    \item \texttt{trace\_reserve\_min\_hqc}: absolute minimum HQC reserve for
+    tracing.  This is especially important for small total budgets.
+
+    \item \texttt{trace\_ratio\_step\_fraction}: ratio step size used while
+    following the contour.  Larger values traverse the contour faster but are
+    more likely to miss curvature; smaller values are safer but require more
+    circuit executions.
+
+    \item \texttt{trace\_shots}: repeats used for each proposed traced point.
+    Larger values give more reliable accept/reject decisions.
+
+    \item \texttt{trace\_correction\_steps}: maximum number of local depth
+    corrections after a projected trace point is measured off the boundary.
+    Larger values can recover from projection error, but too many corrections
+    can create vertical-looking local search patterns.
+
+    \item \texttt{trace\_depth\_search\_fraction}: initial correction step size
+    in depth, as a fraction of the full depth range.
+
+    \item \texttt{trace\_accept\_probability\_width}: probability distance from
+    \(0.5\) required to immediately accept a measured trace point as an anchor.
+
+    \item \texttt{trace\_reject\_probability\_width}: maximum allowed distance
+    from \(0.5\) after correction.  If the best candidate is still farther away,
+    tracing stops instead of accepting a bad anchor.
+
+    \item \texttt{trace\_enforce\_monotone\_depth}: prevents depth from
+    increasing when the trace moves to larger two-qubit ratio.  This uses the
+    expected monotone shape of the boundary directly.
+
+    \item \texttt{trace\_anchor\_min\_shots}: target repeat count for backfilling
+    already traced anchors after the contour-following phase.
+
+    \item \texttt{refine\_after\_trace}: enables the post-trace backfill and
+    remaining-boundary refinement stages.
+
+    \item \texttt{refinement\_shots}: repeats added in each post-trace
+    refinement execution.
+
+    \item \texttt{refinement\_boundary\_width}: controls how close the fitted
+    monotone surface must be to \(0.5\) for a measured point to be considered
+    useful for leftover-budget refinement.
+
+    \item \texttt{max\_shots\_per\_config}: maximum repeats allowed at any one
+    configuration.  This bounds how much budget can be spent backfilling a
+    single anchor.
+
+    \item \texttt{hqc\_cost\_power}: strength of HQC cost-awareness in candidate
+    scoring.  Larger values prefer cheaper circuits more strongly.
+\end{itemize}
+
+\subsection{Cost-aware stitched batching in \texttt{viarregio7.py}}
+
+\texttt{viarregio7.py} keeps the contour-first logic of
+\texttt{viarregio5.py}, but changes the execution model used for HQC
+accounting.  The local experiment is still run through the \texttt{SympleQ}
+backend.  The batching layer is only a cost model for the corresponding
+Quantinuum-style execution: it asks how much the same set of local RMB circuits
+would cost if several result circuits were stitched into one larger submitted
+job.
+
+The reason batching is useful is the flat term in the HQC formula.  If \(J\)
+circuits are submitted independently, the flat contribution is
+\[
+    5J.
+\]
+If those same result circuits can be stitched into one homogeneous batch, the
+flat contribution is instead
+\[
+    5.
+\]
+The gate and measurement terms do not disappear.  They are accumulated over all
+result circuits in the stitched job, and a reset overhead is added between
+subcircuits.  For a batch \(B\), the estimated stitched cost is
+\[
+    \operatorname{HQC}_{\mathrm{batch}}(B)
+    =
+    5
+    +
+    \frac{
+        \sum_{x\in B} C_x W(x)
+        +
+        W_{\mathrm{reset}} n \left(\sum_{x\in B} C_x - 1\right)
+    }{5000},
+\]
+where \(C_x\) is the requested shot count for configuration \(x\), \(W(x)\) is
+the weighted one-qubit, two-qubit, and measurement size of one RMB result
+circuit, and \(n\) is the common qubit count for the batch.  The reset term is
+charged between stitched subcircuits.  The native unbatched comparison used in
+diagnostics is
+\[
+    \operatorname{HQC}_{\mathrm{native}}
+    =
+    \sum_x C_x
+    \left[
+        5 + \frac{W(x)}{5000}
+    \right].
+\]
+The reported batching saving is the difference between these two estimates.
+
+Batches are kept homogeneous in \(n\).  This is important because a stitched
+job with mixed qubit counts would not correspond to a simple single-register
+execution model.  The batch packer therefore groups only configurations with
+the same number of qubits, and it refuses to add a request if doing so would
+exceed either the remaining global HQC budget or the configured
+\texttt{max\_cost\_per\_batch}.  The parameter
+\texttt{batch\_max\_configs} also limits the number of distinct configurations
+in one stitched job.
+
+The batcher tries to make each job large enough to benefit from the flat-cost
+saving.  Its target is controlled by \texttt{batch\_target\_fill\_fraction};
+with the current defaults, a job is packed toward a large fraction of
+\texttt{max\_cost\_per\_batch} rather than being submitted as soon as a single
+configuration is available.  If \texttt{batch\_fill\_repeats} is enabled, the
+packer can also add extra repeats of configurations already in the batch until
+the target fill is approached, subject to the per-configuration shot cap.  This
+exploits the same flat-cost effect in another way: repeating a stitched set of
+circuits is often cheaper than submitting many small jobs with the same total
+number of Boolean outcomes.
+
+The adaptive stages are still logically the same as before.  There is an
+initial crossing search, then contour following, then refinement or backfill.
+What changes is the unit of execution.  Instead of every proposed point being
+costed as a separate job, the requests from a stage are packed into one or more
+stitched jobs.  The data recorded after execution are still ordinary counts
+\((s_x,f_x)\) at individual RMB configurations, so the statistical model does
+not need to know whether those measurements came from a singleton job or a
+stitched batch.  Batch identifiers are stored for diagnostics and plotting, so
+one can see which measured points were chosen together.
+
+\subsection{Three-dimensional extension in \texttt{viarregio8.py}}
+
+\texttt{viarregio8.py} extends the problem from a two-dimensional contour at a
+fixed qubit count to a three-dimensional fidelity volume over
+\[
+    x = (d,r,n),
+\]
+where \(d\) is the legacy depth coordinate, \(r\) is the minimum two-qubit gate
+ratio, and \(n\) is the number of qubits.  The target is no longer just a curve.
+It is the surface
+\[
+    \Gamma_{0.5}
+    =
+    \{(d,r,n): p(d,r,n)=0.5\}.
+\]
+The main scalar output is the normalized volume fraction of the configured
+domain where the fitted probability is at least one half.
+
+\subsubsection{Coupled monotone volume model}
+
+The 3D model uses one coupled monotone logistic fit rather than fitting each
+qubit slice independently.  Physical coordinates are scaled to
+\[
+    (u,v,w) \in [0,1]^3,
+\]
+corresponding to depth, ratio, and qubit count.  The fitted probability is
+\[
+    p(d,r,n)
+    =
+    \sigma\!\left(
+        \alpha - \phi(u,v,w)^\top\beta
+    \right),
+\]
+where the feature vector contains linear, quadratic, cubic, and interaction
+terms,
+\[
+\begin{aligned}
+    \phi(u,v,w) =
+    (&u,\;v,\;w,\;u^2,\;v^2,\;w^2,\;uv,\;uw,\;vw,\\
+     &u^3,\;v^3,\;w^3,\;uvw).
+\end{aligned}
+\]
+As in the 2D case, the coefficients are constrained by
+\[
+    \beta_j \geq 0.
+\]
+This makes the fitted fidelity non-increasing as any of depth, two-qubit ratio,
+or qubit count increases.  The coupled fit lets measurements at, for example,
+\(n=30\) inform the expected surface at \(n=25\) and \(n=35\), while still
+allowing curvature and interactions between the three axes.
+
+The fit uses the same binomial likelihood style as the 2D monotone surface.
+For each measured configuration, the likelihood contribution is based on its
+observed successes and failures, not only on the posterior mean.  Thus a point
+with many repeats has more influence than a point with one noisy Boolean
+outcome.
+
+\subsubsection{Qubit-dependent depth domain}
+
+The 3D benchmark uses a qubit-dependent maximum depth.  A single global maximum
+depth is inappropriate: a 50-qubit circuit may reach the \(p=0.5\) transition
+at low depth, while a 10-qubit circuit can require a much larger depth.  The
+current default depth domain is
+\[
+    d_{\max}(n)
+    =
+    \min\!\left(
+        150,\;
+        50\left(\frac{30}{n}\right)
+    \right),
+\]
+with the minimum depth still set by \texttt{depth\_bounds}.  This gives
+approximately
+\[
+    d_{\max}(10)\approx 150,\qquad
+    d_{\max}(30)\approx 50,\qquad
+    d_{\max}(50)\approx 30.
+\]
+The cap is controlled by \texttt{qubit\_depth\_cap\_enabled},
+\texttt{qubit\_depth\_cap\_plateau},
+\texttt{qubit\_depth\_cap\_power}, and
+\texttt{qubit\_depth\_cap\_margin\_fraction}.  This qubit-dependent maximum is
+used during seeding, acquisition, contour extraction, plotting, and normalized
+volume computation.
+
+\subsubsection{Height-field contour representation}
+
+The 3D contour is represented as a depth height-field over the
+\((r,n)\)-plane.  For each grid point \((r_j,n_k)\), the fitted model is queried
+along the allowed depth interval
+\[
+    [d_{\min}, d_{\max}(n_k)].
+\]
+If the fitted probability crosses one half, the crossing depth
+\[
+    d_{50}(r_j,n_k)
+\]
+is found by bisection.  If the whole interval is above one half, the height is
+set to \(d_{\max}(n_k)\), meaning the configured depth range is still inside the
+passing region.  If the whole interval is below one half, the height is set to
+\(d_{\min}\), meaning the passing volume has already disappeared at that
+\((r,n)\) location.
+
+The normalized volume is then estimated by averaging the normalized heights,
+\[
+    V_{\mathrm{norm}}
+    =
+    \frac{1}{N_rN_n}
+    \sum_{j,k}
+    \frac{
+        d_{50}(r_j,n_k)-d_{\min}
+    }{
+        d_{\max}(n_k)-d_{\min}
+    }.
+\]
+This number lies in \([0,1]\).  It is a normalized fraction of the configured
+3D box, not a raw physical volume.  The saved volume grid contains the ratio
+grid, qubit grid, \(d_{50}\) values, per-qubit \(d_{\max}\) values, crossing
+statuses, and the normalized volume.
+
+\subsubsection{3D acquisition}
+
+The initial stage seeds a small number of qubit slices, currently
+\texttt{seed\_n\_qubits\_values=(10,30,50)} by default.  Within each seed slice
+the method uses the same lesson as the 2D contour-first algorithm.  It first
+spends a batched low-ratio horizontal search in depth, using configured
+\texttt{initial\_low\_ratio\_depth\_fractions}.  Only after those measurements
+have been recorded does it estimate the low-ratio anchor depth and fan out in
+ratio.  This makes the first contour seed depend on the measured crossing,
+rather than on a fixed prior guess.  The initial design is therefore not a
+uniform 3D grid.  It is a small number of contour-seeking probes in
+representative qubit slices.
+
+Once enough data exist, the coupled volume model is fit and used to propose new
+locations.  Candidate \((r,n)\) pairs are drawn from a ratio-qubit grid.  At
+each candidate pair, the fitted height-field gives a predicted depth
+\(d_{50}(r,n)\).  The algorithm then asks for a same-ratio depth bracket around
+that predicted crossing, using the qubit-dependent depth range for that slice.
+The intended pattern is the 3D analogue of good 2D contour following: for most
+sampled \((r,n)\) locations, the data should include points just above and just
+below the transition.  This is important statistically: for a fixed \((r,n)\),
+a few depths on both sides of the transition give the monotone model much
+stronger evidence than many repeats at a point far from the boundary.
+
+Before proposing broad new volume candidates, the current v8 method also runs a
+bracket-completion pass.  This pass scans the measured data for fixed
+\((r,n)\)-like groups that are still one-sided: all measured depths pass, or all
+measured depths fail.  If such a group is close to the fitted contour, the
+method asks for the missing side.  For an all-passing group it proposes a
+deeper point; for an all-failing group it proposes a shallower point.  The
+purpose is to make the 3D acquisition behave like the best 2D runs: after the
+initial crossing is found, most followed ratios should have evidence on both
+sides of the \(p=0.5\) transition.
+
+Candidate scoring combines four pressures.  The first is contour uncertainty,
+which is large near \(p=0.5\).  The second is sparsity in scaled
+\((d,r,n)\)-space, which discourages repeatedly measuring the same part of the
+volume.  The third is within-batch diversity, so one acquisition pass covers
+several regions rather than collapsing onto one rounded configuration.  The
+fourth is HQC efficiency, controlled by \texttt{volume\_cost\_power}.  Large,
+high-qubit, high-ratio circuits are therefore not forbidden, but they must earn
+their cost by reducing uncertainty in a part of the volume that matters.
+
+The 3D acquisition requests are executed by the same stitched batch machinery
+as v7.  Batches remain homogeneous in \(n\), because stitching mixed-qubit
+circuits would not match the intended hardware-cost model.  The batch cap
+\texttt{max\_cost\_per\_batch} is still enforced for every stitched job, and the
+global HQC budget is checked before each batch is run.  Diagnostics report the
+stitched HQC spent, the native unbatched estimate, the estimated saving, the
+number of batched jobs, and the largest batched job size.
+
+\subsection{Boundary extraction and uncertainty}
+
+After the measurements are complete, the monotone surface is evaluated on a
+regular plotting grid and the \(p_\theta(d,r)=0.5\) contour is extracted.  The
+grid is used only for visualization and contour extraction; measurements are
+not restricted to the grid during the adaptive stage.
+
+Uncertainty in the boundary is estimated by posterior bootstrap.  For every
+measured configuration \(x\), a sampled fidelity probability is drawn from
+\[
+    p_x^{(b)}
+    \sim
+    \operatorname{Beta}(1+s_x,1+f_x).
+\]
+For each bootstrap draw \(b\), a new monotone surface is fit to the sampled
+probabilities, and its \(p=0.5\) contour is extracted.  The collection of
+bootstrap contours approximates the posterior uncertainty over the boundary.
+This bootstrap step deliberately uses the full Beta posterior at each measured
+configuration, while the main fitted surface uses the binomial likelihood of
+the observed counts.  Thus the central fit is count-likelihood based, and the
+uncertainty visualization propagates the remaining posterior uncertainty in
+those counts.
+The plot shows this uncertainty as a contour-occupancy heatmap by default,
+rather than as many individual contour lines, because broad uncertainty can
+otherwise produce a visually cluttered set of vertical or crossing line
+segments.
+
+\subsection{Complete pipeline}
+
+The full \texttt{viarregio4.py} pipeline is as follows.
+
+\begin{enumerate}
+    \item Define the total measurement budget and parameter bounds for
+    \((n,d,r)\).
+
+    \item Construct the \texttt{SympleqBackend} with the chosen one-qubit and
+    two-qubit Pauli noise models.
+
+    \item Generate an initial, budget-limited design.  The design uses interior
+    Latin hypercube points plus non-corner bracketing points, then thins the
+    candidates if the initial budget is too small.
+
+    \item Spend the initial measurements.  Each Boolean outcome updates the
+    \(\operatorname{Beta}(1+s_x,1+f_x)\) posterior for its configuration.
+
+    \item Fit a monotone logistic fidelity surface separately for each fixed
+    \(n\), provided at least \texttt{min\_fit\_points} configurations have been
+    measured.
+
+    \item Propose the next batch.  The runtime batch size and
+    contour-following fraction are first chosen from the current maturity
+    diagnostics: whether a contour exists, how many near-boundary anchors are
+    available, and how much of the total budget has been spent.  A fraction of
+    the batch then attempts to follow the currently fitted contour from
+    near-boundary anchors.  The remainder is chosen by global optimization of
+    the boundary-focused acquisition score.
+
+    \item Deduplicate the candidate configurations, sort by score, and keep at
+    most \texttt{batch\_size} configurations.
+
+    \item For each selected configuration, choose an adaptive number of
+    measurements.  More measurements are spent near the boundary and where the
+    Beta posterior variance remains high.
+
+    \item Record the outcomes, decrement the remaining global budget, and refit
+    the monotone surface before selecting the next batch.
+
+    \item When the budget is exhausted, extract the fitted \(p=0.5\) contour and
+    estimate its uncertainty by posterior bootstrap.
+\end{enumerate}
+
+The current \texttt{viarregio5.py} pipeline is:
+
+\begin{enumerate}
+    \item Define the HQC budget, measurement cap, parameter bounds, and fixed
+    \(n\)-qubit value.
+
+    \item Reserve part of the HQC budget for contour following using
+    \texttt{trace\_reserve\_budget\_fraction} and
+    \texttt{trace\_reserve\_min\_hqc}.
+
+    \item Try fixed-ratio depth searches, starting at low ratio and stopping
+    when the first credible \(p=0.5\) crossing is found.
+
+    \item For each fixed-ratio search, start from an interior depth bracket,
+    expand only if necessary, and then run a short depth bisection.  Near-boundary
+    bisection decisions can be confirmed with extra repeats before the bracket
+    is updated.
+
+    \item Optionally refine and top up the first anchor, without spending the
+    reserved trace budget.
+
+    \item Trace the contour in ratio.  At each step, use the fitted monotone
+    surface to propose a projected next point, measure it, and make a small
+    number of local depth corrections if the measured point is off the boundary.
+
+    \item Reject a proposed trace point if it is too far from \(0.5\), or if it
+    lies on a depth bound without being sufficiently close to \(0.5\).  This
+    prevents the algorithm from turning a failed trace step into a vertical
+    edge search.
+
+    \item When tracing stops, backfill the traced anchors with additional
+    repeats, prioritizing anchors with high posterior variance.
+
+    \item If budget remains after anchor backfill, refine uncertain measured
+    points that the fitted surface predicts to be near the boundary.
+
+    \item Fit the final monotone surface, extract its \(p=0.5\) contour, and
+    optionally estimate uncertainty by posterior bootstrap.
+\end{enumerate}
+
+The \texttt{viarregio7.py} batched contour-first pipeline is:
+
+\begin{enumerate}
+    \item Define the same fixed-\(n\) contour problem as v5, together with an
+    overall HQC budget and \texttt{max\_cost\_per\_batch}.
+
+    \item Build only the local \texttt{SympleQ} backend.  Quantinuum-style HQC
+    formulas are used for costing and diagnostics, not for execution.
+
+    \item Generate the initial crossing-search requests and pack them into
+    homogeneous stitched batches where possible.  Each stitched batch pays the
+    flat HQC base cost once.
+
+    \item Run the local SympleQ circuits in the batch and record ordinary
+    per-configuration Boolean counts.
+
+    \item Trace the contour as in v5, but execute the proposed trace brackets
+    and corrections through the same batch packer.
+
+    \item Use leftover budget for anchor backfill or uncertain-boundary
+    refinement, again packing requests toward the per-batch cost cap.
+
+    \item Fit the final 2D monotone surface, extract the contour, and report
+    both stitched HQC spent and the native unbatched HQC estimate.
+\end{enumerate}
+
+The \texttt{viarregio8.py} 3D volume pipeline is:
+
+\begin{enumerate}
+    \item Define the 3D domain in \((d,r,n)\), including the allowed
+    \texttt{n\_qubits\_values} and the qubit-dependent depth maximum
+    \(d_{\max}(n)\).
+
+    \item Seed representative qubit slices, usually \(n=10,30,50\), with
+    low-ratio depth searches and contour-bracket probes.
+
+    \item Pack these seed requests into homogeneous stitched batches and run
+    them locally through SympleQ.
+
+    \item Fit the coupled monotone volume model once the measured data contain
+    enough distinct configurations.
+
+    \item Extract the current predicted height-field \(d_{50}(r,n)\), select
+    new ratio-qubit locations near the predicted transition, and request small
+    depth brackets around those predicted crossing depths.
+
+    \item Score and pack the new requests using uncertainty, sparsity,
+    diversity, and HQC efficiency, while respecting both the global budget and
+    \texttt{max\_cost\_per\_batch}.
+
+    \item Repeat the fit--acquire--batch loop until the acquisition pass limit
+    or the HQC budget is exhausted.
+
+    \item Fit the final coupled 3D model, save the \(d_{50}(r,n)\) grid, compute
+    the normalized fidelity volume, and plot the 3D height-field with measured
+    points overlaid.
+\end{enumerate}
+
+The essential idea is that monotonicity converts the problem from learning an
+arbitrary surface into learning a structured transition boundary.  In two
+dimensions this boundary is a curve; in three dimensions it is a height-field
+surface whose integral gives the normalized passing volume.  The batching layer
+is orthogonal to the statistical model: it changes how candidate circuits are
+costed and grouped, while the fitted model still sees the resulting successes
+and failures at individual RMB configurations.

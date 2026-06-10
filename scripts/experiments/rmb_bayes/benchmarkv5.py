@@ -854,4 +854,4 @@ def main(**overrides) -> None:
 
 
 if __name__ == "__main__":
-    main(overwrite=True)
+    main(overwrite=False)

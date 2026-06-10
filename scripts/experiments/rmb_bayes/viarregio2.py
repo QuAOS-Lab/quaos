@@ -121,8 +121,8 @@ def make_backend() -> SympleqBackend:
     """
     Use the same SympleQBackend noise model as viarregio1.py.
     """
-    noise_model = GenericNoise.from_paulis([0.000025, 0.000025, 0.000025])
-    two_qubit_noise_model = GenericNoise.from_paulis([0.00079, 0.00079, 0.00079])
+    noise_model = GenericNoise.from_paulis([0.000075, 0.000075, 0.000075])
+    two_qubit_noise_model = GenericNoise.from_paulis([0.00039, 0.00039, 0.00039])
     return require_sympleq_backend(SympleqBackend(
         noise_model=noise_model,
         two_qubit_noise_model=two_qubit_noise_model,
