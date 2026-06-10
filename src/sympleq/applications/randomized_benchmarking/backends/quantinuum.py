@@ -148,7 +148,6 @@ has mismatching number of 1qb gates ({circuit.n_2qb_gates()} vs {config.n_2qb_ga
             .with_n_2qb_gates(5 * 6)\
             .with_random_elimination(0.1)\
             .with_n_qubits(6)\
-            .with_scrambling_probability(0.5)\
             .with_gates_set(tuple(NATIVE_GATES_SET))
 
     def default_estimator(self) -> BayesianEstimator:
