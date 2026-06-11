@@ -10,6 +10,7 @@ from scipy.optimize import differential_evolution
 from scipy.special import expit, logit
 
 from sympleq.applications.randomized_benchmarking.RMB import RMB
+from sympleq.applications.randomized_benchmarking.backends.base import MeasurementRequest
 from sympleq.applications.randomized_benchmarking.backends.sympleq import SympleqBackend
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
 from sympleq.core.bayesian_estimation import BayesianEstimator
@@ -406,9 +407,8 @@ def spend_measurements(
     spent = 0
 
     while spent < n_measurements:
-        outcomes = backend.fidelity_estimation(config, rng)
-        if not isinstance(outcomes, list):
-            outcomes = [outcomes]
+        outcomes = backend.fidelity_estimation(
+            [MeasurementRequest(config, 1)], rng).outcomes.get(config, [])
 
         for outcome in outcomes:
             if spent >= n_measurements:

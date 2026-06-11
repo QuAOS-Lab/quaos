@@ -1,9 +1,37 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Callable
 from numpy.random import Generator as RNGGenerator
 
 from sympleq.applications.randomized_benchmarking.config import RMBConfig
 from sympleq.core.bayesian_estimation import BayesianEstimator
+
+
+@dataclass(frozen=True)
+class MeasurementRequest:
+    """``shots`` independently drawn random circuits of one config."""
+    config: RMBConfig
+    shots: int
+
+
+@dataclass(frozen=True)
+class MeasurementOutcomes:
+    """
+    Boolean fidelity outcomes of one :meth:`RMBBackend.fidelity_estimation` call.
+
+    ``outcomes`` lists each config's results in execution order. ``cost`` is
+    what the backend actually charged for the call, in its native cost units
+    (HQC for Quantinuum; local simulation is free). ``n_submissions`` counts
+    the device submissions the backend packed the circuits into.
+    """
+    outcomes: dict[RMBConfig, list[bool]] = field(default_factory=dict)
+    cost: float = 0.0
+    n_submissions: int = 0
+
+
+type ShotRNG = Callable[[RMBConfig, int], RNGGenerator]
+"""Maps (config, per-call shot index) to the rng driving that shot."""
 
 
 class RMBBackend(ABC):
@@ -20,8 +48,20 @@ class RMBBackend(ABC):
     type: str
 
     @abstractmethod
-    def fidelity_estimation(self, config: RMBConfig, rng: RNGGenerator) -> list[bool]:
-        """Run a single fidelity-estimation trial for ``config``."""
+    def fidelity_estimation(self, requests: list[MeasurementRequest], rng: RNGGenerator,
+                            shot_rng: ShotRNG | None = None) -> MeasurementOutcomes:
+        """
+        Run the requested circuits and return their Boolean outcomes.
+
+        Each requested shot is one independently drawn random circuit whose
+        outcome is ``True`` when the measured state matches the initial
+        state. With ``shot_rng``, shot ``i`` of a config (counting across
+        the call's requests) draws from ``shot_rng(config, i)``, so seeded
+        callers record the same outcomes no matter how requests are grouped
+        into calls; ``None`` draws everything from ``rng``. How the circuits
+        are executed (e.g. stitched into device submissions) is an
+        implementation detail of the backend.
+        """
         ...
 
     @classmethod

@@ -10,12 +10,33 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.special import expit
 
-from sympleq.applications.randomized_benchmarking.update_strategy import default_update_strategy
 from viarregio2 import (
     config_depth,
     config_from_parameters,
     config_two_qubit_gate_ratio,
 )
+
+
+def default_update_strategy(data: RMBData, current_config: RMBConfig) -> RMBConfig:
+    """
+    Default rule for advancing an RMB sweep (formerly
+    ``randomized_benchmarking.update_strategy``; this script is its only user).
+    """
+    if current_config in data:
+        estimator = data[current_config]
+    else:
+        return RMBConfig.default()
+    # probability(True) is the fidelity
+    if estimator.probability(True) >= 0.8:
+        new_config = current_config.with_n_1qb_gates(current_config.n_1qb_gates + 4 * current_config.n_qubits)
+    elif estimator.probability(True) >= 0.6:
+        new_config = current_config.with_n_1qb_gates(current_config.n_1qb_gates + 2 * current_config.n_qubits)
+    elif estimator.probability(True) >= 0.5:
+        new_config = current_config.with_n_1qb_gates(current_config.n_1qb_gates + 1 * current_config.n_qubits)
+    else:
+        new_config = current_config.with_n_2qb_gates(max(0, current_config.n_2qb_gates - 1 * current_config.n_qubits))
+
+    return new_config
 
 
 @dataclass(frozen=True)
@@ -222,8 +243,9 @@ def plot_fidelity_boundary(
     Plot the RMB data and overlay a fitted fidelity=0.5 boundary per n_qubits.
     """
     import matplotlib.pyplot as plt
+    from sympleq.applications.randomized_benchmarking.experiments.plots import plot_data
 
-    axes = RMB.plot_data(data, show=False, skip_incomplete=skip_incomplete)
+    axes = plot_data(data, show=False, skip_incomplete=skip_incomplete)
     if not axes:
         return []
 

@@ -144,6 +144,25 @@ class BayesianEstimator:
         """
         return dict(self._results)
 
+    def posterior_alpha_beta(self) -> tuple[float, float]:
+        """Return the Beta(1, 1) posterior parameters of the ``True`` outcome probability."""
+        return self._results.get(True, 0) + 1.0, self._results.get(False, 0) + 1.0
+
+    def posterior_mean(self) -> float:
+        """Return the Beta(1, 1) posterior mean of the ``True`` outcome probability.
+
+        Unlike :meth:`probability`, the flat prior is applied even before both
+        Boolean outcomes have been observed.
+        """
+        alpha, beta = self.posterior_alpha_beta()
+        return alpha / (alpha + beta)
+
+    def posterior_variance(self) -> float:
+        """Return the Beta(1, 1) posterior variance of the ``True`` outcome probability."""
+        alpha, beta = self.posterior_alpha_beta()
+        total = alpha + beta
+        return alpha * beta / (total * total * (total + 1.0))
+
     def is_converged(self) -> bool:
         """Return ``True`` when at least ``min_runs`` samples have been recorded
         and every variance is at or below ``threshold``."""

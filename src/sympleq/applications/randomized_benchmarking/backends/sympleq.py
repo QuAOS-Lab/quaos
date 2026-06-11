@@ -1,7 +1,12 @@
 from __future__ import annotations
 from numpy.random import Generator as RNGGenerator
 
-from sympleq.applications.randomized_benchmarking.backends.base import RMBBackend
+from sympleq.applications.randomized_benchmarking.backends.base import (
+    MeasurementOutcomes,
+    MeasurementRequest,
+    RMBBackend,
+    ShotRNG,
+)
 from sympleq.applications.randomized_benchmarking.backends.utils import data_from_pytket_circuit_results, \
     load_pytket_circuits
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
@@ -35,20 +40,31 @@ class SympleqBackend(RMBBackend):
         self.noise_model = noise_model
         self.two_qubit_noise_model = two_qubit_noise_model
 
-    def fidelity_estimation(self, config: RMBConfig, rng: RNGGenerator) -> list[bool]:
-        initial_state = config.initial_state()
-        n_runs = 1
-        results = []
-        for _ in range(n_runs):
-            circuit = config.random_circuit(rng=rng)
-            if self.noise_model is not None:
-                circuit = circuit.with_noise(self.noise_model)
-            if self.two_qubit_noise_model is not None:
-                circuit = circuit.with_two_qudit_noise(self.two_qubit_noise_model)
-            final_state = circuit.act(initial_state)
-            results.append(final_state == initial_state)
+    def fidelity_estimation(self, requests: list[MeasurementRequest], rng: RNGGenerator,
+                            shot_rng: ShotRNG | None = None) -> MeasurementOutcomes:
+        outcomes: dict[RMBConfig, list[bool]] = {}
+        shot_counts: dict[RMBConfig, int] = {}
+        for request in requests:
+            initial_state = request.config.initial_state()
+            for _ in range(max(0, request.shots)):
+                index = shot_counts.get(request.config, 0)
+                shot_counts[request.config] = index + 1
+                circuit_rng = rng if shot_rng is None else shot_rng(request.config, index)
+                # The shot's rng drives the noise sampling as well as the
+                # circuit construction, so seeded callers get reproducible
+                # outcomes without reaching into the noise models.
+                for noise_model in (self.noise_model, self.two_qubit_noise_model):
+                    if noise_model is not None:
+                        noise_model.rng = circuit_rng
+                circuit = request.config.random_circuit(rng=circuit_rng)
+                if self.noise_model is not None:
+                    circuit = circuit.with_noise(self.noise_model)
+                if self.two_qubit_noise_model is not None:
+                    circuit = circuit.with_two_qudit_noise(self.two_qubit_noise_model)
+                final_state = circuit.act(initial_state)
+                outcomes.setdefault(request.config, []).append(final_state == initial_state)
 
-        return results
+        return MeasurementOutcomes(outcomes=outcomes)
 
     @classmethod
     def default_config(cls) -> RMBConfig:
