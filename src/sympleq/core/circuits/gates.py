@@ -6,7 +6,7 @@ from typing import Self
 from sympleq._typing import IntArrayLike
 from sympleq.core.paulis import PauliObject
 from sympleq.core.paulis._typing import (
-    TableauType, TableauLike, PhasesType, DimensionsType, HilbertOperator
+    TableauType, PhasesType, DimensionsType, HilbertOperator
 )
 from sympleq.core.circuits.utils import embed_symplectic, embed_unitary, transvection_matrix
 from sympleq.core.circuits.random_symplectic import symplectic_random_transvection

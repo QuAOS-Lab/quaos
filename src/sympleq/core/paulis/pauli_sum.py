@@ -1219,12 +1219,12 @@ class PauliSum(PauliObject):
         dimensions : int | list[int] | np.ndarray
             The dimensions of the qudits in the stabilizer state.
         random : bool
-            Whether to generate a random stabilizer state (random = True) 
+            Whether to generate a random stabilizer state (random = True)
             or the computational state |000...0> (random = False)
         diagonal : bool
             If random is True, whether to generate a diagonal stabilizer state.
         seed : int | None
-            The seed to use for random number generation.
+        The seed to use for random number generation.
 
         Returns
         -------
@@ -1281,12 +1281,12 @@ class PauliSum(PauliObject):
         Checks whether the PauliSum is a stabilizer state. We represent stabilizer states as PauliSums where
         all weights are one, the PauliStrings are commuting, have consistent phases, and the number of PauliStrings
         is equal to the number of qudits. Notice that this last requirement is not necessary in general, but we set
-        it for clarity and practicality. If you have less stabilizer, you can fill it to ensure the number of 
+        it for clarity and practicality. If you have less stabilizer, you can fill it to ensure the number of
         generators is equal to the number of qudits.
         Returns
         -------
         bool
-            True if the PauliSum is a stabilizer state, False otherwise.
+        True if the PauliSum is a stabilizer state, False otherwise.
         """
 
         # Sanity check 0: there are no identities in the PauliSum
