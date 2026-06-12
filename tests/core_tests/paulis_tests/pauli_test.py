@@ -1300,7 +1300,7 @@ class TestPaulis:
                 _, _ = P.ordered_eigenspectrum()
 
     def test_is_stabilizer(self):
-        # It fails i there are identities
+        # It fails if there are identities
         stabilizer = PauliSum.from_string(["x0z0 x0z0", "x0z0 x0z1"], dimensions=[2, 3])
         assert not stabilizer.is_stabilizer(), "Stabilizer should not contain identities."
 
@@ -1322,7 +1322,8 @@ class TestPaulis:
 
     def test_stabilizer_to_hilbert_space(self):
         for i in range(N_tests):
-            dimensions = [2]  # choose_random_dimensions(250)
+            dimensions = choose_random_dimensions(250)
+            dimensions = [dimensions[0]] * len(dimensions)
 
             if i == 0:
                 stabilizer = PauliSum.from_stabilizer(dimensions, random=False, diagonal=False)

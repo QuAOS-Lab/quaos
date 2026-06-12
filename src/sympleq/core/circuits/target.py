@@ -6,6 +6,7 @@ import numpy as np
 from collections import defaultdict
 from itertools import product
 from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
+from sympleq.core.circuits.find_symplectic_qudits import map_paulisum_to_target_paulisum
 
 
 def find_map_to_target_pauli_sum(input_pauli: PauliSum, target_pauli: PauliSum) -> tuple[TableauType, PhasesType,
@@ -60,7 +61,10 @@ def find_map_to_target_pauli_sum(input_pauli: PauliSum, target_pauli: PauliSum) 
     input_tableau = input_pauli.tableau  # [:, qudit_indices]
     target_tableau = target_pauli.tableau  # [:, qudit_indices]
 
-    F = map_pauli_sum_to_target_tableau(input_tableau, target_tableau)
+    if gate_dimension == 2:
+        F = map_pauli_sum_to_target_tableau(input_tableau, target_tableau)
+    else:
+        F = map_paulisum_to_target_paulisum(input_tableau, target_tableau, int(gate_dimension))
 
     # print('IN FUNCTION')
     # # print(input_symplectic)

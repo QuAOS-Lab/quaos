@@ -9,7 +9,6 @@ from pathlib import Path
 
 from sympleq import complex_phase_value, int_to_bases
 from sympleq.core.finite_field_solvers import get_linear_dependencies
-from sympleq.utils import bases_to_int
 from .pauli_object import PauliObject
 from .pauli_string import PauliString
 from ._typing import HilbertOperator, ScalarType, TableauType, DimensionsLike, PhasesLike, WeightsLike
@@ -267,8 +266,7 @@ class PauliSum(PauliObject):
             Whether to use random weights for the Pauli operators.
         rand_phases : bool
             Whether to use random phases for the Pauli operators.
-        stabilizer : bool
-            Whether to create a random stabilizer state.
+
 
         Returns
         -------
@@ -1221,7 +1219,8 @@ class PauliSum(PauliObject):
         dimensions : int | list[int] | np.ndarray
             The dimensions of the qudits in the stabilizer state.
         random : bool
-            Whether to generate a random stabilizer state.
+            Whether to generate a random stabilizer state (random = True) 
+            or the computational state |000...0> (random = False)
         diagonal : bool
             If random is True, whether to generate a diagonal stabilizer state.
         seed : int | None
@@ -1249,6 +1248,7 @@ class PauliSum(PauliObject):
         # If not random, we just return the |0...0> state.
         if not random:
             assert stabilizer_out.is_stabilizer(), "The generated stabilizer state does not pass the sanity checks."
+            print(stabilizer_out)
             return stabilizer_out
 
         if random:
@@ -1263,6 +1263,7 @@ class PauliSum(PauliObject):
         # If random and diagonal we just return the random diagonal stabilizer.
         if diagonal:
             assert stabilizer_out.is_stabilizer(), "The generated stabilizer state does not pass the sanity checks."
+            print(stabilizer_out)
             return stabilizer_out
 
         else:
@@ -1272,6 +1273,7 @@ class PauliSum(PauliObject):
             stabilizer_out = rand_circ.act(stabilizer_out)
 
             assert stabilizer_out.is_stabilizer(), "The generated stabilizer state does not pass the sanity checks."
+            print(stabilizer_out)
             return stabilizer_out
 
     def is_stabilizer(self) -> bool:
@@ -1355,56 +1357,31 @@ class PauliSum(PauliObject):
 
         assert self.is_stabilizer(), "Not a stabilizer state."
 
-        # Find Clifford that maps the PauliSum to the computational basis
-        from sympleq.core.circuits import Gate
-        from sympleq.core.circuits.gate_decomposition_to_circuit import gate_to_circuit
-        from sympleq.core.circuits.target import find_map_to_target_pauli_sum
+        stabilizer_hamiltonian = None
+        zero_phases = np.zeros(1, dtype=int)
 
-        stabilizer_input = self.copy()
-        n_qudits = stabilizer_input.n_qudits()
-        dims = stabilizer_input.dimensions
+        for idx, phase in enumerate(self.phases):
+            eigenvalue = complex_phase_value(phase, self.lcm)
+            generator = PauliSum.from_tableau(
+                self.tableau[[idx]],
+                dimensions=self.dimensions,
+                weights=np.array([-np.conj(eigenvalue)], dtype=complex),
+                phases=zero_phases,
+            )
+            hermitian_generator = generator + generator.hermitian_conjugate()
+            if stabilizer_hamiltonian is None:
+                stabilizer_hamiltonian = hermitian_generator
+            else:
+                stabilizer_hamiltonian = stabilizer_hamiltonian + hermitian_generator
 
-        # Find the Clifford that maps the stabilizer to the diagonal stabilizer (if not already diagonal)
-        desired_tableau = np.zeros((n_qudits, 2 * n_qudits), dtype=int)
-        desired_tableau[:, n_qudits:] = np.eye(n_qudits, dtype=int)
-        desired_stabilizer = PauliSum.from_tableau(desired_tableau, weights=np.ones(
-            n_qudits), phases=np.zeros(n_qudits), dimensions=dims)
+        assert stabilizer_hamiltonian is not None, "Stabilizer must contain at least one generator."
 
-        F, h, qudit_indices, gate_dimension = find_map_to_target_pauli_sum(stabilizer_input, desired_stabilizer)
+        hilbert_dim = int(np.prod(self.dimensions))
+        _, states = stabilizer_hamiltonian.ordered_eigenspectrum(num_eigens=hilbert_dim)
+        state_vector = states[0]
+        density_matrix = np.outer(state_vector, np.conj(state_vector))
 
-        diagonalizing_gate = Gate("custom", F.T, h)
-
-        # Apply that circuit to the input stabilizer
-        stabilizer_diagonalized = diagonalizing_gate.act(stabilizer_input, tuple(qudit_indices))
-
-        lcm = np.lcm.reduce(dims)
-        phases = stabilizer_diagonalized.phases
-        effective_phases = phases * dims / lcm
-
-        # Find the corresponding index of the array in Hilbert space
-        base = effective_phases / 2
-        index = bases_to_int(base, dims)
-        hilbert_dim = int(np.prod(dims))
-        # Generate the density matrix - as we are using density matrices rather than arrays (for the noise)
-        state = sp.csr_matrix(([1], ([index], [index])), shape=(hilbert_dim, hilbert_dim), dtype=complex)
-
-        # Apply back the Clifford that diagonalized the input stabilizer
-        circuit = gate_to_circuit(diagonalizing_gate, dims)
-        circuit_hilbert = circuit.to_hilbert_space()
-        state = circuit_hilbert.conj().T @ state @ circuit_hilbert  # notice the order of hermitian (<= inverse)
-        #  state = sp.around(state, decimals=14)  # remove numerical noise
-
-        print("banana")
-        print(stabilizer_input)
-        print(stabilizer_diagonalized)
-        print("input tableau", stabilizer_input.tableau)
-        print("desired tableau", desired_tableau)
-        print("obtained tableau", stabilizer_diagonalized.tableau)
-        print("state", state)
-        print(circuit)
-        print(circuit_hilbert)
-
-        return state
+        return sp.csr_matrix(density_matrix)
 
     def make_hermitian(self, in_place: bool = False) -> PauliSum:
         """

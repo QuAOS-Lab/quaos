@@ -1,6 +1,8 @@
 import pytest
 import numpy as np
 import random
+from typing import cast
+from tests import choose_random_dimensions
 from sympleq.core.circuits import GATES, PauliGate
 from sympleq.core.circuits.gates import Gate
 from sympleq.core.circuits.utils import is_symplectic
@@ -272,39 +274,41 @@ class TestGates():
 
         dims = np.array([2])
 
-        input_tableau = PauliSum.from_tableau(input_tab, dims)
-        target_tableau = PauliSum.from_tableau(target_tab, dims)
-        F,h,_,_ = find_map_to_target_pauli_sum(input_tableau, target_tableau)
+        input_pauli_sum = PauliSum.from_tableau(input_tab, dims)
+        target_pauli_sum = PauliSum.from_tableau(target_tab, dims)
+        F, h, _, _ = find_map_to_target_pauli_sum(input_pauli_sum, target_pauli_sum)
 
         gate = Gate('placeholder', F.T, h)
-        result = (input_tab @ gate.symplectic.T) % 2
-        assert np.array_equal(result, target_tab), f"Single mapping failed: {result} != {target_tab}"
+        result_paulisum = gate.act(input_pauli_sum, (0,))
+        assert result_paulisum.has_equal_tableau(target_pauli_sum), "Single mapping failed"
 
-        # Test multiple Pauli string mapping (2 qubits)
+        # Test multiple Pauli string mapping.
         # This requires compatible symplectic product matrices
         for _ in range(100):
-            n = np.random.randint(1, 25)
+            dims = np.asarray(choose_random_dimensions(250), dtype=int)
+            dimension = int(dims[0])
+            dims = np.full(len(dims), dimension, dtype=int)
+            n_qudits = len(dims)
+            n_rows = np.random.randint(1, 7)
+            print(f'Testing random mapping for dimension {dimension} and {n_qudits} qudits with {n_rows} rows')
 
-            input_tab = np.random.randint(0, 2, size=(2, 2 * n))
+            random_gate = Gate.from_random(n_qudits, dimension)
+            input_pauli_sum = PauliSum.from_random(n_rows, dims)
+            while np.any(np.all(input_pauli_sum.tableau == 0, axis=1)):
+                input_pauli_sum = PauliSum.from_random(n_rows, dims)
+            target_pauli_sum = cast(PauliSum, random_gate.act(input_pauli_sum, tuple(range(n_qudits))))
 
-            random_gate = Gate.from_random(n, 2)
-            dims = np.full(n, 2, dtype=int)
+            F, h, _, _ = find_map_to_target_pauli_sum(input_pauli_sum, target_pauli_sum)
 
-            target_tab = (input_tab @ random_gate.symplectic.T) % 2
-
-            input_pauli = PauliSum.from_tableau(input_tab, dims)
-            target_pauli = PauliSum.from_tableau(target_tab, dims)
-
-            F, h, _, _ = find_map_to_target_pauli_sum(input_pauli, target_pauli)
-
+            print('inp',target_pauli_sum)
             gate = Gate("placeholder", F.T, h)
 
-            result = (input_pauli.tableau @ gate.symplectic.T) % 2
-            assert np.array_equal(result, target_tab), "Multi-Pauli mapping failed"
+            result_pauli_sum = gate.act(input_pauli_sum, tuple(range(n_qudits)))
+            print('res',result_pauli_sum)
 
-            result_paulisum = gate.act(input_pauli, tuple(range(n)))
-
-            assert result_paulisum.has_equal_tableau(target_pauli), "Gate action on PauliSum failed"
+            assert result_pauli_sum.has_equal_tableau(target_pauli_sum), (
+                f"Gate action on PauliSum failed for dimension {dimension} and {n_qudits} qudits"
+            )
 
     @pytest.mark.parametrize("d", [2, 3, 5])
     @pytest.mark.parametrize("n", [1, 2, 3])
