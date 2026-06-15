@@ -22,19 +22,19 @@ from pathlib import Path
 import numpy as np
 from numpy.random import Generator as RNGGenerator
 
+from sympleq.core.bayesian_estimation import BayesianEstimator
 from sympleq.applications.randomized_benchmarking.RMB import RMB
+from sympleq.applications.randomized_benchmarking.backends.base import MeasurementRequest
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
 from sympleq.applications.randomized_benchmarking.experiments.common import (
     Budget,
     CrossingSettings,
-    new_estimator,
-    posterior_above,
     print_crossing,
     print_experiment_summary,
     print_progress,
     save_crossings,
     single_circuit_bare_hqc,
-    spend_measurements,
+    spend_request_batch,
     start_run,
     stitch_batch_size,
     stitched_batch_hqc,
@@ -97,7 +97,7 @@ def implied_above(data: RMBData, config: RMBConfig,
                   and config.n_2qb_gates >= other.n_2qb_gates)
         if not easier and not harder:
             continue
-        above = posterior_above(estimator)
+        above = estimator.posterior_above()
         if easier and above >= settings.decision_confidence:
             return 1.0
         if harder and 1.0 - above >= settings.decision_confidence:
@@ -123,8 +123,8 @@ def probe_fidelity(*, backend, rng: RNGGenerator, data: RMBData, config: RMBConf
         is above 0.5. The mean is ``None`` when the budget stopped the probe
         before it could either decide a side or reach the shot cap.
     """
-    estimator = data.get(config, new_estimator())
-    above = posterior_above(estimator)
+    estimator = data.get(config, BayesianEstimator.default())
+    above = estimator.posterior_above()
     if max(above, 1.0 - above) < settings.decision_confidence:
         implied = implied_above(data, config, settings)
         if implied is not None:
@@ -133,7 +133,7 @@ def probe_fidelity(*, backend, rng: RNGGenerator, data: RMBData, config: RMBConf
     bare_hqc = single_circuit_bare_hqc(config)
 
     while estimator.num_runs() < settings.max_shots_per_config:
-        above = posterior_above(estimator)
+        above = estimator.posterior_above()
         if max(above, 1.0 - above) >= settings.decision_confidence:
             break
         n_circuits = min(
@@ -146,10 +146,11 @@ def probe_fidelity(*, backend, rng: RNGGenerator, data: RMBData, config: RMBConf
         # Only configs with recorded outcomes enter the data set; implied or
         # unaffordable probes must not leave empty estimators behind.
         data[config] = estimator
-        spend_measurements(backend, rng, data, config, n_circuits, seed=settings.rng_seed)
+        spend_request_batch(backend, rng, data,
+                            [MeasurementRequest(config, n_circuits)], seed=settings.rng_seed)
         budget.spend_batch(stitched_batch_hqc(n_circuits * bare_hqc), n_circuits)
 
-    above = posterior_above(estimator)
+    above = estimator.posterior_above()
     decided = max(above, 1.0 - above) >= settings.decision_confidence
     if not decided and estimator.num_runs() < settings.max_shots_per_config:
         return None, above

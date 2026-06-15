@@ -176,4 +176,4 @@ def replot_from_data(
 
 
 if __name__ == "__main__":
-    replot_from_data()
+    run_and_compare()

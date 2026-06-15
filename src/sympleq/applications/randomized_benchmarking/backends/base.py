@@ -58,9 +58,7 @@ class RMBBackend(ABC):
         state. With ``shot_rng``, shot ``i`` of a config (counting across
         the call's requests) draws from ``shot_rng(config, i)``, so seeded
         callers record the same outcomes no matter how requests are grouped
-        into calls; ``None`` draws everything from ``rng``. How the circuits
-        are executed (e.g. stitched into device submissions) is an
-        implementation detail of the backend.
+        into calls; ``None`` draws everything from ``rng``.
         """
         ...
 
