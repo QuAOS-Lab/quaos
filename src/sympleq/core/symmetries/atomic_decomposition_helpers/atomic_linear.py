@@ -1,7 +1,11 @@
 from __future__ import annotations
 import numpy as np
 from ..modular_helpers import (mod_p, omega_matrix, inv_mod_mat, nullspace_mod,
-                              independent_columns, rank_mod, inv_mod_scalar)
+                              independent_columns, rank_mod, inv_mod_scalar,
+                              mat_pow_mod)
+# ``mat_pow_mod`` is re-exported from modular_helpers so existing
+# ``from .atomic_linear import mat_pow_mod`` callers keep working (B7: single
+# shared implementation rather than a per-module copy).
 
 
 def symplectic_left_inverse(T: np.ndarray, p: int) -> np.ndarray:
@@ -37,21 +41,6 @@ def symplectic_orthogonal_complement_in_ambient(T: np.ndarray, p: int) -> np.nda
     A = mod_p(T.T @ Omega, p)
     N = nullspace_mod(A, p)
     return independent_columns(N, p)
-
-
-def mat_pow_mod(A: np.ndarray, e: int, p: int) -> np.ndarray:
-    """Binary exponentiation A^e mod p."""
-    A = mod_p(A, p)
-    n = A.shape[0]
-    R = np.eye(n, dtype=np.int64)
-    B = A.copy()
-    ee = int(e)
-    while ee > 0:
-        if ee & 1:
-            R = mod_p(R @ B, p)
-        B = mod_p(B @ B, p)
-        ee >>= 1
-    return R
 
 
 def kernel_in_span(A: np.ndarray, span_basis: np.ndarray, p: int) -> np.ndarray:
@@ -225,19 +214,19 @@ def symplectic_completion_from_block(T_blk: np.ndarray, p: int) -> np.ndarray:
         [U_W | U_perp | V_W | V_perp].
     """
     n2 = T_blk.shape[0]
-    Ω = omega_matrix(n2 // 2, p)
+    Omega = omega_matrix(n2 // 2, p)
 
     # Complement basis (ambient columns)
-    N = symplectic_orthogonal_complement(Ω, T_blk, p)  # n2×(n2-2k)
+    N = symplectic_orthogonal_complement(Omega, T_blk, p)  # n2×(n2-2k)
     if N.shape[1] % 2 != 0:
         raise RuntimeError("symplectic_completion_from_block: complement has odd dimension")
 
-    T_perp = darboux_basis_from_span(Ω, N, p) if N.shape[1] else np.zeros((n2, 0), dtype=np.int64)
+    T_perp = darboux_basis_from_span(Omega, N, p) if N.shape[1] else np.zeros((n2, 0), dtype=np.int64)
     U_W, V_W = split_uv(T_blk)
     U_p, V_p = split_uv(T_perp) if T_perp.shape[1] else (T_perp, T_perp)
 
     T_full = np.concatenate([U_W, U_p, V_W, V_p], axis=1)
-    G = mod_p(T_full.T @ Ω @ T_full, p)
-    if not np.array_equal(G % p, Ω % p):
+    G = mod_p(T_full.T @ Omega @ T_full, p)
+    if not np.array_equal(G % p, Omega % p):
         raise RuntimeError("symplectic_completion_from_block: completion is not symplectic")
     return T_full

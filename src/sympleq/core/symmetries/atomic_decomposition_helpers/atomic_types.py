@@ -1,4 +1,4 @@
-# sympleq/core/symmetries/atomic_types.py
+# sympleq/core/symmetries/atomic_decomposition_helpers/atomic_types.py
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,6 +8,31 @@ import numpy as np
 from numpy.typing import NDArray
 
 SectorType = Literal["paired", "self"]
+
+
+# ---------------------------------------------------------------------------
+# Extraction exception taxonomy
+# ---------------------------------------------------------------------------
+# Both subclass RuntimeError so existing ``except RuntimeError`` (and broader)
+# handlers keep working unchanged; the distinct types let callers (e.g.
+# CertificationError.info) tell a *search budget* failure apart from a genuine
+# *mathematical obstruction*.
+
+class ExtractionObstruction(RuntimeError):
+    """A sector cannot be decomposed as required by the theory.
+
+    Signals a genuine mathematical obstruction (e.g. no valid block can be
+    extracted from the remaining invariant subspace), as opposed to merely
+    running out of search budget.
+    """
+
+
+class SearchBudgetExceeded(RuntimeError):
+    """A bounded/deterministic search gave up before exhausting possibilities.
+
+    Signals that an iteration guard or candidate budget was hit, not that the
+    decomposition is provably impossible.
+    """
 
 
 @dataclass(frozen=True, slots=True)

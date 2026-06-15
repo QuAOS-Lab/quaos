@@ -6,7 +6,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from ..modular_helpers import mod_p, independent_columns, inv_mod_mat, omega_matrix, rank_mod, nullspace_mod
+from ..modular_helpers import (mod_p, independent_columns, inv_mod_mat, omega_matrix,
+                              rank_mod, nullspace_mod, mat_pow_mod, basis_extend)
 from .atomic_types import AtomicBlock, AtomicInvariant
 from .atomic_linear import (
     darboux_basis_from_span,
@@ -167,18 +168,9 @@ class GF2Extension:
 # ---------------------------------------------------------------------------
 
 
-def _mat_pow_mod(A: np.ndarray, e: int, p: int) -> np.ndarray:
-    A = mod_p(np.asarray(A, dtype=np.int64), p)
-    n = A.shape[0]
-    R = np.eye(n, dtype=np.int64)
-    B = A.copy()
-    ee = int(e)
-    while ee > 0:
-        if ee & 1:
-            R = mod_p(R @ B, p)
-        B = mod_p(B @ B, p)
-        ee >>= 1
-    return R
+# Re-use the single shared matrix-power implementation (byte-identical to the
+# former local copy); retain the private name for existing call sites.
+_mat_pow_mod = mat_pow_mod
 
 
 def _kernel(A: np.ndarray, p: int) -> np.ndarray:
@@ -186,18 +178,11 @@ def _kernel(A: np.ndarray, p: int) -> np.ndarray:
 
 
 def _basis_extend(base: np.ndarray, candidates: np.ndarray, want: int, p: int) -> np.ndarray:
-    base = independent_columns(mod_p(base, p), p) if base.size else base
+    # Thin wrapper over the shared greedy core: this sector additionally
+    # pre-reduces the candidate columns to an independent set first, which is
+    # preserved here exactly while removing the duplicated greedy body.
     candidates = independent_columns(mod_p(candidates, p), p)
-    picked = np.zeros((candidates.shape[0], 0), dtype=np.int64)
-    r_base = rank_mod(base, p) if base.size else 0
-    for j in range(candidates.shape[1]):
-        c = candidates[:, j:j + 1]
-        trial = np.concatenate([base, picked, c], axis=1) if base.size or picked.size else c
-        if rank_mod(trial, p) > r_base + picked.shape[1]:
-            picked = np.concatenate([picked, c], axis=1) if picked.size else c
-            if picked.shape[1] == want:
-                return mod_p(picked, p)
-    raise RuntimeError("_basis_extend: could not extend by required amount")
+    return basis_extend(base, candidates, want, p)
 
 
 @dataclass

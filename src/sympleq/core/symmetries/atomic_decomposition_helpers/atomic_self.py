@@ -1,4 +1,4 @@
-# sympleq/core/symmetries/atomic_self.py
+# sympleq/core/symmetries/atomic_decomposition_helpers/atomic_self.py
 from __future__ import annotations
 
 import itertools
@@ -47,7 +47,7 @@ def _cyclic_span_from_top_seeds(
             return None
         try:
             C = _cyclic_basis(F, N, seed, int(deg_q), int(L), p)
-        except Exception:
+        except RuntimeError:
             return None
         if C.shape[1] != target:
             return None

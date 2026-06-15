@@ -16,6 +16,8 @@ from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_types import (
     AtomicBlock,
     AtomicInvariant,
     SectorContext,
+    ExtractionObstruction,
+    SearchBudgetExceeded,
 )
 from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_linear import (
     split_uv,
@@ -51,6 +53,16 @@ class CertificationError(RuntimeError):
     def __init__(self, message: str, *, info: Optional[Dict[str, Any]] = None):
         super().__init__(message)
         self.info: Dict[str, Any] = info or {}
+
+
+def _classify_extraction_error(e: BaseException) -> str:
+    """Tag a sector failure as a search-budget limit, a mathematical
+    obstruction, or something else, for CertificationError.info diagnostics."""
+    if isinstance(e, SearchBudgetExceeded):
+        return "budget"
+    if isinstance(e, ExtractionObstruction):
+        return "obstruction"
+    return "other"
 
 
 def _concat_blocks_to_partial_basis(blocks: List[AtomicBlock], n2: int, p: int) -> np.ndarray:
@@ -228,16 +240,35 @@ def _sector_fallback_block(
         return [], inv
 
     if W.shape[1] % 2 != 0:
-        raise RuntimeError(
-            f"Best-effort fallback: sector has odd dimension {W.shape[1]} (cannot be symplectic). "
-            f"type={ctx.sector_type} key={ctx.sector_key}"
+        # Best-effort must always return. An odd-dimensional sector span cannot
+        # carry a symplectic form, so we cannot build a Darboux block here; emit
+        # an empty DEGRADED block list and let global completion absorb the span.
+        inv = AtomicInvariant(
+            sector_key=ctx.sector_key,
+            sector_type=ctx.sector_type,
+            poly_key=ctx.poly_key,
+            data={
+                "status": "DEGRADED",
+                "note": f"sector has odd dimension {W.shape[1]}; deferred to global completion",
+                "reason": reason,
+            },
         )
+        return [], inv
 
     if not is_nondegenerate(Omega_amb, W, p):
-        raise RuntimeError(
-            f"Best-effort fallback: sector span is degenerate (cannot build Darboux basis). "
-            f"type={ctx.sector_type} key={ctx.sector_key}"
+        # Likewise, a degenerate sector span has no Darboux basis; defer to the
+        # global symplectic completion rather than raising out of the loop.
+        inv = AtomicInvariant(
+            sector_key=ctx.sector_key,
+            sector_type=ctx.sector_type,
+            poly_key=ctx.poly_key,
+            data={
+                "status": "DEGRADED",
+                "note": "sector span is degenerate; deferred to global completion",
+                "reason": reason,
+            },
         )
+        return [], inv
 
     T_blk = darboux_basis_from_span(Omega_amb, W, p)
 
@@ -455,12 +486,8 @@ def atomic_block_decompose_certified(
     if not is_symplectic(F, p):
         raise ValueError("Input F is not symplectic in column-action convention.")
 
-
-    F = mod_p(F, p)
-    n2 = F.shape[0]
-    if n2 % 2 != 0:
-        raise ValueError(f"F must be (2n)x(2n), got shape {F.shape}.")
-
+    # (F was already validated and reduced mod p above, before the convention
+    # branch; the previously duplicated shape/mod checks here have been removed.)
     meta = rcf_prepass(F, p)
     sector_contexts = _sector_contexts_from_meta(meta)
 
@@ -474,6 +501,7 @@ def atomic_block_decompose_certified(
         except Exception as e:
             dbg = _sector_debug(ctx, sector_index=i)
             dbg["error"] = f"{type(e).__name__}: {e}"
+            dbg["error_kind"] = _classify_extraction_error(e)
             failures.append(dbg)
             continue
 
@@ -614,7 +642,21 @@ def atomic_block_decompose_best_effort(
             dbg = _sector_debug(ctx, sector_index=i)
             dbg["error"] = reason
             errors.append(dbg)
-            b_fb, inv_fb = _sector_fallback_block(F=F, p=p, ctx=ctx, reason=reason)
+            try:
+                b_fb, inv_fb = _sector_fallback_block(F=F, p=p, ctx=ctx, reason=reason)
+            except Exception as e2:
+                # Best-effort must never raise; record and defer to global completion.
+                dbg["fallback_error"] = f"{type(e2).__name__}: {e2}"
+                b_fb, inv_fb = [], AtomicInvariant(
+                    sector_key=ctx.sector_key,
+                    sector_type=ctx.sector_type,
+                    poly_key=ctx.poly_key,
+                    data={
+                        "status": "DEGRADED",
+                        "note": "sector fallback failed; deferred to global completion",
+                        "reason": reason,
+                    },
+                )
             blocks += b_fb
             sector_invariants.append(inv_fb)
 

@@ -6,7 +6,7 @@ from typing import Dict
 
 import numpy as np
 
-from ..modular_helpers import mod_p, independent_columns, rank_mod, nullspace_mod
+from ..modular_helpers import mod_p, independent_columns, rank_mod, nullspace_mod, basis_extend as _basis_extend
 from .atomic_linear import mat_pow_mod, kernel_in_span
 
 
@@ -29,19 +29,6 @@ class NilpotentFiltration:
     denom: Dict[int, np.ndarray]
     tops: Dict[int, np.ndarray]
 
-
-def _basis_extend(base: np.ndarray, candidates: np.ndarray, want: int, p: int) -> np.ndarray:
-    base = independent_columns(mod_p(base, p), p) if base.size else base
-    picked = np.zeros((candidates.shape[0], 0), dtype=np.int64)
-    r_base = rank_mod(base, p) if base.size else 0
-    for j in range(candidates.shape[1]):
-        c = mod_p(candidates[:, j:j + 1], p)
-        r_try = rank_mod(np.concatenate([base, picked, c], axis=1), p)
-        if r_try > r_base + picked.shape[1]:
-            picked = np.concatenate([picked, c], axis=1)
-            if picked.shape[1] == want:
-                return picked
-    raise RuntimeError("_basis_extend: could not extend by required amount.")
 
 
 def build_nilpotent_filtration(N: np.ndarray, space_basis: np.ndarray, max_exp: int, p: int) -> NilpotentFiltration:

@@ -1,4 +1,4 @@
-# sympleq/core/symmetries/atomic_unipotent_p2.py
+# sympleq/core/symmetries/atomic_decomposition_helpers/atomic_unipotent_p2.py
 from __future__ import annotations
 
 import itertools
@@ -6,8 +6,10 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
-from ..modular_helpers import mod_p, independent_columns, rank_mod, omega_matrix
-from .atomic_types import AtomicBlock, AtomicInvariant
+from ..modular_helpers import (mod_p, independent_columns, rank_mod, omega_matrix,
+                              basis_extend as _basis_extend)
+from .atomic_types import (AtomicBlock, AtomicInvariant,
+                           ExtractionObstruction, SearchBudgetExceeded)
 from .atomic_linear import (
     restrict_operator,
     is_nondegenerate,
@@ -35,26 +37,6 @@ def _scalar_mod2(x) -> int:
         raise ValueError(f"Expected scalar-like array, got shape={arr.shape}")
     return int(arr.reshape(-1)[0])
 
-
-# ---------------------------------------------------------------------------
-# Restricted nilpotent top spaces
-# ---------------------------------------------------------------------------
-
-def _basis_extend(base: np.ndarray, candidates: np.ndarray, want: int, p: int) -> np.ndarray:
-    """Deterministically pick ``want`` columns from ``candidates`` extending ``span(base)``."""
-    base = independent_columns(mod_p(base, p), p) if base.size else base
-    picked = np.zeros((candidates.shape[0], 0), dtype=np.int64)
-    r_base = rank_mod(base, p) if base.size else 0
-
-    for j in range(candidates.shape[1]):
-        c = mod_p(candidates[:, j:j + 1], p)
-        r_try = rank_mod(np.concatenate([base, picked, c], axis=1), p)
-        if r_try > r_base + picked.shape[1]:
-            picked = np.concatenate([picked, c], axis=1)
-            if picked.shape[1] == want:
-                return picked
-
-    raise RuntimeError("_basis_extend: could not extend by required amount.")
 
 
 def jordan_chain_tops_nilpotent_in_span(
@@ -590,7 +572,7 @@ def atomic_blocks_in_unipotent_self_sector_p2(
         try:
             A_gen = _select_module_generators_from_top_space(F_sec, N, Araw, deg_q, int(L), p)
             gen_dim = int(A_gen.shape[1])
-        except Exception:
+        except RuntimeError:
             gen_dim = -1
         length_summary[int(L)] = {
             "mult": int(invL["top_dim"]),
@@ -615,11 +597,16 @@ def atomic_blocks_in_unipotent_self_sector_p2(
         if not is_nondegenerate(Omega, span, p):
             return False
 
-        # Invariance guardrail: F and N restrictions must be well-defined by restrict_operator.
-        try:
-            _ = restrict_operator(F_sec, span, p)
-            _ = restrict_operator(N, span, p)
-        except Exception:
+        # Invariance guardrail: the span must be genuinely F_sec- and N-invariant.
+        # NOTE: restrict_operator is a symplectic left-inverse *projection* and does
+        # not raise on a non-invariant span, so it cannot be used as a guard. Test
+        # invariance directly via rank([span | op @ span]) == rank(span).
+        def _is_op_invariant(op: np.ndarray, sub: np.ndarray) -> bool:
+            r = rank_mod(sub, p)
+            aug = np.concatenate([sub, mod_p(op @ sub, p)], axis=1)
+            return rank_mod(aug, p) == r
+
+        if not _is_op_invariant(F_sec, span) or not _is_op_invariant(N, span):
             return False
 
         beta = _beta_from_top_generators_p2(top_gens, Omega, N, int(L))
@@ -708,7 +695,7 @@ def atomic_blocks_in_unipotent_self_sector_p2(
                 v_top = mod_p(A_top @ c.reshape(-1, 1), p)
                 try:
                     Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)
-                except Exception:
+                except RuntimeError:
                     continue
                 Cv = independent_columns(Cv, p)
                 if accept_block(Cv, v_top, int(L), "V"):
@@ -720,7 +707,7 @@ def atomic_blocks_in_unipotent_self_sector_p2(
                 v_top = mod_p(A_top @ c.reshape(-1, 1), p)
                 try:
                     Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)
-                except Exception:
+                except RuntimeError:
                     continue
                 Cv = independent_columns(Cv, p)
                 if accept_block(Cv, v_top, int(L), "V"):
@@ -735,7 +722,7 @@ def atomic_blocks_in_unipotent_self_sector_p2(
             try:
                 Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)
                 Cw = cyclic_submodule_basis(F_sec, N, w_top, deg_q, int(L), p)
-            except Exception:
+            except RuntimeError:
                 continue
             span = independent_columns(np.concatenate([Cv, Cw], axis=1), p)
             if accept_block(span, np.concatenate([v_top, w_top], axis=1), int(L), "W"):
@@ -753,7 +740,7 @@ def atomic_blocks_in_unipotent_self_sector_p2(
             for v_top in cols:
                 try:
                     Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)
-                except Exception:
+                except RuntimeError:
                     continue
                 if accept_block(Cv, v_top, int(L), "V"):
                     return True
@@ -762,7 +749,7 @@ def atomic_blocks_in_unipotent_self_sector_p2(
                 try:
                     Cv = cyclic_submodule_basis(F_sec, N, cols[i], deg_q, int(L), p)
                     Cw = cyclic_submodule_basis(F_sec, N, cols[j], deg_q, int(L), p)
-                except Exception:
+                except RuntimeError:
                     continue
                 span = independent_columns(np.concatenate([Cv, Cw], axis=1), p)
                 if accept_block(span, np.concatenate([cols[i], cols[j]], axis=1), int(L), "W"):
@@ -772,7 +759,7 @@ def atomic_blocks_in_unipotent_self_sector_p2(
     while space_basis.shape[1] > 0:
         iteration += 1
         if iteration > 2 * m + 5:
-            raise RuntimeError("Unipotent p=2 self sector: extraction exceeded iteration guard.")
+            raise SearchBudgetExceeded("Unipotent p=2 self sector: extraction exceeded iteration guard.")
 
         tops = jordan_chain_tops_nilpotent_in_span(N, space_basis, max_exp0, p)
         if not tops:
@@ -799,7 +786,7 @@ def atomic_blocks_in_unipotent_self_sector_p2(
         extraction_log.append(log_entry)
 
         if not progressed:
-            raise RuntimeError(
+            raise ExtractionObstruction(
                 "Unipotent p=2 self sector: certified quotient-driven extraction made no progress "
                 f"at length L={int(L)}. Diagnostics={log_entry}"
             )

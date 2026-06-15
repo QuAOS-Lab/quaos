@@ -361,11 +361,17 @@ def random_symplectic_matrix_p2(n: int, *, seed: int = 0, steps: int = 32) -> np
         elif kind == 1:
             R = rng.integers(0, 2, size=(n, n), dtype=np.int64)
             Sym = (R + R.T) % 2
-            # diagonal is allowed in characteristic 2 for the symplectic shear convention
+            # In characteristic 2 the symmetric shear block may carry a nonzero
+            # diagonal: symplectic transvections x -> x + <x,v> v require shear
+            # blocks B = e_i e_i^T with nonzero diagonal. (R + R.T) always zeroes
+            # the diagonal, so randomize it back to reach the full subgroup.
+            np.fill_diagonal(Sym, rng.integers(0, 2, size=n, dtype=np.int64))
             E = np.block([[np.eye(n, dtype=np.int64), Sym], [np.zeros((n, n), dtype=np.int64), np.eye(n, dtype=np.int64)]]) % 2
         else:
             R = rng.integers(0, 2, size=(n, n), dtype=np.int64)
             Sym = (R + R.T) % 2
+            # Same characteristic-2 diagonal correction for the lower shear block.
+            np.fill_diagonal(Sym, rng.integers(0, 2, size=n, dtype=np.int64))
             E = np.block([[np.eye(n, dtype=np.int64), np.zeros((n, n), dtype=np.int64)], [Sym, np.eye(n, dtype=np.int64)]]) % 2
         S = (S @ E) % 2
 

@@ -21,8 +21,35 @@ def omega_matrix(n: int, p: int) -> np.ndarray:
 def is_symplectic(F: np.ndarray, p: int) -> bool:
     n2 = F.shape[0]
     assert n2 % 2 == 0 and F.shape[1] == n2
-    Ω = omega_matrix(n2 // 2, p)
-    return np.array_equal(mod_p(F.T @ Ω @ F, p), Ω % p)
+    Omega = omega_matrix(n2 // 2, p)
+    return np.array_equal(mod_p(F.T @ Omega @ F, p), Omega % p)
+
+
+def basis_extend(base: np.ndarray, candidates: np.ndarray, want: int, p: int) -> np.ndarray:
+    """
+    Canonical greedy basis extension over GF(p) (single shared implementation).
+
+    Deterministically pick ``want`` columns from ``candidates`` that extend
+    ``span(base)``, returning them as an (n x want) array. Raises if fewer than
+    ``want`` independent extending columns exist.
+
+    This consolidates the previously duplicated ``_basis_extend`` helpers in
+    atomic_filtration, module_invariants, atomic_unipotent_p2 and
+    atomic_self_p2_unitary. It is the mod_p-robust variant; reducing inputs mod
+    p does not change their GF(p) span, so callers that previously passed
+    unreduced columns get the same selection.
+    """
+    base = independent_columns(mod_p(base, p), p) if base.size else base
+    picked = np.zeros((candidates.shape[0], 0), dtype=np.int64)
+    r_base = rank_mod(base, p) if base.size else 0
+    for j in range(candidates.shape[1]):
+        c = mod_p(candidates[:, j:j + 1], p)
+        r_try = rank_mod(np.concatenate([base, picked, c], axis=1), p)
+        if r_try > r_base + picked.shape[1]:
+            picked = np.concatenate([picked, c], axis=1)
+            if picked.shape[1] == want:
+                return picked
+    raise RuntimeError("basis_extend: could not extend by required amount.")
 
 
 def mod_p(A: np.ndarray, p: int) -> np.ndarray:
@@ -142,6 +169,11 @@ def _solve_linear(A: np.ndarray, b: np.ndarray, p: int) -> np.ndarray:
     return x
 
 
+# Public name for cross-module use (the leading-underscore alias is retained for
+# backward compatibility with existing imports).
+solve_linear = _solve_linear
+
+
 def solve_linear_many(A: np.ndarray, B: np.ndarray, p: int) -> np.ndarray:
     """
     Solve A X = B over GF(p) for multiple RHS (columns of B) in ONE RREF.
@@ -246,12 +278,19 @@ def column_rank_mod(B: np.ndarray, p: int) -> int:
  
 def solve_mod(mat: np.ndarray, vec: np.ndarray, modulus: int) -> np.ndarray:
     """Gaussian elimination over Z_mod, requiring unit pivots (gcd=1).
-    Not necessarily prime_modulus"""
+    Not necessarily prime_modulus.
+
+    Returns a particular solution x (length = number of columns) with free
+    variables set to 0. The solution is reconstructed from the recorded pivot
+    columns, so it is correct even when pivots skip columns or when m < ncols
+    (the previous ``aug[:ncols, -1]`` slice silently assumed diagonal pivots).
+    """
     mat = mat.copy().astype(int)
     vec = vec.copy().astype(int)
     m, ncols = mat.shape
     aug = np.concatenate([mat, vec.reshape(-1, 1)], axis=1) % modulus
     row = 0
+    pivot_cols: list[int] = []
     for col in range(ncols):
         if row >= m:
             break
@@ -271,8 +310,11 @@ def solve_mod(mat: np.ndarray, vec: np.ndarray, modulus: int) -> np.ndarray:
                 continue
             factor = aug[r, col]
             aug[r] = (aug[r] - factor * aug[row]) % modulus
+        pivot_cols.append(col)
         row += 1
-    if row < ncols:
-        # Under-determined or singular; fall back to least filled solution if possible
-        pass
-    return aug[:ncols, -1] % modulus
+
+    # Reconstruct the solution aligned to pivot columns (free vars = 0).
+    x = np.zeros(ncols, dtype=int)
+    for r, col in enumerate(pivot_cols):
+        x[col] = int(aug[r, -1]) % modulus
+    return x % modulus

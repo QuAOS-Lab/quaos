@@ -1,4 +1,4 @@
-# sympleq/core/symmetries/atomic_paired.py
+# sympleq/core/symmetries/atomic_decomposition_helpers/atomic_paired.py
 from __future__ import annotations
 
 import numpy as np
@@ -11,8 +11,10 @@ from ..modular_helpers import (
     rank_mod,
     nullspace_mod,
     inv_mod_scalar,
+    mat_pow_mod,
 )
-from .atomic_types import AtomicBlock, AtomicInvariant
+from .atomic_types import (AtomicBlock, AtomicInvariant,
+                           ExtractionObstruction, SearchBudgetExceeded)
 from .atomic_linear import (
     is_nondegenerate,
     darboux_basis_from_span,
@@ -26,31 +28,15 @@ from .module_invariants import (
 )
 from .atomic_krylov import _select_module_generators_from_top_space
 
-
-def _mat_pow_mod(A: np.ndarray, e: int, p: int) -> np.ndarray:
-    """Matrix power A^e mod p (e>=0)."""
-    e = int(e)
-    n = A.shape[0]
-    if e < 0:
-        raise ValueError("_mat_pow_mod: e must be >= 0")
-    if e == 0:
-        return np.eye(n, dtype=np.int64)
-    A = mod_p(A, p)
-    res = np.eye(n, dtype=np.int64)
-    base = A
-    while e:
-        if e & 1:
-            res = mod_p(res @ base, p)
-        base = mod_p(base @ base, p)
-        e >>= 1
-    return res
+# Single shared matrix-power implementation (B7); private name kept for callers.
+_mat_pow_mod = mat_pow_mod
 
 
 def _pairing_matrix_between(V_left: np.ndarray, V_right: np.ndarray, p: int) -> np.ndarray:
     """P = V_left^T Ω V_right in GF(p)."""
     n2 = V_left.shape[0]
-    Ω = omega_matrix(n2 // 2, p)
-    return mod_p(V_left.T @ Ω @ V_right, p)
+    Omega = omega_matrix(n2 // 2, p)
+    return mod_p(V_left.T @ Omega @ V_right, p)
 
 
 def _intersection_basis(A: np.ndarray, B: np.ndarray, p: int) -> np.ndarray:
@@ -85,7 +71,7 @@ def _cyclic_module_has_full_rank(
     target = int(deg_q) * int(L)
     try:
         C = cyclic_submodule_basis(Fp, Np, v, int(deg_q), int(L), p)
-    except Exception:
+    except RuntimeError:
         return False
     C = independent_columns(mod_p(C, p), p)
     return int(C.shape[1]) == target
@@ -225,7 +211,7 @@ def atomic_blocks_in_paired_sector(
     # complement inside the paired sector. This guarantees pairwise orthogonality of blocks.
 
     n2 = F.shape[0]
-    Ω_amb = omega_matrix(n2 // 2, p)
+    Omega_amb = omega_matrix(n2 // 2, p)
 
     max_exp = int(primaries[key]["exponent"])
     deg_q = int(primaries[key]["deg"])
@@ -235,7 +221,7 @@ def atomic_blocks_in_paired_sector(
 
     # The full paired sector span W = Vq ⊕ Vq*
     W_sector = independent_columns(np.concatenate([Vq, Vqs], axis=1), p)
-    if not is_nondegenerate(Ω_amb, W_sector, p):
+    if not is_nondegenerate(Omega_amb, W_sector, p):
         raise RuntimeError("Paired sector: sector span is degenerate (unexpected).")
 
     inv_data.setdefault("progress", [])  # list of dicts per extracted block
@@ -253,7 +239,7 @@ def atomic_blocks_in_paired_sector(
         while rem_dim > 0:
             it += 1
             if it > max_iters:
-                raise RuntimeError("Paired sector: extraction stuck (too many iterations).")
+                raise SearchBudgetExceeded("Paired sector: extraction stuck (too many iterations).")
 
             # Recompute the current left/right parts inside the remaining invariant subspace.
             Vq_r = _intersection_basis(Vq, rem, p)
@@ -333,7 +319,7 @@ def atomic_blocks_in_paired_sector(
                 W_right = mod_p(Vqs_r @ C_right, p)
                 span = independent_columns(np.concatenate([W_left, W_right], axis=1), p)
 
-                if not is_nondegenerate(Ω_amb, span, p):
+                if not is_nondegenerate(Omega_amb, span, p):
                     last_err = f"constructed span degenerate at L={L}"
                     continue
 
@@ -342,7 +328,7 @@ def atomic_blocks_in_paired_sector(
                     last_err = f"constructed span not contained in remaining subspace at L={L}"
                     continue
 
-                T_blk = darboux_basis_from_span(Ω_amb, span, p)
+                T_blk = darboux_basis_from_span(Omega_amb, span, p)
                 blocks.append(
                     AtomicBlock(
                         T_blk=mod_p(T_blk, p),
@@ -353,7 +339,7 @@ def atomic_blocks_in_paired_sector(
                 )
 
                 # Remove its symplectic orthogonal complement within the remaining subspace.
-                rem2 = symplectic_orthogonal_complement_in_span(Ω_amb, span, rem, p)
+                rem2 = symplectic_orthogonal_complement_in_span(Omega_amb, span, rem, p)
                 rem2 = independent_columns(mod_p(rem2, p), p)
                 rem2_dim = rank_mod(rem2, p)
                 drop = rem_dim - rem2_dim
@@ -376,9 +362,9 @@ def atomic_blocks_in_paired_sector(
                 break
 
             if not extracted:
-                raise RuntimeError(
-                    ("Paired sector: could not extract a valid block from remaining subspace" +
-                     f" (last_err={last_err})" if last_err else "")
+                raise ExtractionObstruction(
+                    "Paired sector: could not extract a valid block from remaining subspace"
+                    + (f" (last_err={last_err})" if last_err else "")
                 )
 
         # Final span check
@@ -411,7 +397,7 @@ def atomic_blocks_in_paired_sector(
         inv_data["note"] = f"fallback: {type(e).__name__}: {e}"
 
         # Single-block fallback spanning the whole paired sector.
-        T_blk = darboux_basis_from_span(Ω_amb, W_sector, p)
+        T_blk = darboux_basis_from_span(Omega_amb, W_sector, p)
         blocks = [AtomicBlock(mod_p(T_blk, p), int(T_blk.shape[1] // 2), key, None)]
 
     inv = AtomicInvariant(sector_key=key, sector_type="paired", poly_key=key, data=inv_data)
