@@ -219,13 +219,20 @@ def prepare_clifford_ga_search(
 
     # For binary matroids use all minimal circuits when the nullity is bounded:
     # the set of circuits is invariant under code automorphisms, unlike a
-    # chosen-basis fundamental-circuit presentation.  For p > 2 we currently
-    # fall back to coefficient-labelled fundamental relations.
+    # chosen-basis fundamental-circuit presentation. For p > 2, full minimal
+    # circuit augmentation is not implemented; use "wlf" to request
+    # coefficient-labelled fundamental relations explicitly.
     S_for_wl = S_mod
     coeffs_for_wl = coeffs
     p_for_wl = p
     if circuit_augmented_mode is not None:
-        use_fundamental_relations = circuit_augmented_mode == "wlf" or p != 2
+        if circuit_augmented_mode != "wlf" and p != 2:
+            raise NotImplementedError(
+                "Full minimal-circuit augmentation is only implemented for p=2. "
+                "Use circuit_augmented_graph='wlf' for coefficient-labelled "
+                "fundamental relations over GF(p)."
+            )
+        use_fundamental_relations = circuit_augmented_mode == "wlf"
         if not use_fundamental_relations:
             circuits = extract_circuits_from_nullspace_gf2(
                 np.asarray(G, dtype=int).T,
