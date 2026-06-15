@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC
 import numpy as np
-from typing import Self, overload
+from typing import Self, overload, TYPE_CHECKING
 
 from sympleq._typing import IntArrayLike
 from sympleq.core.paulis import PauliObject
@@ -13,6 +13,8 @@ from sympleq.core.circuits.random_symplectic import symplectic_random_transvecti
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.circuits.target import find_map_to_target_pauli_sum, get_phase_vector
 
+if TYPE_CHECKING:
+    from sympleq.core.paulis import PauliSum, PauliString
 
 class Gate(ABC):
     """
