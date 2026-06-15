@@ -10,6 +10,9 @@ from sympleq.core.paulis import PauliSum, PauliString
 from sympleq.core.circuits.random_symplectic import (symplectic_gf2, symplectic_group_size,
                                                      symplectic_random_transvection)
 
+from sympleq.core.paulis import PauliSum
+from sympleq.core.circuits import Gate
+
 
 class TestGates():
 
@@ -263,11 +266,7 @@ class TestGates():
                     assert is_symplectic(F, d), f"Failed symplectic check: n={n}, test {i}"
 
     def test_gate_from_target(self):
-        """Test gate from target using find_map_to_target_pauli_sum finds correct symplectic transformation."""
-
-        from sympleq.core.paulis import PauliSum
-        from sympleq.core.circuits import Gate
-        from sympleq.core.circuits.target import find_map_to_target_pauli_sum
+        """Test gate from target using symplectic_from_input_to_target finds correct symplectic transformation."""
 
         input_tab = np.array([[1, 0]])
         target_tab = np.array([[0, 1]])
@@ -276,7 +275,7 @@ class TestGates():
 
         input_pauli_sum = PauliSum.from_tableau(input_tab, dims)
         target_pauli_sum = PauliSum.from_tableau(target_tab, dims)
-        F, h, _, _ = find_map_to_target_pauli_sum(input_pauli_sum, target_pauli_sum)
+        F, h, _, _ = Gate.from_input_to_target(input_pauli_sum, target_pauli_sum)
 
         gate = Gate('placeholder', F.T, h)
         result_paulisum = gate.act(input_pauli_sum, (0,))
@@ -298,10 +297,10 @@ class TestGates():
                 input_pauli_sum = PauliSum.from_random(n_rows, dims)
             target_pauli_sum = cast(PauliSum, random_gate.act(input_pauli_sum, tuple(range(n_qudits))))
 
-            F, h, _, _ = find_map_to_target_pauli_sum(input_pauli_sum, target_pauli_sum)
+            F, h, _, _ = Gate.from_input_to_target(input_pauli_sum, target_pauli_sum)
 
             print('inp',target_pauli_sum)
-            gate = Gate("placeholder", F.T, h)
+            gate = Gate("placeholder", F, h)
 
             result_pauli_sum = gate.act(input_pauli_sum, tuple(range(n_qudits)))
             print('res',result_pauli_sum)

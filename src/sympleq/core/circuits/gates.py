@@ -11,7 +11,7 @@ from sympleq.core.paulis._typing import (
 from sympleq.core.circuits.utils import embed_symplectic, embed_unitary, transvection_matrix
 from sympleq.core.circuits.random_symplectic import symplectic_random_transvection
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
-from sympleq.core.circuits.target import get_phase_vector
+from sympleq.core.circuits.target import find_map_to_target_pauli_sum, get_phase_vector
 
 
 class Gate(ABC):
@@ -102,6 +102,21 @@ class Gate(ABC):
         phase_vector = get_phase_vector(symplectic, dimension)
 
         return _GenericGate("random", symplectic, phase_vector)
+
+    @classmethod
+    def from_input_to_target(cls, input_pauli_Sum, target_pauli_Sum):
+        """
+        Build a gate whose Pauli action maps ``input_pauli`` to ``target_pauli``.
+        Use find_map_to_target_pauli_sum to find the right-action symplectic matrix ``F``.
+        ``input.tableau @ F == target.tableau``.
+
+        Since ``Gate.act`` applies
+        ``pauli.tableau @ gate.symplectic.T``, this constructor returns ``F.T``.
+        """
+
+        F, h, qudit_indices, gate_dimension = find_map_to_target_pauli_sum(input_pauli_Sum, target_pauli_Sum)
+
+        return F.T, h, qudit_indices, gate_dimension
 
     @property
     def name(self) -> str:
