@@ -1,20 +1,20 @@
 from __future__ import annotations
 from abc import ABC
 import numpy as np
-from typing import Self, overload
+from typing import Self, overload, TYPE_CHECKING
 
 from sympleq._typing import IntArrayLike
 from sympleq.core.paulis import PauliObject
 from sympleq.core.paulis._typing import (
-    TableauType, TableauLike, PhasesType, DimensionsType, HilbertOperator
+    TableauType, PhasesType, DimensionsType, HilbertOperator
 )
 from sympleq.core.circuits.utils import embed_symplectic, embed_unitary, transvection_matrix
 from sympleq.core.circuits.random_symplectic import symplectic_random_transvection
-from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
-from sympleq.core.circuits.target import get_phase_vector
-from sympleq.core.paulis.pauli_string import PauliString
-from sympleq.core.paulis.pauli_sum import PauliSum
+from sympleq.core.circuits.target import find_map_to_target_pauli_sum, get_phase_vector
+
+if TYPE_CHECKING:
+    from sympleq.core.paulis import PauliSum, PauliString
 
 
 class Gate(ABC):
@@ -107,55 +107,19 @@ class Gate(ABC):
         return _GenericGate("random", symplectic, phase_vector)
 
     @classmethod
-    def solve_from_target(cls, input_tableau: TableauLike, target_tableau: TableauLike) -> Gate:
+    def from_input_to_target(cls, input_pauli_Sum, target_pauli_Sum):
         """
-        Find a Clifford gate that maps the input Pauli tableau to the target tableau.
+        Build a gate whose Pauli action maps ``input_pauli`` to ``target_pauli``.
+        Use find_map_to_target_pauli_sum to find the right-action symplectic matrix ``F``.
+        ``input.tableau @ F == target.tableau``.
 
-        Uses symplectic transvections to find a symplectic matrix F such that
-        input_tableau @ F = target_tableau (mod 2).
-
-        Parameters
-        ----------
-        input_tableau : TableauLike
-            Input Pauli tableau of shape (m, 2n) where m is the number of Paulis
-            and n is the number of qudits.
-        target_tableau : TableauLike
-            Target Pauli tableau of the same shape.
-
-        Returns
-        -------
-        Gate
-            A Clifford gate whose symplectic matrix performs the mapping.
-
-        Raises
-        ------
-        ValueError
-            If the tableaus have different shapes or are not mappable via Clifford.
-
-        Notes
-        -----
-        Currently only works for GF(2) (qubits). The input and target must have
-        matching symplectic product matrices for a Clifford mapping to exist.
+        Since ``Gate.act`` applies
+        ``pauli.tableau @ gate.symplectic.T``, this constructor uses ``F.T`` to build the gate.
         """
 
-        input_tableau = np.asarray(input_tableau, dtype=int)
-        target_tableau = np.asarray(target_tableau, dtype=int)
+        F, h, qudit_indices, gate_dimension = find_map_to_target_pauli_sum(input_pauli_Sum, target_pauli_Sum)
 
-        if input_tableau.shape != target_tableau.shape:
-            raise ValueError(
-                f"Tableau shapes must match: {input_tableau.shape} vs {target_tableau.shape}"
-            )
-
-        if input_tableau.ndim == 1:
-            input_tableau = input_tableau.reshape(1, -1)
-            target_tableau = target_tableau.reshape(1, -1)
-
-        n_qudits = input_tableau.shape[1] // 2
-
-        symplectic = map_pauli_sum_to_target_tableau(input_tableau, target_tableau)
-        phase_vector = np.zeros(2 * n_qudits, dtype=int)
-
-        return _GenericGate("target", symplectic, phase_vector)
+        return _GenericGate("from_target", F.T, h), qudit_indices, gate_dimension
 
     @property
     def name(self) -> str:
