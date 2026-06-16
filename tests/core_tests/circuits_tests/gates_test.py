@@ -275,9 +275,7 @@ class TestGates():
 
         input_pauli_sum = PauliSum.from_tableau(input_tab, dims)
         target_pauli_sum = PauliSum.from_tableau(target_tab, dims)
-        F, h, _, _ = Gate.from_input_to_target(input_pauli_sum, target_pauli_sum)
-
-        gate = Gate('placeholder', F.T, h)
+        gate, _, _ = Gate.from_input_to_target(input_pauli_sum, target_pauli_sum)
         result_paulisum = gate.act(input_pauli_sum, (0,))
         assert result_paulisum.has_equal_tableau(target_pauli_sum), "Single mapping failed"
 
@@ -297,10 +295,9 @@ class TestGates():
                 input_pauli_sum = PauliSum.from_random(n_rows, dims)
             target_pauli_sum = cast(PauliSum, random_gate.act(input_pauli_sum, tuple(range(n_qudits))))
 
-            F, h, _, _ = Gate.from_input_to_target(input_pauli_sum, target_pauli_sum)
+            gate, _, _ = Gate.from_input_to_target(input_pauli_sum, target_pauli_sum)
 
             print('inp',target_pauli_sum)
-            gate = Gate("placeholder", F, h)
 
             result_pauli_sum = gate.act(input_pauli_sum, tuple(range(n_qudits)))
             print('res',result_pauli_sum)

@@ -113,12 +113,12 @@ class Gate(ABC):
         ``input.tableau @ F == target.tableau``.
 
         Since ``Gate.act`` applies
-        ``pauli.tableau @ gate.symplectic.T``, this constructor returns ``F.T``.
+        ``pauli.tableau @ gate.symplectic.T``, this constructor uses ``F.T`` to build the gate.
         """
 
         F, h, qudit_indices, gate_dimension = find_map_to_target_pauli_sum(input_pauli_Sum, target_pauli_Sum)
 
-        return F.T, h, qudit_indices, gate_dimension
+        return _GenericGate("from_target", F.T, h), qudit_indices, gate_dimension
 
     @property
     def name(self) -> str:
