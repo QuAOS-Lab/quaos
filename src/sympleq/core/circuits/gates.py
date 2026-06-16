@@ -16,6 +16,7 @@ from sympleq.core.circuits.target import find_map_to_target_pauli_sum, get_phase
 if TYPE_CHECKING:
     from sympleq.core.paulis import PauliSum, PauliString
 
+
 class Gate(ABC):
     """
     Abstract base class for dimension-independent Clifford gates.
