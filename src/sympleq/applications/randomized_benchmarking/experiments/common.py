@@ -227,7 +227,9 @@ def spend_request_batch(backend, rng: RNGGenerator, data: RMBData,
         return {}
     offsets: dict[RMBConfig, int] = {}
     for request in requests:
-        estimator = data.setdefault(request.config, BayesianEstimator.default())
+        if request.config not in data:
+            data[request.config] = backend.default_estimator()
+        estimator = data[request.config]
         offsets.setdefault(request.config, estimator.num_runs())
 
     shot_rng = None
