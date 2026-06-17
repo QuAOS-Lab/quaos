@@ -16,32 +16,75 @@ from typing import Literal
 
 import numpy as np
 from numpy.random import Generator as RNGGenerator
+from scipy.special import betainc
 
 from sympleq.applications.randomized_benchmarking.RMB import RMB
-from sympleq.applications.randomized_benchmarking.backends.base import RMBBackend
+from sympleq.applications.randomized_benchmarking.backends.base import (
+    MeasurementRequest,
+    RMBBackend,
+)
 from sympleq.applications.randomized_benchmarking.backends.sympleq import SympleqBackend
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
 from sympleq.applications.randomized_benchmarking.experiments.common import (
     Budget,
     CrossingSettings,
-    new_estimator,
-    posterior_above,
     print_crossing,
     print_experiment_summary,
     print_progress,
     save_crossings,
+    measurement_rng,
     single_circuit_bare_hqc,
-    spend_measurements,
     start_run,
     stitch_batch_size,
     stitched_batch_hqc,
     try_fit_monotone_fidelity_surface,
 )
+from sympleq.core.bayesian_estimation import BayesianEstimator
 from sympleq.core.noise.noise_model import GenericNoise
 
 
 BASE_1Q_PAULI_ERROR = 0.000025
 BASE_2Q_PAULI_ERROR = 0.00079
+
+
+def new_estimator() -> BayesianEstimator:
+    """Estimator constructor local to this experiment."""
+    return BayesianEstimator()
+
+
+def posterior_above(estimator: BayesianEstimator) -> float:
+    """Posterior probability that the Boolean success probability is above 0.5."""
+    alpha, beta = estimator.posterior_alpha_beta()
+    return float(1.0 - betainc(alpha, beta, 0.5))
+
+
+def spend_measurements(
+    backend: RMBBackend,
+    rng: RNGGenerator,
+    data: RMBData,
+    config: RMBConfig,
+    shots: int,
+    *,
+    seed: int | None,
+) -> None:
+    """Record outcomes for one config without relying on common.py estimator helpers."""
+    if shots <= 0:
+        return
+    estimator = data.setdefault(config, new_estimator())
+    offset = estimator.num_runs()
+
+    shot_rng = None
+    if seed is not None:
+        def shot_rng(config: RMBConfig, index: int) -> RNGGenerator:
+            return measurement_rng(seed, config, offset + index)
+
+    outcomes = backend.fidelity_estimation(
+        [MeasurementRequest(config, shots)],
+        rng,
+        shot_rng=shot_rng,
+    ).outcomes
+    for outcome in outcomes.get(config, []):
+        estimator.record(bool(outcome))
 
 
 def sympleq_backend_factory(

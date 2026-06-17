@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from dataclasses import replace
 import numpy as np
+from scipy.special import betainc
 
 from sympleq.core.bayesian_estimation import BayesianEstimator
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
@@ -20,7 +21,6 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     grouped_by_n_qubits,
     measured_gate_count_bounds,
     measured_items,
-    posterior_above,
     try_fit_monotone_fidelity_surface,
 )
 
@@ -31,6 +31,12 @@ PARAMETRIC_BOUNDARY_LABEL = "parametric boundary fit"
 REFERENCE_NUMERATOR = 0.7106
 REFERENCE_OFFSET = 1.91e-4
 REFERENCE_SLOPE = 3.65e-3
+
+
+def posterior_above(estimator: BayesianEstimator) -> float:
+    """Posterior probability that the Boolean success probability is above 0.5."""
+    alpha, beta = estimator.posterior_alpha_beta()
+    return float(1.0 - betainc(alpha, beta, 0.5))
 
 
 def reference_gate_counts(ratios: np.ndarray) -> np.ndarray:
