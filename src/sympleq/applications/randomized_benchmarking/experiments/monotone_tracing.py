@@ -112,7 +112,7 @@ class MonotoneTracingSettings(CrossingSettings):
     crossings that clearly move in the wrong direction.
     """
 
-    ratio_step: float = 0.15
+    ratio_step: float = 0.1
     start_ratio: float | None = None
     trace_direction: Literal["up", "down", "both"] = "down"
     save_path: str | Path | None = "monotone_tracing.json"
@@ -139,6 +139,7 @@ class MonotoneTracingSettings(CrossingSettings):
     bracket_half_width_fraction: float = 0.24
     trace_gate_growth: float = 1.7
     trace_gate_shrink: float = 0.6
+    bracket_hint: Literal["line", "surface", "both"] = "line"
     use_surface_bracket_hint: bool = True
     surface_min_configs: int = 8
 
@@ -443,14 +444,15 @@ def next_bracket(
     """Bracket the next fixed-ratio search from line and monotone hints."""
     n_gates_min, n_gates_max = settings.n_gates_bounds
     last = crossings[-1] if crossings else None
-    predictions = [
-        prediction
-        for prediction in (
-            line_fit_prediction(crossings, ratio),
-            surface_prediction(data, settings, ratio),
-        )
-        if prediction is not None
-    ]
+    predictions = []
+    if settings.bracket_hint in ("line", "both"):
+        prediction = line_fit_prediction(crossings, ratio)
+        if prediction is not None:
+            predictions.append(prediction)
+    if settings.bracket_hint in ("surface", "both"):
+        prediction = surface_prediction(data, settings, ratio)
+        if prediction is not None:
+            predictions.append(prediction)
     if predictions:
         center = int(np.median(predictions))
         width = max(

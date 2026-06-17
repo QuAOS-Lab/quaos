@@ -28,6 +28,7 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
 REFERENCE_LINE_LABEL = "reference line"
 ANALYTIC_LINE_LABEL = "analytic Lindblad line"
 PARAMETRIC_BOUNDARY_LABEL = "parametric boundary fit"
+PARAMETRIC_BOUNDARY_BAND_LABEL = "parametric fit 90% band"
 REFERENCE_NUMERATOR = 0.7106
 REFERENCE_OFFSET = 1.91e-4
 REFERENCE_SLOPE = 3.65e-3
@@ -185,8 +186,12 @@ def plot_analytic_gate_plane_line(
     )
 
 
-def parametric_boundary_fit(
-    data: RMBData,
+def _fit_parametric_boundary_arrays(
+    ratios: np.ndarray,
+    n_gates: np.ndarray,
+    successes: np.ndarray,
+    failures: np.ndarray,
+    weights: np.ndarray,
 ) -> tuple[float, float, float] | None:
     """
     Fit ``P(success) = sigmoid(k * (boundary(ratio) - n_gates) / boundary(ratio))``.
@@ -196,25 +201,11 @@ def parametric_boundary_fit(
     from scipy.optimize import minimize
     from scipy.special import expit
 
-    measured = measured_items(data)
-    if len(measured) < 3:
+    if len(ratios) < 3:
         return None
 
-    ratios = np.asarray([config.ratio_2_qb_gates for config, _ in measured],
-                        dtype=float)
-    n_gates = np.asarray([config.n_gates for config, _ in measured], dtype=float)
-    successes = []
-    failures = []
-    weights = []
-    for _, estimator in measured:
-        counts = estimator.counts()
-        successes.append(float(counts.get(True, 0)))
-        failures.append(float(counts.get(False, 0)))
-        runs = max(1, estimator.num_runs())
-        variance = float(estimator.posterior_variance())
-        variance_certainty = 1.0 - np.clip(variance / (1.0 / 12.0), 0.0, 1.0)
-        shot_certainty = min(1.0, runs / 3.0)
-        weights.append(max(0.05, shot_certainty * variance_certainty))
+    ratios = np.asarray(ratios, dtype=float)
+    n_gates = np.asarray(n_gates, dtype=float)
     successes = np.asarray(successes, dtype=float)
     failures = np.asarray(failures, dtype=float)
     weights = np.asarray(weights, dtype=float)
@@ -250,12 +241,198 @@ def parametric_boundary_fit(
     return float(q), float(slope), float(sharpness)
 
 
+def parametric_boundary_fit(
+    data: RMBData,
+) -> tuple[float, float, float] | None:
+    """Fit the inverse-form parametric boundary to measured Bernoulli outcomes."""
+    measured = measured_items(data)
+    if len(measured) < 3:
+        return None
+
+    ratios = np.asarray([config.ratio_2_qb_gates for config, _ in measured],
+                        dtype=float)
+    n_gates = np.asarray([config.n_gates for config, _ in measured], dtype=float)
+    successes = []
+    failures = []
+    weights = []
+    for _, estimator in measured:
+        counts = estimator.counts()
+        successes.append(float(counts.get(True, 0)))
+        failures.append(float(counts.get(False, 0)))
+        runs = max(1, estimator.num_runs())
+        variance = float(estimator.posterior_variance())
+        variance_certainty = 1.0 - np.clip(variance / (1.0 / 12.0), 0.0, 1.0)
+        shot_certainty = min(1.0, runs / 3.0)
+        weights.append(max(0.05, shot_certainty * variance_certainty))
+    successes = np.asarray(successes, dtype=float)
+    failures = np.asarray(failures, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+    return _fit_parametric_boundary_arrays(ratios, n_gates, successes, failures, weights)
+
+
+def parametric_boundary_bootstrap(
+    data: RMBData,
+    *,
+    n_bootstrap: int = 100,
+    seed: int | None = None,
+) -> list[tuple[float, float, float]]:
+    """Bootstrap inverse-boundary fits from per-config Beta posterior draws."""
+    measured = measured_items(data)
+    if len(measured) < 3:
+        return []
+
+    rng = np.random.default_rng(seed)
+    ratios = np.asarray([config.ratio_2_qb_gates for config, _ in measured],
+                        dtype=float)
+    n_gates = np.asarray([config.n_gates for config, _ in measured], dtype=float)
+    posteriors = [estimator.posterior_alpha_beta() for _, estimator in measured]
+    alpha = np.asarray([a for a, _ in posteriors], dtype=float)
+    beta = np.asarray([b for _, b in posteriors], dtype=float)
+    weights = np.asarray([max(1, estimator.num_runs()) for _, estimator in measured],
+                         dtype=float)
+
+    fits = []
+    for _ in range(n_bootstrap):
+        sampled = rng.beta(alpha, beta)
+        fit = _fit_parametric_boundary_arrays(
+            ratios,
+            n_gates,
+            sampled,
+            1.0 - sampled,
+            weights,
+        )
+        if fit is not None:
+            fits.append(fit)
+    return fits
+
+
+def parametric_boundary_gate_samples(
+    fits: list[tuple[float, float, float]],
+    ratios: np.ndarray,
+) -> np.ndarray:
+    """Total-gate boundary samples for fitted inverse-boundary parameters."""
+    if not fits:
+        return np.empty((0, len(ratios)), dtype=float)
+    samples = []
+    for q, slope, _ in fits:
+        gates = 1.0 / (q + slope * ratios)
+        gates[~np.isfinite(gates)] = np.nan
+        gates[gates <= 0.0] = np.nan
+        samples.append(gates)
+    return np.asarray(samples, dtype=float)
+
+
+def plot_parametric_boundary_total_ratio_band(
+    ax,
+    data: RMBData,
+    settings: CrossingSettings,
+    *,
+    n_bootstrap: int = 100,
+) -> None:
+    """Overlay bootstrap confidence bands for the inverse-form boundary."""
+    ratios = np.linspace(settings.ratio_bounds[0], settings.ratio_bounds[1], 160)
+    samples = parametric_boundary_gate_samples(
+        parametric_boundary_bootstrap(data, n_bootstrap=n_bootstrap,
+                                      seed=settings.rng_seed),
+        ratios,
+    )
+    if len(samples) == 0:
+        return
+    q05, q25, q75, q95 = np.nanquantile(samples, [0.05, 0.25, 0.75, 0.95], axis=0)
+    valid90 = (
+        np.isfinite(q05)
+        & np.isfinite(q95)
+        & (settings.n_gates_bounds[0] <= q05)
+        & (q95 <= settings.n_gates_bounds[1])
+    )
+    valid50 = (
+        np.isfinite(q25)
+        & np.isfinite(q75)
+        & (settings.n_gates_bounds[0] <= q25)
+        & (q75 <= settings.n_gates_bounds[1])
+    )
+    if np.any(valid90):
+        ax.fill_betweenx(
+            ratios[valid90],
+            q05[valid90],
+            q95[valid90],
+            color="tab:orange",
+            alpha=0.12,
+            linewidth=0,
+            label=PARAMETRIC_BOUNDARY_BAND_LABEL,
+            zorder=3,
+        )
+    if np.any(valid50):
+        ax.fill_betweenx(
+            ratios[valid50],
+            q25[valid50],
+            q75[valid50],
+            color="tab:orange",
+            alpha=0.23,
+            linewidth=0,
+            label="parametric fit 50% band",
+            zorder=4,
+        )
+
+
+def plot_parametric_boundary_gate_plane_band(
+    ax,
+    data: RMBData,
+    settings: CrossingSettings,
+    one_q_bounds: tuple[int, int],
+    two_q_bounds: tuple[int, int],
+    *,
+    n_bootstrap: int = 100,
+) -> None:
+    """Overlay bootstrap confidence bands for the inverse boundary in gate space."""
+    ratios = np.linspace(settings.ratio_bounds[0], settings.ratio_bounds[1], 160)
+    samples = parametric_boundary_gate_samples(
+        parametric_boundary_bootstrap(data, n_bootstrap=n_bootstrap,
+                                      seed=settings.rng_seed),
+        ratios,
+    )
+    if len(samples) == 0:
+        return
+    q05, q25, q75, q95 = np.nanquantile(samples, [0.05, 0.25, 0.75, 0.95], axis=0)
+
+    def gate_plane(gates: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        return gates * (1.0 - ratios), gates * ratios
+
+    for lower, upper, alpha, label, zorder in (
+        (q05, q95, 0.12, PARAMETRIC_BOUNDARY_BAND_LABEL, 3),
+        (q25, q75, 0.23, "parametric fit 50% band", 4),
+    ):
+        lower_x, lower_y = gate_plane(lower)
+        upper_x, upper_y = gate_plane(upper)
+        valid = (
+            np.isfinite(lower_x)
+            & np.isfinite(lower_y)
+            & np.isfinite(upper_x)
+            & np.isfinite(upper_y)
+            & (one_q_bounds[0] <= lower_x)
+            & (lower_x <= one_q_bounds[1])
+            & (one_q_bounds[0] <= upper_x)
+            & (upper_x <= one_q_bounds[1])
+            & (two_q_bounds[0] <= lower_y)
+            & (lower_y <= two_q_bounds[1])
+            & (two_q_bounds[0] <= upper_y)
+            & (upper_y <= two_q_bounds[1])
+        )
+        if not np.any(valid):
+            continue
+        xs = np.concatenate([lower_x[valid], upper_x[valid][::-1]])
+        ys = np.concatenate([lower_y[valid], upper_y[valid][::-1]])
+        ax.fill(xs, ys, color="tab:orange", alpha=alpha, linewidth=0,
+                label=label, zorder=zorder)
+
+
 def plot_parametric_boundary_total_ratio_line(
     ax,
     data: RMBData,
     settings: CrossingSettings,
 ) -> None:
     """Overlay the fitted inverse-form boundary on x=total gates, y=ratio."""
+    plot_parametric_boundary_total_ratio_band(ax, data, settings)
     fit = parametric_boundary_fit(data)
     if fit is None:
         return
@@ -289,6 +466,13 @@ def plot_parametric_boundary_gate_plane_line(
     two_q_bounds: tuple[int, int],
 ) -> None:
     """Overlay the fitted inverse-form boundary on x=1q gates, y=2q gates."""
+    plot_parametric_boundary_gate_plane_band(
+        ax,
+        data,
+        settings,
+        one_q_bounds,
+        two_q_bounds,
+    )
     fit = parametric_boundary_fit(data)
     if fit is None:
         return
