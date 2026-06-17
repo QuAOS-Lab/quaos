@@ -1202,7 +1202,7 @@ if __name__ == "__main__":
         initial_edge_margin=0.08,
         initial_candidate_multiplier=8,
         include_bracketing_points=True,
-        batch_size=4,
+        batch_size=20,
         min_adaptive_shots_per_config=1,
         max_adaptive_shots_per_config=5,
         max_shots_per_config=10,

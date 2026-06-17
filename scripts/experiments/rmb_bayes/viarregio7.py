@@ -1,64 +1,11 @@
-"""Hybrid contour-first + GP-uncertainty boundary estimator.
-
-Goal
-----
-Estimate the fidelity = 0.5 boundary in (two_qubit_ratio, depth), with an
-uncertainty band on the crossing depth.
-
-Design
-------
-This is deliberately a hybrid of the two approaches we discussed:
-
-1. Use the contour-first method from viarregio5 to cheaply get onto the
-   fid = 0.5 boundary and trace it.
-2. Replace the final "dumb" refinement with a GP-style, uncertainty-aware
-   refinement. Candidate points are scored by:
-
-       probability of being close to fid = 0.5
-       × uncertainty / cost
-
-   where closeness is normalized by total uncertainty. Therefore, for example,
-   fid = 0.60 ± 0.20 is treated as more plausibly boundary-relevant than
-   fid = 0.60 ± 0.01.
-3. Fit a GP to all measured data using heteroscedastic observation noise from
-   the fidelity estimator variance.
-4. Extract the final fid = TARGET contour and convert posterior fidelity
-   uncertainty into depth uncertainty via local slope.
-
-Assumptions
------------
-This file is meant to sit beside your existing viarregio files. It imports the
-contour-first search utilities from viarregio5 and the monotone-surface/cost
-utilities from viarregio4.
-
-If your contour-first file has a different module name, change the viarregio5
-import block below.
-"""
-
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-from pathlib import Path
-import warnings
 import json
-import os
-from typing import Iterable
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-
-os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
-
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+from dataclasses import dataclass, field, replace
+from pathlib import Path
 
 import numpy as np
-from numpy.random import default_rng
-
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.exceptions import ConvergenceWarning
-from sklearn.gaussian_process.kernels import ConstantKernel, Matern, WhiteKernel
-from sklearn.isotonic import IsotonicRegression
+from numpy.random import Generator as RNGGenerator, default_rng
 
 from sympleq.applications.randomized_benchmarking.RMB import RMB
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
@@ -68,285 +15,795 @@ from viarregio2 import (
     fidelity_mean,
     fidelity_variance,
     make_backend,
+    spend_measurements,
     total_measurements,
 )
+from viarregio3 import (
+    finite_difference_gradient,
+    project_to_contour,
+)
 from viarregio4 import (
-    affordable_shot_count,
+    MonotoneBoundaryExperimentConfig,
+    expected_gate_counts,
+    fit_monotone_fidelity_surface,
     hqc_cost,
     plot_monotone_fidelity_surface_with_confidence,
     print_experiment_summary,
     print_fit_reports,
 )
 
-# This is the contour-first file. Rename this import if your file has another name.
-import viarregio5 as _viarregio5
-from viarregio5 import (
-    BudgetState,
-    ContourFirstExperimentConfig,
-    confirm_initial_anchor,
-    find_initial_anchor,
-    find_depth_crossing_at_ratio,
-    spend_config,
-    template_config,
-    trace_from_anchor,
-)
+
+@dataclass(frozen=True)
+class ContourFirstExperimentConfig(MonotoneBoundaryExperimentConfig):
+    """
+    HQC-aware contour-first boundary estimation.
+
+    The method first finds one p=0.5 anchor on a cheap low-ratio ray, then
+    traces the contour by stepping along the current contour direction.  The
+    trace phase measures projected contour points directly and only applies
+    short local corrections when the projected point is off the boundary.
+    """
+    ray_ratio_count: int = 5
+    ray_probe_shots: int = 2
+    ray_bisection_steps: int = 5
+    ray_bisection_shots: int = 2
+    crossing_decision_confirm_shots: int = 4
+    crossing_decision_probability_width: float = 0.20
+    crossing_ambiguous_as_failure: bool = True
+    initial_crossing_interior_bracket: bool = True
+    initial_crossing_center_fraction: float = 0.35
+    initial_crossing_half_width_fraction: float = 0.18
+    initial_crossing_expand_factor: float = 1.6
+    crossing_confirm_candidates: int = 0
+    crossing_confirm_shots: int = 4
+    initial_anchor_refine: bool = True
+    initial_anchor_refine_shots: int = 6
+    initial_anchor_refine_steps: int = 3
+    initial_anchor_search_fraction: float = 0.06
+    initial_anchor_min_runs: int = 8
+    batched_initial_anchor_search: bool = True
+    initial_anchor_depth_grid_count: int = 17
+    initial_anchor_grid_shots: int = 2
+    trace_reserve_budget_fraction: float = 0.35
+    trace_reserve_min_hqc: float = 25.0
+    trace_ratio_step_fraction: float = 0.06
+    trace_depth_search_fraction: float = 0.06
+    trace_step_shrink_attempts: int = 4
+    trace_local_crossing: bool = True
+    trace_local_stencil_points: int = 7
+    trace_local_stencil_shots: int = 2
+    seeded_initial_trace: bool = False
+    seeded_trace_ratio_count: int = 4
+    seeded_trace_max_batches: int = 2
+    seeded_trace_ratio_span_fraction: float = 0.18
+    seeded_trace_depth_power: float = 0.55
+    high_ratio_projected_trace: bool = False
+    high_ratio_projected_threshold: float = 0.55
+    high_ratio_low_depth_fraction: float = 0.25
+    trace_enforce_monotone_depth: bool = True
+    trace_correction_steps: int = 2
+    trace_shots: int = 2
+    trace_accept_probability_width: float = 0.12
+    trace_reject_probability_width: float = 0.25
+    trace_directions: tuple[int, ...] = (1,)
+    model_projection_after_fit: bool = False
+    refine_after_trace: bool = True
+    trace_anchor_min_shots: int = 8
+    refinement_shots: int = 2
+    refinement_boundary_width: float = 0.15
+    diagnostics_path: str | Path | None = "viarregio7_diagnostics.json"
+    print_diagnostics: bool = False
+    save_path: str | Path | None = "viarregio7_boundary.json"
+    batching_enabled: bool = True
+    batch_max_configs: int = 42
+    max_cost_per_batch: float | None = 50.0
+    batch_max_hqc_cost: float | None = None
+    batch_reset_weight: float = 1.0
+    batch_candidate_multiplier: int = 4
+    batch_refinement_shots: int = 4
+    batch_refinement_fit_passes: int = 3
+    batch_acquisition_passes: int = 2
+    batch_acquisition_ratio_count: int = 6
+    batch_target_fill_fraction: float = 0.88
+    batch_fill_repeats: bool = True
+    batch_fill_max_shots_per_config: int | None = 8
+    batch_discovery_fill_max_shots_per_config: int | None = 4
+    batch_fill_all_stages: bool = False
+    high_ratio_acquisition_fraction: float = 0.35
+    high_ratio_candidate_fraction: float = 0.0
+    contour_bracket_probe_shots: int = 2
+    contour_bracket_depth_fractions: tuple[float, ...] = (0.04, 0.08, 0.12)
+    contour_bracket_max_relative_depth: float = 0.20
+    acquisition_require_bracket_straddle: bool = True
+    acquisition_follow_trace: bool = True
+    acquisition_trace_backtrack_fraction: float = 0.08
+    acquisition_trace_extension_fraction: float = 0.16
+    acquisition_trace_predict_points: int = 0
+    batch_post_trace_reserve_fraction: float = 0.25
 
 
-TARGET = 0.5
+@dataclass
+class BudgetState:
+    remaining_measurements: int
+    remaining_hqc: float
+    circuit_executions: int = 0
+    max_execution_repeats: int = 0
+    batched_jobs: int = 0
+    max_batched_job_size: int = 0
+    stitched_hqc_spent: float = 0.0
+    native_hqc_estimate: float = 0.0
+    batch_config_ids: dict[str, list[int]] = field(default_factory=dict)
+
+    def can_spend(self, reserve_hqc: float = 0.0) -> bool:
+        return self.remaining_measurements > 0 and self.remaining_hqc > reserve_hqc
 
 
 @dataclass(frozen=True)
-class HybridContourGPConfig(ContourFirstExperimentConfig):
-    """Settings for contour-first search plus GP uncertainty refinement."""
-
-    # GP refinement budget strategy. These shots are NOT extra by design; they
-    # consume the same remaining measurement/HQC budget after the contour trace.
-    gp_refine_after_trace: bool = True
-    # Reserve this fraction of the HQC budget for the GP uncertainty refinement stage.
-    # With the default 0.25, contour search can use at most 75% of HQC.
-    gp_reserved_hqc_fraction: float = 0.25
-    gp_refinement_shots: int = 2
-    gp_max_refinement_executions: int | None = None
-
-    # Candidate grid around the traced contour anchors.
-    gp_candidate_grid_size: tuple[int, int] = (80, 80)  # depth grid, ratio grid
-    gp_local_depth_radius_fraction: float = 0.10
-
-    # Ask GP refinement to focus near measured contour-like points.
-    # A point is contour-like if measured fidelity is within TARGET +/- band.
-    gp_focus_on_measured_target_band: bool = True
-    gp_focus_target_band_width: float = 0.20
-
-    # Candidate band around those measured near-target points.
-    gp_focus_ratio_radius: float = 0.06
-    gp_focus_depth_radius_fraction: float = 0.12
-
-    # Before GP refinement, force a few fixed-ratio crossing searches across
-    # the full ratio range. This prevents the GP from extrapolating a boundary
-    # from one low-ratio cluster only.
-    force_ratio_coverage_before_gp: bool = True
-    forced_ratio_coverage_count: int = 6
-    forced_ratio_min_separation: float = 0.04
-
-    # Do not spend contour-search budget on an exact config already measured.
-    contour_skip_existing_configs: bool = False
-
-    # viarregio2.config_from_parameters rounds ratios to two decimal places.
-    # Keep contour-trace moves at least this large so a projected target like
-    # 0.204 does not collapse back to the already-measured 0.20 anchor.
-    contour_trace_min_ratio_step: float = 0.01
-
-    # Cap contour-stage measurements per ratio bin. This prevents the first
-    # successful ratio from consuming the whole contour-search budget.
-    # None means no cap. This cap does not apply to GP uncertainty refinement.
-    max_contour_executions_per_ratio: int | None = None
-    contour_ratio_bin_width: float = 0.01
-
-    # Plot only the contour segments supported by measured ratios nearby.
-    plot_only_supported_ratios: bool = True
-    plot_support_ratio_radius: float = 0.08
-    gp_include_existing_configs: bool = True
-
-    # Score = boundary_probability * uncertainty / cost.
-    # boundary_probability uses z = |mu - target| / total_sigma.
-    gp_target_width_floor: float = 0.03
-    gp_measurement_variance_floor: float = 1e-4
-    gp_cost_power: float = 1.0
-    gp_min_fit_points: int = 8
-
-    # GP model details.
-    gp_depth_length_scale: float = 30.0
-    gp_ratio_length_scale: float = 0.15
-    gp_n_restarts_optimizer: int = 4
-    # If False, do not let sklearn optimize the GP kernel hyperparameters.
-    # This bypasses repeated ConvergenceWarning messages by using the supplied
-    # gp_ratio_length_scale / gp_depth_length_scale directly.
-    gp_optimize_kernel: bool = False
-    gp_suppress_convergence_warnings: bool = True
-
-    # Output.
-    gp_ratio_eval_points: int = 41
-    gp_depth_eval_points: int = 301
-
-    # Final contour cleanup. The physical boundary depth should not increase
-    # as the two-qubit ratio increases. Apply a weighted isotonic projection
-    # to the extracted GP crossing depths before saving/plotting.
-    enforce_monotone_crossing_depth: bool = False
-
-    hybrid_save_path: str | Path | None = "viarregio6_hybrid_boundary.json"
-    hybrid_output_dir: str | Path = "viarregio6_hybrid_outputs"
+class MeasurementRequest:
+    config: RMBConfig
+    requested_shots: int
 
 
-@dataclass
-class HybridCrossingRecord:
-    ratio: float
-    crossing_depth: float
-    crossing_depth_std: float
-    gp_pred_mean: float
-    gp_pred_std: float
-    gp_depth_slope: float
-    method: str
-
-
-@dataclass
-class HybridRefinementRecord:
-    depth: int
-    ratio: float
-    predicted_fidelity: float
-    model_std: float
-    total_std: float
-    z_to_target: float
-    score: float
-    shots: int
-    cost: float
-
-
-@dataclass
-class MeasurementTrialRecord:
-    trial_index: int
-    phase: str
-    n_qubits: int
-    depth: int
-    ratio: float
+@dataclass(frozen=True)
+class MeasurementSpend:
+    config: RMBConfig
     requested_shots: int
     spent_shots: int
-    total_runs_at_config: int
-    fidelity: float | None
-    fidelity_std: float | None
-    abs_error_from_target: float | None
-    remaining_measurements: int
-    remaining_hqc: float
 
 
-_ORIGINAL_VIARREGIO5_SPEND_CONFIG = _viarregio5.spend_config
-_ORIGINAL_VIARREGIO5_FIND_DEPTH_CROSSING_AT_RATIO = _viarregio5.find_depth_crossing_at_ratio
+def script_default_settings(**overrides) -> ContourFirstExperimentConfig:
+    """
+    Default runnable v7 profile used by the standalone script and benchmark defaults.
+    """
+    params = dict(
+        measurement_budget=10000000,
+        hqc_budget=500.0,
+        n_qubits_values=(50,),
+        depth_bounds=(4, 50),
+        ratio_bounds=(0.08, 0.8),
+        random_elimination=0.1,
+        scrambling_probability=0.0,
+        min_adaptive_shots_per_config=1,
+        max_adaptive_shots_per_config=5,
+        max_shots_per_config=10,
+        candidate_grid_size=(80, 80),
+        boundary_width=0.08,
+        shot_boundary_width=0.2,
+        surface_smoothing=0.1,
+        min_fit_points=8,
+        monotone_l2=1e-3,
+        contour_ready_probability_width=0.10,
+        contour_min_anchors=4,
+        contour_step_fraction=0.08,
+        contour_projection_fraction=0.12,
+        contour_gradient_fraction=0.01,
+        hqc_cost_informed_acquisition=True,
+        hqc_cost_power=1.0,
+        save_path="viarregio7_boundary.json",
+        verbose=True,
+    )
+    params.update(overrides)
+    return ContourFirstExperimentConfig(**params)
 
 
-def is_target_fidelity(probability: float | None) -> bool:
-    return probability is not None and bool(np.isclose(float(probability), TARGET, atol=1e-12, rtol=0.0))
+def max_cost_per_batch(settings: ContourFirstExperimentConfig) -> float | None:
+    if settings.max_cost_per_batch is not None:
+        return settings.max_cost_per_batch
+    return settings.batch_max_hqc_cost
 
 
-def ensure_trial_log(budget: BudgetState) -> list[MeasurementTrialRecord]:
-    if not hasattr(budget, "trial_log"):
-        setattr(budget, "trial_log", [])
-    return getattr(budget, "trial_log")
+def batch_config_key(config: RMBConfig) -> str:
+    return "|".join(
+        [
+            str(config.n_qubits),
+            str(config.n_1qb_gates),
+            str(config.n_2qb_gates),
+            f"{float(config.scrambling_probability):.12g}",
+            f"{float(config.random_elimination):.12g}",
+        ]
+    )
 
 
-def ensure_contour_ratio_counts(budget: BudgetState) -> dict[float, int]:
-    if not hasattr(budget, "contour_ratio_counts"):
-        setattr(budget, "contour_ratio_counts", {})
-    return getattr(budget, "contour_ratio_counts")
+def target_batch_cost(settings: ContourFirstExperimentConfig, spendable_hqc: float) -> float:
+    cap = max_cost_per_batch(settings)
+    if cap is None:
+        return spendable_hqc
+    return min(spendable_hqc, max(0.0, settings.batch_target_fill_fraction) * cap)
 
 
-def contour_ratio_key(ratio: float, settings: HybridContourGPConfig) -> float:
-    width = max(float(settings.contour_ratio_bin_width), 1e-12)
-    return round(float(ratio) / width) * width
+DISCOVERY_BATCH_STAGES = {
+    "single",
+    "probe_batch",
+    "initial",
+    "initial_grid",
+    "initial_refine",
+    "seeded_trace",
+    "trace",
+    "trace_local",
+    "trace_projected",
+}
+
+POST_TRACE_BATCH_STAGES = {
+    "trace_anchor_backfill",
+    "refinement",
+    "boundary_acquisition",
+}
 
 
-def is_contour_phase(phase: str) -> bool:
-    return phase.startswith("contour") or phase in {
-        "initial_anchor",
-        "anchor_bisection",
-        "local_crossing",
-        "local_bisection",
-        "crossing_confirmation",
-        "trace_correction",
-    }
+def stage_allows_batch_fill(settings: ContourFirstExperimentConfig, stage: str) -> bool:
+    if stage in POST_TRACE_BATCH_STAGES:
+        return True
+    if settings.batch_fill_all_stages:
+        return True
+    return stage not in DISCOVERY_BATCH_STAGES
 
 
-def logged_spend_config(
+def stage_batch_fill_target_runs(
+    settings: ContourFirstExperimentConfig,
+    stage: str,
+    target_runs: int | None = None,
+) -> int:
+    if target_runs is not None:
+        return target_runs
+    if stage in DISCOVERY_BATCH_STAGES:
+        cap = settings.batch_discovery_fill_max_shots_per_config
+        if cap is None:
+            return settings.max_shots_per_config
+        return min(settings.max_shots_per_config, max(1, cap))
+    cap = settings.batch_fill_max_shots_per_config
+    if cap is None:
+        return settings.max_shots_per_config
+    return max(settings.max_shots_per_config, cap)
+
+
+def trace_reserve_hqc(settings: ContourFirstExperimentConfig) -> float:
+    if settings.hqc_budget is None:
+        return 0.0
+    return min(
+        float(settings.hqc_budget),
+        max(
+            settings.trace_reserve_min_hqc,
+            settings.trace_reserve_budget_fraction * float(settings.hqc_budget),
+        ),
+    )
+
+
+def post_trace_reserve_hqc(settings: ContourFirstExperimentConfig) -> float:
+    if not settings.refine_after_trace or settings.hqc_budget is None:
+        return 0.0
+    if settings.batch_post_trace_reserve_fraction <= 0.0:
+        return 0.0
+    return min(
+        float(settings.hqc_budget),
+        max(
+            settings.hqc_base_cost,
+            settings.batch_post_trace_reserve_fraction * float(settings.hqc_budget),
+        ),
+    )
+
+
+def template_config(settings: ContourFirstExperimentConfig, n_qubits: int) -> RMBConfig:
+    return (
+        RMBConfig.default()
+        .with_n_qubits(n_qubits)
+        .with_random_elimination(settings.random_elimination)
+        .with_scrambling_probability(settings.scrambling_probability)
+    )
+
+
+def measured_probability(data: RMBData, config: RMBConfig) -> float | None:
+    if config not in data or data[config].num_runs() == 0:
+        return None
+    return fidelity_mean(data[config])
+
+
+def measured_std(data: RMBData, config: RMBConfig) -> float:
+    if config not in data or data[config].num_runs() == 0:
+        return float("inf")
+    return float(np.sqrt(fidelity_variance(data[config])))
+
+
+def add_diagnostic(
+    diagnostics: list[dict] | None,
+    event: str,
+    **values,
+) -> None:
+    if diagnostics is None:
+        return
+    clean_values = {}
+    for key, value in values.items():
+        if isinstance(value, np.generic):
+            value = value.item()
+        clean_values[key] = value
+    diagnostics.append({"event": event, **clean_values})
+
+
+def weighted_hqc_size(config: RMBConfig, settings: ContourFirstExperimentConfig) -> float:
+    """
+    Quantinuum-style weighted operation count for one RMB result circuit.
+    """
+    n_one, n_two, n_meas = expected_gate_counts(config)
+    return (
+        settings.hqc_one_qubit_weight * n_one
+        + settings.hqc_two_qubit_weight * n_two
+        + settings.hqc_measurement_weight * n_meas
+    )
+
+
+def batched_hqc_cost(
+    requests: list[MeasurementRequest],
+    settings: ContourFirstExperimentConfig,
+) -> float:
+    """
+    Estimate the Quantinuum HQC cost if these local requests were stitched.
+
+    Execution in v7 remains local through SympleQ. This model charges the
+    Quantinuum flat cost once for a stitched job, adds all subcircuit weighted
+    operation costs, and includes reset overhead between subcircuits.
+    """
+    active_requests = [request for request in requests if request.requested_shots > 0]
+    if not active_requests:
+        return 0.0
+    if not settings.batching_enabled or len(active_requests) == 1:
+        return sum(
+            hqc_cost(request.config, request.requested_shots, settings)
+            for request in active_requests
+        )
+
+    n_qubits_values = {request.config.n_qubits for request in active_requests}
+    if len(n_qubits_values) != 1:
+        return sum(
+            hqc_cost(request.config, request.requested_shots, settings)
+            for request in active_requests
+        )
+
+    total_shots = sum(request.requested_shots for request in active_requests)
+    # Each requested shot is one RMB result circuit, so this includes one
+    # measurement layer per circuit while charging the flat base only once.
+    weighted_size = sum(
+        weighted_hqc_size(request.config, settings) * request.requested_shots
+        for request in active_requests
+    )
+    n_qubits = next(iter(n_qubits_values))
+    reset_size = settings.batch_reset_weight * n_qubits * max(0, total_shots - 1)
+    return settings.hqc_base_cost + (weighted_size + reset_size) / settings.hqc_scale
+
+
+def native_quantinuum_hqc_cost(
+    requests: list[MeasurementRequest],
+    settings: ContourFirstExperimentConfig,
+) -> float:
+    """
+    Estimate cost for running every measured circuit as a separate job.
+
+    This is the unstitched baseline for the batching saving: each requested
+    shot is one circuit and would pay the flat HQC base cost on its own.
+    """
+    return sum(
+        hqc_cost(request.config, 1, settings) * request.requested_shots
+        for request in requests
+        if request.requested_shots > 0
+    )
+
+
+def request_marginal_hqc_cost(
+    request: MeasurementRequest,
+    settings: ContourFirstExperimentConfig,
+) -> float:
+    """
+    Approximate the marginal stitched cost of one request inside a non-empty batch.
+    """
+    if request.requested_shots <= 0:
+        return 0.0
+    weighted_size = weighted_hqc_size(request.config, settings) * request.requested_shots
+    reset_size = (
+        settings.batch_reset_weight
+        * request.config.n_qubits
+        * request.requested_shots
+    )
+    return max(1e-12, (weighted_size + reset_size) / settings.hqc_scale)
+
+
+def split_measurement_batches(
+    requests: list[MeasurementRequest],
+    settings: ContourFirstExperimentConfig,
+    remaining_hqc: float,
+    reserve_hqc: float,
+) -> list[list[MeasurementRequest]]:
+    batches: list[list[MeasurementRequest]] = []
+    spendable_hqc = max(0.0, remaining_hqc - reserve_hqc)
+    if spendable_hqc <= 0.0:
+        return batches
+
+    current: list[MeasurementRequest] = []
+    current_n_qubits: int | None = None
+
+    def can_add(batch: list[MeasurementRequest], request: MeasurementRequest) -> bool:
+        candidate = batch + [request]
+        if len(candidate) > max(1, settings.batch_max_configs):
+            return False
+        if current_n_qubits is not None and request.config.n_qubits != current_n_qubits:
+            return False
+        cost = batched_hqc_cost(candidate, settings)
+        max_batch_cost = max_cost_per_batch(settings)
+        if max_batch_cost is not None and cost > max_batch_cost:
+            return False
+        return cost <= spendable_hqc
+
+    for request in requests:
+        if request.requested_shots <= 0:
+            continue
+        if not current:
+            max_batch_cost = max_cost_per_batch(settings)
+            if batched_hqc_cost([request], settings) <= spendable_hqc and (
+                max_batch_cost is None
+                or batched_hqc_cost([request], settings) <= max_batch_cost
+            ):
+                current = [request]
+                current_n_qubits = request.config.n_qubits
+            continue
+        if can_add(current, request):
+            current.append(request)
+            continue
+        batches.append(current)
+        spendable_hqc -= batched_hqc_cost(current, settings)
+        if spendable_hqc <= 0.0:
+            current = []
+            current_n_qubits = None
+            break
+        max_batch_cost = max_cost_per_batch(settings)
+        if batched_hqc_cost([request], settings) <= spendable_hqc and (
+            max_batch_cost is None
+            or batched_hqc_cost([request], settings) <= max_batch_cost
+        ):
+            current = [request]
+            current_n_qubits = request.config.n_qubits
+        else:
+            current = []
+            current_n_qubits = None
+
+    if current:
+        batches.append(current)
+    return batches
+
+
+def execute_local_sympleq_batch(
     *,
     backend,
-    rng,
+    rng: RNGGenerator,
+    data: RMBData,
+    requests: list[MeasurementRequest],
+) -> list[MeasurementSpend]:
+    """
+    Execute a planned batch locally using the existing SympleQ backend.
+
+    The batch is only a planning/accounting unit: no Quantinuum submission is
+    made here. Each requested circuit is sampled locally and recorded under
+    its RMBConfig.
+    """
+    spends: list[MeasurementSpend] = []
+    for request in requests:
+        spent = spend_measurements(
+            backend=backend,
+            rng=rng,
+            data=data,
+            config=request.config,
+            n_measurements=request.requested_shots,
+        )
+        spends.append(MeasurementSpend(request.config, request.requested_shots, spent))
+    return spends
+
+
+def spend_configs_batch(
+    *,
+    backend,
+    rng: RNGGenerator,
+    data: RMBData,
+    requests: list[MeasurementRequest],
+    budget: BudgetState,
+    settings: ContourFirstExperimentConfig,
+    reserve_hqc: float = 0.0,
+    diagnostics: list[dict] | None = None,
+    stage: str = "batch",
+) -> list[MeasurementSpend]:
+    if not requests or not budget.can_spend(reserve_hqc=reserve_hqc):
+        return []
+
+    clipped_requests: list[MeasurementRequest] = []
+    remaining_measurements = budget.remaining_measurements
+    for request in requests:
+        if remaining_measurements <= 0:
+            break
+        shots = max(0, min(request.requested_shots, remaining_measurements))
+        if shots > 0:
+            clipped_requests.append(MeasurementRequest(request.config, shots))
+            remaining_measurements -= shots
+
+    if not clipped_requests:
+        return []
+
+    if settings.hqc_budget is None:
+        batches = [clipped_requests]
+    else:
+        batches = split_measurement_batches(
+            clipped_requests,
+            settings=settings,
+            remaining_hqc=budget.remaining_hqc,
+            reserve_hqc=reserve_hqc,
+        )
+    spends: list[MeasurementSpend] = []
+
+    for batch in batches:
+        if not batch or not budget.can_spend(reserve_hqc=reserve_hqc):
+            break
+        if stage_allows_batch_fill(settings, stage):
+            batch = fill_requests_toward_batch_cost(
+                batch,
+                data=data,
+                settings=settings,
+                spendable_hqc=max(0.0, budget.remaining_hqc - reserve_hqc),
+                target_runs=stage_batch_fill_target_runs(settings, stage),
+            )
+            if not batch:
+                break
+        batch_cost_estimate = batched_hqc_cost(batch, settings)
+        spendable_hqc = max(0.0, budget.remaining_hqc - reserve_hqc)
+        batch_cap = max_cost_per_batch(settings)
+        if batch_cost_estimate > spendable_hqc + 1e-9:
+            break
+        if batch_cap is not None and batch_cost_estimate > batch_cap + 1e-9:
+            break
+        before_runs = {
+            request.config: data[request.config].num_runs() if request.config in data else 0
+            for request in batch
+        }
+        batch_spends = execute_local_sympleq_batch(
+            backend=backend,
+            rng=rng,
+            data=data,
+            requests=batch,
+        )
+        spent_in_batch = sum(spend.spent_shots for spend in batch_spends)
+        actual_requests = [
+            MeasurementRequest(spend.config, spend.spent_shots)
+            for spend in batch_spends
+        ]
+        spends.extend(batch_spends)
+
+        if spent_in_batch <= 0:
+            continue
+        actual_cost = batched_hqc_cost(actual_requests, settings)
+        native_cost = native_quantinuum_hqc_cost(actual_requests, settings)
+        if actual_cost > spendable_hqc + 1e-9:
+            raise RuntimeError(
+                "Internal batching cost error: executed batch exceeded remaining HQC "
+                f"budget ({actual_cost:.6f} > {spendable_hqc:.6f})."
+            )
+        budget.remaining_measurements -= spent_in_batch
+        budget.circuit_executions += 1
+        budget.batched_jobs += 1
+        batch_id = budget.batched_jobs
+        budget.stitched_hqc_spent += actual_cost
+        budget.native_hqc_estimate += native_cost
+        budget.max_execution_repeats = max(
+            budget.max_execution_repeats,
+            max((spend.spent_shots for spend in spends), default=0),
+        )
+        budget.max_batched_job_size = max(
+            budget.max_batched_job_size,
+            sum(request.requested_shots for request in batch),
+        )
+        if settings.hqc_budget is not None:
+            budget.remaining_hqc = max(0.0, budget.remaining_hqc - actual_cost)
+        else:
+            budget.remaining_hqc = float(budget.remaining_measurements)
+        for spend in batch_spends:
+            if spend.spent_shots <= 0:
+                continue
+            key = batch_config_key(spend.config)
+            ids = budget.batch_config_ids.setdefault(key, [])
+            if batch_id not in ids:
+                ids.append(batch_id)
+
+        add_diagnostic(
+            diagnostics,
+            "batched_measurement",
+            batch_id=batch_id,
+            stage=stage,
+            configs=len(batch),
+            requested_shots=sum(request.requested_shots for request in batch),
+            spent_shots=spent_in_batch,
+            cost_model="quantinuum_stitched_estimate",
+            execution_backend="local_sympleq",
+            estimated_hqc=round(float(batch_cost_estimate), 6),
+            actual_hqc=round(float(actual_cost), 6),
+            native_hqc=round(float(native_cost), 6),
+            batch_hqc_cap=None if batch_cap is None else round(float(batch_cap), 6),
+            batch_cap_fraction=(
+                None
+                if batch_cap is None
+                else round(float(actual_cost / batch_cap), 6)
+            ),
+            native_saving_hqc=round(
+                float(native_cost - actual_cost),
+                6,
+            ),
+            max_existing_runs=max(before_runs.values(), default=0),
+        )
+
+    return spends
+
+
+def spend_config(
+    *,
+    backend,
+    rng: RNGGenerator,
     data: RMBData,
     config: RMBConfig,
     requested_shots: int,
     budget: BudgetState,
-    settings: HybridContourGPConfig,
-    phase: str = "contour_search",
+    settings: ContourFirstExperimentConfig,
+    reserve_hqc: float = 0.0,
+    diagnostics: list[dict] | None = None,
+    stage: str = "single",
 ) -> int:
-    """Wrapper around viarregio5.spend_config that logs every measured config."""
-    spent = _ORIGINAL_VIARREGIO5_SPEND_CONFIG(
+    spends = spend_configs_batch(
+        backend=backend,
+        rng=rng,
+        data=data,
+        requests=[MeasurementRequest(config, requested_shots)],
+        budget=budget,
+        settings=settings,
+        reserve_hqc=reserve_hqc,
+        diagnostics=diagnostics,
+        stage=stage,
+    )
+    return sum(spend.spent_shots for spend in spends)
+
+
+def probe_depth(
+    *,
+    backend,
+    rng: RNGGenerator,
+    data: RMBData,
+    template: RMBConfig,
+    depth: float,
+    ratio: float,
+    shots: int,
+    budget: BudgetState,
+    settings: ContourFirstExperimentConfig,
+    reserve_hqc: float = 0.0,
+    diagnostics: list[dict] | None = None,
+    stage: str = "probe",
+) -> tuple[RMBConfig, float | None]:
+    config = config_from_parameters(template=template, depth=depth, ratio=ratio)
+    spend_config(
         backend=backend,
         rng=rng,
         data=data,
         config=config,
-        requested_shots=requested_shots,
+        requested_shots=shots,
         budget=budget,
         settings=settings,
+        reserve_hqc=reserve_hqc,
+        diagnostics=diagnostics,
+        stage=stage,
     )
+    return config, measured_probability(data, config)
 
-    if spent <= 0:
-        return spent
 
-    if (
-        settings.max_contour_executions_per_ratio is not None
-        and is_contour_phase(phase)
-    ):
-        counts = ensure_contour_ratio_counts(budget)
-        r_key = contour_ratio_key(float(config.min_two_qubit_gate_ratio), settings)
-        counts[r_key] = counts.get(r_key, 0) + 1
-
-    trials = ensure_trial_log(budget)
-    p = None
-    p_std = None
-    abs_err = None
-    total_runs = 0
-    if config in data and data[config].num_runs() > 0:
-        total_runs = int(data[config].num_runs())
-        p = float(fidelity_mean(data[config]))
-        p_std = float(np.sqrt(max(fidelity_variance(data[config]), 0.0)))
-        abs_err = float(abs(p - TARGET))
-
-    record = MeasurementTrialRecord(
-        trial_index=len(trials) + 1,
-        phase=phase,
-        n_qubits=int(config.n_qubits),
-        depth=int(config.depth),
-        ratio=float(config.min_two_qubit_gate_ratio),
-        requested_shots=int(requested_shots),
-        spent_shots=int(spent),
-        total_runs_at_config=int(total_runs),
-        fidelity=p,
-        fidelity_std=p_std,
-        abs_error_from_target=abs_err,
-        remaining_measurements=int(budget.remaining_measurements),
-        remaining_hqc=float(budget.remaining_hqc),
+def probe_depths_batch(
+    *,
+    backend,
+    rng: RNGGenerator,
+    data: RMBData,
+    template: RMBConfig,
+    probes: list[tuple[float, float, int]],
+    budget: BudgetState,
+    settings: ContourFirstExperimentConfig,
+    reserve_hqc: float = 0.0,
+    diagnostics: list[dict] | None = None,
+    stage: str = "probe_batch",
+) -> list[tuple[RMBConfig, float | None]]:
+    configs = [
+        config_from_parameters(template=template, depth=depth, ratio=ratio)
+        for depth, ratio, _ in probes
+    ]
+    spend_configs_batch(
+        backend=backend,
+        rng=rng,
+        data=data,
+        requests=[
+            MeasurementRequest(config, shots)
+            for config, (_, _, shots) in zip(configs, probes)
+        ],
+        budget=budget,
+        settings=settings,
+        reserve_hqc=reserve_hqc,
+        diagnostics=diagnostics,
+        stage=stage,
     )
-    trials.append(record)
+    return [(config, measured_probability(data, config)) for config in configs]
 
-    if p is None:
-        print(
-            f"[trial {record.trial_index:03d} | {phase}] "
-            f"n={record.n_qubits}, ratio={record.ratio:.4f}, depth={record.depth}, "
-            f"shots={spent}/{requested_shots}, fidelity=None, "
-            f"HQC_left={budget.remaining_hqc:.3f}"
-        )
-    else:
-        print(
-            f"[trial {record.trial_index:03d} | {phase}] "
-            f"n={record.n_qubits}, ratio={record.ratio:.4f}, depth={record.depth}, "
-            f"shots={spent}/{requested_shots}, runs_here={total_runs}, "
-            f"fidelity={p:.4f} ± {p_std:.4f}, |err|={abs_err:.4f}, "
-            f"HQC_left={budget.remaining_hqc:.3f}"
-        )
 
-    return spent
+def confirm_crossing_decision_if_needed(
+    *,
+    backend,
+    rng: RNGGenerator,
+    data: RMBData,
+    config: RMBConfig,
+    probability: float,
+    settings: ContourFirstExperimentConfig,
+    budget: BudgetState,
+    local: bool,
+    reserve_hqc: float = 0.0,
+    diagnostics: list[dict] | None = None,
+    stage: str = "confirm_crossing",
+) -> float:
+    if local or settings.crossing_decision_confirm_shots <= 0:
+        return probability
+    if abs(probability - 0.5) > settings.crossing_decision_probability_width:
+        return probability
+    if config not in data:
+        return probability
+
+    current_runs = data[config].num_runs()
+    extra_shots = settings.crossing_decision_confirm_shots - current_runs
+    if extra_shots <= 0:
+        return probability
+
+    spend_config(
+        backend=backend,
+        rng=rng,
+        data=data,
+        config=config,
+        requested_shots=extra_shots,
+        budget=budget,
+        settings=settings,
+        reserve_hqc=reserve_hqc,
+        diagnostics=diagnostics,
+        stage=stage,
+    )
+    confirmed_probability = measured_probability(data, config)
+    return probability if confirmed_probability is None else confirmed_probability
+
+
+def best_fixed_ratio_bracket(
+    measured_points: list[tuple[RMBConfig, float]],
+) -> tuple[RMBConfig, float, RMBConfig, float] | None:
+    points = sorted(
+        measured_points,
+        key=lambda item: float(item[0].depth),
+    )
+    best: tuple[RMBConfig, float, RMBConfig, float] | None = None
+    best_width = np.inf
+    for (low_config, low_p), (high_config, high_p) in zip(points, points[1:]):
+        if low_p >= 0.5 and high_p <= 0.5:
+            width = float(high_config.depth) - float(low_config.depth)
+            if width < best_width:
+                best_width = width
+                best = (low_config, low_p, high_config, high_p)
+    return best
 
 
 def find_depth_crossing_at_ratio(
     *,
     backend,
-    rng,
+    rng: RNGGenerator,
     data: RMBData,
     template: RMBConfig,
     ratio: float,
-    settings: HybridContourGPConfig,
+    settings: ContourFirstExperimentConfig,
     budget: BudgetState,
     center_depth: float | None = None,
     local: bool = False,
+    reserve_hqc: float = 0.0,
+    diagnostics: list[dict] | None = None,
+    stage: str = "crossing",
 ) -> RMBConfig | None:
-    """Find a fixed-ratio depth crossing, exiting immediately on exact target fidelity."""
+    """
+    Find a monotone crossing in depth at fixed ratio.
+    """
     d_min, d_max = settings.depth_bounds
     if center_depth is None or not local:
         if settings.initial_crossing_interior_bracket and not local:
@@ -363,40 +820,88 @@ def find_depth_crossing_at_ratio(
         low_depth = max(float(d_min), center_depth - span)
         high_depth = min(float(d_max), center_depth + span)
 
-    low_config, low_p = _viarregio5.probe_depth(
-        backend=backend,
-        rng=rng,
-        data=data,
-        template=template,
-        depth=low_depth,
-        ratio=ratio,
-        shots=settings.ray_probe_shots if not local else settings.trace_shots,
-        budget=budget,
-        settings=settings,
-    )
-    if is_target_fidelity(low_p):
-        return low_config
+    probe_shots = settings.ray_probe_shots if not local else settings.trace_local_stencil_shots
+    if local and settings.trace_local_stencil_points > 2:
+        stencil_depths = np.linspace(
+            low_depth,
+            high_depth,
+            max(2, settings.trace_local_stencil_points),
+        )
+        stencil_results = probe_depths_batch(
+            backend=backend,
+            rng=rng,
+            data=data,
+            template=template,
+            probes=[
+                (float(depth), ratio, probe_shots)
+                for depth in stencil_depths
+            ],
+            budget=budget,
+            settings=settings,
+            reserve_hqc=reserve_hqc,
+            diagnostics=diagnostics,
+            stage=f"{stage}_stencil",
+        )
+        measured_stencil = [
+            (config, p)
+            for config, p in stencil_results
+            if p is not None
+        ]
+        bracket = best_fixed_ratio_bracket(measured_stencil)
+        if bracket is not None:
+            low_config, low_p, high_config, high_p = bracket
+            low_depth = float(low_config.depth)
+            high_depth = float(high_config.depth)
+        elif measured_stencil:
+            low_config, low_p = min(
+                measured_stencil,
+                key=lambda item: float(item[0].depth),
+            )
+            high_config, high_p = max(
+                measured_stencil,
+                key=lambda item: float(item[0].depth),
+            )
+            low_depth = float(low_config.depth)
+            high_depth = float(high_config.depth)
+        else:
+            low_config = high_config = None
+            low_p = high_p = None
+        crossing_candidates: list[tuple[RMBConfig, float]] = measured_stencil
+    else:
+        (low_config, low_p), (high_config, high_p) = probe_depths_batch(
+            backend=backend,
+            rng=rng,
+            data=data,
+            template=template,
+            probes=[
+                (low_depth, ratio, probe_shots),
+                (high_depth, ratio, probe_shots),
+            ],
+            budget=budget,
+            settings=settings,
+            reserve_hqc=reserve_hqc,
+            diagnostics=diagnostics,
+            stage=f"{stage}_bracket",
+        )
+        crossing_candidates = [
+            (config, p)
+            for config, p in [(low_config, low_p), (high_config, high_p)]
+            if p is not None
+        ]
 
-    high_config, high_p = _viarregio5.probe_depth(
-        backend=backend,
-        rng=rng,
-        data=data,
-        template=template,
-        depth=high_depth,
-        ratio=ratio,
-        shots=settings.ray_probe_shots if not local else settings.trace_shots,
-        budget=budget,
-        settings=settings,
-    )
-    if is_target_fidelity(high_p):
-        return high_config
-    if low_p is None or high_p is None:
+    if low_config is None or high_config is None or low_p is None or high_p is None:
+        add_diagnostic(
+            diagnostics,
+            "crossing_failed",
+            stage=stage,
+            ratio=round(float(ratio), 4),
+            local=local,
+            reason="missing_probe",
+        )
         return None
 
-    crossing_candidates: list[tuple[RMBConfig, float]] = [(low_config, low_p), (high_config, high_p)]
-
     if (
-        not (low_p >= TARGET and high_p <= TARGET)
+        not (low_p >= 0.5 and high_p <= 0.5)
         and (local or settings.initial_crossing_interior_bracket)
     ):
         expand = (
@@ -407,61 +912,84 @@ def find_depth_crossing_at_ratio(
             * (d_max - d_min)
         )
         for _ in range(3):
-            if not budget.can_spend():
+            if not budget.can_spend(reserve_hqc=reserve_hqc):
                 return None
-            if low_p < TARGET:
+            expansion_probes: list[tuple[str, float, float, int]] = []
+            if low_p is not None and low_p < 0.5:
                 low_depth = max(float(d_min), low_depth - expand)
-                low_config, low_p = _viarregio5.probe_depth(
-                    backend=backend,
-                    rng=rng,
-                    data=data,
-                    template=template,
-                    depth=low_depth,
-                    ratio=ratio,
-                    shots=settings.trace_shots,
-                    budget=budget,
-                    settings=settings,
-                )
-                if is_target_fidelity(low_p):
-                    return low_config
-                if low_p is not None:
-                    crossing_candidates.append((low_config, low_p))
-            if high_p > TARGET:
+                expansion_probes.append(("low", low_depth, ratio, settings.trace_shots))
+            if high_p is not None and high_p > 0.5:
                 high_depth = min(float(d_max), high_depth + expand)
-                high_config, high_p = _viarregio5.probe_depth(
+                expansion_probes.append(("high", high_depth, ratio, settings.trace_shots))
+            if expansion_probes:
+                expansion_results = probe_depths_batch(
                     backend=backend,
                     rng=rng,
                     data=data,
                     template=template,
-                    depth=high_depth,
-                    ratio=ratio,
-                    shots=settings.trace_shots,
+                    probes=[
+                        (depth, probe_ratio, shots)
+                        for _, depth, probe_ratio, shots in expansion_probes
+                    ],
                     budget=budget,
                     settings=settings,
+                    reserve_hqc=reserve_hqc,
+                    diagnostics=diagnostics,
+                    stage=f"{stage}_expand",
                 )
-                if is_target_fidelity(high_p):
-                    return high_config
-                if high_p is not None:
-                    crossing_candidates.append((high_config, high_p))
-            if low_p is not None and high_p is not None and low_p >= TARGET and high_p <= TARGET:
+                for (side, _, _, _), (expanded_config, expanded_p) in zip(
+                    expansion_probes,
+                    expansion_results,
+                ):
+                    if side == "low":
+                        low_config, low_p = expanded_config, expanded_p
+                    else:
+                        high_config, high_p = expanded_config, expanded_p
+                    if expanded_p is not None:
+                        crossing_candidates.append((expanded_config, expanded_p))
+            if low_p is not None and high_p is not None and low_p >= 0.5 and high_p <= 0.5:
                 break
             if low_depth <= d_min and high_depth >= d_max:
                 break
             expand *= 1.5
 
-    if not (low_p >= TARGET and high_p <= TARGET):
+    if low_p is None or high_p is None or not (low_p >= 0.5 and high_p <= 0.5):
+        add_diagnostic(
+            diagnostics,
+            "crossing_failed",
+            stage=stage,
+            ratio=round(float(ratio), 4),
+            local=local,
+            low_depth=round(float(low_depth), 4),
+            low_p=None if low_p is None else round(float(low_p), 4),
+            high_depth=round(float(high_depth), 4),
+            high_p=None if high_p is None else round(float(high_p), 4),
+            reason="no_bracket",
+        )
         return None
 
-    best_config = low_config if abs(low_p - TARGET) <= abs(high_p - TARGET) else high_config
-    best_error = min(abs(low_p - TARGET), abs(high_p - TARGET))
+    add_diagnostic(
+        diagnostics,
+        "crossing_bracketed",
+        stage=stage,
+        ratio=round(float(ratio), 4),
+        local=local,
+        low_depth=round(float(low_depth), 4),
+        low_p=round(float(low_p), 4),
+        high_depth=round(float(high_depth), 4),
+        high_p=round(float(high_p), 4),
+    )
+
+    best_config = low_config if abs(low_p - 0.5) <= abs(high_p - 0.5) else high_config
+    best_error = min(abs(low_p - 0.5), abs(high_p - 0.5))
     n_steps = settings.trace_correction_steps if local else settings.ray_bisection_steps
     shots = settings.trace_shots if local else settings.ray_bisection_shots
 
     for _ in range(n_steps):
-        if not budget.can_spend():
+        if not budget.can_spend(reserve_hqc=reserve_hqc):
             break
         mid_depth = 0.5 * (low_depth + high_depth)
-        mid_config, mid_p = _viarregio5.probe_depth(
+        mid_config, mid_p = probe_depth(
             backend=backend,
             rng=rng,
             data=data,
@@ -471,12 +999,13 @@ def find_depth_crossing_at_ratio(
             shots=shots,
             budget=budget,
             settings=settings,
+            reserve_hqc=reserve_hqc,
+            diagnostics=diagnostics,
+            stage=f"{stage}_bisect",
         )
         if mid_p is None:
             break
-        if is_target_fidelity(mid_p):
-            return mid_config
-        mid_p = _viarregio5.confirm_crossing_decision_if_needed(
+        mid_p = confirm_crossing_decision_if_needed(
             backend=backend,
             rng=rng,
             data=data,
@@ -485,16 +1014,17 @@ def find_depth_crossing_at_ratio(
             settings=settings,
             budget=budget,
             local=local,
+            reserve_hqc=reserve_hqc,
+            diagnostics=diagnostics,
+            stage=f"{stage}_confirm",
         )
         crossing_candidates.append((mid_config, mid_p))
-        error = abs(mid_p - TARGET)
+        error = abs(mid_p - 0.5)
         if error < best_error:
             best_error = error
             best_config = mid_config
-        if is_target_fidelity(mid_p):
-            return mid_config
-        ambiguous = abs(mid_p - TARGET) <= settings.crossing_decision_probability_width
-        if mid_p >= TARGET and not (
+        ambiguous = abs(mid_p - 0.5) <= settings.crossing_decision_probability_width
+        if mid_p >= 0.5 and not (
             not local and settings.crossing_ambiguous_as_failure and ambiguous
         ):
             low_depth = float(mid_config.depth)
@@ -515,7 +1045,7 @@ def find_depth_crossing_at_ratio(
             unique_candidates[config] = probability
         ranked_candidates = sorted(
             unique_candidates.items(),
-            key=lambda item: abs(item[1] - TARGET),
+            key=lambda item: abs(item[1] - 0.5),
         )[: settings.crossing_confirm_candidates]
 
         for candidate_config, probability in ranked_candidates:
@@ -530,377 +1060,163 @@ def find_depth_crossing_at_ratio(
                     requested_shots=extra_shots,
                     budget=budget,
                     settings=settings,
+                    reserve_hqc=reserve_hqc,
                 )
-            confirmed_probability = _viarregio5.measured_probability(data, candidate_config)
+            confirmed_probability = measured_probability(data, candidate_config)
             if confirmed_probability is None:
                 confirmed_probability = probability
-            if is_target_fidelity(confirmed_probability):
-                return candidate_config
-            error = abs(confirmed_probability - TARGET)
+            error = abs(confirmed_probability - 0.5)
             if error < best_error:
                 best_error = error
                 best_config = candidate_config
 
-    return best_config
-
-
-# Patch viarregio5 so imported contour-first routines also get logged.
-_viarregio5.spend_config = logged_spend_config
-_viarregio5.find_depth_crossing_at_ratio = find_depth_crossing_at_ratio
-spend_config = logged_spend_config
-
-
-def print_trial_log(trials: list[MeasurementTrialRecord]) -> None:
-    print()
-    print("Trial / fidelity estimate log")
-    print("-----------------------------")
-    if not trials:
-        print("No trials recorded.")
-        return
-    for r in trials:
-        if r.fidelity is None:
-            fid_text = "fidelity=None"
-        else:
-            fid_text = f"fidelity={r.fidelity:.4f} ± {r.fidelity_std:.4f}, |err|={r.abs_error_from_target:.4f}"
-        print(
-            f"[{r.trial_index:03d} | {r.phase}] "
-            f"n={r.n_qubits}, ratio={r.ratio:.4f}, depth={r.depth}, "
-            f"shots={r.spent_shots}/{r.requested_shots}, runs_here={r.total_runs_at_config}, "
-            f"{fid_text}, HQC_left={r.remaining_hqc:.3f}"
+    at_depth_bound = (
+        best_config.depth <= d_min + 1
+        or best_config.depth >= d_max - 1
+    )
+    if at_depth_bound and best_error > settings.trace_accept_probability_width:
+        add_diagnostic(
+            diagnostics,
+            "crossing_rejected",
+            stage=stage,
+            ratio=round(float(ratio), 4),
+            local=local,
+            depth=int(best_config.depth),
+            p=round(float(measured_probability(data, best_config)), 4),
+            std=round(measured_std(data, best_config), 4),
+            runs=data[best_config].num_runs(),
+            reason="depth_bound",
         )
-
-
-def save_trial_log(trials: list[MeasurementTrialRecord], out_dir: Path) -> None:
-    write_json(out_dir / "hybrid_trial_log.json", [asdict(t) for t in trials])
-
-
-def json_safe(obj):
-    """Make run summaries robust to Path and NumPy objects."""
-    if isinstance(obj, Path):
-        return str(obj)
-    if isinstance(obj, np.integer):
-        return int(obj)
-    if isinstance(obj, np.floating):
-        return float(obj)
-    if isinstance(obj, np.ndarray):
-        return obj.tolist()
-    return str(obj)
-
-
-def write_json(path: str | Path, data: dict | list) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w") as f:
-        json.dump(data, f, indent=2, default=json_safe)
-
-
-def config_depth_ratio(config: RMBConfig) -> tuple[float, float]:
-    """Return coordinates as (depth, ratio)."""
-    return float(config.depth), float(config.min_two_qubit_gate_ratio)
-
-
-def measured_fidelity_std(data: RMBData, config: RMBConfig) -> float:
-    if config not in data or data[config].num_runs() == 0:
-        return np.inf
-    return float(np.sqrt(max(fidelity_variance(data[config]), 0.0)))
-
-
-def training_arrays_from_data(data: RMBData) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Build GP training arrays from all measured configs.
-
-    X columns are [ratio, depth], matching the older GP file.
-    """
-    X: list[list[float]] = []
-    y: list[float] = []
-    y_std: list[float] = []
-
-    for config, estimator in data.items():
-        if estimator.num_runs() <= 0:
-            continue
-        depth, ratio = config_depth_ratio(config)
-        X.append([ratio, depth])
-        y.append(float(fidelity_mean(estimator)))
-        y_std.append(float(np.sqrt(max(fidelity_variance(estimator), 0.0))))
-
-    if not X:
-        return np.empty((0, 2)), np.empty((0,)), np.empty((0,))
-    return np.asarray(X, dtype=float), np.asarray(y, dtype=float), np.asarray(y_std, dtype=float)
-
-
-def measured_target_band_points(
-    data: RMBData,
-    settings: HybridContourGPConfig,
-) -> list[tuple[float, float]]:
-    """Return measured (ratio, depth) points with fidelity within TARGET +/- band."""
-    points: list[tuple[float, float]] = []
-    band = float(settings.gp_focus_target_band_width)
-
-    for config, estimator in data.items():
-        if estimator.num_runs() <= 0:
-            continue
-
-        p = float(fidelity_mean(estimator))
-        if abs(p - TARGET) <= band:
-            points.append(
-                (
-                    float(config.min_two_qubit_gate_ratio),
-                    float(config.depth),
-                )
-            )
-
-    return points
-
-
-def expected_two_qubit_gates_from_depth_ratio(
-    *,
-    depth: float,
-    ratio: float,
-    n_qubits: int,
-) -> float:
-    """Expected/requested two-qubit gate count for a depth-ratio point.
-
-    This matches the convention used elsewhere in the RMB scripts:
-        requested = int(ratio * n_qubits * depth) // 2
-    For plotting a smooth contour, keep the continuous value.
-    """
-    return float(ratio * n_qubits * depth / 2.0)
-
-
-def representative_n_qubits(data: RMBData, settings: HybridContourGPConfig) -> int:
-    for config, estimator in data.items():
-        if estimator.num_runs() > 0:
-            return int(config.n_qubits)
-    return int(settings.n_qubits_values[0])
-
-
-def build_gp_from_data(data: RMBData, settings: HybridContourGPConfig) -> GaussianProcessRegressor:
-    X, y, y_std = training_arrays_from_data(data)
-    if len(y) < settings.gp_min_fit_points:
-        raise RuntimeError(
-            f"Need at least {settings.gp_min_fit_points} measured points for GP fit; got {len(y)}."
+        return None
+    if best_error <= settings.trace_reject_probability_width:
+        add_diagnostic(
+            diagnostics,
+            "crossing_accepted",
+            stage=stage,
+            ratio=round(float(ratio), 4),
+            local=local,
+            depth=int(best_config.depth),
+            p=round(float(measured_probability(data, best_config)), 4),
+            std=round(measured_std(data, best_config), 4),
+            runs=data[best_config].num_runs(),
         )
-
-    kernel = ConstantKernel(1.0, constant_value_bounds=(1e-3, 1e3)) * Matern(
-        length_scale=[settings.gp_ratio_length_scale, settings.gp_depth_length_scale],
-        length_scale_bounds=[(1e-3, 10.0), (1.0, 1e3)],
-        nu=2.5,
-    ) + WhiteKernel(noise_level=1e-6, noise_level_bounds=(1e-8, 1e0))
-
-    alpha = np.maximum(y_std**2, settings.gp_measurement_variance_floor)
-    optimizer = "fmin_l_bfgs_b" if settings.gp_optimize_kernel else None
-    n_restarts = settings.gp_n_restarts_optimizer if settings.gp_optimize_kernel else 0
-    gp = GaussianProcessRegressor(
-        kernel=kernel,
-        alpha=alpha,
-        normalize_y=True,
-        optimizer=optimizer,
-        n_restarts_optimizer=n_restarts,
+        return best_config
+    add_diagnostic(
+        diagnostics,
+        "crossing_rejected",
+        stage=stage,
+        ratio=round(float(ratio), 4),
+        local=local,
+        depth=int(best_config.depth),
+        p=round(float(measured_probability(data, best_config)), 4),
+        std=round(measured_std(data, best_config), 4),
+        runs=data[best_config].num_runs(),
+        reason="outside_reject_width",
     )
-
-    if settings.gp_suppress_convergence_warnings:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", ConvergenceWarning)
-            gp.fit(X, y)
-    else:
-        gp.fit(X, y)
-    return gp
+    return None
 
 
-def candidate_configs_near_anchors(
-    *,
-    anchors: Iterable[RMBConfig],
-    data: RMBData,
-    settings: HybridContourGPConfig,
-) -> list[RMBConfig]:
-    """Generate candidate configs near traced anchors or measured near-target points.
-
-    If gp_focus_on_measured_target_band=True, the candidate band is built around
-    measured points whose fidelity is already close to TARGET, e.g. TARGET +/- 0.2.
-    """
-    anchors = list(anchors)
-
-    if not anchors and not data:
-        return []
-
-    n_depth, n_ratio = settings.gp_candidate_grid_size
-    d_min, d_max = settings.depth_bounds
-    r_min, r_max = settings.ratio_bounds
-    depth_span = float(d_max - d_min)
-
-    if anchors:
-        n_qubits = int(anchors[0].n_qubits)
-    else:
-        n_qubits = int(settings.n_qubits_values[0])
-
-    template = template_config(settings, n_qubits)
-
-    anchor_points = sorted(
-        [(float(a.min_two_qubit_gate_ratio), float(a.depth)) for a in anchors],
-        key=lambda x: x[0],
-    )
-
-    if settings.gp_focus_on_measured_target_band:
-        band_points = measured_target_band_points(data, settings)
-        if band_points:
-            anchor_points = sorted(band_points, key=lambda x: x[0])
-
-    if not anchor_points:
-        return []
-
-    anchor_ratios = np.asarray([p[0] for p in anchor_points], dtype=float)
-    anchor_depths = np.asarray([p[1] for p in anchor_points], dtype=float)
-
-    ratio_low = max(
-        float(r_min),
-        float(anchor_ratios.min()) - settings.gp_focus_ratio_radius,
-    )
-    ratio_high = min(
-        float(r_max),
-        float(anchor_ratios.max()) + settings.gp_focus_ratio_radius,
-    )
-
-    if ratio_high <= ratio_low:
-        return []
-
-    ratio_grid = np.linspace(ratio_low, ratio_high, n_ratio)
-
-    if settings.gp_focus_on_measured_target_band:
-        local_radius = settings.gp_focus_depth_radius_fraction * depth_span
-    else:
-        local_radius = settings.gp_local_depth_radius_fraction * depth_span
-
-    configs: dict[tuple[int, float], RMBConfig] = {}
-
-    for ratio in ratio_grid:
-        center_depth = float(np.interp(ratio, anchor_ratios, anchor_depths))
-        depth_low = max(float(d_min), center_depth - local_radius)
-        depth_high = min(float(d_max), center_depth + local_radius)
-
-        for depth in np.linspace(depth_low, depth_high, n_depth):
-            config = config_from_parameters(
-                template=template,
-                depth=float(depth),
-                ratio=float(ratio),
-            )
-            key = (
-                int(config.depth),
-                round(float(config.min_two_qubit_gate_ratio), 8),
-            )
-            configs[key] = config
-
-    return list(configs.values())
-
-
-def estimate_prospective_measurement_std(mu: float, shots: int, settings: HybridContourGPConfig) -> float:
-    """Approximate future Bernoulli/Bayesian measurement uncertainty.
-
-    This is only for acquisition scoring before the candidate is measured.
-    After measurement, the real estimator variance is used in the GP alpha.
-    """
-    shots = max(1, int(shots))
-    bern_var = max(mu * (1.0 - mu), settings.gp_measurement_variance_floor)
-    return float(np.sqrt(bern_var / shots))
-
-
-def score_candidate(
-    *,
-    gp: GaussianProcessRegressor,
-    data: RMBData,
-    config: RMBConfig,
-    requested_shots: int,
-    budget: BudgetState,
-    settings: HybridContourGPConfig,
-) -> HybridRefinementRecord | None:
-    if requested_shots <= 0 or not budget.can_spend():
-        return None
-
-    shots = min(requested_shots, budget.remaining_measurements)
-    shots = affordable_shot_count(
-        config=config,
-        requested_shots=shots,
-        remaining_hqc=budget.remaining_hqc,
-        settings=settings,
-    )
-    if shots <= 0:
-        return None
-
-    current_runs = data[config].num_runs() if config in data else 0
-    if current_runs >= settings.max_shots_per_config:
-        return None
-
-    ratio = float(config.min_two_qubit_gate_ratio)
-    depth = float(config.depth)
-    mu, model_std = gp.predict(np.array([[ratio, depth]], dtype=float), return_std=True)
-    mu = float(mu[0])
-    model_std = float(model_std[0])
-
-    if config in data and data[config].num_runs() > 0:
-        measurement_std = measured_fidelity_std(data, config)
-    else:
-        measurement_std = estimate_prospective_measurement_std(mu, shots, settings)
-
-    target_width = max(settings.gp_target_width_floor, 1e-8)
-    total_std = float(np.sqrt(model_std**2 + measurement_std**2 + target_width**2))
-    z = abs(mu - TARGET) / total_std
-
-    # This is the key idea Shreya wanted:
-    # closeness to 0.5 is judged relative to uncertainty.
-    boundary_probability = float(np.exp(-0.5 * z**2))
-
-    # Prefer points that are both plausibly on the boundary and still uncertain.
-    information_value = boundary_probability * total_std
-
-    cost = hqc_cost(config, shots, settings) if settings.hqc_budget is not None else float(shots)
-    cost = max(float(cost), 1e-12)
-    score = information_value / (cost**settings.gp_cost_power)
-
-    return HybridRefinementRecord(
-        depth=int(config.depth),
-        ratio=float(config.min_two_qubit_gate_ratio),
-        predicted_fidelity=mu,
-        model_std=model_std,
-        total_std=total_std,
-        z_to_target=float(z),
-        score=float(score),
-        shots=int(shots),
-        cost=float(cost),
-    )
-
-
-def force_ratio_coverage_anchors(
+def find_initial_anchor(
     *,
     backend,
-    rng,
+    rng: RNGGenerator,
     data: RMBData,
-    anchors: list[RMBConfig],
-    settings: HybridContourGPConfig,
+    n_qubits: int,
+    settings: ContourFirstExperimentConfig,
     budget: BudgetState,
-) -> list[RMBConfig]:
-    """Force fixed-ratio crossing searches across the full ratio range.
-
-    This prevents a failure mode where all measured data sit near the first
-    low-ratio anchor and the GP extrapolates the rest of the fid=0.5 line.
-    """
-    if not settings.force_ratio_coverage_before_gp or not budget.can_spend():
-        return []
-
-    n_qubits = int(anchors[0].n_qubits) if anchors else int(settings.n_qubits_values[0])
+    diagnostics: list[dict] | None = None,
+) -> RMBConfig | None:
     template = template_config(settings, n_qubits)
-    r_min, r_max = settings.ratio_bounds
-    target_ratios = np.linspace(float(r_min), float(r_max), max(2, settings.forced_ratio_coverage_count))
+    reserve_hqc = trace_reserve_hqc(settings)
+    ratios = np.linspace(
+        settings.ratio_bounds[0],
+        settings.ratio_bounds[1],
+        max(1, settings.ray_ratio_count),
+    )
+    if settings.batched_initial_anchor_search and budget.can_spend(reserve_hqc=reserve_hqc):
+        d_min, d_max = settings.depth_bounds
+        ratio = float(ratios[0])
+        if settings.initial_crossing_interior_bracket:
+            depth_span = d_max - d_min
+            center = d_min + settings.initial_crossing_center_fraction * depth_span
+            half_width = settings.initial_crossing_half_width_fraction * depth_span
+            low_depth = max(float(d_min), center - half_width)
+            high_depth = min(float(d_max), center + half_width)
+        else:
+            low_depth = float(d_min)
+            high_depth = float(d_max)
 
-    existing = np.array([float(a.min_two_qubit_gate_ratio) for a in anchors], dtype=float) if anchors else np.array([])
-    added: list[RMBConfig] = []
+        depth_grid = np.linspace(
+            low_depth,
+            high_depth,
+            max(2, settings.initial_anchor_depth_grid_count),
+        )
+        grid_configs = [
+            config_from_parameters(
+                template=template,
+                depth=float(depth),
+                ratio=ratio,
+            )
+            for depth in depth_grid
+        ]
+        requests = [
+            MeasurementRequest(config, settings.initial_anchor_grid_shots)
+            for config in grid_configs
+        ]
 
-    for ratio in target_ratios:
-        if not budget.can_spend():
-            break
-        if existing.size and np.min(np.abs(existing - ratio)) < settings.forced_ratio_min_separation:
-            continue
+        spend_configs_batch(
+            backend=backend,
+            rng=rng,
+            data=data,
+            requests=requests,
+            budget=budget,
+            settings=settings,
+            reserve_hqc=reserve_hqc,
+            diagnostics=diagnostics,
+            stage="initial_grid",
+        )
 
-        if settings.verbose:
-            print(f"\nForced ratio-coverage crossing search at ratio={ratio:.4f}")
+        measured_grid: list[tuple[RMBConfig, float]] = []
+        for config in grid_configs:
+            p = measured_probability(data, config)
+            if p is None:
+                continue
+            measured_grid.append((config, p))
+            add_diagnostic(
+                diagnostics,
+                "initial_grid_probe",
+                ratio=round(float(config.min_two_qubit_gate_ratio), 4),
+                depth=int(config.depth),
+                p=round(float(p), 4),
+            )
 
+        anchor_config: RMBConfig | None = None
+        anchor_error = np.inf
+        measured_grid.sort(key=lambda item: float(item[0].depth))
+        for (low_config, low_p), (high_config, high_p) in zip(measured_grid, measured_grid[1:]):
+            if low_p >= 0.5 and high_p <= 0.5:
+                low_error = abs(low_p - 0.5)
+                high_error = abs(high_p - 0.5)
+                candidate = low_config if low_error <= high_error else high_config
+                error = min(low_error, high_error)
+                if error < anchor_error:
+                    anchor_config = candidate
+                    anchor_error = error
+        if anchor_config is not None:
+            add_diagnostic(
+                diagnostics,
+                "initial_grid_anchor",
+                depth=int(anchor_config.depth),
+                ratio=round(float(anchor_config.min_two_qubit_gate_ratio), 4),
+                p=round(float(measured_probability(data, anchor_config)), 4),
+                error=round(float(anchor_error), 4),
+                selection="fixed_ratio_depth_grid",
+            )
+            return anchor_config
+
+    for ratio in ratios:
+        if not budget.can_spend(reserve_hqc=reserve_hqc):
+            return None
         anchor = find_depth_crossing_at_ratio(
             backend=backend,
             rng=rng,
@@ -910,92 +1226,346 @@ def force_ratio_coverage_anchors(
             settings=settings,
             budget=budget,
             local=False,
+            reserve_hqc=reserve_hqc,
+            diagnostics=diagnostics,
+            stage="initial",
         )
         if anchor is not None:
-            added.append(anchor)
-            existing = np.append(existing, float(anchor.min_two_qubit_gate_ratio))
-            if settings.verbose:
-                p = fidelity_mean(data[anchor]) if anchor in data else float("nan")
-                print(
-                    "  added coverage anchor: "
-                    f"ratio={anchor.min_two_qubit_gate_ratio:.4f}, "
-                    f"depth={anchor.depth}, fidelity={p:.4f}"
-                )
-        elif settings.verbose:
-            print(f"  no crossing found at ratio={ratio:.4f}")
-
-    return added
+            return anchor
+    return None
 
 
-def nudged_trace_ratio(
+def confirm_initial_anchor(
     *,
-    target_ratio: float,
-    current_ratio: float,
+    backend,
+    rng: RNGGenerator,
+    data: RMBData,
+    anchor: RMBConfig,
+    settings: ContourFirstExperimentConfig,
+    budget: BudgetState,
+    diagnostics: list[dict] | None = None,
+) -> RMBConfig:
+    reserve_hqc = trace_reserve_hqc(settings)
+    if not settings.initial_anchor_refine or not budget.can_spend(reserve_hqc=reserve_hqc):
+        return anchor
+
+    template = template_config(settings, anchor.n_qubits)
+    confirm_settings = replace(
+        settings,
+        trace_shots=settings.initial_anchor_refine_shots,
+        trace_correction_steps=settings.initial_anchor_refine_steps,
+        trace_depth_search_fraction=settings.initial_anchor_search_fraction,
+    )
+    refined = find_depth_crossing_at_ratio(
+        backend=backend,
+        rng=rng,
+        data=data,
+        template=template,
+        ratio=float(anchor.min_two_qubit_gate_ratio),
+        settings=confirm_settings,
+        budget=budget,
+        center_depth=float(anchor.depth),
+        local=True,
+        reserve_hqc=reserve_hqc,
+        diagnostics=diagnostics,
+        stage="initial_refine",
+    )
+    confirmed_anchor = refined if refined is not None else anchor
+
+    if confirmed_anchor in data:
+        current_runs = data[confirmed_anchor].num_runs()
+        extra_shots = settings.initial_anchor_min_runs - current_runs
+        if extra_shots > 0:
+            spend_config(
+                backend=backend,
+                rng=rng,
+                data=data,
+                config=confirmed_anchor,
+                requested_shots=extra_shots,
+                budget=budget,
+                settings=settings,
+                reserve_hqc=reserve_hqc,
+            )
+
+    add_diagnostic(
+        diagnostics,
+        "initial_anchor_confirmed",
+        depth=int(confirmed_anchor.depth),
+        ratio=round(float(confirmed_anchor.min_two_qubit_gate_ratio), 4),
+        p=None if measured_probability(data, confirmed_anchor) is None else round(float(measured_probability(data, confirmed_anchor)), 4),
+        std=round(measured_std(data, confirmed_anchor), 4),
+        runs=data[confirmed_anchor].num_runs() if confirmed_anchor in data else 0,
+    )
+    return confirmed_anchor
+
+
+def projected_trace_target(
+    data: RMBData,
+    anchor: RMBConfig,
     direction: int,
-    settings: HybridContourGPConfig,
-) -> float | None:
-    """Return a ratio that really advances after config rounding."""
-    if direction == 0:
+    settings: ContourFirstExperimentConfig,
+    step_fraction: float | None = None,
+) -> tuple[float, float]:
+    ratio_span = settings.ratio_bounds[1] - settings.ratio_bounds[0]
+    if step_fraction is None:
+        step_fraction = settings.trace_ratio_step_fraction
+    ratio_step = direction * step_fraction * ratio_span
+    next_ratio = float(np.clip(
+        anchor.min_two_qubit_gate_ratio + ratio_step,
+        settings.ratio_bounds[0],
+        settings.ratio_bounds[1],
+    ))
+    next_depth = float(anchor.depth)
+
+    if settings.model_projection_after_fit:
+        try:
+            surface = fit_monotone_fidelity_surface(data, settings)
+        except (RuntimeError, ValueError):
+            return next_depth, next_ratio
+        point = np.array([float(anchor.depth), float(anchor.min_two_qubit_gate_ratio)])
+        gradient = finite_difference_gradient(surface, point, settings)
+        tangent = np.array([gradient[1], -gradient[0]], dtype=float)
+        if np.linalg.norm(tangent) > 1e-12:
+            if np.sign(tangent[1]) != np.sign(direction):
+                tangent *= -1.0
+            depth_span = settings.depth_bounds[1] - settings.depth_bounds[0]
+            scaled_step = np.array([depth_span, ratio_span], dtype=float)
+            tangent_scaled = tangent * scaled_step
+            tangent_scaled /= np.linalg.norm(tangent_scaled)
+            trial = point + tangent_scaled * step_fraction * scaled_step
+            trial[1] = next_ratio
+            trial[0] = np.clip(trial[0], settings.depth_bounds[0], settings.depth_bounds[1])
+            projected = project_to_contour(surface, trial, gradient, settings)
+            next_depth = float(projected[0])
+
+    if settings.trace_enforce_monotone_depth:
+        if direction > 0:
+            next_depth = min(next_depth, float(anchor.depth))
+        elif direction < 0:
+            next_depth = max(next_depth, float(anchor.depth))
+
+    return next_depth, next_ratio
+
+
+def trace_projected_anchor(
+    *,
+    backend,
+    rng: RNGGenerator,
+    data: RMBData,
+    current: RMBConfig,
+    depth_guess: float,
+    ratio: float,
+    direction: int,
+    settings: ContourFirstExperimentConfig,
+    budget: BudgetState,
+    reserve_hqc: float = 0.0,
+    diagnostics: list[dict] | None = None,
+) -> RMBConfig | None:
+    """
+    Measure the projected contour point.  Optionally solve a local fixed-ratio
+    depth crossing, but keep the cheaper projected trace as the default because
+    local bracketing can spend too much budget at low HQC.
+    """
+    template = template_config(settings, current.n_qubits)
+    d_min, d_max = settings.depth_bounds
+    lower_depth = float(d_min)
+    upper_depth = float(d_max)
+    if settings.trace_enforce_monotone_depth:
+        if direction > 0:
+            upper_depth = min(upper_depth, float(current.depth))
+        elif direction < 0:
+            lower_depth = max(lower_depth, float(current.depth))
+
+    if lower_depth > upper_depth:
+        add_diagnostic(
+            diagnostics,
+            "trace_candidate_rejected",
+            reason="empty_depth_bounds",
+            current_depth=int(current.depth),
+            current_ratio=round(float(current.min_two_qubit_gate_ratio), 4),
+            proposed_ratio=round(float(ratio), 4),
+            depth_guess=round(float(depth_guess), 4),
+        )
         return None
 
-    r_min, r_max = settings.ratio_bounds
-    min_step = max(float(settings.contour_trace_min_ratio_step), 0.0)
-    ratio = float(np.clip(target_ratio, r_min, r_max))
+    depth = float(np.clip(depth_guess, lower_depth, upper_depth))
+    projected_config = config_from_parameters(template=template, depth=depth, ratio=ratio)
+    use_projected_trace = (
+        settings.high_ratio_projected_trace
+        and settings.trace_local_crossing
+        and direction > 0
+        and high_ratio_region(projected_config, settings)
+    )
+    if settings.trace_local_crossing and not use_projected_trace:
+        return find_depth_crossing_at_ratio(
+            backend=backend,
+            rng=rng,
+            data=data,
+            template=template,
+            ratio=float(ratio),
+            budget=budget,
+            settings=settings,
+            center_depth=depth,
+            local=True,
+            reserve_hqc=reserve_hqc,
+            diagnostics=diagnostics,
+            stage="trace_local",
+        )
+    if use_projected_trace:
+        add_diagnostic(
+            diagnostics,
+            "trace_high_ratio_projected",
+            depth=int(projected_config.depth),
+            ratio=round(float(projected_config.min_two_qubit_gate_ratio), 4),
+            reason="high_ratio_low_depth",
+        )
 
-    rounded_current = round(float(current_ratio), 2)
-    rounded_target = round(ratio, 2)
-    if direction > 0 and rounded_target <= rounded_current:
-        ratio = float(current_ratio) + min_step
-    elif direction < 0 and rounded_target >= rounded_current:
-        ratio = float(current_ratio) - min_step
-
-    ratio = float(np.clip(ratio, r_min, r_max))
-    if round(ratio, 2) == rounded_current:
+    best_config, best_p = probe_depth(
+        backend=backend,
+        rng=rng,
+        data=data,
+        template=template,
+        depth=depth,
+        ratio=ratio,
+        shots=settings.trace_shots,
+        budget=budget,
+        settings=settings,
+        reserve_hqc=reserve_hqc,
+        diagnostics=diagnostics,
+        stage="trace_projected_probe",
+    )
+    if best_p is None:
+        add_diagnostic(
+            diagnostics,
+            "trace_candidate_rejected",
+            reason="no_measurement",
+            proposed_depth=round(float(depth), 4),
+            proposed_ratio=round(float(ratio), 4),
+        )
         return None
-    return ratio
+
+    best_error = abs(best_p - 0.5)
+    if best_error <= settings.trace_accept_probability_width:
+        add_diagnostic(
+            diagnostics,
+            "trace_candidate_accepted",
+            reason="projected_accept",
+            depth=int(best_config.depth),
+            ratio=round(float(best_config.min_two_qubit_gate_ratio), 4),
+            p=round(float(best_p), 4),
+            std=round(measured_std(data, best_config), 4),
+            runs=data[best_config].num_runs(),
+        )
+        return best_config
+
+    correction_step = settings.trace_depth_search_fraction * (d_max - d_min)
+    for _ in range(settings.trace_correction_steps):
+        if not budget.can_spend(reserve_hqc=reserve_hqc):
+            break
+        if best_p >= 0.5:
+            depth = min(upper_depth, float(best_config.depth) + correction_step)
+        else:
+            depth = max(lower_depth, float(best_config.depth) - correction_step)
+        if abs(depth - best_config.depth) < 1e-9:
+            break
+
+        candidate, p = probe_depth(
+            backend=backend,
+            rng=rng,
+            data=data,
+            template=template,
+            depth=depth,
+            ratio=ratio,
+            shots=settings.trace_shots,
+            budget=budget,
+            settings=settings,
+            reserve_hqc=reserve_hqc,
+            diagnostics=diagnostics,
+            stage="trace_projected_correction",
+        )
+        if p is None:
+            break
+        error = abs(p - 0.5)
+        if error < best_error:
+            best_config = candidate
+            best_p = p
+            best_error = error
+        if error <= settings.trace_accept_probability_width:
+            add_diagnostic(
+                diagnostics,
+                "trace_candidate_accepted",
+                reason="correction_accept",
+                depth=int(candidate.depth),
+                ratio=round(float(candidate.min_two_qubit_gate_ratio), 4),
+                p=round(float(p), 4),
+                std=round(measured_std(data, candidate), 4),
+                runs=data[candidate].num_runs(),
+            )
+            return candidate
+        correction_step *= 0.5
+
+    add_diagnostic(
+        diagnostics,
+        "trace_candidate_accepted",
+        reason="best_available",
+        depth=int(best_config.depth),
+        ratio=round(float(best_config.min_two_qubit_gate_ratio), 4),
+        p=round(float(best_p), 4),
+        std=round(measured_std(data, best_config), 4),
+        runs=data[best_config].num_runs(),
+        error=round(float(best_error), 4),
+    )
+    return best_config
 
 
 def trace_from_anchor(
     *,
     backend,
-    rng,
+    rng: RNGGenerator,
     data: RMBData,
     anchor: RMBConfig,
-    settings: HybridContourGPConfig,
+    settings: ContourFirstExperimentConfig,
     budget: BudgetState,
+    diagnostics: list[dict] | None = None,
 ) -> list[RMBConfig]:
-    """Trace the contour, forcing projected targets to move across ratio bins."""
     anchors = [anchor]
+    reserve_hqc = post_trace_reserve_hqc(settings)
     for direction in settings.trace_directions:
         current = anchor
-        while budget.can_spend():
+        while budget.can_spend(reserve_hqc=reserve_hqc):
             next_anchor = None
             n_attempts = max(1, settings.trace_step_shrink_attempts if settings.trace_local_crossing else 1)
             for attempt in range(n_attempts):
                 step_fraction = settings.trace_ratio_step_fraction * (0.5 ** attempt)
-                depth_guess, ratio = _viarregio5.projected_trace_target(
+                depth_guess, ratio = projected_trace_target(
                     data,
                     current,
                     direction,
                     settings,
                     step_fraction=step_fraction,
                 )
-                ratio = nudged_trace_ratio(
-                    target_ratio=float(ratio),
-                    current_ratio=float(current.min_two_qubit_gate_ratio),
-                    direction=int(direction),
-                    settings=settings,
-                )
-                if ratio is None:
-                    break
-
-                if settings.verbose and abs(float(ratio) - float(current.min_two_qubit_gate_ratio)) >= 1e-9:
-                    print(
-                        "  contour trace moving: "
-                        f"ratio {current.min_two_qubit_gate_ratio:.4f} -> {ratio:.4f}"
+                if abs(ratio - current.min_two_qubit_gate_ratio) < 1e-9:
+                    add_diagnostic(
+                        diagnostics,
+                        "trace_stopped",
+                        reason="ratio_bounds",
+                        direction=direction,
+                        current_depth=int(current.depth),
+                        current_ratio=round(float(current.min_two_qubit_gate_ratio), 4),
                     )
-
-                next_anchor = _viarregio5.trace_projected_anchor(
+                    break
+                add_diagnostic(
+                    diagnostics,
+                    "trace_proposed",
+                    direction=direction,
+                    attempt=attempt,
+                    step_fraction=round(float(step_fraction), 4),
+                    current_depth=int(current.depth),
+                    current_ratio=round(float(current.min_two_qubit_gate_ratio), 4),
+                    depth_guess=round(float(depth_guess), 4),
+                    proposed_ratio=round(float(ratio), 4),
+                )
+                next_anchor = trace_projected_anchor(
                     backend=backend,
                     rng=rng,
                     data=data,
@@ -1005,442 +1575,1128 @@ def trace_from_anchor(
                     direction=direction,
                     settings=settings,
                     budget=budget,
+                    reserve_hqc=reserve_hqc,
+                    diagnostics=diagnostics,
                 )
                 if next_anchor is not None:
                     break
             if next_anchor is None:
+                add_diagnostic(
+                    diagnostics,
+                    "trace_stopped",
+                    reason="candidate_failed",
+                    direction=direction,
+                    current_depth=int(current.depth),
+                    current_ratio=round(float(current.min_two_qubit_gate_ratio), 4),
+                )
                 break
+            add_diagnostic(
+                diagnostics,
+                "trace_accepted",
+                direction=direction,
+                depth=int(next_anchor.depth),
+                ratio=round(float(next_anchor.min_two_qubit_gate_ratio), 4),
+                p=None if measured_probability(data, next_anchor) is None else round(float(measured_probability(data, next_anchor)), 4),
+                std=round(measured_std(data, next_anchor), 4),
+                runs=data[next_anchor].num_runs() if next_anchor in data else 0,
+            )
             anchors.append(next_anchor)
             current = next_anchor
     return anchors
 
 
-def gp_uncertainty_refinement(
+def seeded_batched_trace_from_anchor(
     *,
     backend,
-    rng,
+    rng: RNGGenerator,
     data: RMBData,
-    anchors: list[RMBConfig],
-    settings: HybridContourGPConfig,
+    anchor: RMBConfig,
+    settings: ContourFirstExperimentConfig,
     budget: BudgetState,
-) -> list[HybridRefinementRecord]:
-    """Spend remaining budget using File-2-style uncertainty-aware scoring."""
-    if not settings.gp_refine_after_trace or not budget.can_spend():
+    diagnostics: list[dict] | None = None,
+) -> list[RMBConfig]:
+    """
+    Seed the contour with a small number of same-ratio depth stacks.
+
+    A rough inverse-depth prior lets us exploit batching early: instead of
+    adaptively spending one batch per ratio while discovering the contour, we
+    measure several likely contour ratios in one or two stitched batches.
+    """
+    if (
+        not settings.seeded_initial_trace
+        or settings.seeded_trace_ratio_count <= 0
+        or not budget.can_spend(reserve_hqc=post_trace_reserve_hqc(settings))
+    ):
         return []
 
-    history: list[HybridRefinementRecord] = []
-    executions = 0
+    d_min, d_max = settings.depth_bounds
+    ratio_min, ratio_max = settings.ratio_bounds
+    current_ratio = float(anchor.min_two_qubit_gate_ratio)
+    ratio_span = ratio_max - ratio_min
+    upper_ratio = min(
+        float(ratio_max),
+        current_ratio + max(0.0, settings.seeded_trace_ratio_span_fraction) * ratio_span,
+    )
+    if upper_ratio <= current_ratio + 1e-9:
+        return []
 
-    while budget.can_spend():
-        if settings.gp_max_refinement_executions is not None and executions >= settings.gp_max_refinement_executions:
-            break
+    target_ratios = np.linspace(
+        current_ratio,
+        upper_ratio,
+        settings.seeded_trace_ratio_count + 1,
+    )[1:]
+    template = template_config(settings, anchor.n_qubits)
+    depth_power = max(0.0, settings.seeded_trace_depth_power)
+    request_seen: set[RMBConfig] = set()
+    requests: list[MeasurementRequest] = []
+    predicted_configs: list[RMBConfig] = []
+    last_depth = float(anchor.depth)
 
-        try:
-            gp = build_gp_from_data(data, settings)
-        except RuntimeError:
-            break
-
-        candidates = candidate_configs_near_anchors(
-            anchors=anchors,
-            data=data,
-            settings=settings,
+    for ratio in target_ratios:
+        predicted_depth = float(anchor.depth) * (
+            max(current_ratio, 1e-6) / max(float(ratio), 1e-6)
+        ) ** depth_power
+        if settings.trace_enforce_monotone_depth:
+            predicted_depth = min(predicted_depth, last_depth)
+        predicted_depth = float(np.clip(predicted_depth, d_min, d_max))
+        predicted_config = config_from_parameters(
+            template=template,
+            depth=predicted_depth,
+            ratio=float(ratio),
         )
-        if settings.gp_include_existing_configs:
-            candidates.extend([c for c, est in data.items() if est.num_runs() > 0])
-
-        best_config: RMBConfig | None = None
-        best_record: HybridRefinementRecord | None = None
-
-        seen: set[tuple[int, float]] = set()
-        for candidate in candidates:
-            key = (int(candidate.depth), float(candidate.min_two_qubit_gate_ratio))
-            if key in seen:
-                continue
-            seen.add(key)
-
-            record = score_candidate(
-                gp=gp,
+        predicted_configs.append(predicted_config)
+        requests.extend(
+            contour_bracket_requests(
+                config=predicted_config,
                 data=data,
-                config=candidate,
-                requested_shots=settings.gp_refinement_shots,
-                budget=budget,
                 settings=settings,
+                template=template,
+                seen=request_seen,
             )
-            if record is None:
-                continue
-            if best_record is None or record.score > best_record.score:
-                best_record = record
-                best_config = candidate
+        )
+        last_depth = predicted_depth
 
-        if best_config is None or best_record is None or best_record.score <= 0.0:
+    if not requests:
+        return []
+
+    max_batches = max(1, settings.seeded_trace_max_batches)
+    chunk_size = max(1, int(np.ceil(len(requests) / max_batches)))
+    reserve_hqc = post_trace_reserve_hqc(settings)
+    before = total_measurements(data)
+    for start in range(0, len(requests), chunk_size):
+        if not budget.can_spend(reserve_hqc=reserve_hqc):
             break
-
-        spent = spend_config(
+        spend_configs_batch(
             backend=backend,
             rng=rng,
             data=data,
-            config=best_config,
-            requested_shots=best_record.shots,
+            requests=requests[start:start + chunk_size],
             budget=budget,
             settings=settings,
-            phase="gp_uncertainty_refinement",
+            reserve_hqc=reserve_hqc,
+            diagnostics=diagnostics,
+            stage="seeded_trace",
         )
-        if spent <= 0:
+    if total_measurements(data) == before:
+        return []
+
+    anchors: list[RMBConfig] = []
+    used_ratios: set[float] = set()
+    for predicted_config in predicted_configs:
+        ratio = float(predicted_config.min_two_qubit_gate_ratio)
+        ratio_key = round(ratio, 8)
+        candidates = [
+            config
+            for config in data
+            if config.n_qubits == predicted_config.n_qubits
+            and round(float(config.min_two_qubit_gate_ratio), 8) == ratio_key
+            and data[config].num_runs() > 0
+        ]
+        if not candidates or ratio_key in used_ratios:
+            continue
+        probabilities = [fidelity_mean(data[config]) for config in candidates]
+        if not (any(p >= 0.5 for p in probabilities) and any(p <= 0.5 for p in probabilities)):
+            continue
+        best_config = min(
+            candidates,
+            key=lambda config: abs(fidelity_mean(data[config]) - 0.5),
+        )
+        best_p = fidelity_mean(data[best_config])
+        if abs(best_p - 0.5) > settings.trace_reject_probability_width:
+            continue
+        if anchors and settings.trace_enforce_monotone_depth:
+            if float(best_config.depth) > float(anchors[-1].depth):
+                continue
+        anchors.append(best_config)
+        used_ratios.add(ratio_key)
+        add_diagnostic(
+            diagnostics,
+            "seeded_trace_anchor",
+            depth=int(best_config.depth),
+            ratio=round(float(best_config.min_two_qubit_gate_ratio), 4),
+            p=round(float(best_p), 4),
+            std=round(measured_std(data, best_config), 4),
+            runs=data[best_config].num_runs(),
+        )
+
+    return anchors
+
+
+def refinement_score(
+    config: RMBConfig,
+    data: RMBData,
+    settings: ContourFirstExperimentConfig,
+    surface=None,
+) -> float:
+    if config not in data:
+        return 0.0
+    estimator = data[config]
+    if estimator.num_runs() >= settings.max_shots_per_config:
+        return 0.0
+
+    variance = fidelity_variance(estimator)
+    variance_score = min(1.0, variance / (1.0 / 12.0))
+    if surface is None:
+        p_model = fidelity_mean(estimator)
+    else:
+        p_model = float(surface.probability(np.array([[
+            float(config.depth),
+            float(config.min_two_qubit_gate_ratio),
+        ]]))[0])
+
+    boundary_score = np.exp(-((abs(p_model - 0.5) / settings.refinement_boundary_width) ** 2))
+    return float(variance_score * boundary_score)
+
+
+def refinement_request_efficiency(
+    config: RMBConfig,
+    score: float,
+    shots: int,
+    settings: ContourFirstExperimentConfig,
+) -> float:
+    request = MeasurementRequest(config, shots)
+    marginal_cost = request_marginal_hqc_cost(request, settings)
+    return score / (marginal_cost ** max(0.0, settings.hqc_cost_power))
+
+
+def batched_topup_shots(
+    config: RMBConfig,
+    data: RMBData,
+    settings: ContourFirstExperimentConfig,
+    target_runs: int | None = None,
+) -> int:
+    if config not in data:
+        current_runs = 0
+    else:
+        current_runs = data[config].num_runs()
+    if target_runs is None:
+        target_runs = settings.max_shots_per_config
+    missing = max(0, min(target_runs, settings.max_shots_per_config) - current_runs)
+    if settings.batching_enabled:
+        increment = max(settings.refinement_shots, settings.batch_refinement_shots)
+    else:
+        increment = settings.refinement_shots
+    return min(missing, max(1, increment))
+
+
+def contour_bracket_depths(
+    *,
+    depth: float,
+    settings: ContourFirstExperimentConfig,
+) -> list[float]:
+    d_min, d_max = settings.depth_bounds
+    depth_span = max(1.0, float(d_max - d_min))
+    candidate_depths = [float(depth)]
+    for fraction in settings.contour_bracket_depth_fractions:
+        span_offset = abs(float(fraction)) * depth_span
+        relative_offset = (
+            max(0.0, settings.contour_bracket_max_relative_depth)
+            * max(1.0, float(depth))
+        )
+        offset = max(1.0, min(span_offset, max(1.0, relative_offset)))
+        candidate_depths.extend([
+            float(depth) - offset,
+            float(depth) + offset,
+        ])
+    return [
+        candidate_depth
+        for candidate_depth in candidate_depths
+        if float(d_min) <= candidate_depth <= float(d_max)
+    ]
+
+
+def contour_bracket_requests(
+    *,
+    config: RMBConfig,
+    data: RMBData,
+    settings: ContourFirstExperimentConfig,
+    template: RMBConfig | None = None,
+    seen: set[RMBConfig] | None = None,
+) -> list[MeasurementRequest]:
+    """
+    Request a same-ratio depth stack around a contour candidate.
+
+    The monotone fit is much better constrained when each ratio has measured
+    depths on both sides of the 0.5 crossing, not just an isolated near-contour
+    point.
+    """
+    if seen is None:
+        seen = set()
+    if template is None:
+        template = template_config(settings, config.n_qubits)
+
+    ratio = float(config.min_two_qubit_gate_ratio)
+    candidate_depths = contour_bracket_depths(
+        depth=float(config.depth),
+        settings=settings,
+    )
+
+    requests: list[MeasurementRequest] = []
+    for depth in candidate_depths:
+        bracket_config = config_from_parameters(
+            template=template,
+            depth=depth,
+            ratio=ratio,
+        )
+        if bracket_config in seen:
+            continue
+        seen.add(bracket_config)
+        current_runs = data[bracket_config].num_runs() if bracket_config in data else 0
+        missing = max(0, settings.max_shots_per_config - current_runs)
+        shots = min(max(1, settings.contour_bracket_probe_shots), missing)
+        if shots > 0:
+            requests.append(MeasurementRequest(bracket_config, shots))
+    return requests
+
+
+def fill_requests_toward_batch_cost(
+    requests: list[MeasurementRequest],
+    *,
+    data: RMBData,
+    settings: ContourFirstExperimentConfig,
+    spendable_hqc: float,
+    target_runs: int | None = None,
+) -> list[MeasurementRequest]:
+    """
+    Increase repeats on selected configs until the stitched batch is near full.
+    """
+    if not settings.batch_fill_repeats or not requests:
+        return requests
+    max_target_cost = target_batch_cost(settings, spendable_hqc)
+    if max_target_cost <= 0.0:
+        return requests
+
+    filled = [
+        MeasurementRequest(request.config, max(0, request.requested_shots))
+        for request in requests
+        if request.requested_shots > 0
+    ]
+    if not filled:
+        return []
+
+    while True:
+        current_cost = batched_hqc_cost(filled, settings)
+        if current_cost >= max_target_cost:
+            break
+        best_index: int | None = None
+        best_score = -np.inf
+        for idx, request in enumerate(filled):
+            config = request.config
+            current_runs = data[config].num_runs() if config in data else 0
+            default_target = (
+                settings.max_shots_per_config
+                if settings.batch_fill_max_shots_per_config is None
+                else max(settings.max_shots_per_config, settings.batch_fill_max_shots_per_config)
+            )
+            max_runs = default_target if target_runs is None else max(1, target_runs)
+            if current_runs + request.requested_shots >= max_runs:
+                continue
+            trial = list(filled)
+            trial[idx] = MeasurementRequest(config, request.requested_shots + 1)
+            trial_cost = batched_hqc_cost(trial, settings)
+            if trial_cost > spendable_hqc + 1e-9 or trial_cost > max_target_cost + 1e-9:
+                continue
+            marginal_cost = max(1e-12, trial_cost - current_cost)
+            variance = fidelity_variance(data[config]) if config in data else 1.0 / 12.0
+            score = variance / (marginal_cost ** max(0.0, settings.hqc_cost_power))
+            if score > best_score:
+                best_score = score
+                best_index = idx
+        if best_index is None:
+            break
+        request = filled[best_index]
+        filled[best_index] = MeasurementRequest(request.config, request.requested_shots + 1)
+
+    return filled
+
+
+def scaled_depth_ratio_point(
+    *,
+    depth: float,
+    ratio: float,
+    settings: ContourFirstExperimentConfig,
+) -> np.ndarray:
+    depth_span = max(1e-12, settings.depth_bounds[1] - settings.depth_bounds[0])
+    ratio_span = max(1e-12, settings.ratio_bounds[1] - settings.ratio_bounds[0])
+    return np.array([
+        (depth - settings.depth_bounds[0]) / depth_span,
+        (ratio - settings.ratio_bounds[0]) / ratio_span,
+    ])
+
+
+def high_ratio_region(config: RMBConfig, settings: ContourFirstExperimentConfig) -> bool:
+    ratio_span = settings.ratio_bounds[1] - settings.ratio_bounds[0]
+    depth_span = settings.depth_bounds[1] - settings.depth_bounds[0]
+    ratio_threshold = settings.ratio_bounds[0] + settings.high_ratio_projected_threshold * ratio_span
+    depth_threshold = settings.depth_bounds[0] + settings.high_ratio_low_depth_fraction * depth_span
+    return (
+        float(config.min_two_qubit_gate_ratio) >= ratio_threshold
+        and float(config.depth) <= depth_threshold
+    )
+
+
+def high_ratio_acquisition_bonus(config: RMBConfig, settings: ContourFirstExperimentConfig) -> float:
+    if settings.high_ratio_acquisition_fraction <= 0.0:
+        return 1.0
+    ratio_span = max(1e-12, settings.ratio_bounds[1] - settings.ratio_bounds[0])
+    depth_span = max(1e-12, settings.depth_bounds[1] - settings.depth_bounds[0])
+    ratio_position = (float(config.min_two_qubit_gate_ratio) - settings.ratio_bounds[0]) / ratio_span
+    low_depth_position = (settings.depth_bounds[1] - float(config.depth)) / depth_span
+    shape_score = np.clip(ratio_position * low_depth_position, 0.0, 1.0)
+    return float(1.0 + settings.high_ratio_acquisition_fraction * shape_score)
+
+
+def acquisition_bracket_straddles_surface(
+    *,
+    config: RMBConfig,
+    surface,
+    settings: ContourFirstExperimentConfig,
+) -> bool:
+    if not settings.acquisition_require_bracket_straddle:
+        return True
+    ratio = float(config.min_two_qubit_gate_ratio)
+    depths = contour_bracket_depths(
+        depth=float(config.depth),
+        settings=settings,
+    )
+    if not depths:
+        return False
+    points = np.array([[depth, ratio] for depth in depths], dtype=float)
+    probabilities = surface.probability(points)
+    return bool(
+        float(np.min(probabilities)) <= 0.5 <= float(np.max(probabilities))
+    )
+
+
+def acquisition_trace_window(
+    anchors: list[RMBConfig] | None,
+    *,
+    pass_index: int,
+    settings: ContourFirstExperimentConfig,
+) -> tuple[float, float] | None:
+    if not settings.acquisition_follow_trace or not anchors:
+        return None
+    ratios = [
+        float(anchor.min_two_qubit_gate_ratio)
+        for anchor in anchors
+        if settings.ratio_bounds[0] <= float(anchor.min_two_qubit_gate_ratio) <= settings.ratio_bounds[1]
+    ]
+    if not ratios:
+        return None
+
+    ratio_span = max(1e-12, settings.ratio_bounds[1] - settings.ratio_bounds[0])
+    last_ratio = max(ratios)
+    backtrack = max(0.0, settings.acquisition_trace_backtrack_fraction) * ratio_span
+    extension = max(0.0, settings.acquisition_trace_extension_fraction) * ratio_span
+    lower = max(settings.ratio_bounds[0], last_ratio - backtrack)
+    upper = min(settings.ratio_bounds[1], last_ratio + (pass_index + 1) * extension)
+    if upper < lower:
+        return None
+    return lower, upper
+
+
+def in_acquisition_trace_window(
+    config: RMBConfig,
+    window: tuple[float, float] | None,
+) -> bool:
+    if window is None:
+        return True
+    ratio = float(config.min_two_qubit_gate_ratio)
+    return window[0] <= ratio <= window[1]
+
+
+def trace_follow_acquisition_candidates(
+    anchors: list[RMBConfig] | None,
+    *,
+    surface,
+    pass_index: int,
+    n_qubits_values: list[int],
+    settings: ContourFirstExperimentConfig,
+    candidate_count: int,
+) -> list[RMBConfig]:
+    if (
+        not settings.acquisition_follow_trace
+        or not anchors
+        or candidate_count <= 0
+        or settings.acquisition_trace_predict_points <= 0
+    ):
+        return []
+
+    sorted_anchors = sorted(
+        {
+            (
+                anchor.n_qubits,
+                float(anchor.min_two_qubit_gate_ratio),
+                float(anchor.depth),
+            )
+            for anchor in anchors
+        },
+        key=lambda item: item[1],
+    )
+    if not sorted_anchors:
+        return []
+
+    ratios = np.asarray([item[1] for item in sorted_anchors], dtype=float)
+    depths = np.asarray([item[2] for item in sorted_anchors], dtype=float)
+    ratio_span = max(1e-12, settings.ratio_bounds[1] - settings.ratio_bounds[0])
+    last_ratio = float(ratios[-1])
+    if last_ratio >= settings.ratio_bounds[1]:
+        return []
+
+    fit_points = min(
+        max(2, settings.acquisition_trace_predict_points),
+        len(ratios),
+    )
+    recent_ratios = ratios[-fit_points:]
+    recent_depths = depths[-fit_points:]
+    if len(recent_ratios) >= 2 and float(np.ptp(recent_ratios)) > 1e-12:
+        slope, intercept = np.polyfit(recent_ratios, recent_depths, deg=1)
+    else:
+        slope = -(
+            settings.depth_bounds[1] - settings.depth_bounds[0]
+        ) / ratio_span
+        intercept = float(recent_depths[-1]) - slope * last_ratio
+    slope = min(0.0, float(slope))
+
+    step = max(
+        settings.trace_ratio_step_fraction * ratio_span,
+        ratio_span / max(2, settings.candidate_grid_size[1] - 1),
+    )
+    start_ratio = last_ratio + step
+    window = acquisition_trace_window(
+        anchors,
+        pass_index=pass_index,
+        settings=settings,
+    )
+    upper_ratio = settings.ratio_bounds[1] if window is None else window[1]
+    if start_ratio > upper_ratio + 1e-12:
+        return []
+
+    target_ratios = np.linspace(
+        start_ratio,
+        upper_ratio,
+        num=max(1, candidate_count),
+    )
+    configs: list[RMBConfig] = []
+    seen: set[RMBConfig] = set()
+    for n_qubits in n_qubits_values:
+        template = template_config(settings, n_qubits)
+        for ratio in target_ratios:
+            depth = float(intercept + slope * ratio)
+            if len(recent_depths) > 0:
+                depth = min(depth, float(recent_depths[-1]))
+            depth = float(np.clip(depth, settings.depth_bounds[0], settings.depth_bounds[1]))
+            config = config_from_parameters(template=template, depth=depth, ratio=float(ratio))
+            if config in seen:
+                continue
+            if not acquisition_bracket_straddles_surface(
+                config=config,
+                surface=surface,
+                settings=settings,
+            ):
+                continue
+            seen.add(config)
+            configs.append(config)
+    return configs
+
+
+def boundary_acquisition_score(
+    *,
+    config: RMBConfig,
+    probability: float,
+    existing_points: np.ndarray,
+    selected_points: list[np.ndarray],
+    data: RMBData,
+    settings: ContourFirstExperimentConfig,
+) -> float:
+    n_runs = data[config].num_runs() if config in data else 0
+    if n_runs >= settings.max_shots_per_config:
+        return 0.0
+
+    boundary_distance = abs(probability - 0.5)
+    if boundary_distance > settings.max_boundary_probability_distance:
+        return 0.0
+    boundary_relevance = np.exp(-((boundary_distance / settings.boundary_width) ** 2))
+    boundary_relevance = boundary_relevance ** settings.boundary_focus_power
+
+    point = scaled_depth_ratio_point(
+        depth=float(config.depth),
+        ratio=float(config.min_two_qubit_gate_ratio),
+        settings=settings,
+    )
+    if len(existing_points) > 0:
+        sparsity = min(1.0, float(np.min(np.linalg.norm(existing_points - point, axis=1))) / settings.sparsity_radius)
+    else:
+        sparsity = 1.0
+    if selected_points:
+        diversity = min(1.0, float(np.min(np.linalg.norm(np.asarray(selected_points) - point, axis=1))) / settings.batch_diversity_radius)
+    else:
+        diversity = 1.0
+
+    undersampled = 1.0 - n_runs / max(1, settings.max_shots_per_config)
+    sparsity_multiplier = 1.0 + settings.exploration_weight * sparsity
+    diversity_multiplier = settings.diversity_floor + (1.0 - settings.diversity_floor) * diversity
+    request = MeasurementRequest(config, batched_topup_shots(config, data, settings))
+    cost = request_marginal_hqc_cost(request, settings)
+    return float(
+        boundary_relevance
+        * sparsity_multiplier
+        * diversity_multiplier
+        * undersampled
+        * high_ratio_acquisition_bonus(config, settings)
+        / (cost ** max(0.0, settings.hqc_cost_power))
+    )
+
+
+def refine_uncertain_boundary_points(
+    *,
+    backend,
+    rng: RNGGenerator,
+    data: RMBData,
+    settings: ContourFirstExperimentConfig,
+    budget: BudgetState,
+    diagnostics: list[dict] | None = None,
+) -> int:
+    """
+    Spend leftover budget on uncertain measured points near the fitted contour.
+    """
+    refinements = 0
+    fit_passes = 0
+    while budget.can_spend():
+        if fit_passes >= max(1, settings.batch_refinement_fit_passes):
+            break
+        fit_passes += 1
+        measured_configs = [
+            config
+            for config, estimator in data.items()
+            if 0 < estimator.num_runs() < settings.max_shots_per_config
+        ]
+        if not measured_configs:
             break
 
-        # Store the pre-measurement score for auditability.
-        history.append(best_record)
-        executions += 1
+        try:
+            surface = fit_monotone_fidelity_surface(data, settings)
+        except (RuntimeError, ValueError):
+            surface = None
 
-    return history
+        scored_configs = [
+            (config, refinement_score(config, data, settings, surface=surface))
+            for config in measured_configs
+        ]
+        scored_configs = [
+            (config, score)
+            for config, score in scored_configs
+            if score > 0.0
+        ]
+        if not scored_configs:
+            break
 
-
-def extract_gp_crossings(
-    *,
-    gp: GaussianProcessRegressor,
-    settings: HybridContourGPConfig,
-) -> list[HybridCrossingRecord]:
-    d_min, d_max = settings.depth_bounds
-    r_min, r_max = settings.ratio_bounds
-    depth_grid = np.linspace(float(d_min), float(d_max), settings.gp_depth_eval_points)
-    ratio_grid = np.linspace(float(r_min), float(r_max), settings.gp_ratio_eval_points)
-
-    records: list[HybridCrossingRecord] = []
-    for ratio in ratio_grid:
-        X = np.array([[ratio, d] for d in depth_grid], dtype=float)
-        mean_curve, std_curve = gp.predict(X, return_std=True)
-
-        centered = mean_curve - TARGET
-        sign = np.sign(centered)
-        crossing_indices = np.where(sign[:-1] * sign[1:] <= 0)[0]
-
-        if len(crossing_indices) == 0:
-            closest_idx = int(np.argmin(np.abs(centered)))
-            crossing_depth = float(depth_grid[closest_idx])
-            pred_mu = float(mean_curve[closest_idx])
-            pred_std = float(std_curve[closest_idx])
-            slope = 0.0
-            depth_std = float(max(0.5 * (d_max - d_min), 1.0))
-            method = "closest_no_bracket"
-        else:
-            idx = int(crossing_indices[0])
-            d0, d1 = float(depth_grid[idx]), float(depth_grid[idx + 1])
-            f0, f1 = float(mean_curve[idx]), float(mean_curve[idx + 1])
-            if abs(f1 - f0) < 1e-12:
-                crossing_depth = 0.5 * (d0 + d1)
-            else:
-                crossing_depth = d0 + (TARGET - f0) * (d1 - d0) / (f1 - f0)
-
-            pred_mu, pred_std = gp.predict(
-                np.array([[ratio, crossing_depth]], dtype=float),
-                return_std=True,
-            )
-            pred_mu = float(pred_mu[0])
-            pred_std = float(pred_std[0])
-
-            delta = max(1.0, 0.005 * (d_max - d_min))
-            dlo = max(float(d_min), crossing_depth - delta)
-            dhi = min(float(d_max), crossing_depth + delta)
-            if dhi <= dlo:
-                slope = 0.0
-            else:
-                vals, _ = gp.predict(np.array([[ratio, dlo], [ratio, dhi]], dtype=float), return_std=True)
-                slope = float((vals[1] - vals[0]) / (dhi - dlo))
-
-            grad = max(abs(slope), 1e-3)
-            depth_std = float(max(pred_std / grad, 0.5))
-            method = "gp_mean_root"
-
-        records.append(
-            HybridCrossingRecord(
-                ratio=float(ratio),
-                crossing_depth=float(crossing_depth),
-                crossing_depth_std=float(depth_std),
-                gp_pred_mean=float(pred_mu),
-                gp_pred_std=float(pred_std),
-                gp_depth_slope=float(slope),
-                method=method,
-            )
+        ranked_configs = sorted(
+            scored_configs,
+            key=lambda item: refinement_request_efficiency(
+                item[0],
+                item[1],
+                batched_topup_shots(item[0], data, settings),
+                settings,
+            ),
+            reverse=True,
         )
+        best_score = max(score for _, score in ranked_configs)
+        if best_score <= 0.0:
+            break
 
-    return records
-
-
-
-def enforce_monotone_crossing_depths(
-    crossings: list[HybridCrossingRecord],
-    settings: HybridContourGPConfig,
-) -> list[HybridCrossingRecord]:
-    """Project extracted crossing depths onto a non-increasing curve in ratio.
-
-    The GP is unconstrained, so extracting one root independently at each ratio
-    can produce a jagged/non-monotone boundary. For RB-like decay, increasing
-    the two-qubit ratio should not require a larger depth to hit the same
-    fidelity target. This applies a weighted isotonic regression to the final
-    depth-vs-ratio curve. It does not change the raw measured data.
-    """
-    if not settings.enforce_monotone_crossing_depth or len(crossings) < 2:
-        return crossings
-
-    ordered = sorted(crossings, key=lambda c: c.ratio)
-    ratios = np.asarray([c.ratio for c in ordered], dtype=float)
-    depths = np.asarray([c.crossing_depth for c in ordered], dtype=float)
-    stds = np.asarray([max(c.crossing_depth_std, 1e-6) for c in ordered], dtype=float)
-    weights = 1.0 / (stds**2)
-
-    iso = IsotonicRegression(
-        increasing=False,
-        y_min=float(settings.depth_bounds[0]),
-        y_max=float(settings.depth_bounds[1]),
-        out_of_bounds="clip",
-    )
-    mono_depths = iso.fit_transform(ratios, depths, sample_weight=weights)
-
-    cleaned: list[HybridCrossingRecord] = []
-    for c, d in zip(ordered, mono_depths):
-        method = c.method
-        if abs(float(d) - float(c.crossing_depth)) > 1e-9:
-            method = method + "+monotone_isotonic"
-        cleaned.append(
-            HybridCrossingRecord(
-                ratio=float(c.ratio),
-                crossing_depth=float(d),
-                crossing_depth_std=float(c.crossing_depth_std),
-                gp_pred_mean=float(c.gp_pred_mean),
-                gp_pred_std=float(c.gp_pred_std),
-                gp_depth_slope=float(c.gp_depth_slope),
-                method=method,
-            )
+        before = total_measurements(data)
+        candidate_count = max(
+            1,
+            settings.batch_max_configs * max(1, settings.batch_candidate_multiplier),
         )
-    return cleaned
-
-
-def plot_hybrid_gp_boundary(
-    *,
-    data: RMBData,
-    crossings: list[HybridCrossingRecord],
-    settings: HybridContourGPConfig,
-) -> Path:
-    out_dir = Path(settings.hybrid_output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "hybrid_gp_fid_0p5_boundary.png"
-
-    fig, ax = plt.subplots(figsize=(8.0, 5.6))
-
-    X, y, y_std = training_arrays_from_data(data)
-    n_qubits = representative_n_qubits(data, settings)
-    if len(y) > 0:
-        sizes = 24 + 240 * np.clip(y_std, 0.0, 0.25)
-        measured_two_qubit_gates = np.asarray(
-            [expected_two_qubit_gates_from_depth_ratio(depth=depth, ratio=ratio, n_qubits=n_qubits) for ratio, depth in X],
-            dtype=float,
+        selected_configs = [config for config, _ in ranked_configs[:candidate_count]]
+        requests = [
+            MeasurementRequest(config, batched_topup_shots(config, data, settings))
+            for config in selected_configs
+        ]
+        requests = fill_requests_toward_batch_cost(
+            requests,
+            data=data,
+            settings=settings,
+            spendable_hqc=max(0.0, budget.remaining_hqc),
         )
-        scatter = ax.scatter(
-            X[:, 0],
-            measured_two_qubit_gates,
-            c=y,
-            s=sizes,
-            edgecolors="black",
-            linewidths=0.3,
-            alpha=0.75,
-            cmap="viridis",
-            vmin=0.0,
-            vmax=1.0,
-            label="measured evaluations",
+        spends = spend_configs_batch(
+            backend=backend,
+            rng=rng,
+            data=data,
+            requests=requests,
+            budget=budget,
+            settings=settings,
+            diagnostics=diagnostics,
+            stage="refinement",
         )
-        colorbar = fig.colorbar(scatter, ax=ax, pad=0.02)
-        colorbar.set_label("observed fidelity")
-
-    ratios = np.asarray([c.ratio for c in crossings], dtype=float)
-    depths = np.asarray([c.crossing_depth for c in crossings], dtype=float)
-    depth_stds = np.asarray([c.crossing_depth_std for c in crossings], dtype=float)
-
-    measured_ratios = X[:, 0] if len(y) > 0 else np.asarray([], dtype=float)
-    if settings.plot_only_supported_ratios and measured_ratios.size > 0:
-        measured_ratio_arr = np.asarray(measured_ratios, dtype=float)
-        supported = np.asarray([
-            np.min(np.abs(measured_ratio_arr - r)) <= settings.plot_support_ratio_radius
-            for r in ratios
-        ])
-        if np.any(supported):
-            ratios = ratios[supported]
-            depths = depths[supported]
-            depth_stds = depth_stds[supported]
-
-    two_qubit_gates = np.asarray(
-        [expected_two_qubit_gates_from_depth_ratio(depth=d, ratio=r, n_qubits=n_qubits) for r, d in zip(ratios, depths)],
-        dtype=float,
-    )
-    two_qubit_gate_stds = np.asarray([r * n_qubits * ds / 2.0 for r, ds in zip(ratios, depth_stds)], dtype=float)
-
-    ax.plot(ratios, two_qubit_gates, color="black", linewidth=2.0, label=f"fid = {TARGET} boundary")
-    ax.fill_between(
-        ratios,
-        two_qubit_gates - two_qubit_gate_stds,
-        two_qubit_gates + two_qubit_gate_stds,
-        color="gray",
-        alpha=0.25,
-        linewidth=0,
-        label="GP two-qubit-gate uncertainty",
-    )
-
-    ax.set_xlabel("two_qubit_ratio")
-    ax.set_ylabel("expected two-qubit gate count at fidelity = 0.5")
-    ax.set_title("Hybrid contour-first + GP uncertainty boundary estimate")
-    ax.set_xlim(settings.ratio_bounds[0] - 0.02, settings.ratio_bounds[1] + 0.02)
-    y_upper = max(float(np.max(two_qubit_gates + two_qubit_gate_stds)) if len(two_qubit_gates) else 1.0, 1.0)
-    ax.set_ylim(0, y_upper * 1.08)
-    ax.grid(alpha=0.25)
-    ax.legend(loc="best", framealpha=0.92, fontsize=8)
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=180)
-    plt.close(fig)
-    return out_path
-
-
-def plot_hybrid_gp_boundary_depth_ratio(
-    *,
-    data: RMBData,
-    crossings: list[HybridCrossingRecord],
-    settings: HybridContourGPConfig,
-    trials: list[MeasurementTrialRecord] | None = None,
-) -> Path:
-    """Plot the same fid=TARGET boundary in ratio-vs-depth coordinates.
-
-    This is the diagnostic companion to the two-qubit-gate-count plot.
-    It shows whether the actual measured evaluations cover the ratio range,
-    and it makes it easier to see whether the crossing depth is monotone.
-    """
-    out_dir = Path(settings.hybrid_output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "hybrid_gp_fid_0p5_boundary_depth_ratio.png"
-
-    fig, ax = plt.subplots(figsize=(8.0, 5.6))
-
-    X, y, y_std = training_arrays_from_data(data)
-    if len(y) > 0:
-        sizes = 24 + 240 * np.clip(y_std, 0.0, 0.25)
-        process_by_point: dict[tuple[int, float], str] = {}
-        for trial in trials or []:
-            if trial.spent_shots <= 0:
+        if not spends or total_measurements(data) == before:
+            break
+        for spend in spends:
+            if spend.spent_shots <= 0:
                 continue
-            key = (int(trial.depth), round(float(trial.ratio), 12))
-            process = "gp_refinement" if trial.phase == "gp_uncertainty_refinement" else "contour"
-            if process == "gp_refinement" or key not in process_by_point:
-                process_by_point[key] = process
+            add_diagnostic(
+                diagnostics,
+                "refinement",
+                depth=int(spend.config.depth),
+                ratio=round(float(spend.config.min_two_qubit_gate_ratio), 4),
+                p=round(float(measured_probability(data, spend.config)), 4),
+                std=round(measured_std(data, spend.config), 4),
+                runs=data[spend.config].num_runs(),
+                score=round(
+                    float(refinement_score(spend.config, data, settings, surface=surface)),
+                    6,
+                ),
+                spent=spend.spent_shots,
+            )
+            refinements += 1
 
-        processes = np.asarray([
-            process_by_point.get((int(round(depth)), round(float(ratio), 12)), "contour")
-            for ratio, depth in X
-        ])
-        scatter = None
-        for process, marker, label in (
-            ("contour", "o", "contour-stage evaluations"),
-            ("gp_refinement", "s", "GP-refinement evaluations"),
-        ):
-            mask = processes == process
-            if not np.any(mask):
+    return refinements
+
+
+def confirm_traced_anchors(
+    *,
+    backend,
+    rng: RNGGenerator,
+    data: RMBData,
+    anchors: list[RMBConfig],
+    settings: ContourFirstExperimentConfig,
+    budget: BudgetState,
+    diagnostics: list[dict] | None = None,
+) -> int:
+    """
+    Spend leftover budget by repeating already traced contour anchors.
+
+    This reduces uncertainty along the discovered curve without introducing new
+    fixed-depth or fixed-ratio exploration bands.
+    """
+    unique_anchors = []
+    seen = set()
+    for anchor in anchors:
+        if anchor in seen:
+            continue
+        seen.add(anchor)
+        unique_anchors.append(anchor)
+
+    confirmations = 0
+    target_runs = min(settings.trace_anchor_min_shots, settings.max_shots_per_config)
+    while budget.can_spend():
+        candidates = [
+            anchor
+            for anchor in unique_anchors
+            if anchor in data and data[anchor].num_runs() < target_runs
+        ]
+        if not candidates:
+            break
+
+        ranked_candidates = sorted(
+            candidates,
+            key=lambda config: (
+                fidelity_variance(data[config])
+                / (
+                    request_marginal_hqc_cost(
+                        MeasurementRequest(
+                            config,
+                            batched_topup_shots(
+                                config,
+                                data,
+                                settings,
+                                target_runs=target_runs,
+                            ),
+                        ),
+                        settings,
+                    )
+                    ** max(0.0, settings.hqc_cost_power)
+                ),
+                -data[config].num_runs(),
+            ),
+            reverse=True,
+        )
+        candidate_count = max(
+            1,
+            settings.batch_max_configs * max(1, settings.batch_candidate_multiplier),
+        )
+        selected_configs = ranked_candidates[:candidate_count]
+        requests = [
+            MeasurementRequest(
+                config,
+                batched_topup_shots(
+                    config,
+                    data,
+                    settings,
+                    target_runs=target_runs,
+                ),
+            )
+            for config in selected_configs
+        ]
+        requests = fill_requests_toward_batch_cost(
+            requests,
+            data=data,
+            settings=settings,
+            spendable_hqc=max(0.0, budget.remaining_hqc),
+            target_runs=target_runs,
+        )
+        spends = spend_configs_batch(
+            backend=backend,
+            rng=rng,
+            data=data,
+            requests=requests,
+            budget=budget,
+            settings=settings,
+            diagnostics=diagnostics,
+            stage="trace_anchor_backfill",
+        )
+        if not spends:
+            break
+        for spend in spends:
+            if spend.spent_shots <= 0:
                 continue
-            scatter = ax.scatter(
-                X[mask, 1],
-                X[mask, 0],
-                c=y[mask],
-                s=sizes[mask],
-                marker=marker,
-                edgecolors="none",
-                alpha=0.78,
-                cmap="viridis",
-                vmin=0.0,
-                vmax=1.0,
-                label=label,
+            add_diagnostic(
+                diagnostics,
+                "trace_anchor_backfill",
+                depth=int(spend.config.depth),
+                ratio=round(float(spend.config.min_two_qubit_gate_ratio), 4),
+                p=round(float(measured_probability(data, spend.config)), 4),
+                std=round(measured_std(data, spend.config), 4),
+                runs=data[spend.config].num_runs(),
+                spent=spend.spent_shots,
             )
-        near_target = np.abs(y - TARGET) <= 0.1
-        if np.any(near_target):
-            ax.scatter(
-                X[near_target, 1],
-                X[near_target, 0],
-                s=sizes[near_target] + 70,
-                marker="o",
-                facecolors="none",
-                edgecolors="black",
-                linewidths=1.35,
-                label=f"observed fidelity within +/-0.1 of {TARGET}",
+            confirmations += 1
+
+    return confirmations
+
+
+def acquire_boundary_candidates(
+    *,
+    backend,
+    rng: RNGGenerator,
+    data: RMBData,
+    settings: ContourFirstExperimentConfig,
+    budget: BudgetState,
+    anchors: list[RMBConfig] | None = None,
+    diagnostics: list[dict] | None = None,
+) -> int:
+    """
+    Spend remaining stitched budget on new sparse candidates near the fitted contour.
+    """
+    acquired = 0
+    for pass_index in range(max(0, settings.batch_acquisition_passes)):
+        if not budget.can_spend():
+            break
+        try:
+            surface = fit_monotone_fidelity_surface(data, settings)
+        except (RuntimeError, ValueError):
+            break
+
+        depth_grid, ratio_grid, probabilities = surface.probability_grid(settings)
+        measured_points = [
+            scaled_depth_ratio_point(
+                depth=float(config.depth),
+                ratio=float(config.min_two_qubit_gate_ratio),
+                settings=settings,
             )
-        if scatter is not None:
-            colorbar = fig.colorbar(scatter, ax=ax, pad=0.02)
-            colorbar.set_label("observed fidelity")
+            for config in data
+        ]
+        existing_points = (
+            np.asarray(measured_points, dtype=float)
+            if measured_points
+            else np.empty((0, 2), dtype=float)
+        )
 
-    ratios = np.asarray([c.ratio for c in crossings], dtype=float)
-    depths = np.asarray([c.crossing_depth for c in crossings], dtype=float)
-    depth_stds = np.asarray([c.crossing_depth_std for c in crossings], dtype=float)
+        trace_window = acquisition_trace_window(
+            anchors,
+            pass_index=pass_index,
+            settings=settings,
+        )
+        scored: list[tuple[float, RMBConfig, np.ndarray]] = []
+        fallback_scored: list[tuple[float, RMBConfig, np.ndarray]] = []
+        selected_points: list[np.ndarray] = []
+        seen: set[RMBConfig] = set()
+        n_qubits_values = sorted({config.n_qubits for config in data})
+        if not n_qubits_values:
+            n_qubits_values = list(settings.n_qubits_values)
 
-    measured_ratios = X[:, 0] if len(y) > 0 else np.asarray([], dtype=float)
-    if settings.plot_only_supported_ratios and measured_ratios.size > 0:
-        measured_ratio_arr = np.asarray(measured_ratios, dtype=float)
-        supported = np.asarray([
-            np.min(np.abs(measured_ratio_arr - r)) <= settings.plot_support_ratio_radius
-            for r in ratios
-        ])
-        if np.any(supported):
-            ratios = ratios[supported]
-            depths = depths[supported]
-            depth_stds = depth_stds[supported]
+        for n_qubits in n_qubits_values:
+            template = template_config(settings, n_qubits)
+            for depth, ratio, probability in zip(
+                depth_grid.ravel(),
+                ratio_grid.ravel(),
+                probabilities.ravel(),
+            ):
+                config = config_from_parameters(
+                    template=template,
+                    depth=float(depth),
+                    ratio=float(ratio),
+                )
+                if config in seen:
+                    continue
+                seen.add(config)
+                score = boundary_acquisition_score(
+                    config=config,
+                    probability=float(probability),
+                    existing_points=existing_points,
+                    selected_points=selected_points,
+                    data=data,
+                    settings=settings,
+                )
+                if score <= 0.0:
+                    continue
+                point = scaled_depth_ratio_point(
+                    depth=float(config.depth),
+                    ratio=float(config.min_two_qubit_gate_ratio),
+                    settings=settings,
+                )
+                if in_acquisition_trace_window(config, trace_window):
+                    scored.append((score, config, point))
+                else:
+                    fallback_scored.append((score, config, point))
 
-    ax.plot(depths, ratios, color="black", linewidth=2.0, label=f"fid = {TARGET} boundary")
-    ax.fill_betweenx(
-        ratios,
-        depths - depth_stds,
-        depths + depth_stds,
-        color="gray",
-        alpha=0.25,
-        linewidth=0,
-        label="GP depth uncertainty",
+        if not scored and not fallback_scored:
+            break
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        fallback_scored.sort(key=lambda item: item[0], reverse=True)
+        candidate_count = max(1, settings.batch_acquisition_ratio_count)
+        selected_configs: list[RMBConfig] = []
+        selected_seen: set[RMBConfig] = set()
+        high_ratio_threshold = (
+            settings.ratio_bounds[0]
+            + 0.55 * (settings.ratio_bounds[1] - settings.ratio_bounds[0])
+        )
+        high_ratio_slots = min(
+            candidate_count,
+            max(
+                0,
+                int(round(candidate_count * max(0.0, settings.high_ratio_candidate_fraction))),
+            ),
+        )
+
+        def try_select_candidate(config: RMBConfig, point: np.ndarray) -> bool:
+            if config in selected_seen:
+                return False
+            if not acquisition_bracket_straddles_surface(
+                config=config,
+                surface=surface,
+                settings=settings,
+            ):
+                return False
+            diversity_score = boundary_acquisition_score(
+                config=config,
+                probability=float(surface.probability(np.array([[
+                    float(config.depth),
+                    float(config.min_two_qubit_gate_ratio),
+                ]]))[0]),
+                existing_points=existing_points,
+                selected_points=selected_points,
+                data=data,
+                settings=settings,
+            )
+            if diversity_score <= 0.0:
+                return False
+            selected_configs.append(config)
+            selected_seen.add(config)
+            selected_points.append(point)
+            return True
+
+        predicted_configs = trace_follow_acquisition_candidates(
+            anchors,
+            surface=surface,
+            pass_index=pass_index,
+            n_qubits_values=list(n_qubits_values),
+            settings=settings,
+            candidate_count=candidate_count,
+        )
+        for config in predicted_configs:
+            point = scaled_depth_ratio_point(
+                depth=float(config.depth),
+                ratio=float(config.min_two_qubit_gate_ratio),
+                settings=settings,
+            )
+            try_select_candidate(config, point)
+            if len(selected_configs) >= candidate_count:
+                break
+
+        for score, config, point in scored:
+            if len(selected_configs) >= high_ratio_slots:
+                break
+            if float(config.min_two_qubit_gate_ratio) < high_ratio_threshold:
+                continue
+            try_select_candidate(config, point)
+
+        for score, config, point in scored:
+            if config in selected_seen:
+                continue
+            try_select_candidate(config, point)
+            if len(selected_configs) >= candidate_count:
+                break
+
+        if not selected_configs and fallback_scored:
+            add_diagnostic(
+                diagnostics,
+                "boundary_acquisition_trace_window_fallback",
+                pass_index=pass_index,
+                window=None if trace_window is None else [round(trace_window[0], 4), round(trace_window[1], 4)],
+                candidates=len(fallback_scored),
+            )
+            for score, config, point in fallback_scored:
+                try_select_candidate(config, point)
+                if len(selected_configs) >= candidate_count:
+                    break
+
+        if not selected_configs:
+            break
+
+        before = total_measurements(data)
+        request_seen: set[RMBConfig] = set()
+        requests: list[MeasurementRequest] = []
+        templates_by_qubits = {
+            n_qubits: template_config(settings, n_qubits)
+            for n_qubits in sorted({config.n_qubits for config in selected_configs})
+        }
+        for config in selected_configs:
+            requests.extend(
+                contour_bracket_requests(
+                    config=config,
+                    data=data,
+                    settings=settings,
+                    template=templates_by_qubits[config.n_qubits],
+                    seen=request_seen,
+                )
+            )
+        requests = fill_requests_toward_batch_cost(
+            requests,
+            data=data,
+            settings=settings,
+            spendable_hqc=max(0.0, budget.remaining_hqc),
+        )
+        spends = spend_configs_batch(
+            backend=backend,
+            rng=rng,
+            data=data,
+            requests=requests,
+            budget=budget,
+            settings=settings,
+            diagnostics=diagnostics,
+            stage="boundary_acquisition",
+        )
+        if not spends or total_measurements(data) == before:
+            break
+        for spend in spends:
+            if spend.spent_shots <= 0:
+                continue
+            add_diagnostic(
+                diagnostics,
+                "boundary_acquisition",
+                pass_index=pass_index,
+                trace_window=None if trace_window is None else [round(trace_window[0], 4), round(trace_window[1], 4)],
+                depth=int(spend.config.depth),
+                ratio=round(float(spend.config.min_two_qubit_gate_ratio), 4),
+                p=round(float(measured_probability(data, spend.config)), 4),
+                std=round(measured_std(data, spend.config), 4),
+                runs=data[spend.config].num_runs(),
+                spent=spend.spent_shots,
+            )
+            acquired += 1
+
+    return acquired
+
+
+def plot_v7_boundary_with_batch_labels(
+    rmb: RMB,
+    settings: ContourFirstExperimentConfig,
+    *,
+    n_bootstrap: int = 100,
+    seed: int | None = None,
+    show: bool = True,
+    batch_label_limit: int = 300,
+) -> list:
+    axes = plot_monotone_fidelity_surface_with_confidence(
+        rmb._data,
+        settings,
+        n_bootstrap=n_bootstrap,
+        seed=seed,
+        show=False,
     )
+    batch_ids_by_config = getattr(rmb, "_batch_config_ids", {})
+    summary = getattr(rmb, "_batch_cost_summary", {})
+    batch_count = int(summary.get("batched_jobs", 0)) if summary else 0
+    if batch_ids_by_config and 0 < batch_count <= batch_label_limit:
+        groups = sorted(grouped_by_n_qubits_local(rmb._data).items())
+        for ax, (_, group) in zip(axes, groups):
+            for config, estimator in group.items():
+                if estimator.num_runs() <= 0:
+                    continue
+                ids = batch_ids_by_config.get(batch_config_key(config))
+                if not ids:
+                    continue
+                ax.text(
+                    float(config.depth),
+                    float(config.min_two_qubit_gate_ratio),
+                    str(min(int(batch_id) for batch_id in ids)),
+                    ha="center",
+                    va="center",
+                    fontsize=6,
+                    color="white",
+                    weight="bold",
+                    zorder=6,
+                    clip_on=True,
+                )
 
-    ax.set_xlabel("depth at fidelity = 0.5")
-    ax.set_ylabel("two_qubit_ratio")
-    ax.set_title("Hybrid contour-first + GP uncertainty boundary estimate: depth view")
-    ax.set_xlim(settings.depth_bounds[0] - 4, settings.depth_bounds[1] + 4)
-    ax.set_ylim(settings.ratio_bounds[0] - 0.02, settings.ratio_bounds[1] + 0.02)
-    ax.grid(alpha=0.25)
-    ax.legend(loc="best", framealpha=0.92, fontsize=8)
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=180)
-    plt.close(fig)
-    return out_path
+    if show:
+        import matplotlib.pyplot as plt
+        plt.show()
+    return axes
 
 
-def estimate_boundary_hybrid(settings: HybridContourGPConfig) -> RMB:
-    """Run contour-first search, then GP uncertainty-aware refinement."""
+def grouped_by_n_qubits_local(data: RMBData) -> dict[int, RMBData]:
+    groups: dict[int, RMBData] = {}
+    for config, estimator in data.items():
+        groups.setdefault(config.n_qubits, {})[config] = estimator
+    return groups
+
+
+def estimate_boundary(settings: ContourFirstExperimentConfig) -> RMB:
     rng = default_rng(settings.rng_seed)
     backend = make_backend()
     rmb = RMB.default(rng).with_backend(backend)
     data: RMBData = rmb._data
-
-    total_hqc_budget = (
-        float(settings.hqc_budget)
-        if settings.hqc_budget is not None
-        else float(settings.measurement_budget)
-    )
-    reserve_fraction = float(np.clip(settings.gp_reserved_hqc_fraction, 0.0, 0.95))
-    contour_hqc_budget = total_hqc_budget * (1.0 - reserve_fraction)
-
-    # First stage: contour search sees only the contour budget.
-    # After tracing, we restore the reserved HQC for GP uncertainty refinement.
     budget = BudgetState(
         remaining_measurements=settings.measurement_budget,
-        remaining_hqc=contour_hqc_budget,
+        remaining_hqc=(
+            float(settings.hqc_budget)
+            if settings.hqc_budget is not None
+            else float(settings.measurement_budget)
+        ),
     )
-
     stop_reason = "budget not exhausted"
     batch_count = 0
-    all_anchors: list[RMBConfig] = []
-    refinement_history: list[HybridRefinementRecord] = []
+    traced_anchors: list[RMBConfig] = []
+    diagnostics: list[dict] = []
 
     for n_qubits in settings.n_qubits_values:
         if not budget.can_spend():
             break
-
         anchor = find_initial_anchor(
             backend=backend,
             rng=rng,
@@ -1448,42 +2704,63 @@ def estimate_boundary_hybrid(settings: HybridContourGPConfig) -> RMB:
             n_qubits=n_qubits,
             settings=settings,
             budget=budget,
+            diagnostics=diagnostics,
         )
         if anchor is None:
             stop_reason = "no initial contour crossing found"
             continue
-
-        anchor_probability = fidelity_mean(data[anchor]) if anchor in data else None
-        if not is_target_fidelity(anchor_probability):
-            anchor = confirm_initial_anchor(
-                backend=backend,
-                rng=rng,
-                data=data,
-                anchor=anchor,
-                settings=settings,
-                budget=budget,
-            )
-
-        if settings.verbose:
-            print(
-                "\nInitial contour anchor: "
-                f"n_qubits={anchor.n_qubits}, depth={anchor.depth}, "
-                f"ratio={anchor.min_two_qubit_gate_ratio:.4f}, "
-                f"measurements {total_measurements(data)} / {settings.measurement_budget}."
-            )
-            print_fit_reports(data, settings)
-
-        anchors = trace_from_anchor(
+        anchor = confirm_initial_anchor(
             backend=backend,
             rng=rng,
             data=data,
             anchor=anchor,
             settings=settings,
             budget=budget,
+            diagnostics=diagnostics,
         )
-        all_anchors.extend(anchors)
-        batch_count += max(0, len(anchors) - 1)
+        if settings.verbose:
+            print(
+                "\nInitial contour anchor: "
+                f"n_qubits={anchor.n_qubits}, depth={anchor.depth}, "
+                f"ratio={anchor.min_two_qubit_gate_ratio:.2f}, "
+                f"measurements {total_measurements(data)} / {settings.measurement_budget}."
+            )
+            print_fit_reports(data, settings)
 
+        seeded_anchors = seeded_batched_trace_from_anchor(
+            backend=backend,
+            rng=rng,
+            data=data,
+            anchor=anchor,
+            settings=settings,
+            budget=budget,
+            diagnostics=diagnostics,
+        )
+        if seeded_anchors:
+            traced_anchors.extend(seeded_anchors)
+            batch_count += len(seeded_anchors)
+            if settings.verbose:
+                print(
+                    f"\nSeeded trace complete for n_qubits={n_qubits}: "
+                    f"{len(seeded_anchors)} anchors, measurements {total_measurements(data)} / "
+                    f"{settings.measurement_budget}."
+                )
+                print_fit_reports(data, settings)
+
+        trace_start = seeded_anchors[-1] if seeded_anchors else anchor
+        anchors = trace_from_anchor(
+            backend=backend,
+            rng=rng,
+            data=data,
+            anchor=trace_start,
+            settings=settings,
+            budget=budget,
+            diagnostics=diagnostics,
+        )
+        if seeded_anchors and anchors and anchors[0] == seeded_anchors[-1]:
+            anchors = anchors[1:]
+        traced_anchors.extend(anchors)
+        batch_count += max(0, len(anchors) - 1)
         if settings.verbose:
             print(
                 f"\nContour trace complete for n_qubits={n_qubits}: "
@@ -1492,60 +2769,91 @@ def estimate_boundary_hybrid(settings: HybridContourGPConfig) -> RMB:
             )
             print_fit_reports(data, settings)
 
-    if settings.force_ratio_coverage_before_gp and budget.can_spend():
-        coverage_anchors = force_ratio_coverage_anchors(
+    refinements = 0
+    if settings.refine_after_trace and traced_anchors and budget.can_spend():
+        acquisitions = acquire_boundary_candidates(
             backend=backend,
             rng=rng,
             data=data,
-            anchors=all_anchors,
             settings=settings,
             budget=budget,
+            anchors=traced_anchors,
+            diagnostics=diagnostics,
         )
-        if coverage_anchors:
-            all_anchors.extend(coverage_anchors)
-            batch_count += len(coverage_anchors)
-            if settings.verbose:
-                print(
-                    f"\nForced ratio coverage complete: added {len(coverage_anchors)} anchors, "
-                    f"measurements {total_measurements(data)} / {settings.measurement_budget}."
-                )
-                print_fit_reports(data, settings)
-
-    if settings.hqc_budget is not None:
-        contour_hqc_spent = contour_hqc_budget - budget.remaining_hqc
-        budget.remaining_hqc = max(0.0, total_hqc_budget - contour_hqc_spent)
-        if settings.verbose:
+        refinements += acquisitions
+        batch_count += acquisitions
+        if acquisitions > 0 and settings.verbose:
             print(
-                "\nHQC reserve activated for GP refinement: "
-                f"contour used {contour_hqc_spent:.3f} / {total_hqc_budget:.3f}; "
-                f"available for refinement {budget.remaining_hqc:.3f}."
+                f"\nBoundary acquisition complete: {acquisitions} extra circuit executions, "
+                f"measurements {total_measurements(data)} / {settings.measurement_budget}."
             )
+            print_fit_reports(data, settings)
 
-    if settings.gp_refine_after_trace and budget.can_spend() and all_anchors:
-        refinement_history = gp_uncertainty_refinement(
+        confirmations = confirm_traced_anchors(
             backend=backend,
             rng=rng,
             data=data,
-            anchors=all_anchors,
+            anchors=traced_anchors,
             settings=settings,
             budget=budget,
+            diagnostics=diagnostics,
         )
-        batch_count += len(refinement_history)
-        if settings.verbose:
+        refinements += confirmations
+        batch_count += confirmations
+        if confirmations > 0 and settings.verbose:
             print(
-                f"\nGP uncertainty refinement complete: {len(refinement_history)} executions, "
+                f"\nTrace anchor confirmation complete: {confirmations} extra circuit executions, "
+                f"measurements {total_measurements(data)} / {settings.measurement_budget}."
+            )
+            print_fit_reports(data, settings)
+
+        extra_refinements = refine_uncertain_boundary_points(
+            backend=backend,
+            rng=rng,
+            data=data,
+            settings=settings,
+            budget=budget,
+            diagnostics=diagnostics,
+        )
+        refinements += extra_refinements
+        batch_count += extra_refinements
+        if extra_refinements > 0 and settings.verbose:
+            print(
+                f"\nRefinement complete: {extra_refinements} extra circuit executions, "
                 f"measurements {total_measurements(data)} / {settings.measurement_budget}."
             )
             print_fit_reports(data, settings)
 
     if budget.remaining_measurements <= 0:
-        stop_reason = "measurement budget hit"
+        stop_reason = "MEASUREMENT BUDGET HIT BEFORE HQC BUDGET"
     elif settings.hqc_budget is not None and budget.remaining_hqc <= 0.0:
         stop_reason = "HQC budget hit"
-    elif settings.hqc_budget is not None and budget.remaining_hqc <= settings.hqc_base_cost:
-        stop_reason = "HQC budget effectively hit"
+    elif (
+        settings.hqc_budget is not None
+        and budget.remaining_hqc <= settings.hqc_base_cost
+    ):
+        stop_reason = "HQC budget effectively hit: remaining HQC is below the base circuit cost"
+    elif refinements > 0:
+        stop_reason = "trace reached bounds, then refinement stopped with remaining budget"
     elif stop_reason == "budget not exhausted":
-        stop_reason = "contour traced/refined until no useful GP candidate or bounds reached"
+        stop_reason = "contour trace reached requested parameter bounds before exhausting budget"
+
+    batch_saving = budget.native_hqc_estimate - budget.stitched_hqc_spent
+    batch_saving_fraction = (
+        batch_saving / budget.native_hqc_estimate
+        if budget.native_hqc_estimate > 0.0
+        else 0.0
+    )
+    rmb._batch_cost_summary = {
+        "stitched_hqc_spent": budget.stitched_hqc_spent,
+        "native_hqc_estimate": budget.native_hqc_estimate,
+        "estimated_batching_saving_hqc": batch_saving,
+        "estimated_batching_saving_fraction": batch_saving_fraction,
+        "batched_jobs": budget.batched_jobs,
+        "max_batched_job_size": budget.max_batched_job_size,
+        "max_cost_per_batch": max_cost_per_batch(settings),
+    }
+    rmb._batch_config_ids = budget.batch_config_ids
 
     if settings.verbose:
         print_experiment_summary(
@@ -1558,129 +2866,108 @@ def estimate_boundary_hybrid(settings: HybridContourGPConfig) -> RMB:
             remaining_measurements=budget.remaining_measurements,
             remaining_hqc=budget.remaining_hqc,
         )
+        if settings.batching_enabled:
+            print(f"  batched jobs: {budget.batched_jobs}")
+            print(f"  max stitched subcircuits in one job: {budget.max_batched_job_size}")
+            print(f"  stitched HQC spent: {budget.stitched_hqc_spent:.3f}")
+            print(f"  native separate-job HQC estimate: {budget.native_hqc_estimate:.3f}")
+            print(
+                f"  estimated batching saving: {batch_saving:.3f} "
+                f"({batch_saving_fraction:.1%})"
+            )
 
-    out_dir = Path(settings.hybrid_output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    trials = ensure_trial_log(budget)
-    if settings.verbose:
-        print_trial_log(trials)
-    save_trial_log(trials, out_dir)
-    if settings.verbose:
-        print(f"Saved trial log: {out_dir / 'hybrid_trial_log.json'}")
-
-    # Final GP crossing extraction and hybrid plot.
-    try:
-        gp = build_gp_from_data(data, settings)
-        raw_crossings = extract_gp_crossings(gp=gp, settings=settings)
-        write_json(out_dir / "hybrid_gp_crossings_raw.json", [asdict(c) for c in raw_crossings])
-        crossings = enforce_monotone_crossing_depths(raw_crossings, settings)
-        write_json(out_dir / "hybrid_gp_crossings.json", [asdict(c) for c in crossings])
-        plot_path = plot_hybrid_gp_boundary(data=data, crossings=crossings, settings=settings)
-        depth_plot_path = plot_hybrid_gp_boundary_depth_ratio(data=data, crossings=crossings, settings=settings, trials=trials)
+    if settings.save_path is not None:
+        rmb.save(settings.save_path)
         if settings.verbose:
-            print(f"\nSaved hybrid GP two-qubit-gate boundary plot: {plot_path}")
-            print(f"Saved hybrid GP depth-ratio boundary plot: {depth_plot_path}")
-    except RuntimeError as exc:
-        if settings.verbose:
-            print(f"\nSkipping final GP crossing extraction: {exc}")
+            print(f"\nSaved boundary data to {settings.save_path}")
 
-    write_json(out_dir / "hybrid_gp_refinement_history.json", [asdict(r) for r in refinement_history])
-    write_json(
-        out_dir / "hybrid_run_summary.json",
-        {
-            "target": TARGET,
-            "measurements": total_measurements(data),
-            "remaining_measurements": budget.remaining_measurements,
-            "remaining_hqc": budget.remaining_hqc,
-            "num_anchors": len(all_anchors),
-            "num_gp_refinements": len(refinement_history),
+    if settings.diagnostics_path is not None:
+        payload = {
+            "settings": {
+                "measurement_budget": settings.measurement_budget,
+                "hqc_budget": settings.hqc_budget,
+                "n_qubits_values": settings.n_qubits_values,
+                "depth_bounds": settings.depth_bounds,
+                "ratio_bounds": settings.ratio_bounds,
+                "ray_ratio_count": settings.ray_ratio_count,
+                "batched_initial_anchor_search": settings.batched_initial_anchor_search,
+                "initial_anchor_depth_grid_count": settings.initial_anchor_depth_grid_count,
+                "initial_anchor_grid_shots": settings.initial_anchor_grid_shots,
+                "trace_ratio_step_fraction": settings.trace_ratio_step_fraction,
+                "trace_depth_search_fraction": settings.trace_depth_search_fraction,
+                "seeded_initial_trace": settings.seeded_initial_trace,
+                "seeded_trace_ratio_count": settings.seeded_trace_ratio_count,
+                "seeded_trace_max_batches": settings.seeded_trace_max_batches,
+                "seeded_trace_ratio_span_fraction": settings.seeded_trace_ratio_span_fraction,
+                "seeded_trace_depth_power": settings.seeded_trace_depth_power,
+                "high_ratio_projected_trace": settings.high_ratio_projected_trace,
+                "high_ratio_projected_threshold": settings.high_ratio_projected_threshold,
+                "high_ratio_low_depth_fraction": settings.high_ratio_low_depth_fraction,
+                "trace_accept_probability_width": settings.trace_accept_probability_width,
+                "trace_reject_probability_width": settings.trace_reject_probability_width,
+                "trace_local_stencil_points": settings.trace_local_stencil_points,
+                "trace_local_stencil_shots": settings.trace_local_stencil_shots,
+                "trace_anchor_min_shots": settings.trace_anchor_min_shots,
+                "batching_enabled": settings.batching_enabled,
+                "batch_max_configs": settings.batch_max_configs,
+                "batch_max_hqc_cost": settings.batch_max_hqc_cost,
+                "max_cost_per_batch": max_cost_per_batch(settings),
+                "batch_reset_weight": settings.batch_reset_weight,
+                "batch_candidate_multiplier": settings.batch_candidate_multiplier,
+                "batch_refinement_shots": settings.batch_refinement_shots,
+                "batch_refinement_fit_passes": settings.batch_refinement_fit_passes,
+                "batch_acquisition_passes": settings.batch_acquisition_passes,
+                "batch_acquisition_ratio_count": settings.batch_acquisition_ratio_count,
+                "batch_target_fill_fraction": settings.batch_target_fill_fraction,
+                "batch_fill_repeats": settings.batch_fill_repeats,
+                "batch_fill_max_shots_per_config": settings.batch_fill_max_shots_per_config,
+                "batch_discovery_fill_max_shots_per_config": (
+                    settings.batch_discovery_fill_max_shots_per_config
+                ),
+                "batch_fill_all_stages": settings.batch_fill_all_stages,
+                "high_ratio_acquisition_fraction": settings.high_ratio_acquisition_fraction,
+                "high_ratio_candidate_fraction": settings.high_ratio_candidate_fraction,
+                "contour_bracket_probe_shots": settings.contour_bracket_probe_shots,
+                "contour_bracket_depth_fractions": settings.contour_bracket_depth_fractions,
+                "contour_bracket_max_relative_depth": settings.contour_bracket_max_relative_depth,
+                "acquisition_require_bracket_straddle": settings.acquisition_require_bracket_straddle,
+                "acquisition_follow_trace": settings.acquisition_follow_trace,
+                "acquisition_trace_backtrack_fraction": settings.acquisition_trace_backtrack_fraction,
+                "acquisition_trace_extension_fraction": settings.acquisition_trace_extension_fraction,
+                "acquisition_trace_predict_points": settings.acquisition_trace_predict_points,
+                "batch_post_trace_reserve_fraction": settings.batch_post_trace_reserve_fraction,
+                "cost_model": "quantinuum_stitched_estimate",
+                "execution_backend": "local_sympleq",
+            },
             "stop_reason": stop_reason,
-            "settings": asdict(settings),
-        },
-    )
-
-    if settings.hybrid_save_path is not None:
-        rmb.save(settings.hybrid_save_path)
-        if settings.verbose:
-            print(f"\nSaved hybrid boundary data to {settings.hybrid_save_path}")
-
-    # Optional: keep your existing monotone bootstrap/confidence plot as a comparison.
-    try:
-        plot_monotone_fidelity_surface_with_confidence(
-            data,
-            settings,
-            n_bootstrap=100,
-            seed=settings.rng_seed,
-        )
-    except Exception as exc:  # keep final save robust even if plotting fails
-        if settings.verbose:
-            print(f"\nSkipping monotone confidence plot: {exc}")
+            "total_measurements": total_measurements(data),
+            "n_configs": len(data),
+            "batched_jobs": budget.batched_jobs,
+            "max_batched_job_size": budget.max_batched_job_size,
+            "batch_config_ids": budget.batch_config_ids,
+            **rmb._batch_cost_summary,
+            "events": diagnostics,
+        }
+        diagnostics_path = Path(settings.diagnostics_path)
+        diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
+        diagnostics_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        if settings.verbose or settings.print_diagnostics:
+            print(f"\nSaved diagnostics to {diagnostics_path}")
+            if settings.print_diagnostics:
+                for event in diagnostics:
+                    print(event)
 
     return rmb
 
 
 if __name__ == "__main__":
-    settings = HybridContourGPConfig(
-        measurement_budget=10_000_000,
-        hqc_budget=500.0,
-        n_qubits_values=(50,),
-        depth_bounds=(4, 80),
-        ratio_bounds=(0.08, 0.6),
-        random_elimination=0.0,
-        scrambling_probability=0.0,
-        min_adaptive_shots_per_config=1,
-        max_adaptive_shots_per_config=5,
-        max_shots_per_config=5,
-        candidate_grid_size=(80, 80),
-        boundary_width=0.08,
-        shot_boundary_width=0.2,
-        surface_smoothing=0.1,
-        min_fit_points=8,
-        monotone_l2=1e-3,
-        contour_ready_probability_width=0.10,
-        contour_min_anchors=4,
-        contour_step_fraction=0.08,
-        contour_projection_fraction=0.12,
-        contour_gradient_fraction=0.01,
-        ray_ratio_count=5,
-        ray_probe_shots=2,
-        ray_bisection_steps=5,
-        ray_bisection_shots=2,
-        trace_ratio_step_fraction=0.06,
-        trace_depth_search_fraction=0.06,
-        trace_correction_steps=2,
-        trace_shots=2,
-        trace_accept_probability_width=0.12,
-        trace_directions=(-1, 1),
-        refine_after_trace=False,  # replaced by GP uncertainty-aware refinement
-        gp_refine_after_trace=True,
-        gp_reserved_hqc_fraction=0.3,
-        gp_refinement_shots=10,
-        gp_max_refinement_executions=None,
-        gp_candidate_grid_size=(80, 80),
-        gp_local_depth_radius_fraction=0.10,
-        gp_focus_on_measured_target_band=True,
-        gp_focus_target_band_width=0.20,
-        gp_focus_ratio_radius=0.06,
-        gp_focus_depth_radius_fraction=0.12,
-        force_ratio_coverage_before_gp=True,
-        forced_ratio_coverage_count=6,
-        forced_ratio_min_separation=0.04,
-        contour_skip_existing_configs=True,
-        contour_trace_min_ratio_step=0.01,
-        max_contour_executions_per_ratio=None,
-        contour_ratio_bin_width=0.01,
-        plot_only_supported_ratios=True,
-        plot_support_ratio_radius=0.08,
-        gp_target_width_floor=0.03,
-        gp_cost_power=1.0,
-        hqc_cost_informed_acquisition=True,
-        hqc_cost_power=1.0,
-        hybrid_save_path=SCRIPT_DIR / "viarregio6_hybrid_boundary.json",
-        hybrid_output_dir=SCRIPT_DIR / "viarregio6_hybrid_outputs",
-        verbose=True,
-    )
+    settings = script_default_settings()
 
-    rmb = estimate_boundary_hybrid(settings)
+    rmb = estimate_boundary(settings)
     print_fit_reports(rmb._data, settings)
+    plot_v7_boundary_with_batch_labels(
+        rmb,
+        settings,
+        n_bootstrap=100,
+        seed=settings.rng_seed,
+    )

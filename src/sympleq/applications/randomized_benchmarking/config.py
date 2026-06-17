@@ -30,6 +30,9 @@ class RMBConfig:
         Total number of 2-qubits gates in the random circuit.
     n_qubits : int
         Number of qudits in the system (must be >= 1).
+    scrambling_probability : float
+        Probability of inserting an X gate (vs Id) on each qudit in the
+        scrambler layer wrapping the random circuit. In ``[0, 1]``.
     gates_set : tuple[Gate, ...]
         Gates available to sample from when building the random circuit.
     random_elimination : float
@@ -38,6 +41,7 @@ class RMBConfig:
     """
     n_1qb_gates: int = 1
     n_2qb_gates: int = 0
+    scrambling_probability: float = 0.0
     gates_set: tuple[Gate, ...] = tuple(DEFAULT_GATES_SET)
     n_qubits: int = 1
     random_elimination: float = 0.0
@@ -46,6 +50,9 @@ class RMBConfig:
 
     def __post_init__(self) -> None:
         """Validate fields and initialize the derived ``dimensions`` array and ``_initial_state``."""
+        if not 0.0 <= self.scrambling_probability <= 1.0:
+            raise ValueError(
+                f"Invalid scrambling_probability, it should be between 0 and 1 (got {self.scrambling_probability}).")
         if not 0.0 <= self.random_elimination <= 1.0:
             raise ValueError(
                 f"Invalid random_elimination, it should be between 0 and 1 (got {self.random_elimination}).")
@@ -84,25 +91,6 @@ class RMBConfig:
         """Return a sensible default configuration for an RMB sweep."""
         return cls()
 
-    @classmethod
-    def from_pytket_circuit(cls, circuit: PytketCircuit) -> RMBConfig:
-        n_total = circuit.n_gates - circuit.n_gates_of_type(OpType.Measure)
-        if n_total == 0:
-            raise ValueError("Invalid input circuit")
-        return RMBConfig(
-            n_1qb_gates=circuit.n_1qb_gates(),
-            n_2qb_gates=circuit.n_2qb_gates(),
-            n_qubits=circuit.n_qubits,
-        )
-
-    @classmethod
-    def from_sympleq_circuit(cls, circuit: Circuit) -> RMBConfig:
-        return RMBConfig(
-            n_1qb_gates=circuit.n_1qb_gates(),
-            n_2qb_gates=circuit.n_2qb_gates(),
-            n_qubits=circuit.n_qudits(),
-        )
-
     def with_n_1qb_gates(self, n_gates: int) -> RMBConfig:
         """Return a copy of this config with ``n_1qb_gates`` replaced."""
         return replace(self, n_1qb_gates=n_gates)
@@ -110,6 +98,10 @@ class RMBConfig:
     def with_n_2qb_gates(self, n_gates: int) -> RMBConfig:
         """Return a copy of this config with ``n_2qb_gates`` replaced."""
         return replace(self, n_2qb_gates=n_gates)
+
+    def with_scrambling_probability(self, scrambling_probability: float) -> RMBConfig:
+        """Return a copy of this config with ``scrambling_probability`` replaced."""
+        return replace(self, scrambling_probability=scrambling_probability)
 
     def with_n_qubits(self, n_qubits: int) -> RMBConfig:
         """Return a copy of this config with ``n_qubits`` replaced."""
@@ -163,7 +155,14 @@ class RMBConfig:
         if rng is None:
             rng = default_rng()
 
+        target_n_1qb_gates = self.n_1qb_gates // 2 - self.n_qubits
         target_n_2qb_gates = self.n_2qb_gates // 2
+        _circuit = Circuit.from_number_of_gates(target_n_1qb_gates,
+                                                target_n_2qb_gates,
+                                                self.dimensions,
+                                                gates_set=self.gates_set,
+                                                rng=rng)
+
         _scrambler = Circuit.empty(self.dimensions)
         scrambling_gates = [GATES.X, GATES.Y, GATES.Z]
         for q_idx in range(self.n_qubits):

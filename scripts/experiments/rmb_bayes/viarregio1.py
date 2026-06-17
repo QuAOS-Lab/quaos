@@ -10,33 +10,13 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.special import expit
 
+from sympleq.applications.randomized_benchmarking.update_strategy import default_update_strategy
 from viarregio2 import (
     config_depth,
     config_from_parameters,
     config_two_qubit_gate_ratio,
+    require_sympleq_backend,
 )
-
-
-def default_update_strategy(data: RMBData, current_config: RMBConfig) -> RMBConfig:
-    """
-    Default rule for advancing an RMB sweep (formerly
-    ``randomized_benchmarking.update_strategy``; this script is its only user).
-    """
-    if current_config in data:
-        estimator = data[current_config]
-    else:
-        return RMBConfig.default()
-    # probability(True) is the fidelity
-    if estimator.probability(True) >= 0.8:
-        new_config = current_config.with_n_1qb_gates(current_config.n_1qb_gates + 4 * current_config.n_qubits)
-    elif estimator.probability(True) >= 0.6:
-        new_config = current_config.with_n_1qb_gates(current_config.n_1qb_gates + 2 * current_config.n_qubits)
-    elif estimator.probability(True) >= 0.5:
-        new_config = current_config.with_n_1qb_gates(current_config.n_1qb_gates + 1 * current_config.n_qubits)
-    else:
-        new_config = current_config.with_n_2qb_gates(max(0, current_config.n_2qb_gates - 1 * current_config.n_qubits))
-
-    return new_config
 
 
 @dataclass(frozen=True)
@@ -352,9 +332,12 @@ if __name__ == "__main__":
     noise_model = GenericNoise.from_paulis([0.00075, 0.00075, 0.00075])   # 000025
     two_qubit_noise_model = GenericNoise.from_paulis([0.005, 0.005, 0.005])  # 00079
 
-    backend = SympleqBackend(noise_model=noise_model, two_qubit_noise_model=two_qubit_noise_model)
+    backend = require_sympleq_backend(
+        SympleqBackend(noise_model=noise_model, two_qubit_noise_model=two_qubit_noise_model)
+    )
 
-    rmb = RMB.default().with_backend(backend).with_update_strategy(logistic_boundary_update_strategy)  # takes a config and maps to bayesian eztimator
+    rmb = RMB.default().with_backend(backend).with_update_strategy(
+        logistic_boundary_update_strategy)  # takes a config and maps to bayesian eztimator
 
     template = (
         RMBConfig.default()
@@ -363,7 +346,7 @@ if __name__ == "__main__":
     )
     config = config_from_parameters(template=template, depth=10, ratio=0.3)
 
-    rmb.run(config) 
+    rmb.run(config)
 
     # rmb.save('viarregio1')
 

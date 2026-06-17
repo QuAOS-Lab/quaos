@@ -48,18 +48,8 @@ class RMBBackend(ABC):
     type: str
 
     @abstractmethod
-    def fidelity_estimation(self, requests: list[MeasurementRequest], rng: RNGGenerator,
-                            shot_rng: ShotRNG | None = None) -> MeasurementOutcomes:
-        """
-        Run the requested circuits and return their Boolean outcomes.
-
-        Each requested shot is one independently drawn random circuit whose
-        outcome is ``True`` when the measured state matches the initial
-        state. With ``shot_rng``, shot ``i`` of a config (counting across
-        the call's requests) draws from ``shot_rng(config, i)``, so seeded
-        callers record the same outcomes no matter how requests are grouped
-        into calls; ``None`` draws everything from ``rng``.
-        """
+    def fidelity_estimation(self, config: RMBConfig, rng: RNGGenerator) -> list[tuple[RMBConfig, bool]]:
+        """Run a single fidelity-estimation trial for ``config``."""
         ...
 
     @classmethod
