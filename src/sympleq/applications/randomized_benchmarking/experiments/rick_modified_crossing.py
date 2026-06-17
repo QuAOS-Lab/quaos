@@ -53,7 +53,8 @@ import logging
 import re
 import warnings
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
 
@@ -85,6 +86,12 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
 _ORIGINAL_AEPSYCH_TRANSFORM_OPTIONS = aepsych_parameter_transforms.transform_options
 _ORIGINAL_AEPSYCH_STR_TO_LIST = Config._str_to_list
 _ORIGINAL_AEPSYCH_STR_TO_ARRAY = Config._str_to_array
+
+
+def timestamped_personal_save_path() -> Path:
+    """Timestamped JSON output path under the repository's Personal folder."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Path("Personal") / f"rick_fantasy_gpu_crossing_{timestamp}.json"
 
 
 # =============================================================================
@@ -134,7 +141,7 @@ class RickFantasyGPUSettings(CrossingSettings):
     """
 
     # Output
-    save_path: str | Path | None = "rick_fantasy_gpu_crossing.json"
+    save_path: str | Path | None = field(default_factory=timestamped_personal_save_path)
 
     # Target contour
     target_threshold: float = 0.5
@@ -1300,7 +1307,7 @@ def main() -> None:
     # Uncomment and edit if you want to override the parent defaults.
 
     N_GATES_BOUNDS = (10, 5000)
-    RATIO_BOUNDS = (0.08, 0.9)
+    RATIO_BOUNDS = (0.08, 1.0)
 
     # Example:
     # N_GATES_BOUNDS = (10, 180)
@@ -1311,8 +1318,8 @@ def main() -> None:
     # -------------------------------------------------------------------------
     # If None, use the defaults inherited from CrossingSettings.
 
-    HQC_BUDGET = 100.0
-    MAX_COST_PER_RUN = 10.0
+    HQC_BUDGET = 200.0
+    MAX_COST_PER_RUN = 15.0
 
     # Example:
     # HQC_BUDGET = 500.0
@@ -1330,7 +1337,7 @@ def main() -> None:
     # SOBOL WARM-UP HANDLES
     # -------------------------------------------------------------------------
 
-    INITIAL_SOBOL_SAMPLES = 10
+    INITIAL_SOBOL_SAMPLES = 30
     SOBOL_SCRAMBLE = False
 
     # -------------------------------------------------------------------------
@@ -1343,8 +1350,8 @@ def main() -> None:
 
     # These dominate suggestion time.
     # Reduce for quick tests.
-    ACQUISITION_RESTARTS = 2
-    ACQUISITION_SAMPLES = 300
+    ACQUISITION_RESTARTS = 2 # Local optimization restarts for acquisition function optimization.
+    ACQUISITION_SAMPLES = 300 #
 
     # -------------------------------------------------------------------------
     # BATCHING HANDLES
@@ -1372,7 +1379,7 @@ def main() -> None:
     RNG_SEED = 2026
     VERBOSE_FANTASIES = True
     PLOT = True
-    SAVE_PATH = "rick_fantasy_gpu_crossing.json"
+    SAVE_PATH = timestamped_personal_save_path()
 
     # -------------------------------------------------------------------------
     # Build settings.
