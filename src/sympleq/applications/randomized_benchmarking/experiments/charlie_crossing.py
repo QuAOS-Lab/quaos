@@ -70,9 +70,9 @@ class CharlieCrossingSettings(CrossingSettings):
     # Initial anchor search.
     initial_anchor_grid_count: int = 17
     initial_anchor_grid_shots: int = 2
-    initial_crossing_center_fraction: float = 0.35
+    initial_crossing_center_fraction: float = 0.8
     initial_crossing_half_width_fraction: float = 0.18
-    initial_crossing_expand_factor: float = 1.6
+    initial_crossing_expand_factor: float = 1.4
     ray_ratio_count: int = 5
     ray_probe_shots: int = 2
     ray_bisection_steps: int = 5
@@ -87,14 +87,14 @@ class CharlieCrossingSettings(CrossingSettings):
     # Contour trace.
     trace_reserve_budget_fraction: float = 0.35
     trace_reserve_min_hqc: float = 25.0
-    trace_ratio_step_fraction: float = 0.06
-    trace_gates_search_fraction: float = 0.06
+    trace_ratio_step_fraction: float = 0.03
+    trace_gates_search_fraction: float = 0.03
     trace_step_shrink_attempts: int = 4
     trace_local_stencil_points: int = 7
     trace_local_stencil_shots: int = 2
-    trace_correction_steps: int = 2
+    trace_correction_steps: int = 3
     trace_shots: int = 2
-    trace_accept_probability_width: float = 0.12
+    trace_accept_probability_width: float = 0.1
     trace_reject_probability_width: float = 0.25
 
     # Stitched batch planning.
@@ -120,7 +120,6 @@ class CharlieCrossingSettings(CrossingSettings):
     diversity_floor: float = 0.5
     sparsity_radius: float = 0.15
     batch_diversity_radius: float = 0.12
-    hqc_cost_power: float = 1.0
     high_ratio_acquisition_fraction: float = 0.35
     contour_bracket_probe_shots: int = 2
     contour_bracket_gates_fractions: tuple[float, ...] = (0.04, 0.08, 0.12)
@@ -232,7 +231,7 @@ def fill_requests_toward_batch_cost(
     shot_costs = [single_circuit_bare_hqc(request.config) for request in filled]
     scores = [
         (data[request.config].posterior_variance() if request.config in data else 1.0 / 12.0)
-        / (marginal_hqc_cost(request.config, 1) ** settings.hqc_cost_power)
+        / (marginal_hqc_cost(request.config, 1))
         for request in filled
     ]
 
@@ -863,7 +862,7 @@ def boundary_acquisition_score(
         * diversity_multiplier
         * undersampled
         * high_ratio_acquisition_bonus(config, settings)
-        / (cost ** settings.hqc_cost_power)
+        / (cost)
     )
 
 
@@ -1014,8 +1013,7 @@ def confirm_traced_anchors(
                 data[config].posterior_variance()
                 / (marginal_hqc_cost(config,
                                      batched_topup_shots(config, data, settings,
-                                                         target_runs=target_runs))
-                   ** settings.hqc_cost_power),
+                                                         target_runs=target_runs))),
                 -data[config].num_runs(),
             ),
             reverse=True,
@@ -1071,7 +1069,7 @@ def refine_uncertain_boundary_points(
         ranked_configs = sorted(
             scored_configs,
             key=lambda item: item[1] / (marginal_hqc_cost(
-                item[0], batched_topup_shots(item[0], data, settings)) ** settings.hqc_cost_power),
+                item[0], batched_topup_shots(item[0], data, settings))),
             reverse=True,
         )
         candidate_count = max(1, settings.batch_max_configs * settings.batch_candidate_multiplier)
