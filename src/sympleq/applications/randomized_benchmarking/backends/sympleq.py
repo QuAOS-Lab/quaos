@@ -40,18 +40,29 @@ class SympleqBackend(RMBBackend):
         self.noise_model = noise_model
         self.two_qubit_noise_model = two_qubit_noise_model
 
-    def fidelity_estimation(self, config: RMBConfig, rng: RNGGenerator) -> list[tuple[RMBConfig, bool]]:
-        initial_state = config.initial_state()
-        n_runs = 1
-        results = []
-        for _ in range(n_runs):
-            circuit = config.random_circuit(rng=rng)
-            if self.noise_model is not None:
-                circuit = circuit.with_noise(self.noise_model)
-            if self.two_qubit_noise_model is not None:
-                circuit = circuit.with_two_qudit_noise(self.two_qubit_noise_model)
-            final_state = circuit.act(initial_state)
-            results.append((config, final_state == initial_state))
+    def fidelity_estimation(self, requests: list[MeasurementRequest], rng: RNGGenerator,
+                            shot_rng: ShotRNG | None = None) -> MeasurementOutcomes:
+        outcomes: dict[RMBConfig, list[bool]] = {}
+        shot_counts: dict[RMBConfig, int] = {}
+        for request in requests:
+            initial_state = request.config.initial_state()
+            for _ in range(max(0, request.shots)):
+                index = shot_counts.get(request.config, 0)
+                shot_counts[request.config] = index + 1
+                circuit_rng = rng if shot_rng is None else shot_rng(request.config, index)
+                # The shot's rng drives the noise sampling as well as the
+                # circuit construction, so seeded callers get reproducible
+                # outcomes without reaching into the noise models.
+                for noise_model in (self.noise_model, self.two_qubit_noise_model):
+                    if noise_model is not None:
+                        noise_model.rng = circuit_rng
+                circuit = request.config.random_circuit(rng=circuit_rng)
+                if self.noise_model is not None:
+                    circuit = circuit.with_noise(self.noise_model)
+                if self.two_qubit_noise_model is not None:
+                    circuit = circuit.with_two_qudit_noise(self.two_qubit_noise_model)
+                final_state = circuit.act(initial_state)
+                outcomes.setdefault(request.config, []).append(final_state == initial_state)
 
         return MeasurementOutcomes(outcomes=outcomes)
 
@@ -61,8 +72,7 @@ class SympleqBackend(RMBBackend):
             .with_n_1qb_gates(20 * 6)\
             .with_n_2qb_gates(5 * 6)\
             .with_random_elimination(0.25)\
-            .with_n_qubits(6)\
-            .with_scrambling_probability(0.5)
+            .with_n_qubits(6)
 
     def default_estimator(self) -> BayesianEstimator:
         """Return a fresh :class:`BayesianEstimator` with ``threshold=0.3`` and ``min_runs=100``."""

@@ -93,9 +93,9 @@ class CrossingSettings:
     n_qubits: int = 5
     random_elimination: float = 0.1
     n_gates_bounds: tuple[int, int] = (10, 15000)
-    ratio_bounds: tuple[float, float] = (0.0, 1.0)
-    hqc_budget: float = 30.0
-    max_cost_per_run: float = 10.0
+    ratio_bounds: tuple[float, float] = (0.05, 1.)
+    hqc_budget: float = 200.0
+    max_cost_per_run: float = 45.0
     monotone_l2: float = 1e-3
     min_fit_points: int = 8
     candidate_grid_size: tuple[int, int] = (80, 80)
@@ -227,9 +227,7 @@ def spend_request_batch(backend, rng: RNGGenerator, data: RMBData,
         return {}
     offsets: dict[RMBConfig, int] = {}
     for request in requests:
-        if request.config not in data:
-            data[request.config] = backend.default_estimator()
-        estimator = data[request.config]
+        estimator = data.setdefault(request.config, BayesianEstimator.default())
         offsets.setdefault(request.config, estimator.num_runs())
 
     shot_rng = None
@@ -462,7 +460,6 @@ def fit_monotone_surface_from_values(
     """
     fidelities = np.asarray(fidelities, dtype=float)
     weights = np.asarray(weights, dtype=float)
-    weights = weights / np.mean(weights)
     return fit_monotone_surface_from_counts(
         points=config_points(configs),
         successes=weights * fidelities,

@@ -86,6 +86,7 @@ def comparison_figure(rows, *, png_path: str | Path | None = None, show: bool = 
             ax=axes[row][1], show=False)
         plot_level_line(data, crossings,
                         contour=monotone_fit_contour(data, settings, surface=surface),
+                        settings=settings,
                         axes=[axes[row][2]], show=False)
 
         axes[row][0].annotate(

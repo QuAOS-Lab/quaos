@@ -173,19 +173,7 @@ def to_pytket_circuit(circuit: Circuit) -> PytketCircuit:
 
     tk_circuit.measure_all()
 
-    from pytket.passes import AutoRebase, RemovePhaseOps, DecomposeBoxes, FlattenRelabelRegistersPass
-    DecomposeBoxes().apply(tk_circuit)
-    AutoRebase({OpType.PhasedX, OpType.Rz, OpType.ZZPhase}).apply(tk_circuit)
-    RemovePhaseOps().apply(tk_circuit)
-    FlattenRelabelRegistersPass().apply(tk_circuit)
-    # from pytket.passes import (
-    #     SequencePass, SquashRzPhasedX, RemoveRedundancies, CommuteThroughMultis,
-    # )
-    # SequencePass([
-    #     CommuteThroughMultis(),
-    #     SquashRzPhasedX(),
-    #     RemoveRedundancies(),
-    # ]).apply(tk_circuit)
+    _nexus_compilation_pass().apply(tk_circuit)
     return tk_circuit
 
 

@@ -123,7 +123,7 @@ def probe_fidelity(*, backend, rng: RNGGenerator, data: RMBData, config: RMBConf
         is above 0.5. The mean is ``None`` when the budget stopped the probe
         before it could either decide a side or reach the shot cap.
     """
-    estimator = data.get(config, backend.default_estimator())
+    estimator = data.get(config, BayesianEstimator.default())
     above = estimator.posterior_above()
     if max(above, 1.0 - above) < settings.decision_confidence:
         implied = implied_above(data, config, settings)
