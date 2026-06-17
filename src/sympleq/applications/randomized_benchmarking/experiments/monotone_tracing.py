@@ -142,6 +142,12 @@ class MonotoneTracingSettings(CrossingSettings):
     bracket_hint: Literal["line", "surface", "both"] = "line"
     use_surface_bracket_hint: bool = True
     surface_min_configs: int = 8
+    refine_initial_crossing: bool = True
+    initial_refine_hqc: float = 25.0
+    initial_refine_half_width_fraction: float = 0.25
+    initial_refine_extra_shots: int = 3
+    initial_refine_decision_confidence: float = 0.85
+    initial_refine_min_crossing_confidence: float = 0.75
 
     enforce_ratio_monotonicity: bool = True
     monotonic_min_slack_gates: int = 2
@@ -776,6 +782,80 @@ def find_crossing(
     return settings.make_config((lo + hi) // 2, ratio)
 
 
+def refine_first_crossing(
+    *,
+    backend,
+    rng: RNGGenerator,
+    data: RMBData,
+    budget: Budget,
+    settings: MonotoneTracingSettings,
+    crossing: RMBConfig,
+) -> RMBConfig:
+    """
+    Spend a small capped budget to improve the first anchor estimate.
+
+    The initial low-to-high search remains cheap and permissive. Once it has
+    produced an anchor, this local pass tries a narrow bracket around that
+    anchor with slightly more evidence. If it cannot improve the estimate
+    within the cap, the original crossing is kept.
+    """
+    if not settings.refine_initial_crossing or settings.initial_refine_hqc <= 0.0:
+        return crossing
+    if budget.remaining_hqc <= 0.0:
+        return crossing
+
+    ratio_budget = Budget(
+        remaining_hqc=min(settings.initial_refine_hqc, budget.remaining_hqc)
+    )
+    refine_settings = replace(
+        settings,
+        max_shots_per_config=(
+            settings.max_shots_per_config + settings.initial_refine_extra_shots
+        ),
+        decision_confidence=max(
+            settings.decision_confidence,
+            settings.initial_refine_decision_confidence,
+        ),
+        min_crossing_confidence=max(
+            settings.min_crossing_confidence,
+            settings.initial_refine_min_crossing_confidence,
+        ),
+    )
+
+    ratio = crossing.ratio_2_qb_gates
+    half_width = max(
+        2,
+        round(settings.initial_refine_half_width_fraction * crossing.n_gates),
+    )
+    lo = max(settings.n_gates_bounds[0], crossing.n_gates - half_width)
+    hi = min(settings.n_gates_bounds[1], crossing.n_gates + half_width)
+    lo = 2 * round(lo / 2)
+    hi = 2 * round(hi / 2)
+    if hi <= lo:
+        return crossing
+
+    refined = find_crossing(
+        backend=backend,
+        rng=rng,
+        data=data,
+        budget=budget,
+        ratio_budget=ratio_budget,
+        settings=refine_settings,
+        ratio=ratio,
+        lo=lo,
+        hi=hi,
+    )
+    if refined is None:
+        return crossing
+    print_progress(
+        settings,
+        budget,
+        f"  refined initial crossing: ratio={ratio:.3f} "
+        f"n_gates={crossing.n_gates} -> {refined.n_gates}",
+    )
+    return refined
+
+
 def search_one_ratio(
     rmb: RMB,
     rng: RNGGenerator,
@@ -842,6 +922,15 @@ def search_one_ratio(
         )
 
     if crossing is not None:
+        if not crossings:
+            crossing = refine_first_crossing(
+                backend=rmb.backend,
+                rng=rng,
+                data=data,
+                budget=budget,
+                settings=settings,
+                crossing=crossing,
+            )
         message = monotonicity_violation_message(settings, crossings, crossing)
         if message is not None:
             print_progress(settings, budget, message)
