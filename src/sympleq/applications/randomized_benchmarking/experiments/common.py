@@ -19,7 +19,6 @@ import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 from scipy.optimize import minimize
 from scipy.special import expit
-from scipy.stats import beta as beta_dist
 
 from sympleq.applications.randomized_benchmarking.RMB import RMB, resolve_data_path
 from sympleq.applications.randomized_benchmarking.backends.base import MeasurementRequest, RMBBackend
@@ -203,11 +202,6 @@ def stitch_batch_size(bare_hqc: float, max_cost_per_run: float, max_circuits: in
     return max(1, min(affordable, max_circuits))
 
 
-def new_estimator() -> BayesianEstimator:
-    """Fresh estimator for recording Boolean fidelity outcomes."""
-    return BayesianEstimator(threshold=0.0, min_runs=0)
-
-
 def measurement_rng(seed: int, config: RMBConfig, shot_index: int) -> RNGGenerator:
     """RNG of one measurement, derived from the seed, the config, and the shot index."""
     return default_rng([seed, config.n_qubits, config.n_1qb_gates,
@@ -233,7 +227,7 @@ def spend_request_batch(backend, rng: RNGGenerator, data: RMBData,
         return {}
     offsets: dict[RMBConfig, int] = {}
     for request in requests:
-        estimator = data.setdefault(request.config, new_estimator())
+        estimator = data.setdefault(request.config, BayesianEstimator.default())
         offsets.setdefault(request.config, estimator.num_runs())
 
     shot_rng = None
@@ -246,21 +240,6 @@ def spend_request_batch(backend, rng: RNGGenerator, data: RMBData,
         for outcome in results:
             data[config].record(bool(outcome))
     return outcomes
-
-
-def spend_measurements(backend, rng: RNGGenerator, data: RMBData,
-                       config: RMBConfig, shots: int, seed: int | None = None) -> list[bool]:
-    """Record ``shots`` Boolean fidelity outcomes for one config into ``data``
-    and return them (see :func:`spend_request_batch`)."""
-    outcomes = spend_request_batch(backend, rng, data,
-                                   [MeasurementRequest(config, shots)], seed=seed)
-    return [bool(outcome) for outcome in outcomes.get(config, [])]
-
-
-def posterior_above(estimator: BayesianEstimator) -> float:
-    """Posterior probability that the fidelity of ``estimator`` is above 0.5."""
-    alpha, beta = estimator.posterior_alpha_beta()
-    return float(beta_dist.sf(0.5, alpha, beta))
 
 
 def measured_items(data: RMBData) -> list[tuple[RMBConfig, BayesianEstimator]]:
