@@ -7,6 +7,7 @@ from sympleq.applications.randomized_benchmarking.backends.utils import config_f
     data_from_pytket_circuit_results
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
 from sympleq.core.bayesian_estimation import BayesianEstimator
+from sympleq.core.noise.noise_model import GenericNoise
 from sympleq.integrations.quantinuum.utils import (
     NATIVE_GATES_SET,
     fetch_recent_execute_jobs,
@@ -23,10 +24,12 @@ class QuantinuumBackend(RMBBackend):
     """
     Quantinuum hardware/emulator backend.
 
-    Builds a random circuit from the config, submits it to the
-    Quantinuum device identified by ``device_name`` for ``n_shots``
-    shots, and returns whether the most-common measurement outcome is
-    the all-zeros bitstring.
+    Builds the requested random circuits, stitches them into as few
+    submissions as the QASM program size limit and ``max_cost_per_run``
+    allow, runs them on the Quantinuum device identified by
+    ``device_name`` for ``n_shots`` shots each, and reports per circuit
+    whether the most-common measurement outcome is the all-zeros
+    bitstring.
 
     Parameters
     ----------
@@ -153,6 +156,15 @@ class QuantinuumBackend(RMBBackend):
     def default_estimator(self) -> BayesianEstimator:
         """Return a fresh :class:`BayesianEstimator` with ``threshold=0.1`` and ``min_runs=self.batch_size``."""
         return BayesianEstimator(threshold=10**(-1), min_runs=self.batch_size)
+
+    @classmethod
+    def default_sympleq_backend(cls, rng: RNGGenerator | None = None) -> SympleqBackend:
+        noise_model = GenericNoise.from_paulis([0.000025, 0.000025, 0.000025], rng)
+        two_qubit_noise_model = GenericNoise.from_paulis([0.00079, 0.00079, 0.00079], rng)
+        return SympleqBackend(
+            noise_model=noise_model,
+            two_qubit_noise_model=two_qubit_noise_model,
+        )
 
     def populate_from_recent_jobs(self, n: int) -> RMBData:
         """Build :type:`RMBData` from the last ``n`` execute jobs in ``self.project_name``.

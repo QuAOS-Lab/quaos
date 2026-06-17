@@ -1292,7 +1292,8 @@ def confirm_initial_anchor(
         "initial_anchor_confirmed",
         depth=int(confirmed_anchor.depth),
         ratio=round(float(confirmed_anchor.min_two_qubit_gate_ratio), 4),
-        p=None if measured_probability(data, confirmed_anchor) is None else round(float(measured_probability(data, confirmed_anchor)), 4),
+        p=None if measured_probability(data, confirmed_anchor) is None else round(
+            float(measured_probability(data, confirmed_anchor)), 4),
         std=round(measured_std(data, confirmed_anchor), 4),
         runs=data[confirmed_anchor].num_runs() if confirmed_anchor in data else 0,
     )
@@ -1596,7 +1597,8 @@ def trace_from_anchor(
                 direction=direction,
                 depth=int(next_anchor.depth),
                 ratio=round(float(next_anchor.min_two_qubit_gate_ratio), 4),
-                p=None if measured_probability(data, next_anchor) is None else round(float(measured_probability(data, next_anchor)), 4),
+                p=None if measured_probability(data, next_anchor) is None else round(
+                    float(measured_probability(data, next_anchor)), 4),
                 std=round(measured_std(data, next_anchor), 4),
                 runs=data[next_anchor].num_runs() if next_anchor in data else 0,
             )
@@ -2149,7 +2151,8 @@ def boundary_acquisition_score(
     else:
         sparsity = 1.0
     if selected_points:
-        diversity = min(1.0, float(np.min(np.linalg.norm(np.asarray(selected_points) - point, axis=1))) / settings.batch_diversity_radius)
+        diversity = min(1.0, float(np.min(np.linalg.norm(np.asarray(selected_points) - point, axis=1))
+                                   ) / settings.batch_diversity_radius)
     else:
         diversity = 1.0
 

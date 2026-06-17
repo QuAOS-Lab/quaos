@@ -2,7 +2,7 @@ import datetime
 import os
 from pathlib import Path
 from typing import Callable, Iterator
-from pytket.circuit import Circuit as PytketCircuit, OpType
+from pytket.circuit import Circuit as PytketCircuit
 
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
 from sympleq.core.bayesian_estimation import BayesianEstimator
@@ -92,7 +92,7 @@ def data_from_pytket_circuit_results(
     """
     data: RMBData = {}
     for circuit, result in jobs:
-        config = config_from_pytket_circuit(circuit)
+        config = RMBConfig.from_pytket_circuit(circuit)
         if config is None:
             continue
 
