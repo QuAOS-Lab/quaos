@@ -1,6 +1,8 @@
 from __future__ import annotations
 from typing import Any, Callable, Generator, Hashable
 
+from scipy.stats import beta as beta_dist
+
 
 type EstimatorCallable[T: Hashable] = Callable[[], T | list[T]]
 
@@ -36,6 +38,10 @@ class BayesianEstimator:
     def __str__(self) -> str:
         return (f"BayesianEstimator(threshold={self.threshold}, "
                 f"min_runs={self.min_runs}, max_runs={self.max_runs})")
+
+    @classmethod
+    def default(cls) -> BayesianEstimator:
+        return BayesianEstimator(threshold=0.0, min_runs=0)
 
     def results(self) -> list[Any]:
         """
@@ -162,6 +168,12 @@ class BayesianEstimator:
         alpha, beta = self.posterior_alpha_beta()
         total = alpha + beta
         return alpha * beta / (total * total * (total + 1.0))
+
+    def posterior_above(self, threshold: float = 0.5) -> float:
+        """Return the posterior probability that the ``True`` outcome probability
+        exceeds ``threshold`` (default 0.5)."""
+        alpha, beta = self.posterior_alpha_beta()
+        return float(beta_dist.sf(threshold, alpha, beta))
 
     def is_converged(self) -> bool:
         """Return ``True`` when at least ``min_runs`` samples have been recorded

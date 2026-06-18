@@ -50,13 +50,15 @@ class CharlieSimpleSettings(CrossingSettings):
     The algorithm is still a fixed-ratio bisection sweep. The extra knobs only
     constrain budget use and improve the next bracket when enough data exists.
     """
-    ratio_step: float = 0.05
+    ratio_step: float = 0.1
     start_ratio: float | None = None
     trace_direction: Literal["up", "down", "both"] = "down"
     n_gates_resolution: float = 0.1
     max_shots_per_config: int = 5
     decision_confidence: float = 0.8
     save_path: str | Path | None = "charlie_simple.json"
+    one_q_noise_scale: float = 1.0
+    two_q_noise_scale: float = 1.0
 
     # Optional protection against one difficult ratio consuming the whole
     # experiment after the trace has started. Disabled by default because the
@@ -80,11 +82,10 @@ class CharlieSimpleSettings(CrossingSettings):
     initial_bracket_fraction: float = 0.1
     high_ratio_gate_bias_power: float = 1.0
 
-    # Use low-to-high endpoint discovery by default. This avoids direct jumps
-    # to very large, confidently low-fidelity high endpoints, which otherwise
-    # create horizontal bands of wasted low-fidelity measurements.
-    low_to_high_bracket_ratio: float = 0.0
-    low_to_high_growth_factor: float = 1.6
+    # Use low-to-high endpoint discovery. This avoids direct jumps to very
+    # large, confidently low-fidelity high endpoints, which otherwise create
+    # horizontal bands of wasted low-fidelity measurements.
+    low_to_high_growth_factor: float = 1.9
 
     # Directional tracing: when the ratio decreases, the boundary is expected
     # to move to more gates; when it increases, to fewer gates.
@@ -378,13 +379,6 @@ def fallback_bracket(settings: CharlieSimpleSettings, ratio: float) -> tuple[int
     return n_gates_min, min(n_gates_max, ratio_biased_gate_cap(settings, ratio))
 
 
-def should_bracket_low_to_high(settings: CharlieSimpleSettings, ratio: float) -> bool:
-    """Whether this ratio should avoid probing the high endpoint upfront."""
-    low_ratio, high_ratio = settings.ratio_bounds
-    threshold = low_ratio + settings.low_to_high_bracket_ratio * (high_ratio - low_ratio)
-    return ratio >= threshold
-
-
 def find_crossing(
     *,
     backend,
@@ -409,35 +403,34 @@ def find_crossing(
             return config_lo
         return None
 
-    if should_bracket_low_to_high(settings, ratio):
-        previous = lo
-        probe_hi = max(lo + 2, 2 * round(max(lo + 2, lo * settings.low_to_high_growth_factor) / 2))
-        while probe_hi < hi:
-            config_hi = settings.make_config(probe_hi, ratio)
-            p_hi, above_hi = probe_fidelity(
-                backend=backend, rng=rng, data=data, config=config_hi,
-                budget=budget, ratio_budget=ratio_budget, settings=settings)
-            if p_hi is None:
-                return None
-            print_progress(settings, budget,
-                           f"  bracket ratio={ratio:.3f}: n_gates={probe_hi} p={p_hi:.2f}")
-            if not confidently_above(above_hi, settings):
-                if not confidently_below(above_hi, settings):
-                    if accept_uncertain_crossing(above_hi, settings):
-                        return config_hi
-                    previous = probe_hi
-                    probe_hi = max(
-                        probe_hi + 2,
-                        2 * round((probe_hi * settings.low_to_high_growth_factor) / 2),
-                    )
-                    continue
-                lo = previous
-                hi = probe_hi
-                break
-            previous = probe_hi
-            probe_hi = max(probe_hi + 2, 2 * round((probe_hi * settings.low_to_high_growth_factor) / 2))
-        else:
+    previous = lo
+    probe_hi = max(lo + 2, 2 * round(max(lo + 2, lo * settings.low_to_high_growth_factor) / 2))
+    while probe_hi < hi:
+        config_hi = settings.make_config(probe_hi, ratio)
+        p_hi, above_hi = probe_fidelity(
+            backend=backend, rng=rng, data=data, config=config_hi,
+            budget=budget, ratio_budget=ratio_budget, settings=settings)
+        if p_hi is None:
+            return None
+        print_progress(settings, budget,
+                       f"  bracket ratio={ratio:.3f}: n_gates={probe_hi} p={p_hi:.2f}")
+        if not confidently_above(above_hi, settings):
+            if not confidently_below(above_hi, settings):
+                if accept_uncertain_crossing(above_hi, settings):
+                    return config_hi
+                previous = probe_hi
+                probe_hi = max(
+                    probe_hi + 2,
+                    2 * round((probe_hi * settings.low_to_high_growth_factor) / 2),
+                )
+                continue
             lo = previous
+            hi = probe_hi
+            break
+        previous = probe_hi
+        probe_hi = max(probe_hi + 2, 2 * round((probe_hi * settings.low_to_high_growth_factor) / 2))
+    else:
+        lo = previous
 
     config_hi = settings.make_config(hi, ratio)
     p_hi, above_hi = probe_fidelity(
@@ -529,7 +522,7 @@ def refine_crossing(
             budget=budget, ratio_budget=ratio_budget, settings=local_settings)
 
 
-def run(settings: CharlieSimpleSettings) -> tuple[RMB, list[RMBConfig]]:
+def run_with_budget(settings: CharlieSimpleSettings) -> tuple[RMB, list[RMBConfig], Budget]:
     """
     Trace the fidelity = 0.5 line with a simple level/Charlie hybrid.
     """
@@ -595,6 +588,12 @@ def run(settings: CharlieSimpleSettings) -> tuple[RMB, list[RMBConfig]]:
         from sympleq.applications.randomized_benchmarking.experiments.plots import plot_crossing_results
         plot_crossing_results(data, settings, crossings, base_path=base_path)
 
+    return rmb, crossings, budget
+
+
+def run(settings: CharlieSimpleSettings) -> tuple[RMB, list[RMBConfig]]:
+    """Trace the fidelity = 0.5 line and return the run data and crossings."""
+    rmb, crossings, _ = run_with_budget(settings)
     return rmb, crossings
 
 

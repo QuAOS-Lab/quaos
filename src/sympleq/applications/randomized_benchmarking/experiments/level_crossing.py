@@ -65,9 +65,9 @@ class LevelCrossingSettings(CrossingSettings):
         side, which makes bracket checks unreliable; keep it above that.
     """
     ratio_step: float = 0.05
-    n_gates_resolution: float = 0.1
-    max_shots_per_config: int = 8
-    decision_confidence: float = 0.75
+    n_gates_resolution: float = 0.05
+    max_shots_per_config: int = 24
+    decision_confidence: float = 0.975
     save_path: str | Path | None = "level_crossing.json"
 
 
@@ -333,4 +333,4 @@ def run(settings: LevelCrossingSettings) -> tuple[RMB, list[RMBConfig]]:
 
 
 if __name__ == "__main__":
-    rmb, crossings = run(LevelCrossingSettings())
+    rmb, crossings = run(BaselineCrossingSettings())

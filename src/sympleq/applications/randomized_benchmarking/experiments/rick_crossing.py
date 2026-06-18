@@ -77,8 +77,8 @@ class RickCrossingSettings(CrossingSettings):
     optimization_steps: int = 10000
     inducing_size: int = 150
     acquisition_function: str = "GlobalSUR"
-    acquisition_restarts: int = 8
-    acquisition_samples: int = 30000
+    acquisition_restarts: int = 4
+    acquisition_samples: int = 6000
 
     # Stitched batch planning.
     batching: bool = True
