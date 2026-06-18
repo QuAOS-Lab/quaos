@@ -541,7 +541,8 @@ def merge_close_configs(data: RMBData, n_1qb_gates_bin: int = 10, n_2qb_gates_bi
 
 
 def plot_data(data: RMBData, axes=None, show: bool = True, skip_incomplete: bool = True,
-              level_line: list[RMBConfig] | None = None, log_x: bool = False) -> list:
+              level_line: list[RMBConfig] | None = None, log_x: bool = False,
+              n_1qb_gates_bin: int | None = 20, n_2qb_gates_bin: int | None = 10) -> list:
     """Scatter fidelity per ``n_qubits``: x = total gates, y = two-qudit ratio, color = fidelity.
 
     Parameters
@@ -565,6 +566,10 @@ def plot_data(data: RMBData, axes=None, show: bool = True, skip_incomplete: bool
     log_x : bool
         If ``True``, use a logarithmic gate-count axis. Useful when the
         data spans orders of magnitude in circuit size.
+    n_1qb_gates_bin, n_2qb_gates_bin : int | None
+        Gate-count bin sizes used to merge close configs before plotting
+        (see :func:`merge_close_configs`). Either being ``None`` skips the
+        merge and plots every measured config at full resolution.
 
     Returns
     -------
@@ -575,7 +580,9 @@ def plot_data(data: RMBData, axes=None, show: bool = True, skip_incomplete: bool
     from matplotlib import patheffects
     from matplotlib.colors import LinearSegmentedColormap
 
-    data = merge_close_configs(data, n_1qb_gates_bin=20, n_2qb_gates_bin=10)
+    if n_1qb_gates_bin is not None and n_2qb_gates_bin is not None:
+        data = merge_close_configs(data, n_1qb_gates_bin=n_1qb_gates_bin,
+                                   n_2qb_gates_bin=n_2qb_gates_bin)
     if skip_incomplete:
         data = {config: estimator for config, estimator in data.items()
                 if estimator.is_converged()}
@@ -671,6 +678,8 @@ def plot_level_line(
     axes=None,
     png_path: str | Path | None = None,
     show: bool = True,
+    n_1qb_gates_bin: int | None = 20,
+    n_2qb_gates_bin: int | None = 10,
 ) -> list:
     """
     Scatter the recorded data with the traced fidelity = 0.5 line on top.
@@ -694,11 +703,15 @@ def plot_level_line(
         Where to save the figure. ``None`` skips saving.
     show : bool
         If ``True``, call ``plt.show()`` at the end.
+    n_1qb_gates_bin, n_2qb_gates_bin : int | None
+        Scatter bin sizes forwarded to :func:`plot_data`; either ``None``
+        plots every measured config at full resolution.
     """
     import matplotlib.pyplot as plt
 
     axes = plot_data(data, axes=axes, show=False, skip_incomplete=False,
-                     level_line=crossings, log_x=True)
+                     level_line=crossings, log_x=True,
+                     n_1qb_gates_bin=n_1qb_gates_bin, n_2qb_gates_bin=n_2qb_gates_bin)
     if axes and contour is not None and len(contour) > 0:
         order = np.argsort(contour[:, 1])
         axes[0].plot(contour[order, 0], contour[order, 1], linestyle="-.",
@@ -1202,12 +1215,10 @@ def plot_crossing_results(
         png_path=sibling_path("_surface.png"), show=False, log_x=True)
     plot_monotone_level_set(data, settings, surface=surface, surfaces=surfaces,
                             png_path=sibling_path("_levelset.png"), show=False)
-    plot_uncertainty_diagnostics(
-        data, settings, png_path=sibling_path("_uncertainty.png"), show=False)
+    bins = settings.scatter_merge_bins or (None, None)
     plot_level_line(data, crossings,
                     contour=monotone_fit_contour(data, settings, surface=surface),
-                    surfaces=surfaces,
-                    settings=settings,
+                    n_1qb_gates_bin=bins[0], n_2qb_gates_bin=bins[1],
                     png_path=sibling_path(".png"), show=False)
     if show:
         plt.show()

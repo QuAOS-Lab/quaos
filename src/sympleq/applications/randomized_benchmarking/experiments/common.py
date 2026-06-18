@@ -89,6 +89,11 @@ class CrossingSettings:
         Show the data and the traced line at the end of the run.
     verbose : bool
         Print progress while running.
+    scatter_merge_bins : tuple[int, int] | None
+        ``(one-qubit, two-qubit)`` gate-count bin sizes used to coarsen the
+        scatter plots, merging the estimators of configs that fall in the same
+        bin. ``None`` plots every measured config at full resolution; use it
+        for densely-sampled runs whose points the default bins would collapse.
     """
     n_qubits: int = 5
     random_elimination: float = 0.1
@@ -97,14 +102,15 @@ class CrossingSettings:
     hqc_budget: float = 500.0
     max_cost_per_run: float = 45.0
     monotone_l2: float = 1e-3
-    min_fit_points: int = 8
-    candidate_grid_size: tuple[int, int] = (80, 80)
+    min_fit_points: int = 16
+    candidate_grid_size: tuple[int, int] = (50, 50)
     rng_seed: int | None = 1234
     backend_factory: Callable[[CrossingSettings, RNGGenerator], RMBBackend] = \
         default_backend_factory
     save_path: str | Path | None = None
     plot: bool = True
     verbose: bool = True
+    scatter_merge_bins: tuple[int, int] | None = (20, 10)
 
     def make_config(self, n_gates: float, ratio: float) -> RMBConfig:
         """
@@ -467,6 +473,211 @@ def fit_monotone_surface_from_values(
         settings=settings,
         n_points=len(configs),
     )
+
+
+@dataclass
+class PhysicalDecaySurface:
+    """
+    Fitted randomized-benchmarking decay E[fidelity | one-qubit, two-qubit gates].
+
+    Errors of each gate type compound multiplicatively, so the expected
+    fidelity decays exponentially in the one- and two-qubit gate counts,
+
+        p(N1, N2) = B + A * exp(-(gamma_1 * N1 + gamma_2 * N2)),
+
+    between an amplitude ``A`` and a depolarized floor ``B``, with non-negative
+    per-gate decay rates ``gamma_1``, ``gamma_2``. The fidelity = level contour
+    is closed form, ``gamma_1 * N1 + gamma_2 * N2 = ln(A / (level - B))``, so in
+    (total gates, ratio) coordinates the inverse crossing size is linear in the
+    ratio.
+    """
+    gamma_1: float
+    gamma_2: float
+    amplitude: float
+    floor: float
+    n_gates_bounds: tuple[int, int]
+    ratio_bounds: tuple[float, float]
+    n_points: int
+
+    def probability(self, points: np.ndarray) -> np.ndarray:
+        """Expected fidelity at (total gates, two-qubit ratio) points."""
+        points = np.asarray(points, dtype=float)
+        n_gates = points[:, 0]
+        ratio = points[:, 1]
+        n_2 = ratio * n_gates
+        n_1 = (1.0 - ratio) * n_gates
+        return self.floor + self.amplitude * np.exp(
+            -(self.gamma_1 * n_1 + self.gamma_2 * n_2))
+
+    def crossing_n_gates(self, ratio: float, level: float = 0.5) -> float | None:
+        """
+        Total gate count where the fidelity crosses ``level`` at ``ratio``.
+
+        Returns ``None`` when the level lies outside the surface's range or the
+        decay rate at this ratio is non-positive, so the contour does not exist.
+        """
+        if not self.floor < level < self.floor + self.amplitude:
+            return None
+        denominator = self.gamma_1 + (self.gamma_2 - self.gamma_1) * ratio
+        if denominator <= 0.0:
+            return None
+        return float(np.log(self.amplitude / (level - self.floor)) / denominator)
+
+    def probability_grid(
+        self,
+        grid_size: tuple[int, int],
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        n_gates_axis, n_ratios = grid_size
+        gates = np.linspace(self.n_gates_bounds[0], self.n_gates_bounds[1], n_gates_axis)
+        ratios = np.linspace(self.ratio_bounds[0], self.ratio_bounds[1], n_ratios)
+        gates_grid, ratio_grid = np.meshgrid(gates, ratios)
+        points = np.column_stack([gates_grid.ravel(), ratio_grid.ravel()])
+        probabilities = self.probability(points).reshape(gates_grid.shape)
+        return gates_grid, ratio_grid, probabilities
+
+    def params(self) -> np.ndarray:
+        """``(gamma_1, gamma_2, amplitude, floor)`` as a float array."""
+        return np.array([self.gamma_1, self.gamma_2, self.amplitude, self.floor],
+                        dtype=float)
+
+    def crossing_line(self, level: float = 0.5) -> tuple[float, float, float] | None:
+        """
+        Coefficients of the closed-form fidelity = ``level`` line.
+
+        The contour is ``gamma_1 N1 + gamma_2 N2 = K`` with
+        ``K = ln(A / (level - B))``, so in (total gates, ratio) coordinates the
+        inverse crossing size is linear in the ratio,
+        ``1 / n_gates(ratio) = a + b * ratio``.
+
+        Returns
+        -------
+        tuple[float, float, float] | None
+            ``(a, b, K)``, or ``None`` when ``level`` lies outside the
+            surface's range so the line does not exist.
+        """
+        if not self.floor < level < self.floor + self.amplitude:
+            return None
+        constant = float(np.log(self.amplitude / (level - self.floor)))
+        if constant <= 0.0:
+            return None
+        return self.gamma_1 / constant, (self.gamma_2 - self.gamma_1) / constant, constant
+
+    def report(self) -> str:
+        lines = [
+            "Fitted physical decay surface:",
+            f"  fit points: {self.n_points}",
+            f"  fidelity(N1, N2) = {self.floor:.4f} + {self.amplitude:.4f} * "
+            f"exp(-({self.gamma_1:.3e} * N1 + {self.gamma_2:.3e} * N2))",
+            f"  fidelity(n_gates, ratio) = {self.floor:.4f} + {self.amplitude:.4f} * "
+            f"exp(-n_gates * ({self.gamma_1:.3e} + {self.gamma_2 - self.gamma_1:.3e} * ratio))",
+            f"  gamma_1 (one-qubit): {self.gamma_1:.3e}",
+            f"  gamma_2 (two-qubit): {self.gamma_2:.3e}",
+            f"  amplitude A: {self.amplitude:.4f}  floor B: {self.floor:.4f}",
+        ]
+        line = self.crossing_line()
+        if line is not None:
+            a, b, constant = line
+            lines.append(
+                f"  fidelity=0.5 line: n_gates(ratio) = 1 / "
+                f"({self.gamma_1 / constant:.3e} + {(self.gamma_2 - self.gamma_1) / constant:.3e} * ratio)")
+            lines.append(
+                f"                     1/n_gates(ratio) = {a:.4e} + {b:.4e} * ratio")
+        return "\n".join(lines)
+
+
+def fit_physical_decay_from_counts(
+    n_1_gates: np.ndarray,
+    n_2_gates: np.ndarray,
+    successes: np.ndarray,
+    failures: np.ndarray,
+    settings: CrossingSettings,
+    n_points: int,
+    *,
+    n_restarts: int = 6,
+) -> PhysicalDecaySurface:
+    """
+    Fit ``B + A exp(-(g1 N1 + g2 N2))`` by binomial maximum likelihood.
+
+    The amplitude is reparametrized ``A = (1 - B) * c`` with ``c, B`` in
+    ``[0, 1]`` so the predicted fidelity stays in ``[0, 1]`` under plain box
+    constraints. Several gamma-scale restarts guard against local minima.
+    """
+    n_1 = np.asarray(n_1_gates, dtype=float)
+    n_2 = np.asarray(n_2_gates, dtype=float)
+    successes = np.asarray(successes, dtype=float)
+    failures = np.asarray(failures, dtype=float)
+    totals = successes + failures
+
+    def loss_and_grad(theta: np.ndarray) -> tuple[float, np.ndarray]:
+        gamma_1, gamma_2, c, floor = theta
+        amplitude = (1.0 - floor) * c
+        decay = np.exp(-(gamma_1 * n_1 + gamma_2 * n_2))
+        eps = 1e-12
+        p = np.clip(floor + amplitude * decay, eps, 1.0 - eps)
+        loss = -np.sum(successes * np.log(p) + failures * np.log(1.0 - p))
+        residual = (successes - totals * p) / (p * (1.0 - p))
+        amplitude_decay = amplitude * decay
+        grad_gamma_1 = float(np.sum(residual * amplitude_decay * n_1))
+        grad_gamma_2 = float(np.sum(residual * amplitude_decay * n_2))
+        grad_c = -float(np.sum(residual * (1.0 - floor) * decay))
+        grad_floor = -float(np.sum(residual * (1.0 - c * decay)))
+        return loss, np.array([grad_gamma_1, grad_gamma_2, grad_c, grad_floor])
+
+    bounds = [(0.0, None), (0.0, None), (0.0, 1.0), (0.0, 1.0)]
+    floor_guess = 1.0 / (2.0 ** settings.n_qubits)
+    best = None
+    for restart in range(max(1, n_restarts)):
+        gamma_guess = 10.0 ** (-4.0 + restart)
+        x0 = np.array([gamma_guess, gamma_guess, 0.9, floor_guess])
+        result = minimize(fun=loss_and_grad, jac=True, x0=x0, bounds=bounds,
+                          method="L-BFGS-B")
+        if result.success and (best is None or result.fun < best.fun):
+            best = result
+    if best is None:
+        raise RuntimeError("physical decay fit did not converge")
+
+    gamma_1, gamma_2, c, floor = best.x
+    return PhysicalDecaySurface(
+        gamma_1=float(gamma_1),
+        gamma_2=float(gamma_2),
+        amplitude=float((1.0 - floor) * c),
+        floor=float(floor),
+        n_gates_bounds=settings.n_gates_bounds,
+        ratio_bounds=settings.ratio_bounds,
+        n_points=n_points,
+    )
+
+
+def fit_physical_decay(data: RMBData, settings: CrossingSettings) -> PhysicalDecaySurface:
+    """Fit the physical decay surface to the recorded Boolean outcomes in ``data``."""
+    measured = measured_items(data)
+    if len(measured) < settings.min_fit_points:
+        raise ValueError(
+            f"Need at least {settings.min_fit_points} data points to fit a surface, "
+            f"got {len(measured)}."
+        )
+    n_1_gates = [float(config.n_1qb_gates) for config, _ in measured]
+    n_2_gates = [float(config.n_2qb_gates) for config, _ in measured]
+    successes = []
+    failures = []
+    for _, estimator in measured:
+        counts = estimator.counts()
+        successes.append(float(counts.get(True, 0)))
+        failures.append(float(counts.get(False, 0)))
+    return fit_physical_decay_from_counts(
+        np.asarray(n_1_gates), np.asarray(n_2_gates),
+        np.asarray(successes), np.asarray(failures),
+        settings, len(measured),
+    )
+
+
+def try_fit_physical_decay(data: RMBData,
+                           settings: CrossingSettings) -> PhysicalDecaySurface | None:
+    """Fit the physical decay surface, or ``None`` when the data cannot support a fit."""
+    try:
+        return fit_physical_decay(data, settings)
+    except (RuntimeError, ValueError):
+        return None
 
 
 def super_level_fraction(surface: MonotoneFidelitySurface,

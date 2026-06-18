@@ -17,9 +17,13 @@ from pathlib import Path
 
 from sympleq.applications.randomized_benchmarking.RMB import RMB, resolve_data_path
 from sympleq.applications.randomized_benchmarking.experiments import (
+    baseline_crossing,
     charlie_crossing,
     level_crossing,
     rick_crossing,
+)
+from sympleq.applications.randomized_benchmarking.experiments.baseline_crossing import (
+    BaselineCrossingSettings,
 )
 from sympleq.applications.randomized_benchmarking.experiments.charlie_crossing import (
     CharlieCrossingSettings,
@@ -49,11 +53,13 @@ COLUMN_TITLES = (
 )
 
 # (result key, row label, experiment module, settings class) of every
-# compared method; both entry points below iterate this table.
+# compared method; both entry points below iterate this table. The baseline
+# leads as the high-confidence reference the other methods are read against.
 METHODS = (
-    ("level", "Vanilla level crossing", level_crossing, LevelCrossingSettings),
-    ("charlie", "Charlie contour trace", charlie_crossing, CharlieCrossingSettings),
-    ("rick", "Rick GP level set", rick_crossing, RickCrossingSettings),
+    ("baseline", "Baseline (iterative decay fit)", baseline_crossing, BaselineCrossingSettings),
+    # ("level", "Vanilla level crossing", level_crossing, LevelCrossingSettings),
+    # ("charlie", "Charlie contour trace", charlie_crossing, CharlieCrossingSettings),
+    # ("rick", "Rick GP level set", rick_crossing, RickCrossingSettings),
 )
 
 
@@ -84,10 +90,11 @@ def comparison_figure(rows, *, png_path: str | Path | None = None, show: bool = 
         plot_monotone_level_set(
             data, settings, surface=surface, surfaces=surfaces,
             ax=axes[row][1], show=False)
+        bins = settings.scatter_merge_bins or (None, None)
         plot_level_line(data, crossings,
                         contour=monotone_fit_contour(data, settings, surface=surface),
-                        settings=settings,
-                        axes=[axes[row][2]], show=False)
+                        axes=[axes[row][2]], show=False,
+                        n_1qb_gates_bin=bins[0], n_2qb_gates_bin=bins[1])
 
         axes[row][0].annotate(
             name, xy=(0, 0.5), xycoords="axes fraction", xytext=(-0.42, 0.5),
@@ -106,25 +113,27 @@ def run_and_compare(
     level_settings: LevelCrossingSettings | None = None,
     charlie_settings: CharlieCrossingSettings | None = None,
     rick_settings: RickCrossingSettings | None = None,
+    baseline_settings: BaselineCrossingSettings | None = None,
     *,
     png_path: str | Path | None = "crossing_comparison.png",
     show: bool = True,
 ) -> dict:
     """
-    Run the three crossing experiments and draw the comparison figure.
+    Run every crossing experiment and draw the comparison figure.
 
     Each experiment runs with its individual plotting disabled; everything
     else (verbose output, data saving) follows its settings. Bare ``png_path``
-    file names are resolved inside the package's ``rmb_data`` directory.
+    file names are resolved inside the package's ``rmb_data`` directory. The
+    baseline ignores the HQC budget, so it is the slowest row to run.
 
     Returns
     -------
     dict
-        ``{"level": (rmb, crossings), "charlie": (rmb, crossings),
-        "rick": (rmb, crossings)}``.
+        ``{"baseline": (rmb, crossings), "level": (rmb, crossings),
+        "charlie": (rmb, crossings), "rick": (rmb, crossings)}``.
     """
     overrides = {"level": level_settings, "charlie": charlie_settings,
-                 "rick": rick_settings}
+                 "rick": rick_settings, "baseline": baseline_settings}
 
     results = {}
     rows = []
@@ -142,10 +151,12 @@ def replot_from_data(
     level_path: str | Path | None = None,
     charlie_path: str | Path | None = None,
     rick_path: str | Path | None = None,
+    baseline_path: str | Path | None = None,
     *,
     level_settings: LevelCrossingSettings | None = None,
     charlie_settings: CharlieCrossingSettings | None = None,
     rick_settings: RickCrossingSettings | None = None,
+    baseline_settings: BaselineCrossingSettings | None = None,
     png_path: str | Path | None = "crossing_comparison.png",
     show: bool = True,
 ):
@@ -165,7 +176,8 @@ def replot_from_data(
     """
     overrides = {"level": (level_path, level_settings),
                  "charlie": (charlie_path, charlie_settings),
-                 "rick": (rick_path, rick_settings)}
+                 "rick": (rick_path, rick_settings),
+                 "baseline": (baseline_path, baseline_settings)}
 
     rows = []
     for key, name, _, settings_class in METHODS:
@@ -177,4 +189,4 @@ def replot_from_data(
 
 
 if __name__ == "__main__":
-    run_and_compare()
+    replot_from_data()
