@@ -15,8 +15,15 @@ from __future__ import annotations
 
 import csv
 import json
+import os
+import sys
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from statistics import mean
+
+_SRC_ROOT = Path(__file__).resolve().parents[4]
+sys.path = [path for path in sys.path if path != str(_SRC_ROOT)]
+sys.path.insert(0, str(_SRC_ROOT))
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -27,11 +34,19 @@ from sympleq.applications.randomized_benchmarking.backends.sympleq import Symple
 from sympleq.applications.randomized_benchmarking.experiments.common import (
     CrossingSettings,
 )
+from sympleq.applications.randomized_benchmarking.experiments.charlie_simple import (
+    CharlieSimpleSettings,
+    run_with_budget as run_charlie_simple_with_budget,
+)
+from sympleq.applications.randomized_benchmarking.experiments.level_crossing import (
+    LevelCrossingSettings,
+    run_with_budget as run_level_crossing_with_budget,
+)
 from sympleq.applications.randomized_benchmarking.experiments.monotone_tracing import (
     BASE_1Q_PAULI_ERROR,
     BASE_2Q_PAULI_ERROR,
     MonotoneTracingSettings,
-    run_with_budget,
+    run_with_budget as run_monotone_tracing_with_budget,
 )
 from sympleq.applications.randomized_benchmarking.experiments.plots import (
     analytic_gate_counts,
@@ -50,6 +65,8 @@ N_BOOTSTRAP = 100
 FIG_DIR = Path(__file__).resolve().parent / "figs" / "monotone_tracing"
 RESULTS_JSON = FIG_DIR / "results.json"
 RUNS_CSV = FIG_DIR / "runs.csv"
+MAX_WORKERS = int(os.environ.get("BENCHMARKBENCHMARK_WORKERS", "22")) or None
+APPROACHES = ["monotone_tracing"]  # , "charlie_simple", "level_crossing"
 
 
 def scaled_noise_backend_factory(
@@ -101,7 +118,7 @@ def fitted_gate_counts(data, ratios: np.ndarray) -> np.ndarray | None:
 
 def fit_score(
     data,
-    settings: MonotoneTracingSettings,
+    settings: CrossingSettings,
     *,
     one_q_noise_scale: float,
     two_q_noise_scale: float,
@@ -136,7 +153,7 @@ def fit_score(
 
 def bootstrap_coverage(
     data,
-    settings: MonotoneTracingSettings,
+    settings: CrossingSettings,
     *,
     one_q_noise_scale: float,
     two_q_noise_scale: float,
@@ -210,8 +227,63 @@ def summarize(values: list[float]) -> dict[str, float]:
     }
 
 
+def print_row(row: dict) -> None:
+    print(
+        f"approach={row['approach']} "
+        f"noise={row['noise_index']:02d} realisation={row['realisation']:02d}: "
+        f"score={row['score']:.3f}, "
+        f"coverage50={100.0 * row['bootstrap_50_coverage']:.1f}%, "
+        f"coverage90={100.0 * row['bootstrap_90_coverage']:.1f}%, "
+        f"spent={row['spent_hqc']:.1f} HQC, "
+        f"crossings={row['n_crossings']}"
+    )
+
+
+def run_approach(approach: str, settings: CrossingSettings):
+    if approach == "monotone_tracing":
+        return run_monotone_tracing_with_budget(settings)
+    if approach == "charlie_simple":
+        return run_charlie_simple_with_budget(settings)
+    if approach == "level_crossing":
+        return run_level_crossing_with_budget(settings)
+    raise ValueError(f"Unknown benchmark approach {approach!r}.")
+
+
+def approach_settings(
+    approach: str,
+    *,
+    seed: int,
+    one_q_noise_scale: float,
+    two_q_noise_scale: float,
+) -> CrossingSettings:
+    kwargs = {
+        "rng_seed": seed,
+        "plot": False,
+        "verbose": False,
+        "save_path": None,
+        "backend_factory": scaled_noise_backend_factory(
+            one_q_noise_scale,
+            two_q_noise_scale,
+        ),
+    }
+    if approach == "monotone_tracing":
+        settings = MonotoneTracingSettings(**kwargs)
+    elif approach == "charlie_simple":
+        settings = CharlieSimpleSettings(**kwargs)
+    elif approach == "level_crossing":
+        settings = LevelCrossingSettings(**kwargs)
+    else:
+        raise ValueError(f"Unknown benchmark approach {approach!r}.")
+
+    # Plot helpers read these optional attributes when drawing analytic lines.
+    object.__setattr__(settings, "one_q_noise_scale", one_q_noise_scale)
+    object.__setattr__(settings, "two_q_noise_scale", two_q_noise_scale)
+    return settings
+
+
 def run_one(
     *,
+    approach: str,
     noise_index: int,
     realisation: int,
     one_q_noise_scale: float,
@@ -219,21 +291,14 @@ def run_one(
 ) -> dict:
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     seed = 10_000 * noise_index + realisation
-    settings = MonotoneTracingSettings(
-        rng_seed=seed,
-        plot=False,
-        verbose=False,
-        save_path=None,
-        backend_factory=scaled_noise_backend_factory(
-            one_q_noise_scale,
-            two_q_noise_scale,
-        ),
+    settings = approach_settings(
+        approach,
+        seed=seed,
+        one_q_noise_scale=one_q_noise_scale,
+        two_q_noise_scale=two_q_noise_scale,
     )
-    # Plot helpers read these optional attributes when drawing analytic lines.
-    object.__setattr__(settings, "one_q_noise_scale", one_q_noise_scale)
-    object.__setattr__(settings, "two_q_noise_scale", two_q_noise_scale)
 
-    rmb, crossings, budget = run_with_budget(settings)
+    rmb, crossings, budget = run_approach(approach, settings)
     score = fit_score(
         rmb._data,
         settings,
@@ -248,7 +313,10 @@ def run_one(
         seed=seed + 500_000,
     )
 
-    out_path = FIG_DIR / f"noise_{noise_index:02d}_realisation_{realisation:02d}.png"
+    out_path = (
+        FIG_DIR
+        / f"{approach}_noise_{noise_index:02d}_realisation_{realisation:02d}.png"
+    )
     plot_uncertainty_diagnostics(
         rmb._data,
         settings,
@@ -258,6 +326,7 @@ def run_one(
     plt.close("all")
 
     return {
+        "approach": approach,
         "noise_index": noise_index,
         "realisation": realisation,
         "seed": seed,
@@ -272,41 +341,66 @@ def run_one(
     }
 
 
+def benchmark_tasks() -> list[dict]:
+    tasks = []
+    for noise_index, (one_q_scale, two_q_scale) in enumerate(noise_values()):
+        for approach in APPROACHES:
+            for realisation in range(N_REALISATIONS):
+                tasks.append({
+                    "approach": approach,
+                    "noise_index": noise_index,
+                    "realisation": realisation,
+                    "one_q_noise_scale": one_q_scale,
+                    "two_q_noise_scale": two_q_scale,
+                })
+    return tasks
+
+
 def main() -> None:
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     rows = []
-    for noise_index, (one_q_scale, two_q_scale) in enumerate(noise_values()):
-        for realisation in range(N_REALISATIONS):
-            row = run_one(
-                noise_index=noise_index,
-                realisation=realisation,
-                one_q_noise_scale=one_q_scale,
-                two_q_noise_scale=two_q_scale,
-            )
-            rows.append(row)
-            print(
-                f"noise={noise_index:02d} realisation={realisation:02d}: "
-                f"score={row['score']:.3f}, "
-                f"coverage50={100.0 * row['bootstrap_50_coverage']:.1f}%, "
-                f"coverage90={100.0 * row['bootstrap_90_coverage']:.1f}%, "
-                f"spent={row['spent_hqc']:.1f} HQC, "
-                f"crossings={row['n_crossings']}"
-            )
+    tasks = benchmark_tasks()
+    max_workers = (
+        min(os.process_cpu_count() or 1, max(1, len(tasks)))
+        if MAX_WORKERS is None
+        else min(MAX_WORKERS, max(1, len(tasks)))
+    )
+    print(
+        f"Running {len(APPROACHES)} approaches, {N_NOISE_VALUES} noise values, "
+        f"{N_REALISATIONS} realisations per noise value with {max_workers} workers"
+    )
 
-    scores = [row["score"] for row in rows]
-    coverage50 = [row["bootstrap_50_coverage"] for row in rows]
-    coverage90 = [row["bootstrap_90_coverage"] for row in rows]
-    spent = [row["spent_hqc"] for row in rows]
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(run_one, **task) for task in tasks]
+        for future in as_completed(futures):
+            row = future.result()
+            rows.append(row)
+            print_row(row)
+
+    rows.sort(key=lambda row: (row["approach"], row["noise_index"], row["realisation"]))
+
+    by_approach = {}
+    for approach in APPROACHES:
+        approach_rows = [row for row in rows if row["approach"] == approach]
+        scores = [row["score"] for row in approach_rows]
+        coverage50 = [row["bootstrap_50_coverage"] for row in approach_rows]
+        coverage90 = [row["bootstrap_90_coverage"] for row in approach_rows]
+        spent = [row["spent_hqc"] for row in approach_rows]
+        by_approach[approach] = {
+            "n_runs": len(approach_rows),
+            "score": summarize(scores),
+            "bootstrap_50_coverage_percent": 100.0 * mean(coverage50),
+            "bootstrap_90_coverage_percent": 100.0 * mean(coverage90),
+            "average_spent_hqc": mean(spent),
+        }
     summary = {
         "n_noise_values": N_NOISE_VALUES,
         "n_realisations": N_REALISATIONS,
+        "approaches": list(APPROACHES),
         "n_runs": len(rows),
         "noise_spread": NOISE_SPREAD,
         "n_bootstrap": N_BOOTSTRAP,
-        "score": summarize(scores),
-        "bootstrap_50_coverage_percent": 100.0 * mean(coverage50),
-        "bootstrap_90_coverage_percent": 100.0 * mean(coverage90),
-        "average_spent_hqc": mean(spent),
+        "by_approach": by_approach,
     }
     RESULTS_JSON.write_text(
         json.dumps({"summary": summary, "runs": rows}, indent=2),
@@ -316,6 +410,7 @@ def main() -> None:
         RUNS_CSV,
         rows,
         [
+            "approach",
             "noise_index",
             "realisation",
             "seed",
@@ -331,18 +426,20 @@ def main() -> None:
     )
 
     print("\nSummary")
-    print(f"  average score: {summary['score']['average']:.3f}")
-    print(f"  score variance: {summary['score']['variance']:.5f}")
-    print(f"  lowest score: {summary['score']['lowest']:.3f}")
-    print(
-        "  analytic line inside bootstrap 50% band: "
-        f"{summary['bootstrap_50_coverage_percent']:.1f}%"
-    )
-    print(
-        "  analytic line inside bootstrap 90% band: "
-        f"{summary['bootstrap_90_coverage_percent']:.1f}%"
-    )
-    print(f"  average spent: {summary['average_spent_hqc']:.1f} HQC")
+    for approach, approach_summary in summary["by_approach"].items():
+        print(f"  {approach}")
+        print(f"    average score: {approach_summary['score']['average']:.3f}")
+        print(f"    score variance: {approach_summary['score']['variance']:.5f}")
+        print(f"    lowest score: {approach_summary['score']['lowest']:.3f}")
+        print(
+            "    analytic line inside bootstrap 50% band: "
+            f"{approach_summary['bootstrap_50_coverage_percent']:.1f}%"
+        )
+        print(
+            "    analytic line inside bootstrap 90% band: "
+            f"{approach_summary['bootstrap_90_coverage_percent']:.1f}%"
+        )
+        print(f"    average spent: {approach_summary['average_spent_hqc']:.1f} HQC")
     print(f"  wrote figures and results to {FIG_DIR}")
 
 

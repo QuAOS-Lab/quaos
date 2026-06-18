@@ -99,7 +99,7 @@ class CrossingSettings:
     random_elimination: float = 0.1
     n_gates_bounds: tuple[int, int] = (100, 15000)
     ratio_bounds: tuple[float, float] = (0.05, 1.)
-    hqc_budget: float = 500.0
+    hqc_budget: float = 250.0
     max_cost_per_run: float = 45.0
     monotone_l2: float = 1e-3
     min_fit_points: int = 16
