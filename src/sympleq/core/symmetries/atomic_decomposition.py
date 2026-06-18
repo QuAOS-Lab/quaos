@@ -124,10 +124,11 @@ def _attach_cost_certificate(info: Dict[str, Any], blocks: List[AtomicBlock], in
     info["qudit_cost"] = int(cert["qudit_cost"])
     info["certified_lower_bound"] = cert["lower_bound"]
     info["certified_minimal"] = bool(cert["certified_minimal"])
+    info["cost_certificate"] = cert
+    # Deprecated aliases of the two canonical fields above (``certified_minimal``
+    # and ``qudit_cost``); retained as shims for older notebooks/callers.
     info["certified_minimal_qudit_cost"] = bool(cert["certified_minimal"])
     info["minimal_cost_certified"] = bool(cert["certified_minimal"])
-    info["cost_certificate"] = cert
-    # Backwards-compatible alias used by older notebooks.
     info["Q_opt"] = int(cert["qudit_cost"])
 
 
@@ -299,7 +300,7 @@ def _require_primaries(ctx: SectorContext) -> Dict[Tuple[int, ...], Dict[str, An
     return primaries
 
 
-def _build_sector(
+def _build_sector_raw(
     F: np.ndarray,
     p: int,
     ctx: SectorContext,
@@ -383,6 +384,55 @@ def _build_sector(
         poly_key=ctx.poly_key,
         allow_fallback=False,
     )
+    return blocks, inv
+
+
+def _inject_invariant_lower_bound(
+    inv: AtomicInvariant, ctx: SectorContext, blocks: List[AtomicBlock]
+) -> None:
+    """
+    Phase 2: overwrite the sector cost certificate's ``lower_bound`` with the
+    invariant-derived value computed in the prepass (``ctx.meta``), replacing the
+    old circular ``lower_bound = attained``.  ``attained`` becomes the verified
+    constructed sector cost; ``certified_minimal_sector`` records whether the two
+    agree.  Done in this single dispatch wrapper so all four builders are covered.
+    """
+    if not isinstance(getattr(inv, "data", None), dict):
+        return
+    meta = ctx.meta or {}
+    lb = meta.get("cost_lower_bound")
+    bound_complete = bool(meta.get("cost_lower_bound_complete", False))
+    sector_cost = max((int(b.half_dim) for b in blocks), default=0)
+    status_ok = (inv.data.get("status", "OK") == "OK")
+
+    cc = dict(inv.data.get("cost_certificate") or {})
+    cc["sector_cost"] = int(sector_cost)
+    cc["attained"] = True  # a decomposition was constructed; cost is sector_cost
+    cc["lower_bound"] = None if lb is None else int(lb)
+    cc["complete"] = bool(bound_complete and lb is not None and status_ok)
+    cc["certified"] = cc["complete"]
+    cc["certified_minimal_sector"] = bool(lb is not None and sector_cost == int(lb))
+    cc["lengths_present"] = list(meta.get("lengths_present", []))
+    note = cc.get("note") or ""
+    cc["note"] = (note + " | " if note else "") + "lower_bound from invariants (Phase 2)"
+    inv.data["cost_certificate"] = cc
+
+
+def _build_sector(
+    F: np.ndarray,
+    p: int,
+    ctx: SectorContext,
+    *,
+    certified: bool,
+) -> Tuple[List[AtomicBlock], AtomicInvariant]:
+    """Dispatch to the sector builders, then attach the invariant-derived
+    (search-independent) cost lower bound to the returned certificate."""
+    blocks, inv = _build_sector_raw(F, p, ctx, certified=certified)
+    try:
+        _inject_invariant_lower_bound(inv, ctx, blocks)
+    except Exception:
+        # Bound injection must never break extraction; leave the builder's cert.
+        pass
     return blocks, inv
 
 

@@ -244,7 +244,9 @@ def verify_cost_certificate(
     return {
         "qudit_cost": int(qudit_cost),
         "lower_bound": None if global_lower_bound is None else int(global_lower_bound),
-        "attained": True,
+        # The attained cost is the verified max_i k_i over constructed blocks
+        # (= qudit_cost), no longer hardcoded True.
+        "attained": int(qudit_cost),
         "complete": bool(all_complete),
         "certified_minimal": bool(certified_minimal),
         "completed_global_basis": bool(completed),

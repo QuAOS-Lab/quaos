@@ -647,85 +647,81 @@ def atomic_blocks_in_unipotent_self_sector_p2(
         return True
 
     def try_invariant_candidates(A_top: np.ndarray, L: int) -> bool:
-        Btop = _top_pairing_matrix(A_top, Omega, N, int(L))
+        """
+        Type-by-invariant extraction (Phase 3 / sec. 4.9, Step 3).
 
-        # Only alternating top pairings have a quotient-level radical for the
-        # bilinear Gram-Schmidt helper.  V_beta(2k) one-line tops can have
-        # a nonzero diagonal in Btop; in that case the whole point is to try
-        # the top line as an anisotropic single-chain candidate below, not to
-        # reject the length before extraction starts.
-        rad_list: List[np.ndarray] = []
-        if Btop.shape[0] > 0 and np.all(np.diag(Btop) % 2 == 0):
-            try:
-                _e_list, _f_list, rad_list = _p2_hyperbolic_pairs_from_alternating_form(Btop, p=2)
-            except RuntimeError:
-                rad_list = []
+        Dispatch is *mandatory* on the top form b_L:
+          * even L, b_L non-alternating (diag != 0): extract V-blocks only, by
+            orthonormalising the top form (Prop. 4.7, the three-line replacement
+            in ``_anisotropic_orthogonal_line_candidates``) and lifting each
+            anisotropic line via Cor. 4.12(a).  There is NO fall-through to
+            W-pairs: a W here would have half-dimension L instead of L/2 and is
+            therefore cost-pessimal.
+          * even L with b_L alternating, or odd L: extract W-pairs only, via
+            symplectic Gram-Schmidt on the alternating form
+            (``_p2_hyperbolic_pairs_from_alternating_form``), lifting each
+            hyperbolic top pair via Cor. 4.12(b).
 
-        # V_beta(2k): a single cyclic even-length block may appear as an
-        # anisotropic one-dimensional top line, so it is NOT always in the
-        # radical of b_L.  Try all quotient-top lines deterministically,
-        # preferring q=1 witnesses, and let direct cyclic-module
-        # nondegeneracy/invariance checks decide acceptance.
-        if int(L) % 2 == 0:
-            # For non-alternating symmetric top forms, first diagonalize the
-            # anisotropic part.  This prevents the greedy extractor from
-            # prematurely grouping diagonalizable V_beta(2k) lines into W pairs.
-            preferred = _anisotropic_orthogonal_line_candidates(Btop)
-            coeffs_all = _top_coeff_candidates(A_top.shape[1], exhaustive_limit=10)
+        Acceptance carries the one-scalar Cor. 4.12 certificate (b_L(v,v)=1 for a
+        V-line; b_L(v,w)=1 with the top Gram nonsingular for a W-pair); the direct
+        nondegeneracy/invariance test in accept_block is retained as a defensive
+        runtime assertion.  The exhaustive coefficient sweeps remain only in the
+        best-effort path.
+        """
+        L = int(L)
+        Btop = _top_pairing_matrix(A_top, Omega, N, L)
+        invL = _p2_length_form_invariants(A_top, Omega, N, L)
 
-            seen_coeffs: set[Tuple[int, ...]] = set()
-            coeffs: List[np.ndarray] = []
-            for c0 in preferred + coeffs_all:
-                cc = mod_p(np.asarray(c0, dtype=np.int64).reshape(-1), 2)
-                keyc = tuple(int(x) for x in cc)
-                if keyc not in seen_coeffs:
-                    seen_coeffs.add(keyc)
-                    coeffs.append(cc)
-
-            def _top_norm(c: np.ndarray) -> int:
-                return _scalar_mod2(c.reshape(1, -1) @ Btop @ c.reshape(-1, 1))
-
-            coeffs = sorted(
-                coeffs,
-                # Prefer anisotropic top lines for V_beta extraction; q-value is
-                # only a secondary Chapter-5 label and may vanish for all lines.
-                key=lambda c: (1 - _top_norm(c), 1 - _q_value_from_coeff(c, A_top, Omega, N, int(L)), tuple(int(x) for x in c)),
+        # Prop. 4.3 (runtime assertion): on a nondegenerate sector the top form is
+        # nondegenerate, i.e. rad b_L = 0.  A nonzero radical means an invariant
+        # was computed wrong; surface it rather than extracting a wrong block.
+        if int(invL["rad_dim"]) != 0:
+            raise ExtractionObstruction(
+                f"p=2 unipotent: top form b_L has nonzero radical at L={L} "
+                f"(rad_dim={invL['rad_dim']}); Prop. 4.3 violated."
             )
-            for c in coeffs:
+
+        b_alt = bool(invL["B_alt_ok"])
+
+        def _bv(c1: np.ndarray, c2: np.ndarray) -> int:
+            return _scalar_mod2(c1.reshape(1, -1) @ Btop @ c2.reshape(-1, 1))
+
+        if L % 2 == 0 and not b_alt:
+            # --- V-type: non-alternating symmetric top form -> single chains ---
+            for c in _anisotropic_orthogonal_line_candidates(Btop):
+                c = mod_p(np.asarray(c, dtype=np.int64).reshape(-1), 2)
+                if _bv(c, c) != 1:            # Cor. 4.12(a): require b_L(v,v) = 1
+                    continue
                 v_top = mod_p(A_top @ c.reshape(-1, 1), p)
                 try:
-                    Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)
+                    Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, L, p)
                 except RuntimeError:
                     continue
                 Cv = independent_columns(Cv, p)
-                if accept_block(Cv, v_top, int(L), "V"):
+                if accept_block(Cv, v_top, L, "V"):
                     return True
+            # A non-alternating top form always has an orthonormal basis
+            # (Prop. 4.7(B)); if none lifted, that is an obstruction to surface,
+            # never a licence to fall back to a cost-pessimal W-pair.
+            return False
 
-            # Keep radical-adapted candidates as a redundant fallback for large
-            # top spaces where exhaustive coefficient enumeration is capped.
-            for c in _radical_candidates_adapted_to_q(rad_list, A_top, Omega, N, int(L)):
-                v_top = mod_p(A_top @ c.reshape(-1, 1), p)
-                try:
-                    Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)
-                except RuntimeError:
-                    continue
-                Cv = independent_columns(Cv, p)
-                if accept_block(Cv, v_top, int(L), "V"):
-                    return True
-
-        # W(k): choose dual/hyperbolic top vectors at quotient level.  We try
-        # the canonical Gram-Schmidt pairs first and, for small quotient
-        # dimensions, all coefficient pairs with c^T B d = 1.
+        # --- W-type: alternating top form (even L, diag 0) or odd L ---
         for ce, cf in _hyperbolic_pair_candidates(Btop):
+            ce = mod_p(np.asarray(ce, dtype=np.int64).reshape(-1), 2)
+            cf = mod_p(np.asarray(cf, dtype=np.int64).reshape(-1), 2)
+            # Cor. 4.12(b): need b_L(v,w)=1 and a nonsingular 2x2 top Gram, i.e.
+            # NOT both lines anisotropic (that would be two V-lines, not a W-pair).
+            if _bv(ce, cf) != 1 or (_bv(ce, ce) == 1 and _bv(cf, cf) == 1):
+                continue
             v_top = mod_p(A_top @ ce.reshape(-1, 1), p)
             w_top = mod_p(A_top @ cf.reshape(-1, 1), p)
             try:
-                Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)
-                Cw = cyclic_submodule_basis(F_sec, N, w_top, deg_q, int(L), p)
+                Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, L, p)
+                Cw = cyclic_submodule_basis(F_sec, N, w_top, deg_q, L, p)
             except RuntimeError:
                 continue
             span = independent_columns(np.concatenate([Cv, Cw], axis=1), p)
-            if accept_block(span, np.concatenate([v_top, w_top], axis=1), int(L), "W"):
+            if accept_block(span, np.concatenate([v_top, w_top], axis=1), L, "W"):
                 return True
 
         return False

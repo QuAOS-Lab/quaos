@@ -1,4 +1,4 @@
-# sympleq/core/symmetries/rcf_prepass.py
+# sympleq/core/symmetries/atomic_decomposition_helpers/rcf_prepass.py
 from __future__ import annotations
 import numpy as np
 from typing import Dict, List, Tuple
@@ -16,6 +16,7 @@ try:  # package layout: symmetries/atomic_decomposition_helpers/*.py
     from .atomic_types import PrepassContext, SectorContext
     from .atomic_linear import darboux_basis_from_span, restrict_operator, symplectic_left_inverse
     from .module_invariants import q_of_F_restricted
+    from .cost_bounds import is_x_pm_1 as _is_x_pm_1, compute_sector_profile
 except ImportError:  # legacy/local layout used by some development notebooks
     from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_types import (
         PrepassContext,
@@ -27,6 +28,10 @@ except ImportError:  # legacy/local layout used by some development notebooks
         symplectic_left_inverse,
     )
     from sympleq.core.symmetries.atomic_decomposition_helpers.module_invariants import q_of_F_restricted
+    from sympleq.core.symmetries.atomic_decomposition_helpers.cost_bounds import (
+        is_x_pm_1 as _is_x_pm_1,
+        compute_sector_profile,
+    )
 
 
 def _half_dim_floor_from_minpoly_factor(q: np.ndarray, e: int, p: int) -> int:
@@ -68,14 +73,10 @@ def _compute_Lmin(sectors: list[dict], n: int) -> int:
     return max(1, min(int(L), int(n)))
 
 
-def _is_x_pm_1(q: np.ndarray, p: int) -> bool:
-    q = poly_monic(q, p)
-    if q.size != 2 or int(q[1]) % p != 1:
-        return False
-    a0 = int(q[0]) % p
-    # x - 1  => [p-1, 1]
-    # x + 1  => [1, 1]
-    return (a0 == 1 % p) or (a0 == (p - 1) % p)
+def _is_x_pm_1_local_DEPRECATED(q: np.ndarray, p: int) -> bool:
+    # Retained only as documentation; the canonical predicate is imported as
+    # ``_is_x_pm_1`` from cost_bounds above (single shared implementation).
+    return _is_x_pm_1(q, p)
 
 
 def _normalize_factorization_output(factors, p: int) -> List[Tuple[np.ndarray, int]]:
@@ -194,23 +195,39 @@ def _build_prepass_context(
         if sector_type == "paired" and key_star is not None:
             ctx_meta["primary_info_star"] = primaries.get(key_star)
 
-        sector_contexts.append(
-            SectorContext(
-                sector_key=key,
-                sector_type=sector_type,
-                poly_key=poly_key,
-                sector_key_star=key_star,
-                p=int(p),
-                deg_q=int(sec.get("deg", primaries.get(key, {}).get("deg", 0))),
-                max_exp=int(sec.get("exponent", primaries.get(key, {}).get("exponent", 0))),
-                T_sec=T_sec,
-                T_sec_leftinv=T_sec_leftinv,
-                F_sec=F_sec,
-                Omega_sec=Omega_sec,
-                N_sec=N_sec,
-                meta=ctx_meta,
-            )
+        ctx = SectorContext(
+            sector_key=key,
+            sector_type=sector_type,
+            poly_key=poly_key,
+            sector_key_star=key_star,
+            p=int(p),
+            deg_q=int(sec.get("deg", primaries.get(key, {}).get("deg", 0))),
+            max_exp=int(sec.get("exponent", primaries.get(key, {}).get("exponent", 0))),
+            T_sec=T_sec,
+            T_sec_leftinv=T_sec_leftinv,
+            F_sec=F_sec,
+            Omega_sec=Omega_sec,
+            N_sec=N_sec,
+            meta=ctx_meta,
         )
+
+        # Phase 2: compute the invariant-derived (search-independent) cost lower
+        # bound now, before any extraction, and stash it on the context meta.
+        profile = compute_sector_profile(F, ctx, p)
+        ctx_meta["lengths_present"] = profile.get("lengths_present", [])
+        ctx_meta["p2_diag_flags"] = profile.get("p2_diag_flags", {})
+        ctx_meta["cost_lower_bound"] = profile.get("lower_bound")
+        ctx_meta["cost_lower_bound_complete"] = bool(profile.get("complete", False))
+
+        sector_contexts.append(ctx)
+
+    # Phase 2: prefer the exact invariant bound (max over sectors, Lemma 3.2)
+    # over the loose minpoly floor, when every sector produced a certified bound.
+    exact_lbs = [c.meta.get("cost_lower_bound") for c in sector_contexts]
+    if exact_lbs and all(isinstance(v, int) for v in exact_lbs):
+        Lmin_exact = max(1, min(int(max(exact_lbs)), int(n)))
+    else:
+        Lmin_exact = int(Lmin_star)
 
     return PrepassContext(
         p=int(p),
@@ -220,7 +237,8 @@ def _build_prepass_context(
         meta={
             "mF": mF,
             "factors": factors,
-            "Lmin_star": int(Lmin_star),
+            "Lmin_star": int(Lmin_exact),
+            "Lmin_star_minpoly_floor": int(Lmin_star),
             "legacy_sectors": sectors,
             "primaries": primaries,
         },
@@ -359,6 +377,10 @@ def primary_components_crt(F: np.ndarray, p: int) -> Dict:
         Lmin_star=Lmin_star,
     )
 
+    # Phase 2: the prepass context recomputes an exact Lmin from invariant
+    # sector bounds; surface it (falling back to the minpoly floor).
+    Lmin_exact = int(prepass_context.meta.get("Lmin_star", Lmin_star))
+
     return {
         "p": int(p),
         "n": int(n),
@@ -368,7 +390,8 @@ def primary_components_crt(F: np.ndarray, p: int) -> Dict:
         "sector_contexts": prepass_context.sectors,
         "prepass_context": prepass_context,
         "factors": factors,
-        "Lmin_star": int(Lmin_star),
+        "Lmin_star": int(Lmin_exact),
+        "Lmin_star_minpoly_floor": int(Lmin_star),
     }
 
 

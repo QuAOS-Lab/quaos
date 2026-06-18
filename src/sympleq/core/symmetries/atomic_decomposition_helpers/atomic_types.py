@@ -2,12 +2,29 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple, List, Literal
+from typing import Any, Dict, Optional, Tuple, List, Literal, TypedDict
 
 import numpy as np
 from numpy.typing import NDArray
 
 SectorType = Literal["paired", "self"]
+
+
+class CostCertificate(TypedDict, total=False):
+    """Canonical (typed) shape of the global cost certificate.
+
+    Phase 2 makes ``lower_bound`` an invariant-derived quantity, independent of
+    the constructed decomposition, so ``certified_minimal`` (``lower_bound ==
+    attained``) is a genuine theorem rather than true-by-construction.
+    """
+    qudit_cost: int            # attained max half-dim over blocks
+    lower_bound: Optional[int] # from invariants (max over sectors, Lemma 3.2)
+    attained: int              # verified attained cost (== qudit_cost)
+    complete: bool             # every sector contributed a certified bound
+    certified_minimal: bool    # lower_bound == qudit_cost and complete
+    sector_certificates: List[Dict[str, Any]]
+    missing: List[Dict[str, Any]]
+    incomplete: List[Dict[str, Any]]
 
 
 # ---------------------------------------------------------------------------
