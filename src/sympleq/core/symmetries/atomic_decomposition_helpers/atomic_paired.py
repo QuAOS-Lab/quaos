@@ -166,7 +166,6 @@ def atomic_blocks_in_paired_sector(
     key: tuple[int, ...],
     key_star: tuple[int, ...],
     primaries: dict,
-    allow_fallback: bool = False,
 ) -> tuple[list[AtomicBlock], AtomicInvariant]:
     """
     Atomic block construction for paired sector W = V_q ⊕ V_{q*} (q != q*).
@@ -196,13 +195,7 @@ def atomic_blocks_in_paired_sector(
     }
 
     if Vq.shape[1] == 0 or Vqs.shape[1] == 0:
-        msg = "one side of paired sector is empty"
-        if not allow_fallback:
-            raise RuntimeError(f"Paired sector: {msg}.")
-        inv_data["status"] = "DEGRADED"
-        inv_data["note"] = msg
-        inv = AtomicInvariant(sector_key=key, sector_type="paired", poly_key=key, data=inv_data)
-        return [], inv
+        raise RuntimeError("Paired sector: one side of paired sector is empty.")
 
     # --- Certified-by-construction algorithm (extract-and-remove) ---
     # The previous "bulk" builder can produce invariant nondegenerate summands that are not
@@ -390,15 +383,12 @@ def atomic_blocks_in_paired_sector(
             ),
         }
 
-    except Exception as e:
-        if not allow_fallback:
-            raise
-        inv_data["status"] = "DEGRADED"
-        inv_data["note"] = f"fallback: {type(e).__name__}: {e}"
-
-        # Single-block fallback spanning the whole paired sector.
-        T_blk = darboux_basis_from_span(Omega_amb, W_sector, p)
-        blocks = [AtomicBlock(mod_p(T_blk, p), int(T_blk.shape[1] // 2), key, None)]
+    except Exception:
+        # Single certified route: a paired sector that cannot be built
+        # deterministically propagates here and is absorbed by global completion
+        # upstream (the result is then reported uncertified). No best-effort
+        # single-block fallback is constructed.
+        raise
 
     inv = AtomicInvariant(sector_key=key, sector_type="paired", poly_key=key, data=inv_data)
     blocks = [AtomicBlock(b.T_blk, b.half_dim, b.sector_key, inv) for b in blocks]

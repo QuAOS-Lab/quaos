@@ -642,7 +642,6 @@ def atomic_blocks_in_self_sector_p2_nonunipotent_unitary(
     p: int,
     sector_key: Tuple[int, ...],
     poly_key: Tuple[int, ...],
-    allow_fallback: bool = False,
     *,
     max_top_dim: int = 4096,  # retained for API compatibility; no exponential search is used.
 ) -> tuple[List[AtomicBlock], AtomicInvariant]:
@@ -799,10 +798,6 @@ def atomic_blocks_in_self_sector_p2_nonunipotent_unitary(
             break
 
         if not extracted:
-            if allow_fallback:
-                inv_data["status"] = "DEGRADED"
-                inv_data["note"] = "p=2 Hermitian self-sector extraction stuck"
-                break
             raise RuntimeError(
                 "p=2 Hermitian self-sector extraction stuck; "
                 f"remaining_dim={dim_r}, top_forms={inv_data['top_forms'][-3:]}"

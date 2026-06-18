@@ -506,56 +506,14 @@ def _p2_length_form_invariants(A_top: np.ndarray, Omega: np.ndarray, N: np.ndarr
 # Main builder (p=2 unipotent self sector)
 # ---------------------------------------------------------------------------
 
-def atomic_blocks_in_unipotent_self_sector_p2(
-    F: np.ndarray,
-    key: Tuple[int, ...],
-    primaries: dict,
-    *,
-    allow_fallback: bool = False,
-) -> Tuple[List[AtomicBlock], AtomicInvariant]:
+def _p2_full_sector_invariants(N, Omega, F_sec, deg_q, max_exp0, m, p):
+    """Step 2 (sec. 4.9): invariants first.
+
+    Compute, before any extraction, the sector kernel profile and the per-length
+    top-form invariants b_L (via :func:`_p2_length_form_invariants`) plus a
+    generator-count diagnostic. These determine the V/W type at each length
+    (Lemma 4.5) and feed the cost certificate.
     """
-    p=2, self sector with q(x)=x±1.
-
-    Certified policy:
-      * decompose the current length-top quotient by its p=2 top bilinear
-        pairing b_L and mid-chain quadratic labels q_L;
-      * lift quotient pieces to cyclic modules;
-      * accept a block only after direct nondegeneracy/invariance checks;
-      * never drop chain length in certified mode.
-
-    ``allow_fallback=True`` permits one last deterministic candidate sweep at the
-    current length before failing.  The global certified wrapper calls this with
-    the default ``False``.
-    """
-    p = 2
-    F = mod_p(F, p)
-
-    q = primaries[key]["poly"]
-    deg_q = int(primaries[key]["deg"])
-    max_exp0 = int(primaries[key]["exponent"])
-    if deg_q != 1:
-        raise RuntimeError(f"p=2 unipotent self-sector expected deg(q)=1, got {deg_q}.")
-
-    V = independent_columns(mod_p(primaries[key]["V_basis"], p), p)
-    if V.shape[1] == 0:
-        inv = AtomicInvariant(sector_key=key, sector_type="self", poly_key=key, data={"status": "OK", "empty": True})
-        return [], inv
-
-    n2 = F.shape[0]
-    Omega_amb = omega_matrix(n2 // 2, p)
-    if not is_nondegenerate(Omega_amb, V, p):
-        raise RuntimeError("Unipotent p=2 self sector basis is degenerate; cannot proceed.")
-
-    T_sec = darboux_basis_from_span(Omega_amb, V, p)
-    m2 = T_sec.shape[1]
-    if m2 % 2 != 0:
-        raise RuntimeError("Unipotent p=2 self sector dimension must be even.")
-    m = m2 // 2
-
-    F_sec = restrict_operator(F, T_sec, p)
-    Omega = omega_matrix(m, p)
-    N = q_of_F_restricted(F_sec, q, p)
-
     # Full-sector invariant summary.
     tops_full = jordan_chain_tops_nilpotent_in_span(N, np.eye(2 * m, dtype=np.int64), max_exp0, p)
     kernel_profile = [
@@ -580,7 +538,19 @@ def atomic_blocks_in_unipotent_self_sector_p2(
             "gen_dim_ok": bool(gen_dim == int(invL["top_dim"])),
             **invL,
         }
+    return kernel_profile, length_summary, length_invariants
 
+
+def _p2_extract_blocks(F_sec, N, Omega, T_sec, m, max_exp0, deg_q, key, p):
+    """Steps 3-4 (sec. 4.9): type-by-invariant extraction engine.
+
+    Peels the longest remaining length one block at a time. ``accept_block``
+    records a lifted, verified summand (Cor. 4.12 one-scalar certificate, with a
+    direct nondegeneracy/invariance assertion); ``try_invariant_candidates``
+    performs the mandatory b_L dispatch (V-only / W-only, Prop. 4.7, Cor. 4.12).
+    Returns the blocks, their sector-coordinate bases, per-block metadata, and
+    the extraction log.
+    """
     blocks: List[AtomicBlock] = []
     blocks_meta: List[Dict[str, Any]] = []
     built_cols_sec: List[np.ndarray] = []
@@ -726,32 +696,6 @@ def atomic_blocks_in_unipotent_self_sector_p2(
 
         return False
 
-    def try_best_effort_candidates(A_top: np.ndarray, L: int) -> bool:
-        """Last-resort deterministic sweep used only outside certified mode."""
-        if not allow_fallback:
-            return False
-        A_gen = _select_module_generators_from_top_space(F_sec, N, A_top, deg_q, int(L), p)
-        cols = [A_gen[:, j:j + 1] for j in range(A_gen.shape[1])]
-        if int(L) % 2 == 0:
-            for v_top in cols:
-                try:
-                    Cv = cyclic_submodule_basis(F_sec, N, v_top, deg_q, int(L), p)
-                except RuntimeError:
-                    continue
-                if accept_block(Cv, v_top, int(L), "V"):
-                    return True
-        for i in range(len(cols)):
-            for j in range(i + 1, len(cols)):
-                try:
-                    Cv = cyclic_submodule_basis(F_sec, N, cols[i], deg_q, int(L), p)
-                    Cw = cyclic_submodule_basis(F_sec, N, cols[j], deg_q, int(L), p)
-                except RuntimeError:
-                    continue
-                span = independent_columns(np.concatenate([Cv, Cw], axis=1), p)
-                if accept_block(span, np.concatenate([cols[i], cols[j]], axis=1), int(L), "W"):
-                    return True
-        return False
-
     while space_basis.shape[1] > 0:
         iteration += 1
         if iteration > 2 * m + 5:
@@ -774,10 +718,6 @@ def atomic_blocks_in_unipotent_self_sector_p2(
         }
 
         progressed = try_invariant_candidates(A_top, int(L))
-        if not progressed:
-            progressed = try_best_effort_candidates(A_top, int(L))
-            log_entry["used_best_effort_sweep"] = bool(progressed)
-
         log_entry["progressed"] = bool(progressed)
         extraction_log.append(log_entry)
 
@@ -786,7 +726,16 @@ def atomic_blocks_in_unipotent_self_sector_p2(
                 "Unipotent p=2 self sector: certified quotient-driven extraction made no progress "
                 f"at length L={int(L)}. Diagnostics={log_entry}"
             )
+    return blocks, built_cols_sec, blocks_meta, extraction_log
 
+
+def _p2_verify_kernel_profile(built_cols_sec, N, kernel_profile, max_exp0, m, p, key):
+    """Step 4 (dagger) (sec. 4.9): consistency assertions.
+
+    Assert the extracted blocks span the sector with non-overlapping bases, and
+    that the per-power kernel profile is additive over the blocks (block sum ==
+    sector). Returns the block kernel profile. Raises on any mismatch.
+    """
     dim_sector = 2 * m
     all_cols_sec = np.concatenate(built_cols_sec, axis=1) if built_cols_sec else np.zeros((dim_sector, 0), dtype=np.int64)
     dim_blocks = rank_mod(all_cols_sec, p) if all_cols_sec.size else 0
@@ -812,7 +761,19 @@ def atomic_blocks_in_unipotent_self_sector_p2(
             "Unipotent p=2 self sector: kernel profile mismatch (block sum != sector). "
             f"key={key}, profile={kernel_profile}, block_profile={kernel_profile_blocks}"
         )
+    return kernel_profile_blocks
 
+
+def _p2_build_certificate(blocks_meta, kernel_profile, kernel_profile_blocks,
+                          length_summary, length_invariants, extraction_log,
+                          deg_q, max_exp0):
+    """Steps 5-6 (sec. 4.9): cost certificate and invariant assembly.
+
+    Assemble the sector invariant payload (beta/Arf counts per length, the
+    implemented-family classification, and the sector cost certificate). The
+    final ``lower_bound`` is overwritten downstream with the invariant-derived
+    bound (Thm. 4.13) in _build_sector (Phase 2).
+    """
     beta_counts_by_L: Dict[int, Dict[str, int]] = {}
     for bm in blocks_meta:
         L = int(bm["L"])
@@ -825,7 +786,7 @@ def atomic_blocks_in_unipotent_self_sector_p2(
             d["W1" if (typ.endswith("beta") or beta) else "W0"] += 1
 
     sector_cost = max((int(b["half_dim"]) for b in blocks_meta), default=0)
-    used_best_effort = bool(any(x.get("used_best_effort_sweep", False) for x in extraction_log))
+    used_best_effort = False  # the best-effort sweep was removed (deterministic path only)
     implemented_types = {"V", "V_beta", "W", "W_beta"}
     unimplemented = sorted({str(b.get("type", "")) for b in blocks_meta if str(b.get("type", "")) not in implemented_types})
     implemented_complete = (not used_best_effort) and (len(unimplemented) == 0)
@@ -867,7 +828,78 @@ def atomic_blocks_in_unipotent_self_sector_p2(
             ),
         },
     }
+    return inv_data
 
+
+def atomic_blocks_in_unipotent_self_sector_p2(
+    F: np.ndarray,
+    key: Tuple[int, ...],
+    primaries: dict,
+) -> Tuple[List[AtomicBlock], AtomicInvariant]:
+    """
+    p=2, self sector with q(x)=x±1.
+
+    Deterministic type-by-invariant policy (no search/fallback):
+      * at each top length L, dispatch on the top form b_L -- V-blocks when it is
+        non-alternating (Cor. 4.12(a)), W-pairs when alternating or L is odd
+        (Cor. 4.12(b));
+      * lift quotient pieces to cyclic modules and accept with the one-scalar
+        certificate (the direct nondegeneracy/invariance test is a defensive
+        assertion);
+      * never drop chain length.
+    A sector that cannot be built this way raises; the single decomposition route
+    absorbs it as a degraded fallback (marking the result uncertified).
+    """
+    p = 2
+    F = mod_p(F, p)
+
+    q = primaries[key]["poly"]
+    deg_q = int(primaries[key]["deg"])
+    max_exp0 = int(primaries[key]["exponent"])
+    if deg_q != 1:
+        raise RuntimeError(f"p=2 unipotent self-sector expected deg(q)=1, got {deg_q}.")
+
+    V = independent_columns(mod_p(primaries[key]["V_basis"], p), p)
+    if V.shape[1] == 0:
+        inv = AtomicInvariant(sector_key=key, sector_type="self", poly_key=key, data={"status": "OK", "empty": True})
+        return [], inv
+
+    n2 = F.shape[0]
+    Omega_amb = omega_matrix(n2 // 2, p)
+    if not is_nondegenerate(Omega_amb, V, p):
+        raise RuntimeError("Unipotent p=2 self sector basis is degenerate; cannot proceed.")
+
+    T_sec = darboux_basis_from_span(Omega_amb, V, p)
+    m2 = T_sec.shape[1]
+    if m2 % 2 != 0:
+        raise RuntimeError("Unipotent p=2 self sector dimension must be even.")
+    m = m2 // 2
+
+    F_sec = restrict_operator(F, T_sec, p)
+    Omega = omega_matrix(m, p)
+    N = q_of_F_restricted(F_sec, q, p)
+
+    # Step 2: invariants first (kernel profile + per-length top-form invariants).
+    kernel_profile, length_summary, length_invariants = _p2_full_sector_invariants(
+        N, Omega, F_sec, deg_q, max_exp0, m, p
+    )
+
+    # Steps 3-4: type-by-invariant extraction.
+    blocks, built_cols_sec, blocks_meta, extraction_log = _p2_extract_blocks(
+        F_sec, N, Omega, T_sec, m, max_exp0, deg_q, key, p
+    )
+
+    # Step 4 (dagger): kernel-profile / span consistency.
+    kernel_profile_blocks = _p2_verify_kernel_profile(
+        built_cols_sec, N, kernel_profile, max_exp0, m, p, key
+    )
+
+    # Steps 5-6: cost certificate + assemble.
+    inv_data = _p2_build_certificate(
+        blocks_meta, kernel_profile, kernel_profile_blocks,
+        length_summary, length_invariants, extraction_log, deg_q, max_exp0
+    )
     inv = AtomicInvariant(sector_key=key, sector_type="self", poly_key=key, data=inv_data)
     blocks = [AtomicBlock(b.T_blk, b.half_dim, key, inv) for b in blocks]
     return blocks, inv
+

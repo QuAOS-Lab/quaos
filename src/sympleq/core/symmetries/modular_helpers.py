@@ -33,22 +33,41 @@ def basis_extend(base: np.ndarray, candidates: np.ndarray, want: int, p: int) ->
     ``span(base)``, returning them as an (n x want) array. Raises if fewer than
     ``want`` independent extending columns exist.
 
-    This consolidates the previously duplicated ``_basis_extend`` helpers in
-    atomic_filtration, module_invariants, atomic_unipotent_p2 and
-    atomic_self_p2_unitary. It is the mod_p-robust variant; reducing inputs mod
-    p does not change their GF(p) span, so callers that previously passed
-    unreduced columns get the same selection.
+    Incremental implementation: a running forward-echelon of span(base ∪ picked)
+    is maintained, and each candidate is accepted iff reducing it against the
+    echelon leaves a nonzero pivot (i.e. it strictly increases the rank). This is
+    the same accept/reject decision as the previous per-candidate ``rank_mod``,
+    so the selected columns are identical, but it avoids a full RREF per
+    candidate.
     """
-    base = independent_columns(mod_p(base, p), p) if base.size else base
-    picked = np.zeros((candidates.shape[0], 0), dtype=np.int64)
-    r_base = rank_mod(base, p) if base.size else 0
+    n = candidates.shape[0]
+    echelon: list[tuple[int, np.ndarray]] = []  # (pivot_pos, normalized row), pivot entry == 1
+
+    def _reduce_and_add(v: np.ndarray) -> bool:
+        v = mod_p(v, p).reshape(-1).copy()
+        for pos, pv in echelon:
+            if v[pos]:
+                v = mod_p(v - int(v[pos]) * pv, p)
+        nz = np.flatnonzero(v)
+        if nz.size == 0:
+            return False
+        pos = int(nz[0])
+        inv = inv_mod_scalar(int(v[pos]), p)
+        echelon.append((pos, mod_p(v * inv, p)))
+        return True
+
+    if base.size:
+        bred = independent_columns(mod_p(base, p), p)
+        for j in range(bred.shape[1]):
+            _reduce_and_add(bred[:, j])
+
+    picked_cols: list[np.ndarray] = []
     for j in range(candidates.shape[1]):
-        c = mod_p(candidates[:, j:j + 1], p)
-        r_try = rank_mod(np.concatenate([base, picked, c], axis=1), p)
-        if r_try > r_base + picked.shape[1]:
-            picked = np.concatenate([picked, c], axis=1)
-            if picked.shape[1] == want:
-                return picked
+        col = mod_p(candidates[:, j:j + 1], p)
+        if _reduce_and_add(col[:, 0]):
+            picked_cols.append(col)
+            if len(picked_cols) == want:
+                return np.concatenate(picked_cols, axis=1)
     raise RuntimeError("basis_extend: could not extend by required amount.")
 
 
@@ -66,7 +85,44 @@ def rref_mod(aug: np.ndarray, p: int) -> tuple[np.ndarray, list[int]]:
 
 
 def rref_mod2(aug: np.ndarray) -> tuple[np.ndarray, list[int]]:
-    A = mod_p(aug.copy(), 2).astype(np.int64, copy=False)
+    A = mod_p(aug, 2).astype(np.int64, copy=False)
+    m, n = A.shape
+    if n == 0 or m == 0 or n > 62:
+        return _rref_mod2_dense(A)
+    # Pack each row into one int64 (bit (n-1-j) = A[i, j]); GF(2) row reduction
+    # is then scalar integer XOR, far cheaper than per-column numpy slicing for
+    # the small widths used here. Pack/unpack are vectorized. Output is the
+    # identical reduced matrix and pivot columns (RREF is canonical).
+    weights = (1 << np.arange(n - 1, -1, -1, dtype=np.int64))
+    packed = [int(x) for x in (A @ weights)]
+    piv_cols: list[int] = []
+    r = 0
+    for c in range(n):
+        if r >= m:
+            break
+        bit = 1 << (n - 1 - c)
+        piv = -1
+        for i in range(r, m):
+            if packed[i] & bit:
+                piv = i
+                break
+        if piv < 0:
+            continue
+        if piv != r:
+            packed[r], packed[piv] = packed[piv], packed[r]
+        pr = packed[r]
+        for i in range(m):
+            if i != r and (packed[i] & bit):
+                packed[i] ^= pr
+        piv_cols.append(c)
+        r += 1
+    parr = np.array(packed, dtype=np.int64).reshape(-1, 1)
+    R = ((parr >> np.arange(n - 1, -1, -1, dtype=np.int64)) & 1).astype(np.int64)
+    return R, piv_cols
+
+
+def _rref_mod2_dense(A: np.ndarray) -> tuple[np.ndarray, list[int]]:
+    A = mod_p(A.copy(), 2).astype(np.int64, copy=False)
     m, n = A.shape
     r = 0
     piv_cols: list[int] = []
@@ -107,10 +163,12 @@ def rref_modp(aug: np.ndarray, p: int) -> tuple[np.ndarray, list[int]]:
             A[[r, piv]] = A[[piv, r]]
         inv = inv_mod_scalar(A[r, c], p)
         A[r, :] = mod_p(A[r, :] * inv, p)
-        for i in range(m):
-            if i != r and A[i, c] % p != 0:
-                fac = A[i, c] % p
-                A[i, :] = mod_p(A[i, :] - fac * A[r, :], p)
+        # Eliminate column c from every other row in one vectorized step:
+        # subtract fac_i * (pivot row) from row i, with fac_r forced to 0.
+        facs = (A[:, c] % p).copy()
+        facs[r] = 0
+        if np.any(facs):
+            A = mod_p(A - np.outer(facs, A[r, :]), p)
         piv_cols.append(c)
         r += 1
         c += 1
@@ -133,20 +191,17 @@ def nullspace_mod(A: np.ndarray, p: int) -> np.ndarray:
     free = [j for j in range(n) if j not in piv_set]
     if not free:
         return np.zeros((n, 0), dtype=np.int64)
-    basis = []
-    for f in free:
-        x = np.zeros((n, 1), dtype=np.int64)
-        x[f, 0] = 1
-        row_idx = 0
-        for pc in piv_cols:
-            if pc < n:
-                s = 0
-                for j in free:
-                    s = (s + (R[row_idx, j] % p) * (x[j, 0] % p)) % p
-                x[pc, 0] = (-s) % p
-                row_idx += 1
-        basis.append(x.reshape(-1))
-    return np.stack(basis, axis=1)
+    # For the basis vector of free column f, the free part is the indicator e_f,
+    # so each pivot coordinate is simply x[pc] = -R[row, f]. This is the closed
+    # form of the old triple loop (which summed R[row, j]*x[j] over free j with
+    # x = e_f), produced here in one vectorized assignment per pivot row.
+    free_arr = np.asarray(free, dtype=np.int64)
+    basis = np.zeros((n, free_arr.size), dtype=np.int64)
+    basis[free_arr, np.arange(free_arr.size)] = 1
+    pivs = [pc for pc in piv_cols if pc < n]
+    for row_idx, pc in enumerate(pivs):
+        basis[pc, :] = (-R[row_idx, free_arr]) % p
+    return mod_p(basis, p)
 
 
 def _solve_linear(A: np.ndarray, b: np.ndarray, p: int) -> np.ndarray:

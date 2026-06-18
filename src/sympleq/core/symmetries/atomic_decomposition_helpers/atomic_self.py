@@ -1,7 +1,6 @@
 # sympleq/core/symmetries/atomic_decomposition_helpers/atomic_self.py
 from __future__ import annotations
 
-import itertools
 import numpy as np
 from typing import Any, Dict, Tuple, Optional, List
 
@@ -145,109 +144,6 @@ def _extract_block_by_quotient_witt(
     return None, None, diagnostics
 
 
-def _enumerate_candidate_vectors(
-    X: np.ndarray,
-    p: int,
-    *,
-    max_window: int = 4,
-    cap: int = 4000,
-) -> List[np.ndarray]:
-    """Deterministically enumerate a modest set of nonzero vectors in span(X).
-
-    This is retained only as a best-effort fallback.  Certified mode must not depend on it.
-    """
-    X = independent_columns(mod_p(X, p), p)
-    t = int(X.shape[1])
-    if t == 0:
-        return []
-
-    out: List[np.ndarray] = []
-    seen: set[Tuple[int, ...]] = set()
-
-    def push(v: np.ndarray) -> None:
-        nonlocal out
-        v = mod_p(v, p)
-        if not np.any(v % p):
-            return
-        key = tuple(int(x) for x in v.reshape(-1) % p)
-        if key in seen:
-            return
-        seen.add(key)
-        out.append(v)
-
-    for j in range(t):
-        push(X[:, j:j + 1])
-        if len(out) >= cap:
-            return out
-
-    wmax = min(int(max_window), t)
-    for w in range(2, wmax + 1):
-        for start in range(0, t - w + 1):
-            Xw = X[:, start:start + w]
-            for coeff in itertools.product(range(p), repeat=w):
-                if all(c == 0 for c in coeff):
-                    continue
-                c = np.array(coeff, dtype=np.int64).reshape(w, 1)
-                push(Xw @ c)
-                if len(out) >= cap:
-                    return out
-
-    return out
-
-
-def _extract_block_by_bounded_search(
-    F: np.ndarray,
-    N: np.ndarray,
-    Omega: np.ndarray,
-    top_basis: np.ndarray,
-    deg_q: int,
-    L: int,
-    p: int,
-) -> Tuple[Optional[np.ndarray], Optional[str], Dict[str, Any]]:
-    """Old bounded search path, kept only for best-effort fallback diagnostics."""
-    X = independent_columns(mod_p(top_basis, p), p)
-    target = int(deg_q) * int(L)
-    candidates = _enumerate_candidate_vectors(X, p, max_window=4, cap=4000)
-
-    n_tested = 0
-    good_cyclic: List[np.ndarray] = []
-
-    for v in candidates:
-        n_tested += 1
-        C = _cyclic_span_from_top_seeds(F, N, [v], int(deg_q), int(L), p)
-        if C is None or C.shape[1] != target:
-            continue
-        if is_nondegenerate(Omega, C, p):
-            return C, "single_bounded", {
-                "top_dim": int(X.shape[1]),
-                "n_candidates": int(len(candidates)),
-                "n_tested": int(n_tested),
-                "n_full_cyclic": int(len(good_cyclic) + 1),
-            }
-        good_cyclic.append(C)
-
-    for a in range(len(good_cyclic)):
-        Cv = good_cyclic[a]
-        for b in range(a + 1, len(good_cyclic)):
-            Cw = good_cyclic[b]
-            both = independent_columns(np.concatenate([Cv, Cw], axis=1), p)
-            if both.shape[1] != 2 * target:
-                continue
-            if is_nondegenerate(Omega, both, p):
-                return both, "pair_bounded", {
-                    "top_dim": int(X.shape[1]),
-                    "n_candidates": int(len(candidates)),
-                    "n_tested": int(n_tested),
-                    "n_full_cyclic": int(len(good_cyclic)),
-                }
-
-    return None, None, {
-        "top_dim": int(X.shape[1]),
-        "n_candidates": int(len(candidates)),
-        "n_tested": int(n_tested),
-        "n_full_cyclic": int(len(good_cyclic)),
-    }
-
 
 def atomic_blocks_in_self_sector_nonunipotent(
     F_sec: np.ndarray,
@@ -259,7 +155,6 @@ def atomic_blocks_in_self_sector_nonunipotent(
     p: int,
     sector_key: Tuple[int, ...],
     poly_key: Tuple[int, ...],
-    allow_fallback: bool = False,
 ) -> tuple[List[AtomicBlock], AtomicInvariant]:
     """
     Certified atomic extraction for self-reciprocal, non-(x±1) sectors.
@@ -272,8 +167,9 @@ def atomic_blocks_in_self_sector_nonunipotent(
     and the induced form b_L(x,y)=<x,N^{L-1}y>, performs deterministic Witt reduction on
     that quotient form, then lifts the selected quotient vectors to full cyclic modules.
 
-    The old bounded enumeration remains available only as a best-effort fallback when
-    allow_fallback=True; certified callers should pass allow_fallback=False.
+    This is the single certified route: a sector that cannot be built this way raises,
+    and global completion absorbs it (reporting the result uncertified). There is no
+    best-effort bounded-search fallback.
     """
     p = int(p)
     F_sec = mod_p(np.asarray(F_sec, dtype=np.int64), p)
@@ -318,10 +214,6 @@ def atomic_blocks_in_self_sector_nonunipotent(
         dim_r = int(R.shape[1])
         if dim_r % 2 != 0:
             msg = f"remaining dimension odd ({dim_r})"
-            if allow_fallback:
-                inv_data["status"] = "DEGRADED"
-                inv_data["note"] = msg
-                break
             tail = inv_data.get("attempts", [])[-3:]
             raise RuntimeError(f"{msg}; last_attempts={tail}")
 
@@ -361,27 +253,20 @@ def atomic_blocks_in_self_sector_nonunipotent(
                     "top_dim": int(X.shape[1]),
                     "quotient_witt_error": f"{type(exc).__name__}: {exc}",
                 }
-                if allow_fallback:
-                    span_r, mode, fb_diag = _extract_block_by_bounded_search(
-                        F_r, N_r, Omega_r, X, int(deg_q), int(L), p
-                    )
-                    diagnostics["bounded_fallback"] = fb_diag
-                    fallback_used = True
-                else:
-                    inv_data["attempts"].append(
-                        {
-                            "remaining_dim": dim_r,
-                            "L": int(L),
-                            "found": False,
-                            "found_mode": None,
-                            "fallback_used": False,
-                            **diagnostics,
-                        }
-                    )
-                    raise RuntimeError(
-                        "quotient-form Witt self-sector extraction failed; "
-                        f"remaining_dim={dim_r}, L={int(L)}, diagnostics={diagnostics}"
-                    ) from exc
+                inv_data["attempts"].append(
+                    {
+                        "remaining_dim": dim_r,
+                        "L": int(L),
+                        "found": False,
+                        "found_mode": None,
+                        "fallback_used": False,
+                        **diagnostics,
+                    }
+                )
+                raise RuntimeError(
+                    "quotient-form Witt self-sector extraction failed; "
+                    f"remaining_dim={dim_r}, L={int(L)}, diagnostics={diagnostics}"
+                ) from exc
 
             inv_data["attempts"].append(
                 {
@@ -421,27 +306,14 @@ def atomic_blocks_in_self_sector_nonunipotent(
             else:
                 if R_new.shape[1] % 2 != 0:
                     msg = f"remaining complement odd ({int(R_new.shape[1])})"
-                    if allow_fallback:
-                        inv_data["status"] = "DEGRADED"
-                        inv_data["note"] = msg
-                        R = np.zeros((m, 0), dtype=np.int64)
-                        break
                     raise RuntimeError(msg)
                 R = darboux_basis_from_span(Omega_full, R_new, p)
 
             extracted = True
             break
 
-        if inv_data.get("status") == "DEGRADED":
-            break
-
         if not extracted:
             msg = "certified self-sector quotient-Witt extraction stuck"
-            if allow_fallback:
-                inv_data["status"] = "DEGRADED"
-                if not inv_data["note"]:
-                    inv_data["note"] = msg
-                break
             tail = inv_data.get("attempts", [])[-3:]
             raise RuntimeError(f"{msg}; last_attempts={tail}")
 

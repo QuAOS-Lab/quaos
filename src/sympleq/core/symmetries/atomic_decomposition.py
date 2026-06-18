@@ -40,14 +40,13 @@ from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_verify import (
     verify_cost_certificate,
 )
 
-Mode = Literal["auto", "certified", "best_effort"]
 Convention = Literal["column", "row"]
 
 
 class CertificationError(RuntimeError):
     """
-    Raised by atomic_block_decompose_certified when a certified decomposition
-    cannot be produced.
+    Raised by :func:`decompose_or_raise` when the decomposition is not a
+    certified atomic (or certified minimal) result.
     """
 
     def __init__(self, message: str, *, info: Optional[Dict[str, Any]] = None):
@@ -304,16 +303,14 @@ def _build_sector_raw(
     F: np.ndarray,
     p: int,
     ctx: SectorContext,
-    *,
-    certified: bool,
 ) -> Tuple[List[AtomicBlock], AtomicInvariant]:
     """
     Build one sector from a typed SectorContext.
 
-    The ``certified`` flag is retained for diagnostics/API symmetry, but sector
-    builders are always called with their internal fallbacks disabled.  Best-effort
-    fallback is performed only by ``atomic_block_decompose_best_effort`` after an
-    exception escapes this function.
+    Sector builders are always called with their internal fallbacks disabled; a
+    sector that cannot be built deterministically raises, and the single
+    decomposition route absorbs it via a degraded fallback plus global
+    completion (marking the result uncertified).
     """
     if int(ctx.p) != int(p):
         raise ValueError(f"Sector context has p={ctx.p}, but decomposition requested p={p}.")
@@ -329,7 +326,6 @@ def _build_sector_raw(
             ctx.sector_key,
             ctx.sector_key_star,
             prim,
-            allow_fallback=False,
         )
         return blocks, inv
 
@@ -368,7 +364,6 @@ def _build_sector_raw(
             p=p,
             sector_key=sector_key,
             poly_key=ctx.poly_key,
-            allow_fallback=False,
         )
         return blocks, inv
 
@@ -382,7 +377,6 @@ def _build_sector_raw(
         p=p,
         sector_key=sector_key,
         poly_key=ctx.poly_key,
-        allow_fallback=False,
     )
     return blocks, inv
 
@@ -422,12 +416,10 @@ def _build_sector(
     F: np.ndarray,
     p: int,
     ctx: SectorContext,
-    *,
-    certified: bool,
 ) -> Tuple[List[AtomicBlock], AtomicInvariant]:
     """Dispatch to the sector builders, then attach the invariant-derived
     (search-independent) cost lower bound to the returned certificate."""
-    blocks, inv = _build_sector_raw(F, p, ctx, certified=certified)
+    blocks, inv = _build_sector_raw(F, p, ctx)
     try:
         _inject_invariant_lower_bound(inv, ctx, blocks)
     except Exception:
@@ -480,200 +472,49 @@ def _complete_global_basis_from_blocks(
     return mod_p(B, p), True
 
 
-def _first_nonorthogonal_pair(blocks, p):
-    """Return (i, j, Gij) where T_i^T Omega T_j != 0 for any i < j."""
-    if not blocks:
-        return None
-    n2 = blocks[0].T_blk.shape[0]
-    Omega = omega_matrix(n2 // 2, p)
-    for i in range(len(blocks)):
-        Ti = blocks[i].T_blk
-        for j in range(i + 1, len(blocks)):
-            Tj = blocks[j].T_blk
-            Gij = mod_p(Ti.T @ Omega @ Tj, p)
-            if np.any(Gij % p):
-                return (i, j, Gij)
-    return None
-
-
-def atomic_block_decompose_certified(
+def atomic_block_decompose(
     F: np.ndarray,
     p: int,
     *,
     convention: Convention = "column",
 ) -> Tuple[np.ndarray, np.ndarray, Dict]:
     """
-    Certified decomposition (strict):
-      - Every sector must return inv.data["status"] == "OK"
-      - Block bases must span the full space (no completion allowed)
-      - B must be symplectic
+    Decompose a symplectic ``F`` into atomic invariant symplectic blocks.
+
+    Single route: this always runs once and always returns ``(Sigma, B, info)``
+    with ``B`` symplectic and ``Sigma = B^{-1} F B``.  Certification is reported
+    in the output rather than selected by a mode:
+
+      * ``info["certified"]`` -- True iff the returned basis is exactly the
+        concatenated atomic block frame (no global completion was needed), every
+        sector was built by an implemented family (no degraded fallback), and the
+        independent verification passed.  A valid-but-not-atomic result (e.g. one
+        relying on global completion) has this False.
+      * ``info["cost_certificate"]["certified_minimal"]`` (mirrored at
+        ``info["certified_minimal"]``) -- True iff the attained qudit cost equals
+        the invariant-derived lower bound.  This minimality proof is computed from
+        conjugacy invariants in the prepass, independent of the construction.
+
+    Callers that want a hard failure on anything less than a certified minimal
+    decomposition should use :func:`decompose_or_raise`.
     """
     if convention not in ("column", "row"):
         raise ValueError(f"Unknown convention={convention!r}. Expected 'column' or 'row'.")
 
     F = np.asarray(F, dtype=int)
-
-    if F.ndim != 2:
-        raise ValueError(f"F must be a 2D square matrix, got ndim={F.ndim}.")
-
-    if F.shape[0] != F.shape[1]:
-        raise ValueError(f"F must be square, got shape {F.shape}.")
-
+    if F.ndim != 2 or F.shape[0] != F.shape[1]:
+        raise ValueError(f"F must be a 2D square matrix, got shape {getattr(F, 'shape', None)}.")
     n2 = F.shape[0]
     if n2 % 2 != 0:
         raise ValueError(f"F must be (2n)x(2n), got shape {F.shape}.")
-
     F = mod_p(F, p)
 
     if convention == "row":
-        Sigma_col, B_col, info = atomic_block_decompose_certified(
-            F.T,
-            p,
-            convention="column",
-        )
+        Sigma_col, B_col, info = atomic_block_decompose(F.T, p, convention="column")
         return _convert_column_result_to_row(Sigma_col, B_col, info, p)
 
     if not is_symplectic(F, p):
         raise ValueError("Input F is not symplectic in column-action convention.")
-
-    # (F was already validated and reduced mod p above, before the convention
-    # branch; the previously duplicated shape/mod checks here have been removed.)
-    meta = rcf_prepass(F, p)
-    sector_contexts = _sector_contexts_from_meta(meta)
-
-    blocks: List[AtomicBlock] = []
-    sector_invariants: List[AtomicInvariant] = []
-    failures: list[dict[str, Any]] = []
-
-    for i, ctx in enumerate(sector_contexts):
-        try:
-            b, inv = _build_sector(F, p, ctx, certified=True)
-        except Exception as e:
-            dbg = _sector_debug(ctx, sector_index=i)
-            dbg["error"] = f"{type(e).__name__}: {e}"
-            dbg["error_kind"] = _classify_extraction_error(e)
-            failures.append(dbg)
-            continue
-
-        blocks += b
-        sector_invariants.append(inv)
-
-        if inv.data.get("status") != "OK":
-            dbg = _sector_debug(ctx, sector_index=i)
-            dbg.update(
-                {
-                    "status": inv.data.get("status"),
-                    "note": inv.data.get("note", ""),
-                    "builder_debug": inv.data.get("last_attempts", inv.data.get("progress_lengths", None)),
-                }
-            )
-            failures.append(dbg)
-
-    if failures:
-        raise CertificationError(
-            "Certified decomposition failed: at least one sector is uncertified or errored.",
-            info={
-                "p": int(p),
-                "n2": int(n2),
-                "failures": failures,
-                "Lmin_star": int(meta.get("Lmin_star", 1)),
-                "sector_signature": [
-                    (ctx.sector_type, ctx.sector_key, ctx.sector_key_star) for ctx in sector_contexts
-                ],
-            },
-        )
-
-    # In certified mode we REQUIRE spanning; no completion allowed.
-    T = _concat_blocks_to_partial_basis(blocks, n2, p)
-    if T.shape != (n2, n2):
-        raise CertificationError(
-            f"Certified decomposition failed: global basis has wrong shape {T.shape} (blocks do not span).",
-            info={
-                "p": int(p),
-                "n2": int(n2),
-                "atomic_half_dims": [b.half_dim for b in blocks],
-                "rank_partial": int(rank_mod(T, p)) if T.size else 0,
-            },
-        )
-
-    pair = _first_nonorthogonal_pair(blocks, p)
-    if pair is not None:
-        i, j, Gij = pair
-        nz = np.argwhere(Gij % p)
-        nz_preview = [tuple(map(int, x)) for x in nz[:10]]  # first 10 positions
-
-        raise CertificationError(
-            "Certified decomposition failed: found non-orthogonal pair of atomic blocks.",
-            info={
-                "p": int(p),
-                "n2": int(n2),
-                "atomic_half_dims": [int(b.half_dim) for b in blocks],
-                "pair": {
-                    "i": int(i),
-                    "j": int(j),
-                    "half_dims": (int(blocks[i].half_dim), int(blocks[j].half_dim)),
-                    "sectors": (
-                        (blocks[i].sector_key, getattr(blocks[i], "sector_type", None)),
-                        (blocks[j].sector_key, getattr(blocks[j], "sector_type", None)),
-                    ),
-                    "Gij_nnz": int(nz.shape[0]),
-                    "Gij_nz_preview": nz_preview,
-                },
-            },
-        )
-
-    B = T
-    _verify_full_symplectic_basis(B, p)
-    Sigma = _compute_sigma(F, B, p)
-
-    try:
-        verification = verify_atomic_decomposition(
-            F, B, Sigma, blocks, sector_invariants, p, expect_full_block_cover=True
-        )
-    except Exception as e:
-        raise CertificationError(
-            "Certified decomposition failed final verification.",
-            info={"p": int(p), "n2": int(n2), "error": f"{type(e).__name__}: {e}"},
-        ) from e
-
-    info = {
-        "status": "OK",
-        "certified": True,
-        "input_convention": "column",
-        "internal_convention": "column",
-        "sector_invariants": sector_invariants,
-        "atomic_half_dims": [int(b.half_dim) for b in blocks],
-        "Lmin_star": int(meta.get("Lmin_star", 1)),
-        "completed": False,
-        "verification": verification,
-    }
-    _attach_cost_certificate(info, blocks, sector_invariants, completed=False, p=p)
-    return Sigma, B, info
-
-
-def atomic_block_decompose_best_effort(
-    F: np.ndarray, p: int, *, last_error: Optional[CertificationError] = None, convention: Convention = "column"
-) -> Tuple[np.ndarray, np.ndarray, Dict]:
-    """
-    Best-effort decomposition:
-      - Always attempts to return (Sigma, B) with B symplectic and Sigma = B^{-1} F B.
-      - Allows sector fallbacks and ALSO global completion if blocks don't span.
-    """
-    if convention == "row":
-        Sigma_col, B_col, info = atomic_block_decompose_best_effort(
-            mod_p(F, p).T, p, last_error=last_error, convention="column"
-        )
-        return _convert_column_result_to_row(Sigma_col, B_col, info, p)
-    if convention != "column":
-        raise ValueError(f"Unknown convention={convention!r}. Expected 'column' or 'row'.")
-
-    if not is_symplectic(F, p):
-        raise ValueError("Input F is not symplectic in column-action convention.")
-
-    F = mod_p(F, p)
-    n2 = F.shape[0]
-    if n2 % 2 != 0:
-        raise ValueError(f"F must be (2n)x(2n), got shape {F.shape}.")
 
     meta = rcf_prepass(F, p)
     sector_contexts = _sector_contexts_from_meta(meta)
@@ -684,18 +525,20 @@ def atomic_block_decompose_best_effort(
 
     for i, ctx in enumerate(sector_contexts):
         try:
-            b, inv = _build_sector(F, p, ctx, certified=False)
+            b, inv = _build_sector(F, p, ctx)
             blocks += b
             sector_invariants.append(inv)
         except Exception as e:
             reason = f"{type(e).__name__}: {e}"
             dbg = _sector_debug(ctx, sector_index=i)
             dbg["error"] = reason
+            dbg["error_kind"] = _classify_extraction_error(e)
             errors.append(dbg)
+            # Degraded fallback: keep going and let global completion absorb the
+            # span. This can never raise out of the single route.
             try:
                 b_fb, inv_fb = _sector_fallback_block(F=F, p=p, ctx=ctx, reason=reason)
             except Exception as e2:
-                # Best-effort must never raise; record and defer to global completion.
                 dbg["fallback_error"] = f"{type(e2).__name__}: {e2}"
                 b_fb, inv_fb = [], AtomicInvariant(
                     sector_key=ctx.sector_key,
@@ -710,33 +553,39 @@ def atomic_block_decompose_best_effort(
             blocks += b_fb
             sector_invariants.append(inv_fb)
 
-    # Global completion step (THIS is what fixes your failure)
+    # Assemble a full symplectic basis. Completion is a no-op when the atomic
+    # blocks already span (the certified case); otherwise it absorbs the rest.
     B, completed = _complete_global_basis_from_blocks(F=F, p=p, blocks=blocks)
     Sigma = _compute_sigma(F, B, p)
 
-    certified = (not completed) and all(inv.data.get("status") == "OK" for inv in sector_invariants)
-    status = "OK" if certified else "DEGRADED"
+    try:
+        verification = verify_atomic_decomposition(
+            F, B, Sigma, blocks, sector_invariants, p, expect_full_block_cover=False
+        )
+        verif_error = None
+    except Exception as e:
+        verification = {"error": f"{type(e).__name__}: {e}"}
+        verif_error = verification["error"]
+
+    all_sectors_ok = all(inv.data.get("status") == "OK" for inv in sector_invariants)
+    block_cover = bool(verification.get("block_cover", False)) if isinstance(verification, dict) else False
+    certified = bool(
+        (not completed) and (not errors) and all_sectors_ok and block_cover and (verif_error is None)
+    )
 
     warnings: List[str] = []
     if completed:
         warnings.append("Global symplectic completion was used; atomic blocks do not span by themselves.")
     if errors:
-        warnings.append("At least one sector used a best-effort fallback block.")
+        warnings.append("At least one sector used a degraded fallback block.")
+    if verif_error is not None:
+        warnings.append("Independent verification reported an error; inspect verification['error'].")
     if not certified:
-        warnings.append("This result is a valid best-effort decomposition, not a certified atomic/minimal result.")
-
-    try:
-        verification = {
-            "global": verify_global_basis(F, B, Sigma, p),
-            "cost_certificate": verify_cost_certificate(blocks, sector_invariants, p, completed=completed),
-        }
-    except Exception as e:
-        verification = {"error": f"{type(e).__name__}: {e}"}
-        warnings.append("Final best-effort verification reported an error; inspect verification['error'].")
+        warnings.append("Result is a valid decomposition but not a certified atomic one.")
 
     info: Dict[str, Any] = {
-        "status": status,
-        "certified": bool(certified),
+        "status": "OK" if certified else "DEGRADED",
+        "certified": certified,
         "input_convention": "column",
         "internal_convention": "column",
         "sector_invariants": sector_invariants,
@@ -746,46 +595,38 @@ def atomic_block_decompose_best_effort(
         "warnings": warnings,
         "verification": verification,
     }
-    _attach_cost_certificate(info, blocks, sector_invariants, completed=bool(completed), p=p)
     if errors:
         info["errors"] = errors
-    if last_error is not None:
-        info["last_certification_error"] = getattr(last_error, "info", {}) or {"message": str(last_error)}
 
-    # Best-effort should never be confused with a certified minimal-cost proof.
-    if status != "OK" or completed or errors:
-        info["certified_minimal"] = False
-        info["certified_minimal_qudit_cost"] = False
-        info["minimal_cost_certified"] = False
-        if isinstance(info.get("cost_certificate"), dict):
-            info["cost_certificate"]["certified_minimal"] = False
-            info["cost_certificate"]["complete"] = False
-
+    # Minimality lives entirely in the (invariant-derived) cost certificate.
+    _attach_cost_certificate(info, blocks, sector_invariants, completed=bool(completed), p=p)
     return Sigma, B, info
 
 
-def atomic_block_decompose(F: np.ndarray, p: int, mode: Mode = "auto", *, convention: Convention = "column") -> Tuple[np.ndarray, np.ndarray, Dict]:
+def decompose_or_raise(
+    F: np.ndarray,
+    p: int,
+    *,
+    convention: Convention = "column",
+    require_minimal: bool = True,
+) -> Tuple[np.ndarray, np.ndarray, Dict]:
     """
-    Public entry point.
+    Strict wrapper around :func:`atomic_block_decompose`.
 
-    mode:
-      - "certified": return only if fully certified, else raise CertificationError
-      - "best_effort": always return a decomposition (may be degraded)
-      - "auto": try certified first, else fall back to best-effort (default)
-
-    convention:
-      - "column": internal convention, x -> F x, returning Sigma = B^{-1} F B
-      - "row": project convention, x -> x F; internally uses F.T and returns
-        Sigma = B F B^{-1}
+    Raises :class:`CertificationError` unless the result is a certified atomic
+    decomposition (``info["certified"]``) and, when ``require_minimal`` (default),
+    also certified minimal (``info["certified_minimal"]``).  Library code should
+    prefer :func:`atomic_block_decompose` and read the flags directly.
     """
-    if mode == "certified":
-        return atomic_block_decompose_certified(F, p, convention=convention)
-    if mode == "best_effort":
-        return atomic_block_decompose_best_effort(F, p, convention=convention)
-    if mode != "auto":
-        raise ValueError(f"Unknown mode={mode!r}. Expected 'auto','certified','best_effort'.")
-
-    try:
-        return atomic_block_decompose_certified(F, p, convention=convention)
-    except CertificationError as e:
-        return atomic_block_decompose_best_effort(F, p, last_error=e, convention=convention)
+    Sigma, B, info = atomic_block_decompose(F, p, convention=convention)
+    if not info.get("certified", False):
+        raise CertificationError(
+            "Result is not a certified atomic decomposition.",
+            info={"warnings": info.get("warnings"), "errors": info.get("errors")},
+        )
+    if require_minimal and not info.get("certified_minimal", False):
+        raise CertificationError(
+            "Result is a certified atomic decomposition but minimality is not certified.",
+            info={"cost_certificate": info.get("cost_certificate")},
+        )
+    return Sigma, B, info

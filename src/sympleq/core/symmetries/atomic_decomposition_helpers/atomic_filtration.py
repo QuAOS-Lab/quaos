@@ -39,8 +39,10 @@ def build_nilpotent_filtration(N: np.ndarray, space_basis: np.ndarray, max_exp: 
     max_exp = int(max_exp)
 
     K: Dict[int, np.ndarray] = {0: np.zeros((d, 0), dtype=np.int64)}
+    Npow = np.eye(d, dtype=np.int64)
     for j in range(1, max_exp + 1):
-        K[j] = kernel_in_span(mat_pow_mod(N, j, p), space_basis, p)
+        Npow = mod_p(Npow @ N, p)          # N^j, iterated (avoids re-exponentiating)
+        K[j] = kernel_in_span(Npow, space_basis, p)
     K[max_exp + 1] = K[max_exp]
 
     denom: Dict[int, np.ndarray] = {}
@@ -56,7 +58,8 @@ def build_nilpotent_filtration(N: np.ndarray, space_basis: np.ndarray, max_exp: 
             D = np.concatenate([D, NK_next], axis=1) if D.shape[1] else NK_next
         D = independent_columns(D, p) if D.shape[1] else D
         denom[L] = D
-        rD = rank_mod(D, p) if D.shape[1] else 0
+        # D is now a set of independent columns, so rank(D) == D.shape[1] exactly.
+        rD = D.shape[1]
         need = KL.shape[1] - rD
         if need > 0:
             tops[L] = _basis_extend(D, KL, need, p)
