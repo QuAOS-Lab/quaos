@@ -264,6 +264,197 @@ def parametric_boundary_fit(
     return float(q), float(slope), float(sharpness)
 
 
+def _fit_parametric_boundary_arrays(
+    ratios: np.ndarray,
+    n_gates: np.ndarray,
+    successes: np.ndarray,
+    failures: np.ndarray,
+    weights: np.ndarray,
+) -> tuple[float, float, float] | None:
+    """Fit the inverse-form parametric boundary from array inputs."""
+    from scipy.optimize import minimize
+    from scipy.special import expit
+
+    if len(ratios) < 3:
+        return None
+
+    ratios = np.asarray(ratios, dtype=float)
+    n_gates = np.asarray(n_gates, dtype=float)
+    successes = np.asarray(successes, dtype=float)
+    failures = np.asarray(failures, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+
+    q0 = REFERENCE_OFFSET / REFERENCE_NUMERATOR
+    s0 = REFERENCE_SLOPE / REFERENCE_NUMERATOR
+    x0 = np.log([q0, s0, 4.0])
+
+    def loss(log_params: np.ndarray) -> float:
+        q, slope, sharpness = np.exp(log_params)
+        boundary = 1.0 / (q + slope * ratios)
+        probabilities = expit(sharpness * (boundary - n_gates) / boundary)
+        eps = 1e-12
+        negative_log_likelihood = -np.sum(
+            weights * (
+                successes * np.log(probabilities + eps)
+                + failures * np.log(1.0 - probabilities + eps)
+            )
+        )
+        regularization = 0.1 * np.sum((log_params[:2] - x0[:2]) ** 2)
+        return float(negative_log_likelihood + regularization)
+
+    bounds = [
+        (np.log(1e-6), np.log(1.0)),
+        (np.log(1e-6), np.log(1.0)),
+        (np.log(0.05), np.log(100.0)),
+    ]
+    result = minimize(loss, x0=x0, bounds=bounds, method="L-BFGS-B")
+    if not result.success:
+        return None
+    q, slope, sharpness = np.exp(result.x)
+    return float(q), float(slope), float(sharpness)
+
+
+def parametric_boundary_bootstrap(
+    data: RMBData,
+    *,
+    n_bootstrap: int = 100,
+    seed: int | None = None,
+) -> list[tuple[float, float, float]]:
+    """Bootstrap inverse-boundary fits from per-config Beta posterior draws."""
+    measured = measured_items(data)
+    if len(measured) < 3:
+        return []
+
+    rng = np.random.default_rng(seed)
+    ratios = np.asarray([config.ratio_2_qb_gates for config, _ in measured],
+                        dtype=float)
+    n_gates = np.asarray([config.n_gates for config, _ in measured], dtype=float)
+    posteriors = [estimator.posterior_alpha_beta() for _, estimator in measured]
+    alpha = np.asarray([a for a, _ in posteriors], dtype=float)
+    beta = np.asarray([b for _, b in posteriors], dtype=float)
+    weights = np.asarray([max(1, estimator.num_runs()) for _, estimator in measured],
+                         dtype=float)
+
+    fits = []
+    for _ in range(n_bootstrap):
+        sampled = rng.beta(alpha, beta)
+        fit = _fit_parametric_boundary_arrays(
+            ratios,
+            n_gates,
+            sampled,
+            1.0 - sampled,
+            weights,
+        )
+        if fit is not None:
+            fits.append(fit)
+    return fits
+
+
+def parametric_boundary_gate_samples(
+    fits: list[tuple[float, float, float]],
+    ratios: np.ndarray,
+) -> np.ndarray:
+    """Total-gate boundary samples for fitted inverse-boundary parameters."""
+    if not fits:
+        return np.empty((0, len(ratios)), dtype=float)
+    samples = []
+    for q, slope, _ in fits:
+        gates = 1.0 / (q + slope * ratios)
+        gates[~np.isfinite(gates)] = np.nan
+        gates[gates <= 0.0] = np.nan
+        samples.append(gates)
+    return np.asarray(samples, dtype=float)
+
+
+def parametric_boundary_gate_quantiles(
+    data: RMBData,
+    settings: CrossingSettings,
+    *,
+    ratios: np.ndarray | None = None,
+    n_bootstrap: int = 100,
+    seed: int | None = None,
+    quantiles: tuple[float, ...] = (0.05, 0.25, 0.75, 0.95),
+) -> tuple[dict[float, np.ndarray], np.ndarray]:
+    """Fixed-ratio quantiles from parametric inverse-boundary bootstraps."""
+    if ratios is None:
+        ratios = np.linspace(settings.ratio_bounds[0], settings.ratio_bounds[1], 160)
+    ratios = np.asarray(ratios, dtype=float)
+    empty = {q: np.full_like(ratios, np.nan, dtype=float) for q in quantiles}
+
+    fits = parametric_boundary_bootstrap(
+        data,
+        n_bootstrap=n_bootstrap,
+        seed=seed,
+    )
+    samples = parametric_boundary_gate_samples(fits, ratios)
+    if len(samples) == 0:
+        return empty, np.zeros_like(ratios, dtype=float)
+
+    valid = np.isfinite(samples)
+    valid_fraction = np.mean(valid, axis=0)
+    output = {}
+    for q in quantiles:
+        values = np.full_like(ratios, np.nan, dtype=float)
+        for i in range(len(ratios)):
+            column = samples[:, i]
+            column = column[np.isfinite(column)]
+            if len(column) > 0:
+                values[i] = float(np.quantile(column, q))
+        output[q] = values
+    return output, valid_fraction
+
+
+def plot_parametric_bootstrap_gate_bands(
+    ax,
+    data: RMBData,
+    settings: CrossingSettings,
+    *,
+    ratios: np.ndarray | None = None,
+    n_bootstrap: int = 100,
+    seed: int | None = None,
+) -> None:
+    """Plot fixed-ratio parametric-boundary bootstrap bands."""
+    if ratios is None:
+        ratios = np.linspace(settings.ratio_bounds[0], settings.ratio_bounds[1], 160)
+    quantiles, valid_fraction = parametric_boundary_gate_quantiles(
+        data,
+        settings,
+        ratios=ratios,
+        n_bootstrap=n_bootstrap,
+        seed=seed,
+    )
+    q05, q25, q75, q95 = (quantiles[q] for q in (0.05, 0.25, 0.75, 0.95))
+    valid90 = np.isfinite(q05) & np.isfinite(q95)
+    valid50 = np.isfinite(q25) & np.isfinite(q75)
+    if not np.any(valid90):
+        return
+
+    ax.fill_betweenx(
+        ratios[valid90],
+        q05[valid90],
+        q95[valid90],
+        color="tab:blue",
+        alpha=0.14,
+        linewidth=0,
+        label="parametric bootstrap 90% band",
+        zorder=1,
+    )
+    if np.any(valid50):
+        ax.fill_betweenx(
+            ratios[valid50],
+            q25[valid50],
+            q75[valid50],
+            color="tab:blue",
+            alpha=0.26,
+            linewidth=0,
+            label="parametric bootstrap 50% band",
+            zorder=2,
+        )
+
+    min_valid = float(np.min(valid_fraction[valid90])) if np.any(valid90) else 0.0
+    ax.plot([], [], color="none", label=f"min bootstrap fit rate {min_valid:.0%}")
+
+
 def plot_parametric_boundary_total_ratio_line(
     ax,
     data: RMBData,
@@ -804,23 +995,6 @@ def plot_monotone_fidelity_surface_contours(
                     clip_on=True,
                 )
 
-        group_surface = (surface if surface is not None
-                         else try_fit_monotone_fidelity_surface(group, settings))
-        if group_surface is not None:
-            gates_grid, ratio_grid, probabilities = group_surface.probability_grid(
-                settings.candidate_grid_size)
-            if float(np.min(probabilities)) <= 0.5 <= float(np.max(probabilities)):
-                ax.contour(
-                    gates_grid,
-                    ratio_grid,
-                    probabilities,
-                    levels=[0.5],
-                    colors="black",
-                    linewidths=2,
-                    zorder=4,
-                )
-                ax.plot([], [], color="black", linewidth=2, label="monotone E[fidelity] = 0.5")
-
         plot_parametric_boundary_total_ratio_line(ax, group, settings)
         plot_analytic_total_ratio_line(ax, settings)
         plot_reference_total_ratio_line(ax, settings)
@@ -861,6 +1035,7 @@ def plot_monotone_fidelity_surface_with_confidence(
     log_x: bool = False,
     label_runs: bool = True,
     run_label_limit: int = 300,
+    bootstrap_kind: str = "monotone",
 ) -> list:
     """
     Plot the monotone p=0.5 line with fixed-ratio bootstrap uncertainty.
@@ -874,21 +1049,30 @@ def plot_monotone_fidelity_surface_with_confidence(
         label_runs=label_runs, run_label_limit=run_label_limit)
     groups = sorted(grouped_by_n_qubits(data).items())
 
-    for ax, _ in zip(axes, groups):
-        group_surfaces = surfaces
-        if group_surfaces is None:
-            group_surfaces = bootstrap_surfaces(
-                data,
+    for ax, (_, group) in zip(axes, groups):
+        if bootstrap_kind == "parametric":
+            plot_parametric_bootstrap_gate_bands(
+                ax,
+                group,
                 settings,
                 n_bootstrap=n_bootstrap,
                 seed=seed,
             )
-        plot_bootstrap_gate_bands(
-            ax,
-            settings,
-            group_surfaces,
-            total_ratio_axes=True,
-        )
+        else:
+            group_surfaces = surfaces
+            if group_surfaces is None:
+                group_surfaces = bootstrap_surfaces(
+                    data,
+                    settings,
+                    n_bootstrap=n_bootstrap,
+                    seed=seed,
+                )
+            plot_bootstrap_gate_bands(
+                ax,
+                settings,
+                group_surfaces,
+                total_ratio_axes=True,
+            )
         _legend_outside(ax)
 
     if axes and png_path is not None:

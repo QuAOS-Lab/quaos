@@ -1334,6 +1334,7 @@ def select_aepsych_validation_configs(
     observations: list[Observation],
     fantasy_rng: np.random.Generator,
     device: torch.device,
+    cost_cap: float | None = None,
 ) -> tuple[list[RMBConfig], bool]:
     """Ask the trained AEPsych strategy for validation configs."""
     if strategy.model is None:
@@ -1353,11 +1354,12 @@ def select_aepsych_validation_configs(
         target_count + 10,
         int(settings.validation_max_attempts_multiplier) * max(1, target_count),
     )
-    cost_cap = (
-        settings.max_cost_per_run
-        if settings.validation_max_cost_per_run is None
-        else settings.validation_max_cost_per_run
-    )
+    if cost_cap is None:
+        cost_cap = (
+            settings.max_cost_per_run
+            if settings.validation_max_cost_per_run is None
+            else settings.validation_max_cost_per_run
+        )
 
     attempts = 0
     exhausted = False
@@ -1421,15 +1423,21 @@ def validate_gp_contour_configs(
     settings: RickFantasyGPUSettings,
     base_path: Path | None,
     device: torch.device,
-) -> tuple[RMB | None, Path | None, list[RMBConfig], list[tuple[float, float, int]]]:
+    validation_hqc_budget: float | None = None,
+) -> tuple[RMB | None, Path | None, list[RMBConfig], list[tuple[float, float, int]], Budget | None]:
     """Measure trained-AEPsych validation suggestions into a separate RMBData."""
     if not settings.validate_gp_contour:
-        return None, None, [], []
-    if settings.validation_hqc_budget <= 0.0:
+        return None, None, [], [], None
+    validation_hqc_budget = (
+        settings.validation_hqc_budget
+        if validation_hqc_budget is None
+        else validation_hqc_budget
+    )
+    if validation_hqc_budget <= 0.0:
         print("[validation] skipped: validation_hqc_budget <= 0")
-        return None, None, [], []
+        return None, None, [], [], None
 
-    validation_budget = Budget(remaining_hqc=settings.validation_hqc_budget)
+    validation_budget = Budget(remaining_hqc=validation_hqc_budget)
     selected: list[RMBConfig] = []
     exhausted = False
     restart_index = 0
@@ -1441,6 +1449,7 @@ def validate_gp_contour_configs(
             observations=observations,
             fantasy_rng=fantasy_rng,
             device=device,
+            cost_cap=validation_budget.remaining_hqc,
         )
         if len(selected) >= settings.validation_min_configs:
             break
@@ -1507,6 +1516,7 @@ def validate_gp_contour_configs(
         resolved_path = output_path if output_path.is_absolute() else Path(output_path)
 
     print("[validation]")
+    print(f"  validation_available_hqc             = {validation_hqc_budget:.6g}")
     print(f"  requested validation configs         = {settings.validation_target_configs}")
     print(f"  selected validation configs          = {len(selected)}")
     print(f"  measured validation configs          = {len(outcomes_by_config)}")
@@ -1516,7 +1526,7 @@ def validate_gp_contour_configs(
     if resolved_path is not None:
         print(f"  validation_save_path                 = {resolved_path}")
 
-    return validation_rmb, resolved_path, selected, validation_results_for_plot
+    return validation_rmb, resolved_path, selected, validation_results_for_plot, validation_budget
 
 
 # =============================================================================
@@ -1607,7 +1617,11 @@ def print_run_handles(
 # =============================================================================
 
 
-def run(settings: RickFantasyGPUSettings) -> tuple[RMB, list[RMBConfig]]:
+def run(
+    settings: RickFantasyGPUSettings,
+    *,
+    return_budget: bool = False,
+):
     """
     Run the experiment.
     """
@@ -1817,6 +1831,7 @@ def run(settings: RickFantasyGPUSettings) -> tuple[RMB, list[RMBConfig]]:
         validation_base_path,
         validation_crossings,
         validation_results_for_plot,
+        validation_budget,
     ) = validate_gp_contour_configs(
         strategy=strategy,
         observations=observations,
@@ -1826,6 +1841,10 @@ def run(settings: RickFantasyGPUSettings) -> tuple[RMB, list[RMBConfig]]:
         settings=settings,
         base_path=base_path,
         device=gp_device,
+        validation_hqc_budget=(
+            settings.validation_hqc_budget
+            + max(0.0, budget.remaining_hqc)
+        ),
     )
     validation_fit_data = validation_rmb._data if validation_rmb is not None else {}
     monotone_crossings = monotone_level_set_configs(validation_fit_data, settings)
@@ -1854,6 +1873,7 @@ def run(settings: RickFantasyGPUSettings) -> tuple[RMB, list[RMBConfig]]:
                 png_path=None,
                 show=False,
                 log_x=True,
+                bootstrap_kind="parametric",
             )
             if axes and gp_posterior_mean_for_validation_plot is not None:
                 gates_grid, ratio_grid, probabilities = gp_posterior_mean_for_validation_plot
@@ -1884,7 +1904,36 @@ def run(settings: RickFantasyGPUSettings) -> tuple[RMB, list[RMBConfig]]:
                     bbox_inches="tight",
                 )
 
+    if return_budget:
+        total_budget = Budget(
+            remaining_hqc=(
+                validation_budget.remaining_hqc
+                if validation_budget is not None
+                else max(
+                    0.0,
+                    settings.hqc_budget - budget.spent_hqc,
+                )
+            ),
+            spent_hqc=(
+                budget.spent_hqc
+                + (validation_budget.spent_hqc if validation_budget is not None else 0.0)
+            ),
+            jobs=(
+                budget.jobs
+                + (validation_budget.jobs if validation_budget is not None else 0)
+            ),
+            max_job_circuits=max(
+                budget.max_job_circuits,
+                validation_budget.max_job_circuits if validation_budget is not None else 0,
+            ),
+        )
+        return rmb, crossings, total_budget, validation_rmb
     return rmb, crossings
+
+
+def run_with_budget(settings: RickFantasyGPUSettings):
+    """Run the modified crossing experiment and return the final budget."""
+    return run(settings, return_budget=True)
 
 
 # =============================================================================
