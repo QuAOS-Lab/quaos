@@ -48,8 +48,18 @@ from sympleq.applications.randomized_benchmarking.experiments.monotone_tracing i
     MonotoneTracingSettings,
     run_with_budget as run_monotone_tracing_with_budget,
 )
+from sympleq.applications.randomized_benchmarking.experiments.batched_monotone_tracing import (
+    BatchedMonotoneTracingSettings,
+    run_with_budget as run_batched_monotone_tracing_with_budget,
+)
+from sympleq.applications.randomized_benchmarking.experiments.bootstrap_batched_monotone_tracing import (
+    BootstrapBatchedMonotoneTracingSettings,
+    run_with_budget as run_bootstrap_batched_monotone_tracing_with_budget,
+)
 from sympleq.applications.randomized_benchmarking.experiments.plots import (
     analytic_gate_counts,
+    boundary_bootstrap_for_settings,
+    boundary_fit_for_settings,
     parametric_boundary_bootstrap,
     parametric_boundary_fit,
     parametric_boundary_gate_samples,
@@ -60,13 +70,13 @@ from sympleq.core.noise.noise_model import GenericNoise
 
 N_NOISE_VALUES = 5
 N_REALISATIONS = 10
-NOISE_SPREAD = 0.20
+NOISE_SPREAD = 0.5
 N_BOOTSTRAP = 100
 FIG_DIR = Path(__file__).resolve().parent / "figs" / "monotone_tracing"
 RESULTS_JSON = FIG_DIR / "results.json"
 RUNS_CSV = FIG_DIR / "runs.csv"
-MAX_WORKERS = int(os.environ.get("BENCHMARKBENCHMARK_WORKERS", "22")) or None
-APPROACHES = ["monotone_tracing"]  # , "charlie_simple", "level_crossing"
+MAX_WORKERS = int(os.environ.get("BENCHMARKBENCHMARK_WORKERS", "12")) or None
+APPROACHES = ["bootstrap_batched_monotone_tracing"]  #, "batched_monotone_tracing""monotone_tracing" , "level_crossing"
 
 
 def scaled_noise_backend_factory(
@@ -116,6 +126,22 @@ def fitted_gate_counts(data, ratios: np.ndarray) -> np.ndarray | None:
     return gates
 
 
+def fitted_gate_counts_for_settings(
+    data,
+    settings: CrossingSettings,
+    ratios: np.ndarray,
+) -> np.ndarray | None:
+    """Boundary gate counts using an approach-provided fit when available."""
+    fit = boundary_fit_for_settings(data, settings)
+    if fit is None:
+        return None
+    q, slope, _ = fit
+    gates = 1.0 / (q + slope * ratios)
+    gates[~np.isfinite(gates)] = np.nan
+    gates[gates <= 0.0] = np.nan
+    return gates
+
+
 def fit_score(
     data,
     settings: CrossingSettings,
@@ -131,7 +157,7 @@ def fit_score(
     multiplicative error.
     """
     ratios = np.linspace(settings.ratio_bounds[0], settings.ratio_bounds[1], 300)
-    fitted = fitted_gate_counts(data, ratios)
+    fitted = fitted_gate_counts_for_settings(data, settings, ratios)
     if fitted is None:
         return 0.0
     analytic = analytic_gate_counts(
@@ -164,7 +190,12 @@ def bootstrap_coverage(
     parametric bootstrap 50% and 90% bands.
     """
     ratios = np.linspace(settings.ratio_bounds[0], settings.ratio_bounds[1], 200)
-    fits = parametric_boundary_bootstrap(data, n_bootstrap=N_BOOTSTRAP, seed=seed)
+    fits = boundary_bootstrap_for_settings(
+        data,
+        settings,
+        n_bootstrap=N_BOOTSTRAP,
+        seed=seed,
+    )
     samples = parametric_boundary_gate_samples(fits, ratios)
     if len(samples) == 0:
         return 0.0, 0.0
@@ -242,6 +273,10 @@ def print_row(row: dict) -> None:
 def run_approach(approach: str, settings: CrossingSettings):
     if approach == "monotone_tracing":
         return run_monotone_tracing_with_budget(settings)
+    if approach == "batched_monotone_tracing":
+        return run_batched_monotone_tracing_with_budget(settings)
+    if approach == "bootstrap_batched_monotone_tracing":
+        return run_bootstrap_batched_monotone_tracing_with_budget(settings)
     if approach == "charlie_simple":
         return run_charlie_simple_with_budget(settings)
     if approach == "level_crossing":
@@ -268,6 +303,14 @@ def approach_settings(
     }
     if approach == "monotone_tracing":
         settings = MonotoneTracingSettings(**kwargs)
+    elif approach == "batched_monotone_tracing":
+        settings = BatchedMonotoneTracingSettings(**kwargs)
+    elif approach == "bootstrap_batched_monotone_tracing":
+        settings = BootstrapBatchedMonotoneTracingSettings(
+            **kwargs,
+            initial_one_q_pauli_error=BASE_1Q_PAULI_ERROR * one_q_noise_scale,
+            initial_two_q_pauli_error=BASE_2Q_PAULI_ERROR * two_q_noise_scale,
+        )
     elif approach == "charlie_simple":
         settings = CharlieSimpleSettings(**kwargs)
     elif approach == "level_crossing":
