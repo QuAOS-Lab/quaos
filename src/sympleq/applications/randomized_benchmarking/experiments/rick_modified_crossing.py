@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import copy
 import importlib
+import json
 import logging
 import re
 import sys
@@ -66,7 +67,7 @@ from aepsych.config import Config
 from aepsych.strategy import SequentialStrategy
 import aepsych.transforms.parameters as aepsych_parameter_transforms
 
-from sympleq.applications.randomized_benchmarking.RMB import RMB
+from sympleq.applications.randomized_benchmarking.RMB import RMB, resolve_data_path
 from sympleq.applications.randomized_benchmarking.config import RMBConfig
 from sympleq.applications.randomized_benchmarking.experiments.common import (
     Budget,
@@ -75,14 +76,13 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     batch_hqc_cost,
     candidate_axes,
     config_points,
-    contour_points_from_surface,
     print_experiment_summary,
-    print_fit_reports,
     print_progress,
-    save_crossings,
     spend_request_batch,
     start_run,
-    try_fit_monotone_fidelity_surface,
+)
+from sympleq.applications.randomized_benchmarking.experiments.scores import (
+    gp_grid_scores,
 )
 
 
@@ -109,14 +109,37 @@ def import_experiment_module(module_name: str):
     return importlib.import_module(module_name)
 
 
-def apply_bayesian_estimation_module(module_name: str) -> None:
-    """Point already-imported SympleQ modules at the requested estimator class."""
+def apply_bayesian_estimation_module(
+    module_name: str,
+    *,
+    default_threshold: float,
+    default_min_runs: int,
+) -> None:
+    """Point SympleQ modules at Rick's local estimator default.
+
+    The estimator implementation comes from ``module_name``.  Only
+    ``BayesianEstimator.default()`` is made local to this experiment, so shared
+    code such as Charlie keeps its own default behavior.
+    """
     module = importlib.import_module(module_name)
-    estimator = module.BayesianEstimator
+    base_estimator = module.BayesianEstimator
+
+    class RickBayesianEstimator(base_estimator):
+        @classmethod
+        def default(cls):
+            return cls(
+                threshold=default_threshold,
+                min_runs=default_min_runs,
+            )
+
+    RickBayesianEstimator.__name__ = base_estimator.__name__
+    RickBayesianEstimator.__qualname__ = base_estimator.__qualname__
+    RickBayesianEstimator.__module__ = base_estimator.__module__
+
     for loaded in list(sys.modules.values()):
         loaded_name = getattr(loaded, "__name__", "")
         if loaded_name.startswith("sympleq.") and hasattr(loaded, "BayesianEstimator"):
-            setattr(loaded, "BayesianEstimator", estimator)
+            setattr(loaded, "BayesianEstimator", RickBayesianEstimator)
 
 
 # =============================================================================
@@ -198,7 +221,9 @@ class RickFantasyGPUSettings(CrossingSettings):
     plot_gp_level_set_result: bool = False
     save_gp_prediction_grid: bool = False
     plots_module: str = "plots_1"
-    bayesian_estimation_module: str = "sympleq.core.bayesian_estimation_1"
+    bayesian_estimation_module: str = "sympleq.core.bayesian_estimation"
+    estimator_threshold: float = 0.0
+    estimator_min_runs: int = 1
 
     # AEPsych / GP / acquisition
     optimization_steps: int = 10000
@@ -218,6 +243,7 @@ class RickFantasyGPUSettings(CrossingSettings):
 
     # Debugging
     verbose_fantasies: bool = True
+    print_diagnostics: bool = False
 
 
 # =============================================================================
@@ -1260,49 +1286,6 @@ def level_set_configs(
     )
 
 
-def monotone_level_set_configs(
-    data,
-    settings: RickFantasyGPUSettings,
-) -> list[RMBConfig]:
-    """Extract configs on the post-hoc monotone-fit p=target contour."""
-    surface = try_fit_monotone_fidelity_surface(data, settings)
-    if surface is None:
-        return []
-    contour = contour_points_from_surface(surface, settings, level=contour_target(settings))
-    if len(contour) == 0:
-        return []
-
-    configs: list[RMBConfig] = []
-    seen: set[RMBConfig] = set()
-    for n_gates, ratio in contour:
-        config = settings.make_config(float(n_gates), float(ratio))
-        if config not in seen:
-            seen.add(config)
-            configs.append(config)
-    return sorted(configs, key=lambda c: (c.ratio_2_qb_gates, c.n_gates))
-
-
-def print_contour_debug(
-    *,
-    gp_configs: list[RMBConfig],
-    monotone_configs: list[RMBConfig],
-    gp_device: torch.device,
-    limit: int = 8,
-) -> None:
-    def preview(configs: list[RMBConfig]) -> list[tuple[int, float]]:
-        return [
-            (config.n_gates, round(config.ratio_2_qb_gates, 4))
-            for config in configs[:limit]
-        ]
-
-    print("[contour debug]")
-    print(f"  GP/AEPsych contour device            = {gp_device}")
-    print(f"  GP/AEPsych contour configs           = {len(gp_configs)}")
-    print(f"  GP/AEPsych first configs             = {preview(gp_configs)}")
-    print(f"  monotone-fit contour configs         = {len(monotone_configs)}")
-    print(f"  monotone-fit first configs           = {preview(monotone_configs)}")
-
-
 def validation_seed(settings: RickFantasyGPUSettings) -> int | None:
     if settings.rng_seed is None:
         return None
@@ -1318,6 +1301,13 @@ def validation_output_path(
     if base_path is None:
         return None
     return base_path.parent / f"{base_path.stem}_validation.json"
+
+
+def write_scores_to_json(base_path: Path, scores: dict[str, float]) -> None:
+    """Attach modified-crossing scores to the main RMB JSON file."""
+    payload = json.loads(base_path.read_text(encoding="utf-8"))
+    payload["scores"] = scores
+    base_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def effective_training_hqc_budget(settings: RickFantasyGPUSettings) -> float:
@@ -1561,23 +1551,25 @@ def print_run_handles(
           f"{settings.initial_sobol_max_cost_per_run}")
     print(f"  sobol_scramble                       = {settings.sobol_scramble}")
 
-    print("[validation]")
-    print(f"  validate_gp_contour                  = {settings.validate_gp_contour}")
-    print(f"  reserve_validation_budget            = {settings.reserve_validation_budget}")
-    print(f"  validation_hqc_budget                = {settings.validation_hqc_budget}")
-    print(f"  validation_max_cost_per_run          = {settings.validation_max_cost_per_run}")
-    print(f"  validation_target_configs            = {settings.validation_target_configs}")
-    print(f"  validation_min_configs               = {settings.validation_min_configs}")
-    print(f"  validation_max_restarts              = {settings.validation_max_restarts}")
-    print(f"  validation_shots_per_config          = {settings.validation_shots_per_config}")
-    print(f"  validation_max_attempts_multiplier   = "
-          f"{settings.validation_max_attempts_multiplier}")
-    print(f"  validation_probability_band          = {settings.validation_probability_band}")
-    print(f"  validation_seed_offset               = {settings.validation_seed_offset}")
-    print(f"  validation_save_path                 = {settings.validation_save_path}")
+    if settings.validate_gp_contour:
+        print("[validation]")
+        print(f"  reserve_validation_budget            = {settings.reserve_validation_budget}")
+        print(f"  validation_hqc_budget                = {settings.validation_hqc_budget}")
+        print(f"  validation_max_cost_per_run          = {settings.validation_max_cost_per_run}")
+        print(f"  validation_target_configs            = {settings.validation_target_configs}")
+        print(f"  validation_min_configs               = {settings.validation_min_configs}")
+        print(f"  validation_max_restarts              = {settings.validation_max_restarts}")
+        print(f"  validation_shots_per_config          = {settings.validation_shots_per_config}")
+        print(f"  validation_max_attempts_multiplier   = "
+              f"{settings.validation_max_attempts_multiplier}")
+        print(f"  validation_probability_band          = {settings.validation_probability_band}")
+        print(f"  validation_seed_offset               = {settings.validation_seed_offset}")
+        print(f"  validation_save_path                 = {settings.validation_save_path}")
     print(f"  plot_gp_level_set_result             = {settings.plot_gp_level_set_result}")
     print(f"  plots_module                         = {settings.plots_module}")
     print(f"  bayesian_estimation_module           = {settings.bayesian_estimation_module}")
+    print(f"  estimator_threshold                  = {settings.estimator_threshold}")
+    print(f"  estimator_min_runs                   = {settings.estimator_min_runs}")
 
     print("[GP / AEPsych]")
     print(f"  acquisition_function                 = {settings.acquisition_function}")
@@ -1604,11 +1596,12 @@ def print_run_handles(
     print(f"  selected GP device                   = {gp_device}")
     print(f"  force_default_device_during_aepsych  = "
           f"{settings.force_default_device_during_aepsych}")
-    print("  RMB backend                          = CPU")
+    print("  RMB backend                          = SympleQ")
 
     print("[debug]")
     print(f"  rng_seed                             = {settings.rng_seed}")
     print(f"  verbose_fantasies                    = {settings.verbose_fantasies}")
+    print(f"  print_diagnostics                    = {settings.print_diagnostics}")
 
     print("=============================================\n")
 
@@ -1630,7 +1623,11 @@ def run(
     logging.getLogger().setLevel(logging.WARNING)
     warnings.filterwarnings("ignore")
 
-    apply_bayesian_estimation_module(settings.bayesian_estimation_module)
+    apply_bayesian_estimation_module(
+        settings.bayesian_estimation_module,
+        default_threshold=settings.estimator_threshold,
+        default_min_runs=settings.estimator_min_runs,
+    )
 
     torch.set_default_dtype(torch.float64)
 
@@ -1770,12 +1767,8 @@ def run(
 
     base_path = None
     if settings.save_path is not None:
-        base_path = save_crossings(
-            rmb,
-            settings,
-            budget,
-            crossings,
-        )
+        rmb.save(settings.save_path)
+        base_path = resolve_data_path(settings.save_path)
 
     gp_posterior_mean_for_validation_plot = None
     if settings.plot and settings.plot_gp_level_set_result and base_path is not None:
@@ -1788,12 +1781,13 @@ def run(
             observations,
             device=gp_device,
         )
-        print_real_strategy_prediction_diagnostic(
-            plot_strategy,
-            settings,
-            results_for_plot,
-            device=gp_device,
-        )
+        if settings.print_diagnostics:
+            print_real_strategy_prediction_diagnostic(
+                plot_strategy,
+                settings,
+                results_for_plot,
+                device=gp_device,
+            )
 
         (
             probabilities,
@@ -1807,19 +1801,33 @@ def run(
             device=gp_device,
         )
         if settings.save_gp_prediction_grid:
+            grid_path = base_path.parent / f"{base_path.stem}_gp_grid.npz"
             np.savez_compressed(
-                base_path.parent / f"{base_path.stem}_gp_grid.npz",
+                grid_path,
                 gates_grid=gates_grid,
                 ratio_grid=ratio_grid,
+                x_grid=gates_grid,
+                y_grid=ratio_grid,
                 probabilities=probabilities,
                 latent_mean=latent_mean,
                 latent_variance=latent_variance,
                 target=np.asarray(contour_target(settings), dtype=float),
+                coordinate_system=np.asarray("total_ratio"),
                 rng_seed=np.asarray(
                     -1 if settings.rng_seed is None else settings.rng_seed,
                     dtype=int,
                 ),
             )
+            score_summary = gp_grid_scores(
+                grid_path,
+                one_q_noise_scale=float(getattr(settings, "one_q_noise_scale", 1.0)),
+                two_q_noise_scale=float(getattr(settings, "two_q_noise_scale", 1.0)),
+            )
+            write_scores_to_json(base_path, score_summary)
+            print("[scores]")
+            print(f"  S1                                  = {score_summary['S1']:.6g}")
+            print(f"  S2                                  = {score_summary['S2']:.6g}")
+            print(f"  A_gp                                = {score_summary['A_gp']:.6g}")
         gp_posterior_mean_for_validation_plot = (gates_grid, ratio_grid, probabilities)
         plot_gp_level_set(
             probabilities,
@@ -1861,16 +1869,6 @@ def run(
             + max(0.0, budget.remaining_hqc)
         ),
     )
-    validation_fit_data = validation_rmb._data if validation_rmb is not None else {}
-    monotone_crossings = monotone_level_set_configs(validation_fit_data, settings)
-    print_contour_debug(
-        gp_configs=crossings,
-        monotone_configs=monotone_crossings,
-        gp_device=gp_device,
-    )
-    if validation_rmb is not None:
-        print_fit_reports(validation_fit_data, settings)
-
     # -------------------------------------------------------------------------
     # 5. Optional plotting
     # -------------------------------------------------------------------------
@@ -2002,18 +2000,7 @@ def main() -> None:
     USE_FAKE_CORNERS = True
     EASY_CORNER_OUTCOME = 1
     HARD_CORNER_OUTCOME = 0
-    EXTRA_FAKE_ANCHORS = [
-        # High-ratio, high-gate anchors: assumed failure.
-        (4500, 0.97, 0),
-        (4500, 1.00, 0),
-        (5000, 0.97, 0),
-        (5000, 1.00, 0),
-        # Low-ratio, low-gate anchors: assumed success.
-        (1, 0.08, 1),
-        (1, 0.10, 1),
-        (10, 0.08, 1),
-        (10, 0.10, 1),
-    ]
+    EXTRA_FAKE_ANCHORS = []
 
     # -------------------------------------------------------------------------
     # SOBOL WARM-UP HANDLES
@@ -2042,8 +2029,17 @@ def main() -> None:
     VALIDATION_SEED_OFFSET = 271828
     VALIDATION_SAVE_PATH = None
     PLOT_GP_LEVEL_SET_RESULT = True
+    SAVE_GP_PREDICTION_GRID = True
     PLOTS_MODULE = "plots_1"
-    BAYESIAN_ESTIMATION_MODULE = "sympleq.core.bayesian_estimation_1"
+    BAYESIAN_ESTIMATION_MODULE = "sympleq.core.bayesian_estimation"
+
+    # -------------------------------------------------------------------------
+    # ESTIMATOR HANDLES
+    # -------------------------------------------------------------------------
+    # Local to Rick modified; does not alter shared BayesianEstimator.default().
+
+    ESTIMATOR_THRESHOLD = 0.0
+    ESTIMATOR_MIN_RUNS = 1
 
     # -------------------------------------------------------------------------
     # GP / AEPSYCH HANDLES
@@ -2081,8 +2077,9 @@ def main() -> None:
     # REPRODUCIBILITY / DEBUG HANDLES
     # -------------------------------------------------------------------------
 
-    RNG_SEEDS = [2026, 2027, 2028, 2029]
-    VERBOSE_FANTASIES = True
+    RNG_SEEDS = [2025, 2026, 2027, 2028, 2029, 2030]
+    VERBOSE_FANTASIES = False
+    PRINT_DIAGNOSTICS = False
     PLOT = True
 
     # -------------------------------------------------------------------------
@@ -2113,8 +2110,11 @@ def main() -> None:
         validation_seed_offset=VALIDATION_SEED_OFFSET,
         validation_save_path=VALIDATION_SAVE_PATH,
         plot_gp_level_set_result=PLOT_GP_LEVEL_SET_RESULT,
+        save_gp_prediction_grid=SAVE_GP_PREDICTION_GRID,
         plots_module=PLOTS_MODULE,
         bayesian_estimation_module=BAYESIAN_ESTIMATION_MODULE,
+        estimator_threshold=ESTIMATOR_THRESHOLD,
+        estimator_min_runs=ESTIMATOR_MIN_RUNS,
         optimization_steps=OPTIMIZATION_STEPS,
         inducing_size=INDUCING_SIZE,
         acquisition_function=ACQUISITION_FUNCTION,
@@ -2126,6 +2126,7 @@ def main() -> None:
         use_gpu=USE_GPU,
         force_default_device_during_aepsych=FORCE_DEFAULT_DEVICE_DURING_AEPSYCH,
         verbose_fantasies=VERBOSE_FANTASIES,
+        print_diagnostics=PRINT_DIAGNOSTICS,
         plot=PLOT,
     )
 

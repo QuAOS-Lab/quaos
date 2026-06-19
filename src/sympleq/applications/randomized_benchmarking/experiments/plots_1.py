@@ -12,7 +12,7 @@ from dataclasses import replace
 import numpy as np
 from scipy.special import betainc
 
-from sympleq.core.bayesian_estimation_1 import BayesianEstimator
+from sympleq.core.bayesian_estimation import BayesianEstimator
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
 from sympleq.applications.randomized_benchmarking.experiments.common import (
     CrossingSettings,
@@ -1347,7 +1347,6 @@ def plot_gp_level_set(
         fig, ax = plt.subplots(1, 1, figsize=(6, 5))
     else:
         fig = ax.figure
-    mesh = ax.contourf(x_grid, y_grid, probabilities, levels=20, cmap="RdYlGn")
     mean_contours = ax.contour(
         x_grid,
         y_grid,
@@ -1403,16 +1402,6 @@ def plot_gp_level_set(
                 alpha=0.18,
                 zorder=4,
             )
-    plt.colorbar(mesh, ax=ax)
-
-    failures = [(one_q, two_q) for one_q, two_q, outcome in results if outcome == 0]
-    successes = [(one_q, two_q) for one_q, two_q, outcome in results if outcome == 1]
-    if failures:
-        ax.scatter(*zip(*failures), c="black", edgecolors="white", marker="x",
-                   s=50, label="Failure", zorder=6, alpha=0.9)
-    if successes:
-        ax.scatter(*zip(*successes), c="white", edgecolors="black", marker="o",
-                   s=50, label="Success", zorder=6, alpha=0.9)
 
     if settings is not None and coordinate_system == "total_ratio":
         plot_analytic_total_ratio_line(ax, settings)
@@ -1432,7 +1421,7 @@ def plot_gp_level_set(
     if log_axes or log_y:
         ax.set_yscale("log")
     ax.set_title(title)
-    _legend_outside(ax, fontsize=8)
+    ax.legend(loc="best", fontsize=8, frameon=True, framealpha=0.9)
     if own_figure:
         fig.tight_layout()
     if png_path is not None:
