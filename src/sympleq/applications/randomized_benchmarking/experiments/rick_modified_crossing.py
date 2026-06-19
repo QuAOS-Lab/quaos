@@ -196,6 +196,7 @@ class RickFantasyGPUSettings(CrossingSettings):
     validation_seed_offset: int = 271828
     validation_save_path: str | Path | None = None
     plot_gp_level_set_result: bool = False
+    save_gp_prediction_grid: bool = False
     plots_module: str = "plots_1"
     bayesian_estimation_module: str = "sympleq.core.bayesian_estimation_1"
 
@@ -1805,6 +1806,20 @@ def run(
             settings,
             device=gp_device,
         )
+        if settings.save_gp_prediction_grid:
+            np.savez_compressed(
+                base_path.parent / f"{base_path.stem}_gp_grid.npz",
+                gates_grid=gates_grid,
+                ratio_grid=ratio_grid,
+                probabilities=probabilities,
+                latent_mean=latent_mean,
+                latent_variance=latent_variance,
+                target=np.asarray(contour_target(settings), dtype=float),
+                rng_seed=np.asarray(
+                    -1 if settings.rng_seed is None else settings.rng_seed,
+                    dtype=int,
+                ),
+            )
         gp_posterior_mean_for_validation_plot = (gates_grid, ratio_grid, probabilities)
         plot_gp_level_set(
             probabilities,
@@ -2014,9 +2029,9 @@ def main() -> None:
     # After the GP is trained, measure only configs on its predicted contour
     # into a separate validation RMBData and plot/save that validation data.
 
-    VALIDATE_GP_CONTOUR = True
-    RESERVE_VALIDATION_BUDGET = True
-    VALIDATION_HQC_BUDGET = 30.0
+    VALIDATE_GP_CONTOUR = False
+    RESERVE_VALIDATION_BUDGET = False
+    VALIDATION_HQC_BUDGET = 0.0
     VALIDATION_MAX_COST_PER_RUN = 30.0
     VALIDATION_TARGET_CONFIGS = 30
     VALIDATION_MIN_CONFIGS = 15
