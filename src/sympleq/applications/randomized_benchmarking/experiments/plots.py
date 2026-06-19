@@ -270,6 +270,18 @@ def parametric_boundary_fit(
     return _fit_parametric_boundary_arrays(ratios, n_gates, successes, failures, weights)
 
 
+def boundary_fit_for_settings(
+    data: RMBData,
+    settings: CrossingSettings | None = None,
+) -> tuple[float, float, float] | None:
+    """Boundary fit, allowing an experiment to provide its own fitted model."""
+    if settings is not None:
+        fit_method = getattr(settings, "boundary_fit", None)
+        if callable(fit_method):
+            return fit_method(data)
+    return parametric_boundary_fit(data)
+
+
 def parametric_boundary_bootstrap(
     data: RMBData,
     *,
@@ -306,6 +318,21 @@ def parametric_boundary_bootstrap(
     return fits
 
 
+def boundary_bootstrap_for_settings(
+    data: RMBData,
+    settings: CrossingSettings | None = None,
+    *,
+    n_bootstrap: int = 100,
+    seed: int | None = None,
+) -> list[tuple[float, float, float]]:
+    """Boundary bootstrap, allowing an experiment to provide its own model."""
+    if settings is not None:
+        bootstrap_method = getattr(settings, "boundary_bootstrap", None)
+        if callable(bootstrap_method):
+            return bootstrap_method(data, n_bootstrap=n_bootstrap, seed=seed)
+    return parametric_boundary_bootstrap(data, n_bootstrap=n_bootstrap, seed=seed)
+
+
 def parametric_boundary_gate_samples(
     fits: list[tuple[float, float, float]],
     ratios: np.ndarray,
@@ -322,6 +349,111 @@ def parametric_boundary_gate_samples(
     return np.asarray(samples, dtype=float)
 
 
+def parametric_boundary_gate_counts(
+    data: RMBData,
+    ratios: np.ndarray,
+    settings: CrossingSettings | None = None,
+) -> np.ndarray | None:
+    """Parametric inverse-boundary gate counts on ``ratios``."""
+    fit = boundary_fit_for_settings(data, settings)
+    if fit is None:
+        return None
+    q, slope, _ = fit
+    gates = 1.0 / (q + slope * ratios)
+    gates[~np.isfinite(gates)] = np.nan
+    gates[gates <= 0.0] = np.nan
+    return gates
+
+
+def parametric_boundary_fit_score(
+    data: RMBData,
+    settings: CrossingSettings,
+    *,
+    n_points: int = 300,
+) -> float:
+    """Score the parametric boundary against the analytic Lindblad boundary."""
+    ratios = np.linspace(settings.ratio_bounds[0], settings.ratio_bounds[1], n_points)
+    fitted = parametric_boundary_gate_counts(data, ratios, settings)
+    if fitted is None:
+        return 0.0
+    one_q_noise_scale, two_q_noise_scale = analytic_noise_scales(settings)
+    analytic = analytic_gate_counts(
+        ratios,
+        one_q_noise_scale=one_q_noise_scale,
+        two_q_noise_scale=two_q_noise_scale,
+    )
+    mask = (
+        np.isfinite(fitted)
+        & np.isfinite(analytic)
+        & (fitted > 0.0)
+        & (analytic > 0.0)
+    )
+    if not np.any(mask):
+        return 0.0
+    log_error = np.log(fitted[mask] / analytic[mask])
+    return float(np.exp(-np.sqrt(np.mean(log_error**2))))
+
+
+def nan_quantiles(
+    samples: np.ndarray,
+    quantiles: tuple[float, ...],
+) -> tuple[np.ndarray, ...]:
+    """Column-wise nan-safe quantiles without all-NaN warnings."""
+    output = [np.full(samples.shape[1], np.nan, dtype=float) for _ in quantiles]
+    for column_index in range(samples.shape[1]):
+        column = samples[:, column_index]
+        column = column[np.isfinite(column)]
+        if len(column) == 0:
+            continue
+        for output_array, quantile in zip(output, quantiles):
+            output_array[column_index] = float(np.quantile(column, quantile))
+    return tuple(output)
+
+
+def parametric_bootstrap_analytic_coverage(
+    data: RMBData,
+    settings: CrossingSettings,
+    *,
+    n_bootstrap: int = 100,
+    seed: int | None = None,
+    n_points: int = 200,
+) -> tuple[float, float]:
+    """Fraction of analytic Lindblad points inside bootstrap 50% and 90% bands."""
+    ratios = np.linspace(settings.ratio_bounds[0], settings.ratio_bounds[1], n_points)
+    fits = boundary_bootstrap_for_settings(
+        data,
+        settings,
+        n_bootstrap=n_bootstrap,
+        seed=seed,
+    )
+    samples = parametric_boundary_gate_samples(fits, ratios)
+    if len(samples) == 0:
+        return 0.0, 0.0
+
+    one_q_noise_scale, two_q_noise_scale = analytic_noise_scales(settings)
+    analytic = analytic_gate_counts(
+        ratios,
+        one_q_noise_scale=one_q_noise_scale,
+        two_q_noise_scale=two_q_noise_scale,
+    )
+    q05, q25, q75, q95 = nan_quantiles(samples, (0.05, 0.25, 0.75, 0.95))
+    valid50 = np.isfinite(q25) & np.isfinite(q75) & np.isfinite(analytic)
+    valid90 = np.isfinite(q05) & np.isfinite(q95) & np.isfinite(analytic)
+    coverage50 = (
+        np.mean((q25[valid50] <= analytic[valid50])
+                & (analytic[valid50] <= q75[valid50]))
+        if np.any(valid50)
+        else 0.0
+    )
+    coverage90 = (
+        np.mean((q05[valid90] <= analytic[valid90])
+                & (analytic[valid90] <= q95[valid90]))
+        if np.any(valid90)
+        else 0.0
+    )
+    return float(coverage50), float(coverage90)
+
+
 def plot_parametric_boundary_total_ratio_band(
     ax,
     data: RMBData,
@@ -332,8 +464,12 @@ def plot_parametric_boundary_total_ratio_band(
     """Overlay bootstrap confidence bands for the inverse-form boundary."""
     ratios = np.linspace(settings.ratio_bounds[0], settings.ratio_bounds[1], 160)
     samples = parametric_boundary_gate_samples(
-        parametric_boundary_bootstrap(data, n_bootstrap=n_bootstrap,
-                                      seed=settings.rng_seed),
+        boundary_bootstrap_for_settings(
+            data,
+            settings,
+            n_bootstrap=n_bootstrap,
+            seed=settings.rng_seed,
+        ),
         ratios,
     )
     if len(samples) == 0:
@@ -387,8 +523,12 @@ def plot_parametric_boundary_gate_plane_band(
     """Overlay bootstrap confidence bands for the inverse boundary in gate space."""
     ratios = np.linspace(settings.ratio_bounds[0], settings.ratio_bounds[1], 160)
     samples = parametric_boundary_gate_samples(
-        parametric_boundary_bootstrap(data, n_bootstrap=n_bootstrap,
-                                      seed=settings.rng_seed),
+        boundary_bootstrap_for_settings(
+            data,
+            settings,
+            n_bootstrap=n_bootstrap,
+            seed=settings.rng_seed,
+        ),
         ratios,
     )
     if len(samples) == 0:
@@ -433,7 +573,7 @@ def plot_parametric_boundary_total_ratio_line(
 ) -> None:
     """Overlay the fitted inverse-form boundary on x=total gates, y=ratio."""
     plot_parametric_boundary_total_ratio_band(ax, data, settings)
-    fit = parametric_boundary_fit(data)
+    fit = boundary_fit_for_settings(data, settings)
     if fit is None:
         return
     q, slope, _ = fit
@@ -473,7 +613,7 @@ def plot_parametric_boundary_gate_plane_line(
         one_q_bounds,
         two_q_bounds,
     )
-    fit = parametric_boundary_fit(data)
+    fit = boundary_fit_for_settings(data, settings)
     if fit is None:
         return
     q, slope, _ = fit
@@ -698,7 +838,7 @@ def plot_level_line(
         fixed-ratio contour quantile bands.
     settings : CrossingSettings | None
         Experiment settings. When given, draw the parametric boundary fit and
-        reference curve in the same (total gates, ratio) coordinates.
+        analytic Lindblad curve in the same (total gates, ratio) coordinates.
     png_path : str | Path | None
         Where to save the figure. ``None`` skips saving.
     show : bool
@@ -727,7 +867,6 @@ def plot_level_line(
             )
         plot_parametric_boundary_total_ratio_line(axes[0], data, settings)
         plot_analytic_total_ratio_line(axes[0], settings)
-        plot_reference_total_ratio_line(axes[0], settings)
         axes[0].legend(loc="best", frameon=True, framealpha=0.9)
     if axes and png_path is not None:
         axes[0].figure.savefig(png_path, dpi=200, bbox_inches="tight")
@@ -1006,7 +1145,6 @@ def plot_monotone_fidelity_surface_contours(
 
         plot_parametric_boundary_total_ratio_line(ax, group, settings)
         plot_analytic_total_ratio_line(ax, settings)
-        plot_reference_total_ratio_line(ax, settings)
 
         if log_x:
             ax.set_xscale("log")
@@ -1152,7 +1290,6 @@ def plot_uncertainty_diagnostics(
             )
             plot_parametric_boundary_total_ratio_line(ax, group, settings)
             plot_analytic_total_ratio_line(ax, settings)
-            plot_reference_total_ratio_line(ax, settings)
             if log_x:
                 ax.set_xscale("log")
                 x_lower = max(settings.n_gates_bounds[0] - x_pad,
@@ -1215,6 +1352,9 @@ def plot_crossing_results(
         png_path=sibling_path("_surface.png"), show=False, log_x=True)
     plot_monotone_level_set(data, settings, surface=surface, surfaces=surfaces,
                             png_path=sibling_path("_levelset.png"), show=False)
+    plot_uncertainty_diagnostics(
+        data, settings,
+        png_path=sibling_path("_uncertainty.png"), show=False)
     bins = settings.scatter_merge_bins or (None, None)
     plot_level_line(data, crossings,
                     contour=monotone_fit_contour(data, settings, surface=surface),
@@ -1324,7 +1464,6 @@ def plot_gp_level_set(
 
     if settings is not None:
         plot_analytic_gate_plane_line(ax, settings, one_q_bounds, two_q_bounds)
-    plot_reference_gate_plane_line(ax, one_q_bounds, two_q_bounds)
 
     # Empty handles give the level-set line styles legend entries.
     ax.plot([], [], color="k", linewidth=2, label="mean")
@@ -1421,7 +1560,6 @@ def plot_monotone_level_set(
                      s=50, label="posterior mean >= target", zorder=6, alpha=0.9)
 
     plot_analytic_gate_plane_line(axis, settings, one_q_bounds, two_q_bounds)
-    plot_reference_gate_plane_line(axis, one_q_bounds, two_q_bounds)
 
     plot_parametric_boundary_gate_plane_line(axis, data, settings,
                                              one_q_bounds, two_q_bounds)

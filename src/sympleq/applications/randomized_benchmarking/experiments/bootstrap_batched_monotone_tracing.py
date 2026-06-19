@@ -12,7 +12,6 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import NormalDist
-from typing import Literal
 
 import numpy as np
 from numpy.random import Generator as RNGGenerator
@@ -23,7 +22,6 @@ from sympleq.applications.randomized_benchmarking.backends.base import RMBBacken
 from sympleq.applications.randomized_benchmarking.backends.sympleq import SympleqBackend
 from sympleq.applications.randomized_benchmarking.config import RMBConfig
 from sympleq.applications.randomized_benchmarking.experiments.batched_tracing_helpers.hints import (
-    initial_prediction_bracket,
     measured_config_count,
 )
 from sympleq.applications.randomized_benchmarking.experiments.batched_tracing_helpers.windows import (
@@ -88,20 +86,12 @@ class BootstrapBatchedMonotoneTracingSettings(CrossingSettings):
     )
 
     ratio_step: float = 0.1
-    start_ratio: float | None = None
-    trace_direction: Literal["up", "down", "both"] = "down"
     adaptive_ratio_step: bool = True
     min_ratio_step: float = 0.1
     max_ratio_step: float = 0.2
     target_hqc_per_ratio: float = 35.0
 
     decision_confidence: float = 0.70
-    initial_bracket_fraction: float = 0.35
-    low_to_high_growth_factor: float = 1.7
-    use_surface_bracket_hint: bool = True
-    surface_min_configs: int = 12
-    initial_prediction_window_fraction: float = 0.35
-    initial_prediction_min_width: int = 80
 
     initial_one_q_pauli_error: float = BASE_1Q_PAULI_ERROR
     initial_two_q_pauli_error: float = BASE_2Q_PAULI_ERROR
@@ -114,20 +104,19 @@ class BootstrapBatchedMonotoneTracingSettings(CrossingSettings):
     initial_batch_shots: int = 4
 
     trace_batch_points: int = 6
-    trace_batch_shots: int = 4
+    trace_batch_shots: int = 3
     max_hqc_per_ratio: float | None = 35.0
 
     particle_count: int = 10000
     particle_sharpness: float = 1.0
     particle_sharpness_log_std: float = 0.75
     particle_seed_offset: int = 800_000
-    bootstrap_window_quantiles: tuple[float, float] = (0.10, 0.90)
+    posterior_window_quantiles: tuple[float, float] = (0.10, 0.90)
     posterior_probe_quantiles: tuple[float, ...] = (0.10, 0.30, 0.50, 0.70, 0.90)
-    bootstrap_window_min_valid_fraction: float = 0.35
-    bootstrap_window_padding_fraction: float = 0.15
-    bootstrap_window_min_width: int = 40
-    bootstrap_window_max_width_fraction: float | None = 0.45
-    bootstrap_min_configs: int = 3
+    posterior_window_padding_fraction: float = 0.15
+    posterior_window_min_width: int = 40
+    posterior_window_max_width_fraction: float | None = 0.45
+    posterior_min_configs: int = 3
 
     def boundary_fit(self, data) -> tuple[float, float, float] | None:
         """Prior-aware boundary fit used by plots and scores."""
@@ -141,7 +130,7 @@ class BootstrapBatchedMonotoneTracingSettings(CrossingSettings):
         seed: int | None = None,
     ) -> list[tuple[float, float, float]]:
         """Prior-aware boundary bootstrap used by plots and scores."""
-        return decay_boundary_bootstrap(
+        return decay_boundary_posterior_draws(
             data,
             self,
             n_bootstrap=n_bootstrap,
@@ -149,7 +138,7 @@ class BootstrapBatchedMonotoneTracingSettings(CrossingSettings):
         )
 
 
-def bootstrap_window_seed(
+def posterior_seed(
     settings: BootstrapBatchedMonotoneTracingSettings,
     ratio: float,
     step_index: int,
@@ -159,22 +148,6 @@ def bootstrap_window_seed(
         return None
     ratio_key = int(round(1_000_000 * ratio))
     return settings.rng_seed + settings.particle_seed_offset + ratio_key + 997 * step_index
-
-
-def resolved_start_ratio(settings: BootstrapBatchedMonotoneTracingSettings) -> float:
-    """Starting ratio for the configured trace direction."""
-    low, high = settings.ratio_bounds
-    if settings.start_ratio is None:
-        if settings.trace_direction == "down":
-            return high
-        if settings.trace_direction == "both":
-            return 0.5 * (low + high)
-        return low
-    if not low <= settings.start_ratio <= high:
-        raise ValueError(
-            f"start_ratio={settings.start_ratio} outside ratio_bounds={settings.ratio_bounds}."
-        )
-    return settings.start_ratio
 
 
 def ratio_sweep(start: float, stop: float, step: float) -> list[float]:
@@ -230,48 +203,17 @@ def adaptive_ratio_sweep(
         current = next_ratio
 
 
-def ratio_sweeps(settings: BootstrapBatchedMonotoneTracingSettings) -> list[list[float]]:
-    """Non-adaptive ratio sweeps for the configured trace direction."""
-    low, high = settings.ratio_bounds
-    start = resolved_start_ratio(settings)
-    if settings.trace_direction == "up":
-        return [ratio_sweep(start, high, settings.ratio_step)]
-    if settings.trace_direction == "down":
-        return [ratio_sweep(start, low, settings.ratio_step)]
-    if settings.trace_direction == "both":
-        upward = ratio_sweep(start, high, settings.ratio_step)
-        downward_start = start - settings.ratio_step
-        downward = (
-            []
-            if downward_start < low - 1e-9
-            else ratio_sweep(downward_start, low, settings.ratio_step)
-        )
-        return [upward, downward]
-    raise ValueError(f"Unsupported trace_direction={settings.trace_direction!r}.")
-
-
 def ratio_sweep_iterators(
     settings: BootstrapBatchedMonotoneTracingSettings,
     budget: Budget,
 ) -> Iterator[Iterator[float] | list[float]]:
-    """Ratio iterators for posterior-window tracing."""
+    """High-to-low ratio iterator for posterior-window tracing."""
+    low, high = settings.ratio_bounds
     if not settings.adaptive_ratio_step:
-        yield from ratio_sweeps(settings)
+        yield ratio_sweep(high, low, settings.ratio_step)
         return
 
-    low, high = settings.ratio_bounds
-    start = resolved_start_ratio(settings)
-    if settings.trace_direction == "up":
-        yield adaptive_ratio_sweep(start, high, settings, budget)
-    elif settings.trace_direction == "down":
-        yield adaptive_ratio_sweep(start, low, settings, budget)
-    elif settings.trace_direction == "both":
-        yield adaptive_ratio_sweep(start, high, settings, budget)
-        downward_start = start - settings.ratio_step
-        if downward_start >= low - 1e-9:
-            yield adaptive_ratio_sweep(downward_start, low, settings, budget)
-    else:
-        raise ValueError(f"Unsupported trace_direction={settings.trace_direction!r}.")
+    yield adaptive_ratio_sweep(high, low, settings, budget)
 
 
 def initial_error_relative_uncertainties(
@@ -430,7 +372,7 @@ def decay_particle_posterior(
     return particles, weights, ess
 
 
-def decay_boundary_bootstrap(
+def decay_boundary_posterior_draws(
     data,
     settings: BootstrapBatchedMonotoneTracingSettings,
     *,
@@ -438,7 +380,7 @@ def decay_boundary_bootstrap(
     seed: int | None,
 ) -> list[tuple[float, float, float]]:
     """Posterior draws of inverse-boundary parameters for plots and scores."""
-    if measured_config_count(data) < settings.bootstrap_min_configs:
+    if measured_config_count(data) < settings.posterior_min_configs:
         return []
     rng = np.random.default_rng(seed)
     particles, weights, _ = decay_particle_posterior(
@@ -456,12 +398,12 @@ def decay_boundary_fit(
     settings: BootstrapBatchedMonotoneTracingSettings,
 ) -> tuple[float, float, float] | None:
     """Posterior-median inverse-boundary fit from measured Bernoulli counts."""
-    if measured_config_count(data) < settings.bootstrap_min_configs:
+    if measured_config_count(data) < settings.posterior_min_configs:
         return None
     particles, weights, _ = decay_particle_posterior(
         data,
         settings,
-        seed=bootstrap_window_seed(settings, 0.0, measured_config_count(data)),
+        seed=posterior_seed(settings, 0.0, measured_config_count(data)),
     )
     medians = np.asarray(
         [weighted_quantile(particles[:, index], weights, 0.5) for index in range(3)],
@@ -470,19 +412,6 @@ def decay_boundary_fit(
     if np.any(~np.isfinite(medians)):
         return None
     return tuple(float(value) for value in medians)
-
-
-def decay_gate_samples(
-    fits: list[tuple[float, float, float]],
-    ratio: float,
-) -> np.ndarray:
-    """Boundary gate-count samples at one ratio."""
-    values = []
-    for q, slope, _ in fits:
-        gate_count = 1.0 / (q + slope * ratio)
-        if np.isfinite(gate_count) and gate_count > 0.0:
-            values.append(float(gate_count))
-    return np.asarray(values, dtype=float)
 
 
 def posterior_probe_gates(
@@ -497,8 +426,8 @@ def posterior_probe_gates(
     quantiles = settings.posterior_probe_quantiles
     if len(quantiles) != n_points:
         quantiles = tuple(np.linspace(
-            settings.bootstrap_window_quantiles[0],
-            settings.bootstrap_window_quantiles[1],
+            settings.posterior_window_quantiles[0],
+            settings.posterior_window_quantiles[1],
             n_points,
         ))
     gates = [
@@ -529,25 +458,25 @@ def decay_model_window(
     weighted particles at the next ratio gives the gate-count distribution that
     defines the next batch window.
     """
-    if measured_config_count(data) < settings.bootstrap_min_configs:
+    if measured_config_count(data) < settings.posterior_min_configs:
         return None
-    q_low, q_high = settings.bootstrap_window_quantiles
+    q_low, q_high = settings.posterior_window_quantiles
     if not 0.0 <= q_low < q_high <= 1.0:
         raise ValueError(
-            "bootstrap_window_quantiles must satisfy 0 <= low < high <= 1."
+            "posterior_window_quantiles must satisfy 0 <= low < high <= 1."
         )
 
     particles, weights, ess = decay_particle_posterior(
         data,
         settings,
-        seed=bootstrap_window_seed(settings, ratio, step_index),
+        seed=posterior_seed(settings, ratio, step_index),
     )
     samples = 1.0 / (particles[:, 0] + particles[:, 1] * ratio)
     finite = np.isfinite(samples) & (samples > 0.0) & np.isfinite(weights) & (weights > 0.0)
     valid_weight = float(np.sum(weights[finite]))
-    valid_fraction = valid_weight / max(float(np.sum(weights)), 1e-12)
-    if valid_fraction < settings.bootstrap_window_min_valid_fraction:
+    if valid_weight <= 0.0:
         return None
+    valid_fraction = valid_weight / max(float(np.sum(weights)), 1e-12)
 
     finite_samples = samples[finite]
     finite_weights = weights[finite] / valid_weight
@@ -558,20 +487,20 @@ def decay_model_window(
         return None
 
     width = upper - lower
-    pad = max(2.0, settings.bootstrap_window_padding_fraction * width)
+    pad = max(2.0, settings.posterior_window_padding_fraction * width)
     lower -= pad
     upper += pad
 
-    min_width = max(2, settings.bootstrap_window_min_width)
+    min_width = max(2, settings.posterior_window_min_width)
     if upper - lower < min_width:
         center = median
         lower = center - 0.5 * min_width
         upper = center + 0.5 * min_width
 
-    if settings.bootstrap_window_max_width_fraction is not None:
+    if settings.posterior_window_max_width_fraction is not None:
         max_width = max(
             min_width,
-            settings.bootstrap_window_max_width_fraction * max(median, 1.0),
+            settings.posterior_window_max_width_fraction * max(median, 1.0),
         )
         if upper - lower > max_width:
             center = median
@@ -599,26 +528,6 @@ def decay_model_window(
     return int(window_lo), int(window_hi), source, probes
 
 
-def initial_analytic_gate_count(
-    settings: BootstrapBatchedMonotoneTracingSettings,
-    ratio: float,
-    *,
-    one_q_pauli_error: float,
-    two_q_pauli_error: float,
-) -> float | None:
-    """Analytic total-gate crossing for explicit one- and two-qubit errors."""
-    if one_q_pauli_error <= 0.0 or two_q_pauli_error <= 0.0:
-        return None
-    prediction = analytic_gate_counts(
-        np.array([ratio]),
-        one_q_noise_scale=one_q_pauli_error / BASE_1Q_PAULI_ERROR,
-        two_q_noise_scale=two_q_pauli_error / BASE_2Q_PAULI_ERROR,
-    )[0]
-    if not np.isfinite(prediction) or prediction <= 0.0:
-        return None
-    return float(prediction)
-
-
 def initial_analytic_prior_window(
     settings: BootstrapBatchedMonotoneTracingSettings,
     ratio: float,
@@ -635,11 +544,24 @@ def initial_analytic_prior_window(
         raise ValueError("initial_window_confidence must be between 0 and 1.")
     one_q_uncertainty, two_q_uncertainty = initial_error_relative_uncertainties(settings)
 
-    center = initial_analytic_gate_count(
-        settings,
-        ratio,
-        one_q_pauli_error=settings.initial_one_q_pauli_error,
-        two_q_pauli_error=settings.initial_two_q_pauli_error,
+    def gate_count_for_errors(
+        one_q_pauli_error: float,
+        two_q_pauli_error: float,
+    ) -> float | None:
+        if one_q_pauli_error <= 0.0 or two_q_pauli_error <= 0.0:
+            return None
+        prediction = analytic_gate_counts(
+            np.array([ratio]),
+            one_q_noise_scale=one_q_pauli_error / BASE_1Q_PAULI_ERROR,
+            two_q_noise_scale=two_q_pauli_error / BASE_2Q_PAULI_ERROR,
+        )[0]
+        if not np.isfinite(prediction) or prediction <= 0.0:
+            return None
+        return float(prediction)
+
+    center = gate_count_for_errors(
+        settings.initial_one_q_pauli_error,
+        settings.initial_two_q_pauli_error,
     )
     if center is None:
         return None
@@ -652,17 +574,13 @@ def initial_analytic_prior_window(
     lower_two_q_factor = max(1e-9, 1.0 - two_q_radius)
     upper_two_q_factor = 1.0 + two_q_radius
 
-    high_error_gate_count = initial_analytic_gate_count(
-        settings,
-        ratio,
-        one_q_pauli_error=settings.initial_one_q_pauli_error * upper_one_q_factor,
-        two_q_pauli_error=settings.initial_two_q_pauli_error * upper_two_q_factor,
+    high_error_gate_count = gate_count_for_errors(
+        settings.initial_one_q_pauli_error * upper_one_q_factor,
+        settings.initial_two_q_pauli_error * upper_two_q_factor,
     )
-    low_error_gate_count = initial_analytic_gate_count(
-        settings,
-        ratio,
-        one_q_pauli_error=settings.initial_one_q_pauli_error * lower_one_q_factor,
-        two_q_pauli_error=settings.initial_two_q_pauli_error * lower_two_q_factor,
+    low_error_gate_count = gate_count_for_errors(
+        settings.initial_one_q_pauli_error * lower_one_q_factor,
+        settings.initial_two_q_pauli_error * lower_two_q_factor,
     )
     if high_error_gate_count is None or low_error_gate_count is None:
         return None
@@ -690,7 +608,8 @@ def initial_anchor_window(
     """Choose the first-anchor window from the configured analytic prior."""
     window = initial_analytic_prior_window(settings, ratio)
     if window is None:
-        return initial_prediction_bracket(data, settings, ratio)
+        lo, hi = settings.n_gates_bounds
+        return lo, hi, "full fallback"
     lo, hi = window
     return lo, hi, (
         f"initial analytic prior {100.0 * settings.initial_window_confidence:.0f}%"
