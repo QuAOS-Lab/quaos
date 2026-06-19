@@ -6,6 +6,7 @@ All plots live in (total gates, two-qubit gate ratio) space, one subplot per
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from dataclasses import replace
 import numpy as np
@@ -1322,16 +1323,18 @@ def plot_gp_level_set(
     The inputs are plain arrays of model predictions evaluated on the
     :func:`level_set_grid` of the box, in the grid's shape: the success
     probability and the latent (probit-space) mean and variance, from which
-    the dashed and dotted lines bound the level set at 0.69 and 1.96 latent
-    standard deviations. ``results`` holds (one-qubit gates, two-qubit
-    gates, outcome) points drawn as success/failure markers.
+    the propagated contour uncertainty is drawn around the mean level set.
+    ``results`` holds (one-qubit gates, two-qubit gates, outcome) points drawn
+    as success/failure markers.
     """
     import matplotlib.pyplot as plt
-    from scipy.special import ndtr
+    from scipy.interpolate import RegularGridInterpolator
 
     probabilities = np.asarray(probabilities, dtype=float)
     latent_mean = np.asarray(latent_mean, dtype=float).reshape(probabilities.shape)
-    latent_std = np.sqrt(np.asarray(latent_variance, dtype=float)).reshape(probabilities.shape)
+    latent_std = np.sqrt(
+        np.maximum(np.asarray(latent_variance, dtype=float), 0.0)
+    ).reshape(probabilities.shape)
     if x_grid is None or y_grid is None:
         x_grid, y_grid = level_set_grid(one_q_bounds, two_q_bounds,
                                         n=probabilities.shape[0])
@@ -1339,26 +1342,67 @@ def plot_gp_level_set(
         x_grid = np.asarray(x_grid, dtype=float)
         y_grid = np.asarray(y_grid, dtype=float)
 
-    bands = {
-        "dashed": (ndtr(latent_mean - 0.69 * latent_std),
-                   ndtr(latent_mean + 0.69 * latent_std)),
-        "dotted": (ndtr(latent_mean - 1.96 * latent_std),
-                   ndtr(latent_mean + 1.96 * latent_std)),
-    }
-
     own_figure = ax is None
     if own_figure:
         fig, ax = plt.subplots(1, 1, figsize=(6, 5))
     else:
         fig = ax.figure
     mesh = ax.contourf(x_grid, y_grid, probabilities, levels=20, cmap="RdYlGn")
-    ax.contour(x_grid, y_grid, probabilities, levels=[target],
-               colors="k", linewidths=2)
-    for linestyle, (low, high) in bands.items():
-        ax.contour(x_grid, y_grid, low, levels=[target],
-                   colors="k", linewidths=2, linestyles=linestyle)
-        ax.contour(x_grid, y_grid, high, levels=[target],
-                   colors="k", linewidths=2, linestyles=linestyle)
+    mean_contours = ax.contour(
+        x_grid,
+        y_grid,
+        probabilities,
+        levels=[target],
+        colors="k",
+        linewidths=2,
+        zorder=5,
+    )
+    if coordinate_system == "total_ratio" and np.all(x_grid > 0.0):
+        log_x_grid = np.log(x_grid)
+        log_x_axis = log_x_grid[0, :]
+        y_axis = y_grid[:, 0]
+        dmean_dy, dmean_dlogx = np.gradient(
+            latent_mean,
+            y_axis,
+            log_x_axis,
+            edge_order=1,
+        )
+        grad_norm = np.sqrt(dmean_dy**2 + dmean_dlogx**2)
+        sigma_contour = latent_std / np.maximum(grad_norm, 1e-8)
+        sigma_interp = RegularGridInterpolator(
+            (y_axis, log_x_axis),
+            sigma_contour,
+            bounds_error=False,
+            fill_value=np.nan,
+        )
+        for segment in mean_contours.allsegs[0]:
+            if len(segment) < 2:
+                continue
+            segment = segment[np.argsort(segment[:, 1])]
+            x_values = segment[:, 0]
+            y_values = segment[:, 1]
+            sigma_values = sigma_interp(
+                np.column_stack([y_values, np.log(np.maximum(x_values, 1e-12))])
+            )
+            valid = (
+                np.isfinite(x_values)
+                & np.isfinite(y_values)
+                & np.isfinite(sigma_values)
+                & (x_values > 0.0)
+            )
+            if np.count_nonzero(valid) < 2:
+                continue
+            x_values = x_values[valid]
+            y_values = y_values[valid]
+            sigma_values = sigma_values[valid]
+            ax.fill_betweenx(
+                y_values,
+                x_values * np.exp(-sigma_values),
+                x_values * np.exp(sigma_values),
+                color="tab:blue",
+                alpha=0.18,
+                zorder=4,
+            )
     plt.colorbar(mesh, ax=ax)
 
     failures = [(one_q, two_q) for one_q, two_q, outcome in results if outcome == 0]
@@ -1379,8 +1423,8 @@ def plot_gp_level_set(
 
     # Empty handles give the level-set line styles legend entries.
     ax.plot([], [], color="k", linewidth=2, label="mean")
-    ax.plot([], [], color="k", linewidth=2, linestyle="dashed", label=r"0.69$\sigma$")
-    ax.plot([], [], color="k", linewidth=2, linestyle="dotted", label=r"1.96$\sigma$")
+    ax.fill_between([], [], [], color="tab:blue", alpha=0.18,
+                    label=r"1$\sigma$ propagated contour uncertainty")
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
     if log_axes or log_x:
@@ -1493,3 +1537,535 @@ def plot_monotone_level_set(
         import matplotlib.pyplot as plt
         plt.show()
     return axis
+
+
+def plot_score_histogram(
+    results_path: str | Path,
+    *,
+    png_path: str | Path | None = None,
+    bins: int | str = 10,
+    show: bool = True,
+):
+    """
+    Plot a histogram of benchmark scores from a saved ``results.json`` file.
+
+    This helper is inert during normal plotting/imports. Call it explicitly
+    from a terminal or another script when you want the benchmark summary plot.
+    """
+    import matplotlib.pyplot as plt
+
+    results_path = Path(results_path)
+    payload = json.loads(results_path.read_text(encoding="utf-8"))
+    rows = payload.get("runs", [])
+    valid_rows = []
+    for row in rows:
+        if row.get("score") is None:
+            continue
+        score = float(row["score"])
+        if not np.isfinite(score):
+            continue
+        valid_rows.append(row | {"score": score})
+    scores = np.asarray([row["score"] for row in valid_rows], dtype=float)
+    if len(scores) == 0:
+        raise ValueError(f"No finite scores found in {results_path}")
+
+    noise_indices = np.asarray(
+        [int(row.get("noise_index", 0)) for row in valid_rows],
+        dtype=int,
+    )
+    unique_noise = np.asarray(sorted(set(noise_indices)), dtype=int)
+    average_score = float(np.mean(scores))
+    best_score = float(np.max(scores))
+    worst_score = float(np.min(scores))
+
+    fig, ax = plt.subplots(1, 1, figsize=(7.0, 4.6))
+    edges = np.histogram_bin_edges(scores, bins=bins)
+    widths = np.diff(edges)
+    total_counts, _ = np.histogram(scores, bins=edges)
+    noise_counts = {
+        int(noise_index): np.histogram(
+            scores[noise_indices == noise_index],
+            bins=edges,
+        )[0]
+        for noise_index in unique_noise
+    }
+
+    import matplotlib as mpl
+
+    if len(unique_noise) == 1:
+        norm = mpl.colors.Normalize(
+            vmin=float(unique_noise[0]) - 0.5,
+            vmax=float(unique_noise[0]) + 0.5,
+        )
+    else:
+        norm = mpl.colors.Normalize(
+            vmin=float(np.min(unique_noise)),
+            vmax=float(np.max(unique_noise)),
+        )
+    cmap = plt.get_cmap("viridis")
+
+    ax.bar(
+        edges[:-1],
+        total_counts,
+        width=widths,
+        align="edge",
+        color="#D7DCE2",
+        edgecolor="#4B5563",
+        linewidth=0.8,
+        alpha=0.85,
+        label="all runs",
+        zorder=1,
+    )
+    inner_margin = 0.10
+    inner_left = edges[:-1] + widths * inner_margin
+    inner_span = widths * (1.0 - 2.0 * inner_margin)
+    segment_left = inner_left.copy()
+    for noise_index in unique_noise:
+        counts = noise_counts[int(noise_index)]
+        fractions = np.divide(
+            counts,
+            total_counts,
+            out=np.zeros_like(total_counts, dtype=float),
+            where=total_counts > 0,
+        )
+        segment_width = inner_span * fractions
+        ax.bar(
+            segment_left,
+            total_counts,
+            width=segment_width,
+            align="edge",
+            color=cmap(norm(float(noise_index))),
+            edgecolor="white",
+            linewidth=0.5,
+            alpha=0.95,
+            zorder=2,
+        )
+        segment_left += segment_width
+
+    for count, left, right in zip(total_counts, edges[:-1], edges[1:]):
+        if count <= 0:
+            continue
+        percent = 100.0 * count / len(scores)
+        ax.text(
+            0.5 * (left + right),
+            count,
+            f"{percent:.0f}%",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+
+    sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=ax, pad=0.02)
+    cbar.set_label("Noise index")
+    if len(unique_noise) <= 12:
+        cbar.set_ticks(unique_noise)
+    else:
+        cbar.set_ticks(np.linspace(np.min(unique_noise), np.max(unique_noise), 5))
+
+    ax.axvline(
+        average_score,
+        color="black",
+        linestyle="-",
+        linewidth=1.8,
+        label=f"average = {average_score:.3f}",
+    )
+    ax.axvline(
+        best_score,
+        color="tab:green",
+        linestyle="--",
+        linewidth=1.8,
+        label=f"best = {best_score:.3f}",
+    )
+    ax.axvline(
+        worst_score,
+        color="tab:red",
+        linestyle=":",
+        linewidth=2.0,
+        label=f"worst = {worst_score:.3f}",
+    )
+
+    ax.set_xlabel("Score")
+    ax.set_ylabel("# Runs")
+    ax.set_title(f"Benchmark score distribution ({len(scores)} runs)")
+    ax.set_xlim(max(0.0, min(worst_score, float(np.min(edges))) - 0.02),
+                min(1.0, max(best_score, float(np.max(edges))) + 0.02))
+    ax.grid(axis="y", alpha=0.25, linewidth=0.6)
+    ax.legend(frameon=True, framealpha=0.9)
+    fig.tight_layout()
+
+    if png_path is None:
+        png_path = results_path.with_name("score_histogram.png")
+    if png_path is not None:
+        fig.savefig(png_path, dpi=200, bbox_inches="tight")
+    if show:
+        plt.show()
+    return ax
+
+
+def _benchmark_score_rows(results_path: str | Path) -> list[dict]:
+    """Load finite-score benchmark rows from a saved ``results.json`` file."""
+    results_path = Path(results_path)
+    payload = json.loads(results_path.read_text(encoding="utf-8"))
+    valid_rows = []
+    for row in payload.get("runs", []):
+        required = ("score", "one_q_noise_scale", "two_q_noise_scale")
+        if any(row.get(key) is None for key in required):
+            continue
+        score = float(row["score"])
+        one_q = float(row["one_q_noise_scale"])
+        two_q = float(row["two_q_noise_scale"])
+        if not all(np.isfinite(value) for value in (score, one_q, two_q)):
+            continue
+        valid_rows.append(row | {
+            "score": score,
+            "one_q_noise_scale": one_q,
+            "two_q_noise_scale": two_q,
+            "noise_index": int(row.get("noise_index", 0)),
+        })
+    if not valid_rows:
+        raise ValueError(f"No finite score/noise rows found in {results_path}")
+    return valid_rows
+
+
+def _crossings_path_for_benchmark_row(row: dict, results_path: Path) -> Path | None:
+    """Find the saved GP-contour crossings JSON for one benchmark row."""
+    for key in ("level_set_figure", "validation_surface_figure", "figure"):
+        value = row.get(key)
+        if not value:
+            continue
+        candidate = Path(value).parent / "rick_modified_crossing_crossings.json"
+        if candidate.exists():
+            return candidate
+
+    seed = row.get("seed")
+    if seed is not None:
+        candidate = results_path.parent / f"seed_{int(seed):06d}" / "rick_modified_crossing_crossings.json"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def gp_crossing_score_from_file(
+    crossings_path: str | Path,
+    *,
+    one_q_noise_scale: float,
+    two_q_noise_scale: float,
+    ratio_bounds: tuple[float, float] = (0.08, 0.98),
+    n_grid: int = 300,
+) -> float:
+    """
+    Score a saved GP/AEPsych p=0.5 crossing cloud against the analytic line.
+
+    The saved contour is a set of configs, not an ordered curve. For scoring,
+    crossing points are grouped by rounded ratio and reduced to the median gate
+    count, interpolated onto a regular ratio grid, then refit to the same
+    inverse-linear boundary form used elsewhere:
+    ``gates(r) = 1 / (q + slope * r)``.
+    """
+    crossings_path = Path(crossings_path)
+    payload = json.loads(crossings_path.read_text(encoding="utf-8"))
+    crossings = payload.get("crossings", [])
+    if not crossings:
+        return 0.0
+
+    grouped: dict[float, list[float]] = {}
+    for crossing in crossings:
+        ratio = float(crossing.get("ratio_2qb_gates", np.nan))
+        gates = float(crossing.get("n_gates", np.nan))
+        if not np.isfinite(ratio) or not np.isfinite(gates) or gates <= 0.0:
+            continue
+        if ratio < ratio_bounds[0] or ratio > ratio_bounds[1]:
+            continue
+        grouped.setdefault(round(ratio, 4), []).append(gates)
+    if len(grouped) < 2:
+        return 0.0
+
+    curve_ratios = np.asarray(sorted(grouped), dtype=float)
+    curve_gates = np.asarray(
+        [float(np.median(grouped[ratio])) for ratio in curve_ratios],
+        dtype=float,
+    )
+    order = np.argsort(curve_ratios)
+    curve_ratios = curve_ratios[order]
+    curve_gates = curve_gates[order]
+    unique_ratios, unique_indices = np.unique(curve_ratios, return_index=True)
+    curve_ratios = unique_ratios
+    curve_gates = curve_gates[unique_indices]
+    if len(curve_ratios) < 2:
+        return 0.0
+
+    lo = max(float(ratio_bounds[0]), float(np.min(curve_ratios)))
+    hi = min(float(ratio_bounds[1]), float(np.max(curve_ratios)))
+    if hi <= lo:
+        return 0.0
+
+    ratios = np.linspace(lo, hi, n_grid)
+    gp_gates = np.interp(ratios, curve_ratios, curve_gates)
+    fit_mask = np.isfinite(gp_gates) & (gp_gates > 0.0)
+    if np.count_nonzero(fit_mask) < 2:
+        return 0.0
+    design = np.column_stack([
+        np.ones(np.count_nonzero(fit_mask), dtype=float),
+        ratios[fit_mask],
+    ])
+    inverse_gates = 1.0 / gp_gates[fit_mask]
+    q, slope = np.linalg.lstsq(design, inverse_gates, rcond=None)[0]
+    fitted_gp_gates = 1.0 / (q + slope * ratios)
+    fitted_gp_gates[
+        (~np.isfinite(fitted_gp_gates))
+        | (fitted_gp_gates <= 0.0)
+        | (q + slope * ratios <= 0.0)
+    ] = np.nan
+    analytic = analytic_gate_counts(
+        ratios,
+        one_q_noise_scale=one_q_noise_scale,
+        two_q_noise_scale=two_q_noise_scale,
+    )
+    mask = (
+        np.isfinite(fitted_gp_gates)
+        & np.isfinite(analytic)
+        & (fitted_gp_gates > 0.0)
+        & (analytic > 0.0)
+    )
+    if not np.any(mask):
+        return 0.0
+    log_error = np.log(fitted_gp_gates[mask] / analytic[mask])
+    return float(np.exp(-np.sqrt(np.mean(log_error**2))))
+
+
+def print_gp_crossing_scores(results_path: str | Path) -> list[dict]:
+    """
+    Print GP p=0.5 crossing scores from saved benchmark outputs.
+
+    Scores are computed from each run's saved GP crossing cloud after fitting
+    the interpolated line to ``gates(r) = 1 / (q + slope * r)``.
+    """
+    results_path = Path(results_path)
+    rows = _benchmark_score_rows(results_path)
+    scored_rows = []
+    for row in rows:
+        crossings_path = _crossings_path_for_benchmark_row(row, results_path)
+        score = (
+            gp_crossing_score_from_file(
+                crossings_path,
+                one_q_noise_scale=row["one_q_noise_scale"],
+                two_q_noise_scale=row["two_q_noise_scale"],
+            )
+            if crossings_path is not None
+            else np.nan
+        )
+        scored_rows.append(row | {
+            "gp_parametric_score": score,
+            "crossings_path": str(crossings_path) if crossings_path is not None else "",
+        })
+
+    print("\nGP p=0.5 parametric-fit scores")
+    for row in sorted(scored_rows, key=lambda item: (item["noise_index"], item.get("realisation", 0))):
+        score = row["gp_parametric_score"]
+        score_text = f"{score:.3f}" if np.isfinite(score) else "nan"
+        print(
+            f"  noise={row['noise_index']:02d} "
+            f"realisation={int(row.get('realisation', 0)):02d} "
+            f"seed={int(row.get('seed', 0)):06d}: "
+            f"gp_parametric_score={score_text}"
+        )
+
+    grouped: dict[int, list[float]] = {}
+    for row in scored_rows:
+        score = row["gp_parametric_score"]
+        if np.isfinite(score):
+            grouped.setdefault(int(row["noise_index"]), []).append(float(score))
+    if grouped:
+        print("\nGP p=0.5 parametric-fit score summary")
+        for noise_index, scores in sorted(grouped.items()):
+            values = np.asarray(scores, dtype=float)
+            print(
+                f"  noise={noise_index:02d}: "
+                f"mean={float(np.mean(values)):.3f}, "
+                f"std={float(np.std(values)):.3f}, "
+                f"min={float(np.min(values)):.3f}, "
+                f"max={float(np.max(values)):.3f}, "
+                f"runs={len(values)}"
+            )
+    return scored_rows
+
+
+def plot_score_noise_plane(
+    results_path: str | Path,
+    *,
+    png_path: str | Path | None = None,
+    show: bool = True,
+    label_noise_indices: bool = True,
+):
+    """
+    Plot benchmark scores on the 1Q/2Q noise-multiplier plane.
+
+    Each point is one noise condition. Foreground color shows mean score over
+    realisations, the colored halo shows run-to-run score standard deviation,
+    and the lower panel shows the overall score histogram.
+    """
+    import matplotlib.pyplot as plt
+
+    results_path = Path(results_path)
+    rows = _benchmark_score_rows(results_path)
+    grouped: dict[int, list[dict]] = {}
+    for row in rows:
+        grouped.setdefault(int(row["noise_index"]), []).append(row)
+
+    summaries = []
+    for noise_index, group in sorted(grouped.items()):
+        scores = np.asarray([row["score"] for row in group], dtype=float)
+        first = group[0]
+        summaries.append({
+            "noise_index": noise_index,
+            "one_q_noise_scale": float(first["one_q_noise_scale"]),
+            "two_q_noise_scale": float(first["two_q_noise_scale"]),
+            "mean_score": float(np.mean(scores)),
+            "std_score": float(np.std(scores)),
+            "n_runs": len(group),
+        })
+
+    one_q = np.asarray([row["one_q_noise_scale"] for row in summaries], dtype=float)
+    two_q = np.asarray([row["two_q_noise_scale"] for row in summaries], dtype=float)
+    mean_scores = np.asarray([row["mean_score"] for row in summaries], dtype=float)
+    std_scores = np.asarray([row["std_score"] for row in summaries], dtype=float)
+
+    size_scale = np.divide(
+        std_scores,
+        float(np.max(std_scores)) if np.max(std_scores) > 0.0 else 1.0,
+    )
+    sizes = 95.0 + 180.0 * size_scale
+
+    fig = plt.figure(figsize=(8.0, 9.0), constrained_layout=True)
+    grid = fig.add_gridspec(2, 1, height_ratios=(1.0, 0.72))
+    ax = fig.add_subplot(grid[0, 0])
+    hist_ax = fig.add_subplot(grid[1, 0])
+    std_vmax = float(np.max(std_scores)) if np.max(std_scores) > 0.0 else 1.0
+    std_shadow = ax.scatter(
+        one_q,
+        two_q,
+        c=std_scores,
+        s=520.0 + 360.0 * size_scale,
+        cmap="magma",
+        vmin=0.0,
+        vmax=std_vmax,
+        edgecolors="none",
+        alpha=0.36,
+        zorder=2,
+    )
+    scatter = ax.scatter(
+        one_q,
+        two_q,
+        c=mean_scores,
+        s=135.0,
+        cmap="viridis",
+        vmin=0.0,
+        vmax=1.0,
+        edgecolors="black",
+        linewidths=0.7,
+        zorder=3,
+    )
+    ax.axvline(1.0, color="0.35", linestyle="--", linewidth=1.0, zorder=1)
+    ax.axhline(1.0, color="0.35", linestyle="--", linewidth=1.0, zorder=1)
+    ax.scatter(
+        [1.0],
+        [1.0],
+        marker="+",
+        s=90,
+        color="black",
+        linewidths=1.6,
+        label="baseline",
+        zorder=4,
+    )
+    if label_noise_indices:
+        for summary in summaries:
+            ax.text(
+                summary["one_q_noise_scale"],
+                summary["two_q_noise_scale"],
+                str(summary["noise_index"]),
+                ha="center",
+                    va="center",
+                    fontsize=7,
+                    color="black",
+                    weight="bold",
+                    zorder=5,
+                )
+    ax.set_title("Mean score")
+    ax.set_xlabel("1Q noise multiplier")
+    ax.set_ylabel("2Q noise multiplier")
+    ax.grid(True, alpha=0.25, linewidth=0.6)
+    ax.legend(loc="best", frameon=True, framealpha=0.9, fontsize=8)
+    cbar = fig.colorbar(scatter, ax=ax, pad=0.02)
+    cbar.set_label("Mean score")
+    std_cbar = fig.colorbar(std_shadow, ax=ax, pad=0.09)
+    std_cbar.set_label("Score std")
+
+    x_pad = max(0.02, 0.08 * max(1e-12, float(np.ptp(one_q))))
+    y_pad = max(0.02, 0.08 * max(1e-12, float(np.ptp(two_q))))
+    xlim = (float(np.min(one_q)) - x_pad, float(np.max(one_q)) + x_pad)
+    ylim = (float(np.min(two_q)) - y_pad, float(np.max(two_q)) + y_pad)
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
+
+    scores = np.asarray([row["score"] for row in rows], dtype=float)
+    hist_counts, hist_edges = np.histogram(scores, bins=10)
+    hist_widths = np.diff(hist_edges)
+    hist_ax.bar(
+        hist_edges[:-1],
+        hist_counts,
+        width=hist_widths,
+        align="edge",
+        color="#D7DCE2",
+        edgecolor="#4B5563",
+        linewidth=0.8,
+        alpha=0.9,
+        zorder=1,
+    )
+    for count, left, right in zip(hist_counts, hist_edges[:-1], hist_edges[1:]):
+        if count <= 0:
+            continue
+        hist_ax.text(
+            0.5 * (left + right),
+            count,
+            f"{100.0 * count / len(scores):.0f}%",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+    hist_ax.axvline(
+        float(np.mean(scores)),
+        color="black",
+        linestyle="-",
+        linewidth=1.8,
+        label=f"average = {float(np.mean(scores)):.3f}",
+    )
+    hist_ax.axvline(
+        float(np.max(scores)),
+        color="tab:green",
+        linestyle="--",
+        linewidth=1.8,
+        label=f"best = {float(np.max(scores)):.3f}",
+    )
+    hist_ax.axvline(
+        float(np.min(scores)),
+        color="tab:red",
+        linestyle=":",
+        linewidth=2.0,
+        label=f"worst = {float(np.min(scores)):.3f}",
+    )
+    hist_ax.set_xlabel("Score")
+    hist_ax.set_ylabel("# Runs")
+    hist_ax.set_title("Score histogram")
+    hist_ax.grid(axis="y", alpha=0.25, linewidth=0.6)
+    hist_ax.legend(frameon=True, framealpha=0.9)
+    fig.suptitle("Benchmark scores on noise plane (10 noise values, 10 runs each)")
+
+    if png_path is None:
+        png_path = results_path.with_name("score_noise_plane.png")
+    if png_path is not None:
+        fig.savefig(png_path, dpi=200, bbox_inches="tight")
+    if show:
+        plt.show()
+    return np.asarray([ax, hist_ax])
