@@ -38,6 +38,16 @@ def default_backend_factory(settings: CrossingSettings, rng: RNGGenerator) -> RM
     return QuantinuumBackend.default_sympleq_backend(rng)
 
 
+def quantinuum_emulator_backend_factory(settings: CrossingSettings, rng: RNGGenerator) -> RMBBackend:
+    """SympleQ emulation of Quantinuum hardware; nothing is submitted."""
+    return QuantinuumBackend(
+        device_name="H2-Emulator",
+        project_name="level-benchmark",
+        batch_size=1,
+        max_cost_per_run=settings.max_cost_per_run
+    )
+
+
 @dataclass(frozen=True)
 class CrossingSettings:
     """
