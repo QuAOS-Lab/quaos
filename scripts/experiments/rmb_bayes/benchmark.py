@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 from dataclasses import replace
 from pathlib import Path
 from typing import Callable
@@ -21,9 +22,14 @@ from viarregio2 import (
 from viarregio2 import estimate_boundary as estimate_boundary_v2
 from viarregio3 import HybridBoundaryExperimentConfig
 from viarregio3 import estimate_boundary as estimate_boundary_v3
+from viarregio4 import MonotoneBoundaryExperimentConfig, fit_monotone_fidelity_surface, hqc_cost
+from viarregio4 import estimate_boundary as estimate_boundary_v4
+from viarregio5 import ContourFirstExperimentConfig
+from viarregio5 import estimate_boundary as estimate_boundary_v5
 
 
 StrategyRunner = Callable[[BoundaryExperimentConfig], RMB]
+SurfaceFitter = Callable[[RMBData, BoundaryExperimentConfig], FlexibleFidelitySurface]
 
 
 def contour_points_from_surface(
@@ -163,7 +169,7 @@ def load_or_build_reference_data(
     path = reference_cache_path(args)
     if path.exists() and not args.rebuild_reference:
         print(f"Loading reference data from {path}...")
-        return RMB.load(path)._data
+        return RMB.load(path).with_backend(make_backend())._data
 
     print(
         "Building reference surface "
@@ -239,25 +245,86 @@ def make_v3_settings(seed: int, budget: int, args: argparse.Namespace) -> Hybrid
     return HybridBoundaryExperimentConfig(**params)
 
 
+def make_v4_settings(seed: int, budget: int, args: argparse.Namespace) -> MonotoneBoundaryExperimentConfig:
+    base = make_v2_settings(seed, budget, args)
+    params = base.__dict__.copy()
+    params.update({
+        "monotone_l2": 1e-3,
+        "contour_follow_fraction": 0.50,
+        "contour_ready_probability_width": 0.10,
+        "contour_min_anchors": 4,
+        "contour_step_fraction": 0.08,
+        "contour_projection_fraction": 0.12,
+        "contour_gradient_fraction": 0.01,
+        "contour_candidate_multiplier": 5,
+        "adaptive_batch_size": True,
+        "min_batch_size": 1,
+        "late_contour_follow_fraction": 0.85,
+        "late_exploration_weight": 0.05,
+        "adaptive_batch_late_budget_fraction": 0.50,
+        "adaptive_batch_anchor_multiplier": 2,
+        "hqc_budget": args.hqc_budget,
+        "hqc_cost_informed_acquisition": args.hqc_budget is not None,
+        "hqc_cost_power": 1.0,
+        "save_path": None,
+    })
+    return MonotoneBoundaryExperimentConfig(**params)
+
+
+def make_v5_settings(seed: int, budget: int, args: argparse.Namespace) -> ContourFirstExperimentConfig:
+    base = make_v4_settings(seed, budget, args)
+    params = base.__dict__.copy()
+    params.update({
+        "ray_ratio_count": 5,
+        "ray_probe_shots": 2,
+        "ray_bisection_steps": 5,
+        "ray_bisection_shots": 2,
+        "trace_ratio_step_fraction": 0.06,
+        "trace_depth_search_fraction": 0.06,
+        "trace_correction_steps": 2,
+        "trace_shots": 2,
+        "trace_accept_probability_width": 0.12,
+        "trace_directions": (1,),
+        "model_projection_after_fit": True,
+        "refine_after_trace": True,
+        "refinement_shots": 2,
+        "refinement_boundary_width": 0.15,
+        "save_path": None,
+    })
+    return ContourFirstExperimentConfig(**params)
+
+
 def evaluate_strategy(
     *,
     name: str,
     runner: StrategyRunner,
     settings: BoundaryExperimentConfig,
+    fitter: SurfaceFitter,
     reference_surface: FlexibleFidelitySurface,
     reference_contour: np.ndarray,
 ) -> dict[str, float | int | str]:
     rmb = runner(settings)
     try:
-        estimated_surface = fit_fidelity_surface(rmb._data, settings)
+        estimated_surface = fitter(rmb._data, settings)
         estimated_contour = contour_points_from_surface(estimated_surface, settings)
     except (RuntimeError, ValueError):
         estimated_contour = np.empty((0, 2), dtype=float)
+
+    hqc_spent = float("nan")
+    hqc_budget = getattr(settings, "hqc_budget", None)
+    if hqc_budget is not None:
+        hqc_spent = float(sum(
+            hqc_cost(config, estimator.num_runs(), settings)
+            for config, estimator in rmb._data.items()
+            if estimator.num_runs() > 0
+        ))
 
     return {
         "strategy": name,
         "seed": settings.rng_seed if settings.rng_seed is not None else -1,
         "budget": settings.measurement_budget,
+        "hqc_budget": float(hqc_budget) if hqc_budget is not None else float("nan"),
+        "hqc_spent": hqc_spent,
         "measurements": sum(estimator.num_runs() for estimator in rmb._data.values()),
         "configs": len(rmb._data),
         "contour_points": len(estimated_contour),
@@ -272,6 +339,8 @@ def print_table(rows: list[dict[str, float | int | str]]) -> None:
         "strategy",
         "seed",
         "budget",
+        "hqc_budget",
+        "hqc_spent",
         "measurements",
         "configs",
         "contour_points",
@@ -291,28 +360,102 @@ def print_table(rows: list[dict[str, float | int | str]]) -> None:
         print(",".join(values))
 
 
+def save_csv(rows: list[dict[str, float | int | str]], path: str | None) -> None:
+    if path is None:
+        return
+    output_path = Path(path).expanduser().resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    headers = [
+        "strategy",
+        "seed",
+        "budget",
+        "hqc_budget",
+        "hqc_spent",
+        "measurements",
+        "configs",
+        "contour_points",
+        "calibration_error",
+        "chamfer_distance",
+        "failure",
+    ]
+    with output_path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=headers)
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"\nSaved benchmark CSV to {output_path}")
+
+
 def print_summary(rows: list[dict[str, float | int | str]]) -> None:
     print("\nSummary")
-    for strategy in sorted({str(row["strategy"]) for row in rows}):
-        strategy_rows = [row for row in rows if row["strategy"] == strategy]
-        calibration = np.array([float(row["calibration_error"]) for row in strategy_rows])
-        chamfer = np.array([float(row["chamfer_distance"]) for row in strategy_rows])
-        failures = np.array([int(row["failure"]) for row in strategy_rows])
+    for budget in sorted({int(row["budget"]) for row in rows}):
+        print(f"\nBudget {budget}")
+        budget_rows = [row for row in rows if int(row["budget"]) == budget]
+        for strategy in sorted({str(row["strategy"]) for row in budget_rows}):
+            strategy_rows = [row for row in budget_rows if row["strategy"] == strategy]
+            calibration = np.array([float(row["calibration_error"]) for row in strategy_rows])
+            chamfer = np.array([float(row["chamfer_distance"]) for row in strategy_rows])
+            failures = np.array([int(row["failure"]) for row in strategy_rows])
+            measurements = np.array([float(row["measurements"]) for row in strategy_rows])
+            hqc_spent = np.array([float(row["hqc_spent"]) for row in strategy_rows])
 
-        print(
-            f"{strategy}: "
-            f"calibration median={np.nanmedian(calibration):.5f}, "
-            f"calibration mean={np.nanmean(calibration):.5f}, "
-            f"chamfer median={np.nanmedian(chamfer):.5f}, "
-            f"failure rate={np.mean(failures):.2f}"
-        )
+            hqc_part = ""
+            if np.any(np.isfinite(hqc_spent)):
+                hqc_part = f", HQC median={np.nanmedian(hqc_spent):.3f}"
+
+            print(
+                f"{strategy}: "
+                f"calibration median={np.nanmedian(calibration):.5f}, "
+                f"calibration mean={np.nanmean(calibration):.5f}, "
+                f"chamfer median={np.nanmedian(chamfer):.5f}, "
+                f"measurements median={np.nanmedian(measurements):.1f}"
+                f"{hqc_part}, "
+                f"failure rate={np.mean(failures):.2f}"
+            )
+
+
+def parse_budget_list(value: str | None, fallback: int) -> list[int]:
+    if value is None:
+        return [fallback]
+    budgets = [int(part.strip()) for part in value.split(",") if part.strip()]
+    if not budgets:
+        raise ValueError("At least one budget must be provided.")
+    if any(budget <= 0 for budget in budgets):
+        raise ValueError("Budgets must be positive integers.")
+    return budgets
+
+
+def selected_strategies(args: argparse.Namespace) -> list[str]:
+    strategies = [part.strip().lower() for part in args.strategies.split(",") if part.strip()]
+    allowed = {"v2", "v3", "v4", "v5"}
+    unknown = sorted(set(strategies) - allowed)
+    if unknown:
+        raise ValueError(f"Unknown strategies: {', '.join(unknown)}")
+    return strategies
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Benchmark viarregio2 and viarregio3 against a high-shot reference contour."
+        description="Benchmark fidelity=0.5 contour estimators against a high-shot reference contour."
     )
     parser.add_argument("--budget", type=int, default=100)
+    parser.add_argument(
+        "--budgets",
+        type=str,
+        default=None,
+        help="Comma-separated measurement budgets, e.g. 50,100,250. Overrides --budget.",
+    )
+    parser.add_argument(
+        "--strategies",
+        type=str,
+        default="v2,v3,v4,v5",
+        help="Comma-separated subset from v2,v3,v4,v5.",
+    )
+    parser.add_argument(
+        "--hqc-budget",
+        type=float,
+        default=None,
+        help="Optional HQC cap for HQC-aware strategies v4/v5.",
+    )
     parser.add_argument("--repeats", type=int, default=5)
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--n-qubits", type=int, default=10)
@@ -329,19 +472,27 @@ def parse_args() -> argparse.Namespace:
         "--reference-cache",
         type=str,
         default=None,
-        help="Path to save/load the high-shot reference data. Defaults to scripts/personal/benchmark_cache/...",
+        help="Path to save/load the high-shot reference data. Defaults to scripts/experiments/rmb_bayes/benchmark_cache/...",
     )
     parser.add_argument(
         "--rebuild-reference",
         action="store_true",
         help="Rebuild the high-shot reference even if a cache file exists.",
     )
+    parser.add_argument(
+        "--output-csv",
+        type=str,
+        default=None,
+        help="Optional path to save the benchmark rows as CSV.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    reference_settings = make_v2_settings(args.seed, args.budget, args)
+    budgets = parse_budget_list(args.budgets, args.budget)
+    strategies = selected_strategies(args)
+    reference_settings = make_v2_settings(args.seed, max(budgets), args)
     reference_settings = replace(
         reference_settings,
         min_fit_points=min(8, args.reference_grid * args.reference_grid),
@@ -354,28 +505,49 @@ def main() -> None:
     print(f"Reference contour points: {len(reference_contour)}\n")
 
     rows = []
-    for repeat in range(args.repeats):
-        seed = args.seed + repeat
-        v2_settings = make_v2_settings(seed, args.budget, args)
-        v3_settings = make_v3_settings(seed, args.budget, args)
-
-        rows.append(evaluate_strategy(
-            name="viarregio2_global",
-            runner=estimate_boundary_v2,
-            settings=v2_settings,
-            reference_surface=reference_surface,
-            reference_contour=reference_contour,
-        ))
-        rows.append(evaluate_strategy(
-            name="viarregio3_hybrid",
-            runner=estimate_boundary_v3,
-            settings=v3_settings,
-            reference_surface=reference_surface,
-            reference_contour=reference_contour,
-        ))
+    for budget in budgets:
+        for repeat in range(args.repeats):
+            seed = args.seed + repeat
+            if "v2" in strategies:
+                rows.append(evaluate_strategy(
+                    name="viarregio2_global",
+                    runner=estimate_boundary_v2,
+                    settings=make_v2_settings(seed, budget, args),
+                    fitter=fit_fidelity_surface,
+                    reference_surface=reference_surface,
+                    reference_contour=reference_contour,
+                ))
+            if "v3" in strategies:
+                rows.append(evaluate_strategy(
+                    name="viarregio3_hybrid",
+                    runner=estimate_boundary_v3,
+                    settings=make_v3_settings(seed, budget, args),
+                    fitter=fit_fidelity_surface,
+                    reference_surface=reference_surface,
+                    reference_contour=reference_contour,
+                ))
+            if "v4" in strategies:
+                rows.append(evaluate_strategy(
+                    name="viarregio4_monotone",
+                    runner=estimate_boundary_v4,
+                    settings=make_v4_settings(seed, budget, args),
+                    fitter=fit_monotone_fidelity_surface,
+                    reference_surface=reference_surface,
+                    reference_contour=reference_contour,
+                ))
+            if "v5" in strategies:
+                rows.append(evaluate_strategy(
+                    name="viarregio5_contour_first",
+                    runner=estimate_boundary_v5,
+                    settings=make_v5_settings(seed, budget, args),
+                    fitter=fit_monotone_fidelity_surface,
+                    reference_surface=reference_surface,
+                    reference_contour=reference_contour,
+                ))
 
     print_table(rows)
     print_summary(rows)
+    save_csv(rows, args.output_csv)
 
 
 if __name__ == "__main__":

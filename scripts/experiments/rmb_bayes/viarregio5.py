@@ -917,6 +917,7 @@ def refinement_score(
     config: RMBConfig,
     data: RMBData,
     settings: ContourFirstExperimentConfig,
+    surface=None,
 ) -> float:
     if config not in data:
         return 0.0
@@ -926,13 +927,12 @@ def refinement_score(
 
     variance = fidelity_variance(estimator)
     variance_score = min(1.0, variance / (1.0 / 12.0))
-    try:
-        surface = fit_monotone_fidelity_surface(data, settings)
+    if surface is not None:
         p_model = float(surface.probability(np.array([[
             float(config.depth),
             float(config.min_two_qubit_gate_ratio),
         ]]))[0])
-    except (RuntimeError, ValueError):
+    else:
         p_model = fidelity_mean(estimator)
 
     boundary_score = np.exp(-((abs(p_model - 0.5) / settings.refinement_boundary_width) ** 2))
@@ -961,11 +961,16 @@ def refine_uncertain_boundary_points(
         if not measured_configs:
             break
 
+        try:
+            surface = fit_monotone_fidelity_surface(data, settings)
+        except (RuntimeError, ValueError):
+            surface = None
+
         best_config = max(
             measured_configs,
-            key=lambda config: refinement_score(config, data, settings),
+            key=lambda config: refinement_score(config, data, settings, surface),
         )
-        best_score = refinement_score(best_config, data, settings)
+        best_score = refinement_score(best_config, data, settings, surface)
         if best_score <= 0.0:
             break
 
@@ -1242,9 +1247,9 @@ def estimate_boundary(settings: ContourFirstExperimentConfig) -> RMB:
 if __name__ == "__main__":
     settings = ContourFirstExperimentConfig(
         measurement_budget=10000000,
-        hqc_budget=250.0,
-        n_qubits_values=(10,),
-        depth_bounds=(4, 300),
+        hqc_budget=500.0,
+        n_qubits_values=(50,),
+        depth_bounds=(4, 50),
         ratio_bounds=(0.08, 0.8),
         random_elimination=0.1,
         scrambling_probability=0.0,
