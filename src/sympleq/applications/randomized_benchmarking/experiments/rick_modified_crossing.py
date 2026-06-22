@@ -76,6 +76,8 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     batch_hqc_cost,
     candidate_axes,
     config_points,
+    default_backend_factory,
+    quantinuum_emulator_backend_factory,
     print_experiment_summary,
     print_progress,
     spend_request_batch,
@@ -205,19 +207,6 @@ class RickFantasyGPUSettings(CrossingSettings):
     initial_sobol_max_cost_per_run: float | None = None
     sobol_scramble: bool = False
 
-    # Validation pass on the trained-GP contour
-    validate_gp_contour: bool = False
-    reserve_validation_budget: bool = True
-    validation_hqc_budget: float = 0.0
-    validation_max_cost_per_run: float | None = None
-    validation_target_configs: int = 30
-    validation_min_configs: int = 15
-    validation_max_restarts: int = 20
-    validation_shots_per_config: int = 2
-    validation_max_attempts_multiplier: int = 10
-    validation_probability_band: tuple[float, float] = (0.4, 0.6)
-    validation_seed_offset: int = 271828
-    validation_save_path: str | Path | None = None
     plot_gp_level_set_result: bool = False
     save_gp_prediction_grid: bool = False
     plots_module: str = "plots_1"
@@ -393,15 +382,6 @@ def one_shot_requests(configs: list[RMBConfig]) -> list[MeasurementRequest]:
     """
 
     return [MeasurementRequest(config, 1) for config in configs]
-
-
-def validation_requests(
-    configs: list[RMBConfig],
-    settings: RickFantasyGPUSettings,
-) -> list[MeasurementRequest]:
-    """Validation requests can use more shots per config than training."""
-    shots = max(1, int(settings.validation_shots_per_config))
-    return [MeasurementRequest(config, shots) for config in configs]
 
 
 # =============================================================================
@@ -1227,10 +1207,6 @@ def level_set_configs(
         print(f"  target                               = {target}")
         print(f"  probability range on grid            = "
               f"{float(np.min(probability_grid)):.6g} to {float(np.max(probability_grid)):.6g}")
-        band_lo, band_hi = settings.validation_probability_band
-        in_band = (band_lo <= probability_grid) & (probability_grid <= band_hi)
-        print(f"  validation probability band          = [{band_lo}, {band_hi}]")
-        print(f"  grid points in validation band       = {int(np.count_nonzero(in_band))}")
         print(f"  grid points closest to target        = {min(debug_limit, len(flat_order))}")
         for flat_index in flat_order[:debug_limit]:
             row, col = np.unravel_index(int(flat_index), delta.shape)
@@ -1259,11 +1235,6 @@ def level_set_configs(
             seen.add(config)
             configs.append(config)
 
-    band_lo, band_hi = settings.validation_probability_band
-    band_rows, band_cols = np.where((band_lo <= probability_grid) & (probability_grid <= band_hi))
-    for row, col in zip(band_rows, band_cols):
-        add_config(float(gates_grid[row, col]), float(ratio_grid[row, col]))
-
     for row in range(delta.shape[0]):
         crossing = np.where(delta[row, :-1] * delta[row, 1:] < 0)[0]
 
@@ -1286,238 +1257,11 @@ def level_set_configs(
     )
 
 
-def validation_seed(settings: RickFantasyGPUSettings) -> int | None:
-    if settings.rng_seed is None:
-        return None
-    return int(settings.rng_seed) + int(settings.validation_seed_offset)
-
-
-def validation_output_path(
-    settings: RickFantasyGPUSettings,
-    base_path: Path | None,
-) -> Path | None:
-    if settings.validation_save_path is not None:
-        return Path(settings.validation_save_path)
-    if base_path is None:
-        return None
-    return base_path.parent / f"{base_path.stem}_validation.json"
-
-
 def write_scores_to_json(base_path: Path, scores: dict[str, float]) -> None:
     """Attach modified-crossing scores to the main RMB JSON file."""
     payload = json.loads(base_path.read_text(encoding="utf-8"))
     payload["scores"] = scores
     base_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-
-def effective_training_hqc_budget(settings: RickFantasyGPUSettings) -> float:
-    """Training/acquisition budget after optional validation reservation."""
-    if not settings.validate_gp_contour or not settings.reserve_validation_budget:
-        return settings.hqc_budget
-    return max(0.0, settings.hqc_budget - settings.validation_hqc_budget)
-
-
-def select_aepsych_validation_configs(
-    *,
-    strategy: SequentialStrategy,
-    settings: RickFantasyGPUSettings,
-    budget: Budget,
-    observations: list[Observation],
-    fantasy_rng: np.random.Generator,
-    device: torch.device,
-    cost_cap: float | None = None,
-) -> tuple[list[RMBConfig], bool]:
-    """Ask the trained AEPsych strategy for validation configs."""
-    if strategy.model is None:
-        return [], False
-
-    selected: list[RMBConfig] = []
-    seen: set[RMBConfig] = set()
-    fantasy_strategy = copy_strategy_for_fantasies(
-        strategy,
-        settings,
-        observations,
-        device=device,
-    )
-
-    target_count = max(0, int(settings.validation_target_configs))
-    max_attempts = max(
-        target_count + 10,
-        int(settings.validation_max_attempts_multiplier) * max(1, target_count),
-    )
-    if cost_cap is None:
-        cost_cap = (
-            settings.max_cost_per_run
-            if settings.validation_max_cost_per_run is None
-            else settings.validation_max_cost_per_run
-        )
-
-    attempts = 0
-    exhausted = False
-    while len(selected) < target_count and attempts < max_attempts:
-        attempts += 1
-        move_strategy_models_to_device(fantasy_strategy, device)
-
-        with temporary_torch_default_device(
-            device,
-            enabled=settings.force_default_device_during_aepsych,
-        ):
-            x = fantasy_strategy.gen()
-
-        candidate = config_from_aepsych_x(x, settings)
-        if candidate in seen:
-            continue
-
-        next_cost = batch_hqc_cost(validation_requests(selected + [candidate], settings))
-        if next_cost > cost_cap:
-            break
-        if next_cost > budget.remaining_hqc:
-            exhausted = True
-            break
-
-        p_success = predict_success_probability(
-            fantasy_strategy,
-            candidate,
-            settings,
-            device=device,
-        )
-        virtual_outcome = int(fantasy_rng.random() < p_success)
-        add_fantasy_outcome(
-            fantasy_strategy,
-            candidate,
-            virtual_outcome,
-            device=device,
-        )
-
-        selected.append(candidate)
-        seen.add(candidate)
-        print(
-            "[validation candidate] "
-            f"index={len(selected):03d} "
-            f"n_gates={candidate.n_gates} "
-            f"ratio={candidate.ratio_2_qb_gates:.4f} "
-            f"p_success={p_success:.4f} "
-            f"virtual={virtual_outcome} "
-            f"batch_cost={next_cost:.3f}"
-        )
-
-    return selected, exhausted
-
-
-def validate_gp_contour_configs(
-    *,
-    strategy: SequentialStrategy,
-    observations: list[Observation],
-    rmb: RMB,
-    rng: np.random.Generator,
-    fantasy_rng: np.random.Generator,
-    settings: RickFantasyGPUSettings,
-    base_path: Path | None,
-    device: torch.device,
-    validation_hqc_budget: float | None = None,
-) -> tuple[RMB | None, Path | None, list[RMBConfig], list[tuple[float, float, int]], Budget | None]:
-    """Measure trained-AEPsych validation suggestions into a separate RMBData."""
-    if not settings.validate_gp_contour:
-        return None, None, [], [], None
-    validation_hqc_budget = (
-        settings.validation_hqc_budget
-        if validation_hqc_budget is None
-        else validation_hqc_budget
-    )
-    if validation_hqc_budget <= 0.0:
-        print("[validation] skipped: validation_hqc_budget <= 0")
-        return None, None, [], [], None
-
-    validation_budget = Budget(remaining_hqc=validation_hqc_budget)
-    selected: list[RMBConfig] = []
-    exhausted = False
-    restart_index = 0
-    while len(selected) < settings.validation_min_configs:
-        selected, exhausted = select_aepsych_validation_configs(
-            strategy=strategy,
-            settings=settings,
-            budget=validation_budget,
-            observations=observations,
-            fantasy_rng=fantasy_rng,
-            device=device,
-            cost_cap=validation_budget.remaining_hqc,
-        )
-        if len(selected) >= settings.validation_min_configs:
-            break
-        restart_index += 1
-        print(
-            "[validation restart] "
-            f"selected={len(selected)} "
-            f"minimum={settings.validation_min_configs} "
-            f"restart={restart_index}/{settings.validation_max_restarts}"
-        )
-        if restart_index >= settings.validation_max_restarts:
-            raise RuntimeError(
-                "Validation candidate generation could not reach "
-                f"{settings.validation_min_configs} configs after "
-                f"{settings.validation_max_restarts} restarts."
-            )
-
-    print("[validation configs]")
-    for index, config in enumerate(selected, start=1):
-        print(
-            f"  {index:03d}: "
-            f"n_gates={config.n_gates}, "
-            f"ratio={config.ratio_2_qb_gates:.4f}, "
-            f"n_1qb={config.n_1qb_gates}, "
-            f"n_2qb={config.n_2qb_gates}"
-        )
-
-    validation_rmb = RMB.default(rng).with_backend(rmb.backend)
-    requests = validation_requests(selected, settings)
-    outcomes_by_config = spend_request_batch(
-        validation_rmb.backend,
-        rng,
-        validation_rmb._data,
-        requests,
-        seed=validation_seed(settings),
-    )
-    validation_results_for_plot: list[tuple[float, float, int]] = []
-    print("[validation measurement outcomes]")
-    for index, (config, outcomes) in enumerate(outcomes_by_config.items(), start=1):
-        estimator = validation_rmb._data[config]
-        validation_results_for_plot.extend(
-            (
-                float(config.n_1qb_gates),
-                float(config.n_2qb_gates),
-                int(outcome),
-            )
-            for outcome in outcomes
-        )
-        print(
-            f"  {index:03d}: "
-            f"n_gates={config.n_gates}, "
-            f"ratio={config.ratio_2_qb_gates:.4f}, "
-            f"outcomes={list(map(int, outcomes))}, "
-            f"probability_true={estimator.probability(True):.4f}, "
-            f"posterior_mean={estimator.posterior_mean():.4f}"
-        )
-    cost = batch_hqc_cost(requests)
-    validation_budget.spend_batch(cost, len(selected))
-
-    output_path = validation_output_path(settings, base_path)
-    resolved_path = None
-    if output_path is not None:
-        validation_rmb.save(output_path)
-        resolved_path = output_path if output_path.is_absolute() else Path(output_path)
-
-    print("[validation]")
-    print(f"  validation_available_hqc             = {validation_hqc_budget:.6g}")
-    print(f"  requested validation configs         = {settings.validation_target_configs}")
-    print(f"  selected validation configs          = {len(selected)}")
-    print(f"  measured validation configs          = {len(outcomes_by_config)}")
-    print(f"  validation_spent_hqc                 = {validation_budget.spent_hqc:.6g}")
-    print(f"  validation_remaining_hqc             = {validation_budget.remaining_hqc:.6g}")
-    print(f"  validation_exhausted                 = {exhausted}")
-    if resolved_path is not None:
-        print(f"  validation_save_path                 = {resolved_path}")
-
-    return validation_rmb, resolved_path, selected, validation_results_for_plot, validation_budget
 
 
 # =============================================================================
@@ -1551,20 +1295,6 @@ def print_run_handles(
           f"{settings.initial_sobol_max_cost_per_run}")
     print(f"  sobol_scramble                       = {settings.sobol_scramble}")
 
-    if settings.validate_gp_contour:
-        print("[validation]")
-        print(f"  reserve_validation_budget            = {settings.reserve_validation_budget}")
-        print(f"  validation_hqc_budget                = {settings.validation_hqc_budget}")
-        print(f"  validation_max_cost_per_run          = {settings.validation_max_cost_per_run}")
-        print(f"  validation_target_configs            = {settings.validation_target_configs}")
-        print(f"  validation_min_configs               = {settings.validation_min_configs}")
-        print(f"  validation_max_restarts              = {settings.validation_max_restarts}")
-        print(f"  validation_shots_per_config          = {settings.validation_shots_per_config}")
-        print(f"  validation_max_attempts_multiplier   = "
-              f"{settings.validation_max_attempts_multiplier}")
-        print(f"  validation_probability_band          = {settings.validation_probability_band}")
-        print(f"  validation_seed_offset               = {settings.validation_seed_offset}")
-        print(f"  validation_save_path                 = {settings.validation_save_path}")
     print(f"  plot_gp_level_set_result             = {settings.plot_gp_level_set_result}")
     print(f"  plots_module                         = {settings.plots_module}")
     print(f"  bayesian_estimation_module           = {settings.bayesian_estimation_module}")
@@ -1584,8 +1314,6 @@ def print_run_handles(
     print(f"  fantasy_batching                     = {settings.fantasy_batching}")
     print(f"  max_cost_per_run                     = {settings.max_cost_per_run}")
     print(f"  hqc_budget                           = {settings.hqc_budget}")
-    print(f"  effective_training_hqc_budget        = "
-          f"{effective_training_hqc_budget(settings)}")
 
     print("[search box]")
     print(f"  n_gates_bounds                       = {settings.n_gates_bounds}")
@@ -1596,7 +1324,12 @@ def print_run_handles(
     print(f"  selected GP device                   = {gp_device}")
     print(f"  force_default_device_during_aepsych  = "
           f"{settings.force_default_device_during_aepsych}")
-    print("  RMB backend                          = SympleQ")
+    backend_factory_name = getattr(
+        settings.backend_factory,
+        "__name__",
+        type(settings.backend_factory).__name__,
+    )
+    print(f"  backend_factory                      = {backend_factory_name}")
 
     print("[debug]")
     print(f"  rng_seed                             = {settings.rng_seed}")
@@ -1641,7 +1374,17 @@ def run(
     print_run_handles(settings, gp_device=gp_device)
 
     rng, rmb, budget = start_run(settings)
-    budget.remaining_hqc = effective_training_hqc_budget(settings)
+    backend_details = [
+        f"{name}={value}"
+        for name in ("device_name", "project_name")
+        if (value := getattr(rmb.backend, name, None)) is not None
+    ]
+    backend_text = type(rmb.backend).__name__
+    if backend_details:
+        backend_text = f"{backend_text} ({', '.join(backend_details)})"
+    print("[RMB backend]")
+    print(f"  actual rmb.backend                   = {backend_text}")
+
     data = rmb._data
 
     fantasy_seed = None if settings.rng_seed is None else settings.rng_seed + 99173
@@ -1770,7 +1513,6 @@ def run(
         rmb.save(settings.save_path)
         base_path = resolve_data_path(settings.save_path)
 
-    gp_posterior_mean_for_validation_plot = None
     if settings.plot and settings.plot_gp_level_set_result and base_path is not None:
         plots = import_experiment_module(settings.plots_module)
         plot_gp_level_set = plots.plot_gp_level_set
@@ -1828,7 +1570,6 @@ def run(
             print(f"  S1                                  = {score_summary['S1']:.6g}")
             print(f"  S2                                  = {score_summary['S2']:.6g}")
             print(f"  A_gp                                = {score_summary['A_gp']:.6g}")
-        gp_posterior_mean_for_validation_plot = (gates_grid, ratio_grid, probabilities)
         plot_gp_level_set(
             probabilities,
             latent_mean,
@@ -1849,98 +1590,8 @@ def run(
             show=False,
         )
 
-    (
-        validation_rmb,
-        validation_base_path,
-        validation_crossings,
-        validation_results_for_plot,
-        validation_budget,
-    ) = validate_gp_contour_configs(
-        strategy=strategy,
-        observations=observations,
-        rmb=rmb,
-        rng=rng,
-        fantasy_rng=fantasy_rng,
-        settings=settings,
-        base_path=base_path,
-        device=gp_device,
-        validation_hqc_budget=(
-            settings.validation_hqc_budget
-            + max(0.0, budget.remaining_hqc)
-        ),
-    )
-    # -------------------------------------------------------------------------
-    # 5. Optional plotting
-    # -------------------------------------------------------------------------
-
-    if settings.plot:
-        plots = import_experiment_module(settings.plots_module)
-        plot_monotone_fidelity_surface_with_confidence = (
-            plots.plot_monotone_fidelity_surface_with_confidence
-        )
-
-        if validation_rmb is not None and validation_base_path is not None:
-            axes = plot_monotone_fidelity_surface_with_confidence(
-                validation_rmb._data,
-                settings,
-                png_path=None,
-                show=False,
-                log_x=True,
-                bootstrap_kind="parametric",
-            )
-            if axes and gp_posterior_mean_for_validation_plot is not None:
-                gates_grid, ratio_grid, probabilities = gp_posterior_mean_for_validation_plot
-                ax = axes[0]
-                ax.set_title(f"{ax.get_title()} | seed={settings.rng_seed}")
-                if float(np.min(probabilities)) <= contour_target(settings) <= float(np.max(probabilities)):
-                    ax.contour(
-                        gates_grid,
-                        ratio_grid,
-                        probabilities,
-                        levels=[contour_target(settings)],
-                        colors="tab:blue",
-                        linewidths=2.2,
-                        zorder=8,
-                    )
-                    ax.plot([], [], color="tab:blue", linewidth=2.2, label="GP mean p=0.5")
-                    ax.legend(
-                        loc="upper left",
-                        bbox_to_anchor=(1.38, 1.0),
-                        borderaxespad=0.0,
-                        frameon=True,
-                        framealpha=0.9,
-                    )
-            if axes:
-                axes[0].figure.savefig(
-                    validation_base_path.parent / f"{validation_base_path.stem}_surface.png",
-                    dpi=200,
-                    bbox_inches="tight",
-                )
-
     if return_budget:
-        total_budget = Budget(
-            remaining_hqc=(
-                validation_budget.remaining_hqc
-                if validation_budget is not None
-                else max(
-                    0.0,
-                    settings.hqc_budget - budget.spent_hqc,
-                )
-            ),
-            spent_hqc=(
-                budget.spent_hqc
-                + (validation_budget.spent_hqc if validation_budget is not None else 0.0)
-            ),
-            jobs=(
-                budget.jobs
-                + (validation_budget.jobs if validation_budget is not None else 0)
-            ),
-            max_job_circuits=max(
-                budget.max_job_circuits,
-                validation_budget.max_job_circuits if validation_budget is not None else 0,
-            ),
-        )
-        return rmb, crossings, total_budget, validation_rmb
+        return rmb, crossings, budget
     return rmb, crossings
 
 
@@ -1986,8 +1637,8 @@ def main() -> None:
     # -------------------------------------------------------------------------
     # If None, use the defaults inherited from CrossingSettings.
 
-    HQC_BUDGET = 200.0
-    MAX_COST_PER_RUN = 15.0
+    HQC_BUDGET = 100.0
+    MAX_COST_PER_RUN = 10.0
 
     # Example:
     # HQC_BUDGET = 500.0
@@ -2007,27 +1658,9 @@ def main() -> None:
     # -------------------------------------------------------------------------
 
     INITIAL_SOBOL_SAMPLES = 10
-    INITIAL_SOBOL_MAX_COST_PER_RUN = 30.0
+    INITIAL_SOBOL_MAX_COST_PER_RUN = 10.0
     SOBOL_SCRAMBLE = True
 
-    # -------------------------------------------------------------------------
-    # VALIDATION HANDLES
-    # -------------------------------------------------------------------------
-    # After the GP is trained, measure only configs on its predicted contour
-    # into a separate validation RMBData and plot/save that validation data.
-
-    VALIDATE_GP_CONTOUR = False
-    RESERVE_VALIDATION_BUDGET = False
-    VALIDATION_HQC_BUDGET = 0.0
-    VALIDATION_MAX_COST_PER_RUN = 30.0
-    VALIDATION_TARGET_CONFIGS = 30
-    VALIDATION_MIN_CONFIGS = 15
-    VALIDATION_MAX_RESTARTS = 20
-    VALIDATION_SHOTS_PER_CONFIG = 1
-    VALIDATION_MAX_ATTEMPTS_MULTIPLIER = 10
-    VALIDATION_PROBABILITY_BAND = (0.4, 0.6)
-    VALIDATION_SEED_OFFSET = 271828
-    VALIDATION_SAVE_PATH = None
     PLOT_GP_LEVEL_SET_RESULT = True
     SAVE_GP_PREDICTION_GRID = True
     PLOTS_MODULE = "plots_1"
@@ -2065,7 +1698,6 @@ def main() -> None:
     # -------------------------------------------------------------------------
     # GPU HANDLES
     # -------------------------------------------------------------------------
-    # RMB backend remains CPU.
     # This only controls AEPsych/GP/acquisition.
 
     USE_GPU = False
@@ -2074,10 +1706,16 @@ def main() -> None:
     FORCE_DEFAULT_DEVICE_DURING_AEPSYCH = True
 
     # -------------------------------------------------------------------------
+    # BACKEND HANDLE
+    # -------------------------------------------------------------------------
+    # Default comes from common.py and builds the usual SympleQ RMB backend.
+
+    BACKEND_FACTORY = quantinuum_emulator_backend_factory
+    # -------------------------------------------------------------------------
     # REPRODUCIBILITY / DEBUG HANDLES
     # -------------------------------------------------------------------------
 
-    RNG_SEEDS = [2025, 2026, 2027, 2028, 2029, 2030]
+    RNG_SEEDS = [2025]
     VERBOSE_FANTASIES = False
     PRINT_DIAGNOSTICS = False
     PLOT = True
@@ -2097,18 +1735,6 @@ def main() -> None:
         initial_sobol_samples=INITIAL_SOBOL_SAMPLES,
         initial_sobol_max_cost_per_run=INITIAL_SOBOL_MAX_COST_PER_RUN,
         sobol_scramble=SOBOL_SCRAMBLE,
-        validate_gp_contour=VALIDATE_GP_CONTOUR,
-        reserve_validation_budget=RESERVE_VALIDATION_BUDGET,
-        validation_hqc_budget=VALIDATION_HQC_BUDGET,
-        validation_max_cost_per_run=VALIDATION_MAX_COST_PER_RUN,
-        validation_target_configs=VALIDATION_TARGET_CONFIGS,
-        validation_min_configs=VALIDATION_MIN_CONFIGS,
-        validation_max_restarts=VALIDATION_MAX_RESTARTS,
-        validation_shots_per_config=VALIDATION_SHOTS_PER_CONFIG,
-        validation_max_attempts_multiplier=VALIDATION_MAX_ATTEMPTS_MULTIPLIER,
-        validation_probability_band=VALIDATION_PROBABILITY_BAND,
-        validation_seed_offset=VALIDATION_SEED_OFFSET,
-        validation_save_path=VALIDATION_SAVE_PATH,
         plot_gp_level_set_result=PLOT_GP_LEVEL_SET_RESULT,
         save_gp_prediction_grid=SAVE_GP_PREDICTION_GRID,
         plots_module=PLOTS_MODULE,
@@ -2123,6 +1749,7 @@ def main() -> None:
         batching=BATCHING,
         max_batch_size=MAX_BATCH_SIZE,
         fantasy_batching=FANTASY_BATCHING,
+        backend_factory=BACKEND_FACTORY,
         use_gpu=USE_GPU,
         force_default_device_during_aepsych=FORCE_DEFAULT_DEVICE_DURING_AEPSYCH,
         verbose_fantasies=VERBOSE_FANTASIES,
