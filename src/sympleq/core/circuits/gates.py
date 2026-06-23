@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC
 import numpy as np
-from typing import Self
+from typing import Self, overload
 
 from sympleq._typing import IntArrayLike
 from sympleq.core.paulis import PauliObject
@@ -13,6 +13,8 @@ from sympleq.core.circuits.random_symplectic import symplectic_random_transvecti
 from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.circuits.target import get_phase_vector
+from sympleq.core.paulis.pauli_string import PauliString
+from sympleq.core.paulis.pauli_sum import PauliSum
 
 
 class Gate(ABC):
@@ -208,7 +210,19 @@ class Gate(ABC):
             np.all(self._phase_vector == other._phase_vector) and \
             np.all(self._exceptional_phase_vectors == other._exceptional_phase_vectors)
 
+    @overload
+    def act(self, pauli: PauliSum, qudits: int | tuple[int, ...]) -> PauliSum:
+        ...
+
+    @overload
+    def act(self, pauli: PauliString, qudits: int | tuple[int, ...]) -> PauliString:
+        ...
+
+    @overload
     def act(self, pauli: PauliObject, qudits: int | tuple[int, ...]) -> PauliObject:
+        ...
+
+    def act(self, pauli, qudits):
         """
         Apply this gate to a Pauli object at the specified qudit indices.
 
@@ -262,8 +276,10 @@ class Gate(ABC):
 
         new_phases = (pauli.phases + acquired_phases) % (2 * pauli.lcm)
 
-        return pauli.__class__(tableau=new_tableau, dimensions=pauli.dimensions,
-                               weights=pauli.weights, phases=new_phases)
+        return pauli.__class__(
+            tableau=new_tableau, dimensions=pauli.dimensions,
+            weights=pauli.weights, phases=new_phases
+        )
 
     def act_in_hilbert_space(self, rho: HilbertOperator,
                              qudits: tuple[int, ...], dimensions: DimensionsType) -> HilbertOperator:
@@ -1048,7 +1064,19 @@ class PauliGate(Gate):
         z = self.pauli_string.z_exp
         return pauli_unitary_from_tableau(d, x, z, convention="bare")
 
-    def act(self, pauli: PauliObject, qudits: int | tuple[int, ...] | None = None) -> PauliObject:
+    @overload
+    def act(self, pauli: PauliSum, qudits: int | tuple[int, ...]) -> PauliSum:
+        ...
+
+    @overload
+    def act(self, pauli: PauliString, qudits: int | tuple[int, ...]) -> PauliString:
+        ...
+
+    @overload
+    def act(self, pauli: PauliObject, qudits: int | tuple[int, ...]) -> PauliObject:
+        ...
+
+    def act(self, pauli, qudits):
         """
         Apply this PauliGate to a Pauli object.
 
