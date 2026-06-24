@@ -43,6 +43,10 @@
   "esbonio.sphinx.confDir": "${workspaceFolder}/docs",
   "esbonio.sphinx.buildDir": "${workspaceFolder}/docs/_build",
 
+  // Python interpreter and terminal activation
+  "python.defaultInterpreterPath": "${workspaceFolder}/venv/Scripts/python.exe",
+  "python.terminal.activateEnvironment": true,
+
   // Python analysis and testing
   "python.analysis.typeCheckingMode": "basic",
   "python.analysis.diagnosticMode": "workspace",

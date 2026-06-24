@@ -7,17 +7,35 @@ call env.bat
 cd %PROJECT_ROOT%
 
 REM Initializing virtual environment...
-if not exist %SRC_VENV% (
+if not exist %SRC_VENV%\Scripts\activate.bat (
     echo Creating virtual environment %SRC_VENV%...
-    python -m venv %SRC_VENV%
-    call %SRC_VENV%/Scripts/activate
-    call python -m pip install -r %DEV_REQUIREMENTS%
-    call deactivate
+    if exist %SRC_VENV% (rmdir /s /q %SRC_VENV% 2>nul)
+    powershell -NonInteractive -Command "py -m venv '%SRC_VENV%'"
+    if not exist %SRC_VENV%\Scripts\activate.bat (
+        echo ERROR: Failed to create virtual environment.
+        echo Ensure Python is installed, then run this task again.
+        exit /b 1
+    )
 )
 
-call %SRC_VENV%/Scripts/activate
+call %SRC_VENV%\Scripts\activate.bat
 call python -m pip install --upgrade pip setuptools setuptools-scm
+call python -m pip install -r %DEV_REQUIREMENTS%
 call python -m pip install -e %PYTHON_PY_SETUP%
+
+REM Optional package groups
+echo.
+choice /c YN /m "Install quantinuum packages (pytket, pytket-quantinuum, qnexus)?"
+if errorlevel 2 goto skip_quantinuum
+call python -m pip install -e ".[quantinuum]"
+:skip_quantinuum
+
+echo.
+choice /c YN /m "Install RBMalgorithms packages (torch, aepsych, botorch, gpytorch)?"
+if errorlevel 2 goto skip_rbmalgorithms
+call uv pip install -e ".[RBMalgorithms]"
+:skip_rbmalgorithms
+
 call deactivate
 
 REM Generating unversioned folders...

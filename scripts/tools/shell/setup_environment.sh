@@ -11,14 +11,26 @@ cd "$PROJECT_ROOT"
 if [[ ! -d "$SRC_VENV" ]]; then
     echo "Creating virtual environment $SRC_VENV..."
     python -m venv "$SRC_VENV"
-    source "$SRC_VENV/bin/activate"
-    python -m pip install -r "$DEV_REQUIREMENTS"
-    deactivate
 fi
 
 source "$SRC_VENV/bin/activate"
 python -m pip install --upgrade pip setuptools setuptools-scm
+python -m pip install -r "$DEV_REQUIREMENTS"
 python -m pip install -e "$PYTHON_PY_SETUP"
+
+# Optional package groups
+echo
+read -rp "Install quantinuum packages (pytket, pytket-quantinuum, qnexus)? [Y/n]: " yn
+case "$yn" in
+    [Yy]*) python -m pip install -e ".[quantinuum]" ;;
+esac
+
+echo
+read -rp "Install RBMalgorithms packages (torch, aepsych, botorch, gpytorch)? [Y/n]: " yn
+case "$yn" in
+    [Yy]*) uv pip install -e ".[RBMalgorithms]" ;;
+esac
+
 deactivate
 
 # Generating unversioned folders...
