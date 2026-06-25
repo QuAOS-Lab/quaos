@@ -10,7 +10,7 @@ dependencies = [
     "matplotlib>=3.10.0,<4.0.0",
     "scipy>=1.15.1,<2.0.0",
     "networkx>=3.4.2,<4.0.0",
-    "galois>=0.4.6,<1.0.0",
+    "galois>=0.4.6,<1.0.0"
 ]
 name = "sympleq"
 dynamic = ["version"]
@@ -21,8 +21,30 @@ license = { text = "MIT" }
 requires-python = ">=3.11"
 
 [project.optional-dependencies]
-quantinuum = ["pytket>=2.16.0", "pytket-quantinuum>=0.58.0", "qnexus>=0.43.0"]
-RBMalgorithms = ["torch>=2.0.0", "aepsych>=0.8.0", "botorch>=0.18.0", "gpytorch>=1.15.0"]
+development = [
+    "uv>=0.5.0",
+    "autopep8==2.2.0",
+    "nbformat==5.10.4",
+    "ipykernel>=6.29.5,<7.0.0",
+    "ipywidgets>=8.1.5,<9.0.0",
+    "pytest==9.0.3",
+    "pytest-benchmark==5.1.0",
+    "pytest-cov==7.0.0",
+    "snakeviz==2.2.2",
+    "tqdm>=4.67.1,<5.0.0",
+    "vulture==2.14"
+]
+quantinuum = [
+    "pytket>=2.16.0", 
+    "pytket-quantinuum>=0.58.0", 
+    "qnexus>=0.43.0"
+]
+RBMalgorithms = [
+    "torch>=2.0.0", 
+    "aepsych>=0.8.0", 
+    "botorch>=0.18.0", 
+    "gpytorch>=1.15.0"
+]
 
 [tool.uv]
 override-dependencies = [

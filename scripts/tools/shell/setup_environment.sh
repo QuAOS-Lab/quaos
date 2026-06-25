@@ -15,8 +15,7 @@ fi
 
 source "$SRC_VENV/bin/activate"
 python -m pip install --upgrade pip setuptools setuptools-scm
-python -m pip install -r "$DEV_REQUIREMENTS"
-python -m pip install -e "$PYTHON_PY_SETUP"
+python -m pip install -e "${PYTHON_PY_SETUP}[development]"
 
 # Optional package groups
 echo

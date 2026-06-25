@@ -19,7 +19,6 @@ REM Setup dev environment env variables
 set PYTHON_PY_SETUP="./"
 set PERSONAL_FOLDER=scripts/personal
 set DIST_FOLDER=dist/
-set DEV_REQUIREMENTS=scripts/configs/dev_requirements.txt
 
 REM Clear notebooks env variables
 set NOTEBOOKS_ROOT_DIR=%PROJECT_ROOT%
