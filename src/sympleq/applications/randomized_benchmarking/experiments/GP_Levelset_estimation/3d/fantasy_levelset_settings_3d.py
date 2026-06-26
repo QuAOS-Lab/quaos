@@ -114,7 +114,7 @@ MAX_COST_PER_RUN = 15.0
 # Gate BUDGET HANDLES
 # -------------------------------------------------------------------------
 # Set to None to use the defaults inherited from CrossingSettings.
-GATE_BUDGET = 7500
+GATE_BUDGET = 7000
 
 # -------------------------------------------------------------------------
 # FAKE-ANCHOR HANDLES
@@ -129,8 +129,8 @@ EXTRA_FAKE_ANCHORS = []
 # SOBOL WARM-UP HANDLES
 # -------------------------------------------------------------------------
 
-INITIAL_SOBOL_SAMPLES = 10
-INITIAL_SOBOL_MAX_COST_PER_RUN = 40.0
+INITIAL_SOBOL_SAMPLES = 12
+INITIAL_SOBOL_MAX_COST_PER_RUN = 15.0
 SOBOL_SCRAMBLE = True
 
 SAVE_GP_PREDICTION_GRID = True

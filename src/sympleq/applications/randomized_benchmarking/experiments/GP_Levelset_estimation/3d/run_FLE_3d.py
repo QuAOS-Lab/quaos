@@ -48,7 +48,7 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     print_progress,
     start_run,
 )
-from fantasy_levelset_estimation_3d import (
+from fantasy_levelset_estimation_3d_fix_qubits import (
     Observation,
     build_strategy,
     choose_gp_device,
@@ -382,47 +382,60 @@ def run(
     exhausted = False
 
     sobol_candidates = sobol_initial_candidates(settings)
-    sobol_batch, exhausted = select_affordable_prefix(
-        sobol_candidates,
-        settings,
-        budget,
-        max_cost_per_run=settings.initial_sobol_max_cost_per_run,
-    )
+    sobol_submissions = 0
 
-    if sobol_batch:
+    if sobol_candidates:
         print("[sobol configs]")
-        for index, config in enumerate(sobol_batch, start=1):
+        for index, candidate in enumerate(sobol_candidates, start=1):
+            sobol_batch, exhausted = select_affordable_prefix(
+                [candidate],
+                settings,
+                budget,
+                max_cost_per_run=settings.initial_sobol_max_cost_per_run,
+            )
+
+            if not sobol_batch:
+                break
+
+            config = sobol_batch[0]
             print(
-                f"  {index:03d}: "
+                f"  submission={index:03d}: "
                 f"n_gates={config.n_gates} "
                 f"n_1q={config.n_1qb_gates} "
                 f"n_2q={config.n_2qb_gates} "
                 f"ratio={config.ratio_2_qb_gates:.4f} "
                 f"n_qubits={config.n_qubits}"
             )
-        measure_batch_and_update_real_strategy(
-            phase="sobol",
-            selected=sobol_batch,
-            strategy=strategy,
-            rmb=rmb,
-            rng=rng,
-            data=data,
-            budget=budget,
-            settings=settings,
-            observations=observations,
-            results_for_plot=results_for_plot,
-            device=gp_device,
-        )
-        checkpoint_step += 1
-        save_real_checkpoint(
-            rmb=rmb,
-            strategy=strategy,
-            settings=settings,
-            observations=observations,
-            device=gp_device,
-            phase="sobol",
-            step=checkpoint_step,
-        )
+            measure_batch_and_update_real_strategy(
+                phase="sobol",
+                selected=sobol_batch,
+                strategy=strategy,
+                rmb=rmb,
+                rng=rng,
+                data=data,
+                budget=budget,
+                settings=settings,
+                observations=observations,
+                results_for_plot=results_for_plot,
+                device=gp_device,
+            )
+            sobol_submissions += 1
+            checkpoint_step += 1
+            save_real_checkpoint(
+                rmb=rmb,
+                strategy=strategy,
+                settings=settings,
+                observations=observations,
+                device=gp_device,
+                phase=f"sobol_{index:03d}",
+                step=checkpoint_step,
+            )
+
+            if exhausted:
+                break
+
+    if sobol_submissions:
+        print(f"sobol: measured {sobol_submissions} separate submissions")
     else:
         print_progress(settings, budget, "sobol: no affordable initial batch")
 
