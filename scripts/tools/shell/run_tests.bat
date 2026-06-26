@@ -12,7 +12,6 @@ if not exist %SRC_VENV% (
 )
 
 call %SRC_VENV%/Scripts/activate
-call python -m pip install -r %DEV_REQUIREMENTS%
 
 REM Build pytest command with optional markers
 set PYTEST_CMD=pytest --override-ini "pytest.ini=%PYTEST_INI%" --cov=%PRJ_NAME% --cov-report=xml:%COVERAGE_REPORT_XML% --cov-report=html:%COVERAGE_REPORT_HTML% --junitxml=%COVERAGE_REPORT_JUNIT% --disable-warnings -vv

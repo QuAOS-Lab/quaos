@@ -14,13 +14,6 @@ if not exist "%SRC_VENV%" (
 
 call %SRC_VENV%/Scripts/activate >nul 2>&1
 
-if not exist "%DEV_REQUIREMENTS%" (
-    echo %DEV_REQUIREMENTS% not found.
-    exit /b 1
-)
-
-call pip install -r %DEV_REQUIREMENTS% >nul 2>&1
-
 REM Check if test function name is provided
 if "%~1"=="" (
     echo Missing required argument! 
