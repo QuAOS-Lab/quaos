@@ -14,14 +14,14 @@ if [[ ! -d "$SRC_VENV" ]]; then
 fi
 
 source "$SRC_VENV/bin/activate"
-python -m pip install --upgrade pip setuptools setuptools-scm
-python -m pip install -e "${PYTHON_PY_SETUP}[development]"
+python -m pip install uv
+uv pip install -e "${PYTHON_PY_SETUP}[development]"
 
 # Optional package groups
 echo
 read -rp "Install quantinuum packages (pytket, pytket-quantinuum, qnexus)? [Y/n]: " yn
 case "$yn" in
-    [Yy]*) python -m pip install -e ".[quantinuum]" ;;
+    [Yy]*) uv pip install -e ".[quantinuum]" ;;
 esac
 
 echo

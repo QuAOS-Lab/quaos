@@ -18,8 +18,8 @@ if exist %SRC_VENV% (rmdir /s /q %SRC_VENV% 2>nul)
 )
 
 call %SRC_VENV%/Scripts/activate.bat
-call python -m pip install --upgrade pip setuptools setuptools-scm
-call python -m pip install -e ".[development]"
+call python -m pip install uv
+call uv pip install -e ".[development]"
 
 REM Optional package groups
 echo.
