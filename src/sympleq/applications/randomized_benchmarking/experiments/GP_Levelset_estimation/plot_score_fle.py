@@ -30,17 +30,40 @@ PNG_PATH: Path | None = None
 
 ONE_Q_NOISE_SCALE = 1.0
 TWO_Q_NOISE_SCALE = 1.0
+LAST_BACKEND_BATCH_SIZE: int | None = None
 
 
-REFERENCE_LINE_LABEL = "reference line"
 ANALYTIC_LINE_LABEL = "analytic Lindblad line"
-REFERENCE_NUMERATOR = 0.7106
-REFERENCE_OFFSET = 1.91e-4
-REFERENCE_SLOPE = 3.65e-3
+REFERENCE_CURVES = [
+    {
+        "label": "reference line nq=5",
+        "numerator": 0.7106,
+        "offset": 1.91e-4,
+        "slope": 3.65e-3,
+        "color": "tab:purple",
+        "linestyle": "--",
+    },
+    {
+        "label": "reference line nq=20",
+        "numerator": 0.7106,
+        "offset": 1.91e-4,
+        "slope": 3.65e-3,
+        "color": "tab:blue",
+        "linestyle": "-.",
+    },
+]
+REFERENCE_OFFSET = REFERENCE_CURVES[0]["offset"]
+REFERENCE_SLOPE = REFERENCE_CURVES[0]["slope"]
 
 
-def reference_gate_counts(ratios: np.ndarray) -> np.ndarray:
-    return REFERENCE_NUMERATOR / (REFERENCE_OFFSET + REFERENCE_SLOPE * ratios)
+def reference_gate_counts(
+    ratios: np.ndarray,
+    *,
+    numerator: float,
+    offset: float,
+    slope: float,
+) -> np.ndarray:
+    return numerator / (offset + slope * ratios)
 
 
 def analytic_gate_counts(
@@ -63,13 +86,20 @@ def sibling_png_path(json_path: Path) -> Path:
     return json_path.parent / f"{json_path.stem}_fle_levelset_score.png"
 
 
-def load_points(json_path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def load_points(
+    json_path: Path,
+    *,
+    last_backend_batch_size: int | None = LAST_BACKEND_BATCH_SIZE,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     gates: list[float] = []
     ratios: list[float] = []
     outcomes: list[int] = []
+    records = payload.get("data", [])
+    if last_backend_batch_size is not None:
+        records = records[-last_backend_batch_size:]
 
-    for record in payload.get("data", []):
+    for record in records:
         n_1q = int(record["n_1qb_gates"])
         n_2q = int(record["n_2qb_gates"])
         total = n_1q + n_2q
@@ -188,12 +218,10 @@ def plot_fle_grid(
         one_q_noise_scale=ONE_Q_NOISE_SCALE,
         two_q_noise_scale=TWO_Q_NOISE_SCALE,
     )
-    reference = reference_gate_counts(ratios)
     x_min = float(np.min(gates_grid[gates_grid > 0.0]))
     x_max = float(np.max(gates_grid))
 
     analytic_mask = np.isfinite(analytic) & (x_min <= analytic) & (analytic <= x_max)
-    reference_mask = np.isfinite(reference) & (x_min <= reference) & (reference <= x_max)
     ax.plot(
         analytic[analytic_mask],
         ratios[analytic_mask],
@@ -203,21 +231,29 @@ def plot_fle_grid(
         label=ANALYTIC_LINE_LABEL,
         zorder=7,
     )
-    ax.plot(
-        reference[reference_mask],
-        ratios[reference_mask],
-        color="tab:purple",
-        linestyle="--",
-        linewidth=1.8,
-        label=REFERENCE_LINE_LABEL,
-        zorder=7,
-    )
+    for curve in REFERENCE_CURVES:
+        reference = reference_gate_counts(
+            ratios,
+            numerator=float(curve["numerator"]),
+            offset=float(curve["offset"]),
+            slope=float(curve["slope"]),
+        )
+        reference_mask = np.isfinite(reference) & (x_min <= reference) & (reference <= x_max)
+        ax.plot(
+            reference[reference_mask],
+            ratios[reference_mask],
+            color=str(curve["color"]),
+            linestyle=str(curve["linestyle"]),
+            linewidth=1.8,
+            label=str(curve["label"]),
+            zorder=7,
+        )
 
     ax.plot([], [], color="black", linewidth=2.2, label=f"GP mean p={target:g}")
     ax.plot([], [], color="black", linestyle="--", linewidth=1.6, label=r"$\mu \pm 1\sigma$")
     ax.set_xscale("log")
     ax.set_xlim(left=max(1.0, x_min), right=x_max)
-    ax.set_ylim(float(np.min(ratio_grid)), float(np.max(ratio_grid)))
+    ax.set_ylim(0.07, float(np.max(ratio_grid)))
     ax.set_xlabel("Total gates")
     ax.set_ylabel("Two-qubit gate ratio")
     ax.set_title(

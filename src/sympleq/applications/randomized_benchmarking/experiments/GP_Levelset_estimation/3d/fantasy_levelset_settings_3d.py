@@ -37,7 +37,11 @@ class FantasySettings(CrossingSettings):
     use_fake_corners: bool = True
     easy_corner_outcome: int = 1
     hard_corner_outcome: int = 0
-    extra_fake_anchors: list[tuple[float, float, int]] = field(default_factory=list)
+    extra_fake_anchors: list[tuple] = field(default_factory=list)
+
+    # 3D AEPsych coordinate
+    n_qubits_bounds: tuple[int, int] = (5, 20)
+    level_set_n_qubits: int | None = None
 
     # Explicit Sobol warm-up
     initial_sobol_samples: int = 10
@@ -46,6 +50,7 @@ class FantasySettings(CrossingSettings):
 
     #GP grid saving
     save_gp_prediction_grid: bool = False
+    save_real_checkpoints: bool = True
 
     # Gate budget per stitched submission (for emulator only)
     gate_budget: int | None = None
@@ -85,7 +90,9 @@ TARGET_THRESHOLD = 0.5
 # NuUMBER of Qubits
 # -------------------------------------------------------------------------
 
-N_QUBITS = 5
+N_QUBITS = 20
+N_QUBITS_BOUNDS = (5, 20)
+LEVEL_SET_N_QUBITS = N_QUBITS
 
 # -------------------------------------------------------------------------
 # SEARCH-BOX HANDLES
@@ -100,7 +107,7 @@ RATIO_BOUNDS = (0.1, 0.9)
 # -------------------------------------------------------------------------
 # Set to None to use the defaults inherited from CrossingSettings.
 
-HQC_BUDGET = 200.0
+HQC_BUDGET = 5000.0
 MAX_COST_PER_RUN = 15.0
 
 # -------------------------------------------------------------------------
@@ -112,23 +119,22 @@ GATE_BUDGET = 7500
 # -------------------------------------------------------------------------
 # FAKE-ANCHOR HANDLES
 # -------------------------------------------------------------------------
-
+#
 USE_FAKE_CORNERS = True
 EASY_CORNER_OUTCOME = 1
 HARD_CORNER_OUTCOME = 0
-EXTRA_FAKE_ANCHORS = [(15, 0.1, 1), (25, 0.2, 1), (20, 0.1, 1),
-                      (2900, 0.85, 0), (2890, 0.87, 0), (2788, 0.9, 0)
-                      ]
+EXTRA_FAKE_ANCHORS = []
 
 # -------------------------------------------------------------------------
 # SOBOL WARM-UP HANDLES
 # -------------------------------------------------------------------------
 
 INITIAL_SOBOL_SAMPLES = 10
-INITIAL_SOBOL_MAX_COST_PER_RUN = 15.0
+INITIAL_SOBOL_MAX_COST_PER_RUN = 40.0
 SOBOL_SCRAMBLE = True
 
 SAVE_GP_PREDICTION_GRID = True
+SAVE_REAL_CHECKPOINTS = True
 
 # -------------------------------------------------------------------------
 # GP / AEPSYCH HANDLES
@@ -159,8 +165,8 @@ FORCE_DEFAULT_DEVICE_DURING_AEPSYCH = True
 # BACKEND HANDLE
 # -------------------------------------------------------------------------
 
-# BACKEND_FACTORY = quantinuum_emulator_backend_factory
-BACKEND_FACTORY = default_backend_factory
+BACKEND_FACTORY = quantinuum_emulator_backend_factory
+# BACKEND_FACTORY = default_backend_factory
 
 # -------------------------------------------------------------------------
 # REPRODUCIBILITY / DEBUG HANDLES
@@ -183,6 +189,7 @@ def control_panel_settings_kwargs() -> dict:
         initial_sobol_max_cost_per_run=INITIAL_SOBOL_MAX_COST_PER_RUN,
         sobol_scramble=SOBOL_SCRAMBLE,
         save_gp_prediction_grid=SAVE_GP_PREDICTION_GRID,
+        save_real_checkpoints=SAVE_REAL_CHECKPOINTS,
         optimization_steps=OPTIMIZATION_STEPS,
         inducing_size=INDUCING_SIZE,
         acquisition_function=ACQUISITION_FUNCTION,
@@ -198,6 +205,8 @@ def control_panel_settings_kwargs() -> dict:
         plot=PLOT,
         gate_budget=GATE_BUDGET,
         n_qubits=N_QUBITS,
+        n_qubits_bounds=N_QUBITS_BOUNDS,
+        level_set_n_qubits=LEVEL_SET_N_QUBITS,
     )
 
     if N_GATES_BOUNDS is not None:

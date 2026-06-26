@@ -48,7 +48,7 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     print_progress,
     start_run,
 )
-from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.fantasy_levelset_estimation import (
+from fantasy_levelset_estimation_3d import (
     Observation,
     build_strategy,
     choose_gp_device,
@@ -63,8 +63,9 @@ from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estima
     select_plain_aepsych_batch,
     sobol_initial_candidates,
     temporary_torch_default_device,
+    n_qubits_slice,
 )
-from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.fantasy_levelset_settings import (
+from fantasy_levelset_settings_3d import (
     FantasySettings,
     RNG_SEEDS,
     control_panel_settings_kwargs,
@@ -74,35 +75,54 @@ from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estima
 # Storing
 
 def timestamped_personal_save_path(seed: int | None = None) -> Path:
-    """Timestamped JSON output path under the repository's Personal folder."""
+    """Timestamped run folder and final JSON path under ``Personal``."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    if seed is None:
-        return Path("Personal") / f"FLE_{timestamp}.json"
-    return Path("Personal") / f"seed_{seed}" / f"FLE_{timestamp}.json"
+    seed_folder = "seed_unseeded" if seed is None else f"seed_{seed}"
+    run_folder = Path("Personal") / seed_folder / f"FLE_{timestamp}"
+    return run_folder / f"FLE_{timestamp}.json"
 
 
 # Prediction
 def predict_native_level_set(
-    strategy: SequentialStrategy,
-    settings: FantasySettings,
+    strategy,
+    settings,
     *,
-    device: torch.device,
-    n_grid: int = 100,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Evaluate fitted GP on its native total-gates/ratio mesh."""
+    device,
+    n_gates_grid: int = 80,
+    n_ratio_grid: int = 80,
+    n_qubits_grid: int = 16,
+):
     gates_axis = np.geomspace(
         max(1.0, float(settings.n_gates_bounds[0])),
         float(settings.n_gates_bounds[1]),
-        n_grid,
+        n_gates_grid,
     )
     ratio_axis = np.linspace(
         float(settings.ratio_bounds[0]),
         float(settings.ratio_bounds[1]),
-        n_grid,
+        n_ratio_grid,
     )
-    gates_grid, ratio_grid = np.meshgrid(gates_axis, ratio_axis)
+    qubits_axis = np.linspace(
+        float(settings.n_qubits_bounds[0]),
+        float(settings.n_qubits_bounds[1]),
+        n_qubits_grid,
+    )
+
+    qubits_grid, ratio_grid, gates_grid = np.meshgrid(
+        qubits_axis,
+        ratio_axis,
+        gates_axis,
+        indexing="ij",
+    )
+
     grid = torch.tensor(
-        np.column_stack([gates_grid.ravel(), ratio_grid.ravel()]),
+        np.column_stack(
+            [
+                gates_grid.ravel(),
+                ratio_grid.ravel(),
+                qubits_grid.ravel(),
+            ]
+        ),
         dtype=torch.double,
         device=device,
     )
@@ -120,13 +140,110 @@ def predict_native_level_set(
             )
             latent_mean, latent_variance = strategy.model.predict(grid)
 
+    shape = gates_grid.shape
+
     return (
-        probabilities.detach().cpu().numpy().reshape(gates_grid.shape),
-        latent_mean.detach().cpu().numpy().reshape(gates_grid.shape),
-        latent_variance.detach().cpu().numpy().reshape(gates_grid.shape),
+        probabilities.detach().cpu().numpy().reshape(shape),
+        latent_mean.detach().cpu().numpy().reshape(shape),
+        latent_variance.detach().cpu().numpy().reshape(shape),
         gates_grid,
         ratio_grid,
+        qubits_grid,
+        gates_axis,
+        ratio_axis,
+        qubits_axis,
     )
+
+
+def save_gp_prediction_grid(
+    strategy,
+    settings: FantasySettings,
+    *,
+    device: torch.device,
+    json_path: Path,
+) -> Path:
+    """Save the current 3D GP prediction grid beside one RMB JSON snapshot."""
+
+    (
+        probabilities,
+        latent_mean,
+        latent_variance,
+        gates_grid,
+        ratio_grid,
+        qubits_grid,
+        gates_axis,
+        ratio_axis,
+        qubits_axis,
+    ) = predict_native_level_set(strategy, settings, device=device)
+
+    grid_path = json_path.parent / f"{json_path.stem}_gp_grid_3d.npz"
+    np.savez_compressed(
+        grid_path,
+        gates_grid=gates_grid,
+        ratio_grid=ratio_grid,
+        qubits_grid=qubits_grid,
+        gates_axis=gates_axis,
+        ratio_axis=ratio_axis,
+        qubits_axis=qubits_axis,
+        x_grid=gates_grid,
+        y_grid=ratio_grid,
+        z_grid=qubits_grid,
+        probabilities=probabilities,
+        latent_mean=latent_mean,
+        latent_variance=latent_variance,
+        target=np.asarray(contour_target(settings), dtype=float),
+        coordinate_system=np.asarray("total_ratio_n_qubits_3d"),
+        rng_seed=np.asarray(
+            -1 if settings.rng_seed is None else settings.rng_seed,
+            dtype=int,
+        ),
+    )
+    print(f"[saved] 3D GP grid: {grid_path}")
+    return grid_path
+
+
+def save_real_checkpoint(
+    *,
+    rmb,
+    strategy: SequentialStrategy,
+    settings: FantasySettings,
+    observations: list[Observation],
+    device: torch.device,
+    phase: str,
+    step: int,
+) -> None:
+    """Save real RMB data and a GP grid after one real measurement batch."""
+
+    if not settings.save_real_checkpoints or settings.save_path is None:
+        return
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    checkpoint_path = (
+        Path(settings.save_path).parent
+        / f"measurement_{step:03d}_{phase}_{timestamp}.json"
+    )
+    rmb.save(checkpoint_path)
+    checkpoint_path = resolve_data_path(checkpoint_path)
+    print(f"[saved] real RMB checkpoint: {checkpoint_path}")
+
+    if not settings.save_gp_prediction_grid:
+        return
+
+    try:
+        checkpoint_strategy = refreshed_strategy_for_prediction(
+            strategy,
+            settings,
+            observations,
+            device=device,
+        )
+        save_gp_prediction_grid(
+            checkpoint_strategy,
+            settings,
+            device=device,
+            json_path=checkpoint_path,
+        )
+    except Exception as exc:
+        print(f"[checkpoint] GP grid was not saved: {exc}")
 
 
 def print_run_handles(
@@ -244,6 +361,7 @@ def run(
 
     observations: list[Observation] = []
     results_for_plot: list[tuple[float, float, int]] = []
+    checkpoint_step = 0
 
     # -------------------------------------------------------------------------
     # 1. Fake anchors
@@ -272,6 +390,16 @@ def run(
     )
 
     if sobol_batch:
+        print("[sobol configs]")
+        for index, config in enumerate(sobol_batch, start=1):
+            print(
+                f"  {index:03d}: "
+                f"n_gates={config.n_gates} "
+                f"n_1q={config.n_1qb_gates} "
+                f"n_2q={config.n_2qb_gates} "
+                f"ratio={config.ratio_2_qb_gates:.4f} "
+                f"n_qubits={config.n_qubits}"
+            )
         measure_batch_and_update_real_strategy(
             phase="sobol",
             selected=sobol_batch,
@@ -284,6 +412,16 @@ def run(
             observations=observations,
             results_for_plot=results_for_plot,
             device=gp_device,
+        )
+        checkpoint_step += 1
+        save_real_checkpoint(
+            rmb=rmb,
+            strategy=strategy,
+            settings=settings,
+            observations=observations,
+            device=gp_device,
+            phase="sobol",
+            step=checkpoint_step,
         )
     else:
         print_progress(settings, budget, "sobol: no affordable initial batch")
@@ -342,6 +480,16 @@ def run(
             results_for_plot=results_for_plot,
             device=gp_device,
         )
+        checkpoint_step += 1
+        save_real_checkpoint(
+            rmb=rmb,
+            strategy=strategy,
+            settings=settings,
+            observations=observations,
+            device=gp_device,
+            phase="globalsur",
+            step=checkpoint_step,
+        )
 
     # -------------------------------------------------------------------------
     # 4. Summary and contour extraction
@@ -384,36 +532,12 @@ def run(
         print(f"[saved] RMB data: {base_path}")
 
     if settings.save_gp_prediction_grid and base_path is not None:
-        (
-            probabilities,
-            latent_mean,
-            latent_variance,
-            gates_grid,
-            ratio_grid,
-        ) = predict_native_level_set(
+        save_gp_prediction_grid(
             plot_strategy,
             settings,
             device=gp_device,
+            json_path=base_path,
         )
-        if settings.save_gp_prediction_grid:
-            grid_path = base_path.parent / f"{base_path.stem}_gp_grid.npz"
-            np.savez_compressed(
-                grid_path,
-                gates_grid=gates_grid,
-                ratio_grid=ratio_grid,
-                x_grid=gates_grid,
-                y_grid=ratio_grid,
-                probabilities=probabilities,
-                latent_mean=latent_mean,
-                latent_variance=latent_variance,
-                target=np.asarray(contour_target(settings), dtype=float),
-                coordinate_system=np.asarray("total_ratio"),
-                rng_seed=np.asarray(
-                    -1 if settings.rng_seed is None else settings.rng_seed,
-                    dtype=int,
-                ),
-            )
-            print(f"[saved] GP grid: {grid_path}")
 
     if return_budget:
         return rmb, crossings, budget
