@@ -28,17 +28,11 @@ uv pip install -e ".[development]"
 
 REM Optional package groups
 echo.
-choice /c YN /m "Install quantinuum packages (pytket, pytket-quantinuum, qnexus)?"
-if errorlevel 2 goto skip_quantinuum
-uv pip install -e ".[quantinuum]"
+choice /c YN /m "Install experiments packages?"
+if errorlevel 2 goto skip_experiments
+uv pip install -e ".[experiments]"
 
-:skip_quantinuum
-echo.
-choice /c YN /m "Install RBMalgorithms packages (torch, aepsych, botorch, gpytorch)?"
-if errorlevel 2 goto skip_rbm
-uv pip install -e ".[RBMalgorithms]"
-
-:skip_rbm
+:skip_experiments
 
 REM Deactivate venv
 call deactivate

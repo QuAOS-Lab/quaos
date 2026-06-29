@@ -22,15 +22,9 @@ uv pip install -e ".[development]"
 
 # Optional package groups
 echo
-read -rp "Install quantinuum packages (pytket, pytket-quantinuum, qnexus)? [Y/n]: " yn
+read -rp "Install experiments packages? [Y/n]: " yn
 case "$yn" in
-    [Yy]*) uv pip install -e ".[quantinuum]" ;;
-esac
-
-echo
-read -rp "Install RBMalgorithms packages (torch, aepsych, botorch, gpytorch)? [Y/n]: " yn
-case "$yn" in
-    [Yy]*) uv pip install -e ".[RBMalgorithms]" ;;
+    [Yy]*) uv pip install -e ".[experiments]" ;;
 esac
 
 deactivate
