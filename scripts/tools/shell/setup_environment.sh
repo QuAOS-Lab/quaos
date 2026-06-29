@@ -14,8 +14,11 @@ if [[ ! -d "$SRC_VENV" ]]; then
 fi
 
 source "$SRC_VENV/bin/activate"
+
+# Install dependencies
+python -m pip install --upgrade pip
 python -m pip install uv
-uv pip install -e "${PYTHON_PY_SETUP}[development]"
+uv pip install -e ".[development]"
 
 # Optional package groups
 echo

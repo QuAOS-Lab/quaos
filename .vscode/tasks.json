@@ -24,12 +24,6 @@
             "type": "shell",
             "windows": {
                 "command": "${workspaceFolder}/scripts/tools/shell/setup_environment.bat",
-                "options": {
-                    "shell": {
-                        "executable": "powershell.exe",
-                        "args": ["-NoLogo", "-Command"]
-                    }
-                }
             },
             "linux": {
                 "command": "bash ${workspaceFolder}/scripts/tools/shell/setup_environment.sh",
