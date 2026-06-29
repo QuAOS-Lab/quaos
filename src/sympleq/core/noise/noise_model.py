@@ -32,6 +32,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import itertools
 import re
+import warnings
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
 
@@ -101,6 +102,53 @@ class NoiseModel(ABC):
             return NotImplemented
         return str(self) == str(other)
 
+    def __hash__(self) -> int:
+        return hash(str(self))
+
+    def to_dict(self) -> dict:
+        """
+        Serialize this noise model to a JSON-friendly dict.
+
+        Returns
+        -------
+        dict
+            A dict with a ``"type"`` key naming the concrete subclass and
+            additional fields needed to rebuild the instance via
+            :meth:`from_dict`.
+        """
+        raise NotImplementedError(
+            f"to_dict is not implemented for {type(self).__name__}.")
+
+    @classmethod
+    def from_dict(cls, payload: dict, rng: RNGGenerator | None = None) -> NoiseModel:
+        """
+        Rebuild a noise model from a dict produced by :meth:`to_dict`.
+
+        Parameters
+        ----------
+        payload : dict
+            Dict with a ``"type"`` key identifying the concrete subclass.
+        rng : numpy.random.Generator | None
+            RNG to attach to the rebuilt model. ``None`` uses ``default_rng()``.
+        """
+        if rng is None:
+            rng = default_rng()
+        type_name = payload["type"]
+        if type_name == "Noiseless":
+            return Noiseless()
+        if type_name == "DephasingNoise":
+            return DephasingNoise(error_rate=payload["error_rate"], rng=rng)
+        if type_name == "DepolarizingNoise":
+            return DepolarizingNoise(error_rate=payload["error_rate"], rng=rng)
+        if type_name == "CompositeNoise":
+            inner = [cls.from_dict(p, rng=rng) for p in payload["noise_models"]]
+            return CompositeNoise(inner, rng=rng)
+        if type_name == "GenericNoise":
+            gates = [getattr(GATES, name) for name in payload["gates"]]
+            probabilities = [float(p) for p in payload["probabilities"]]
+            return GenericNoise(probabilities, gates, rng=rng)
+        raise ValueError(f"Unknown noise model type: {type_name}")
+
     @classmethod
     def from_string(cls, s: str) -> NoiseModel | None:
         if s == "None":
@@ -161,21 +209,30 @@ class NoiseModel(ABC):
             The transformed Pauli object after applying the sampled Kraus operator.
         """
         n_qudits = len(qudits)
+        if n_qudits > 2:
+            warnings.warn(f"Warning: Noise not implemented for gates acting on more than 2 qudits (got {n_qudits}).")
+            return pauli_sum
+
         kraus_n_qudits = self.n_qudits()
         if n_qudits < kraus_n_qudits:
             return pauli_sum
+
         # Get probabilities to select one possible quantum trajectory
         # Given probabilities [p0, p1, p2, p3], cumsum gives [p0, p0+p1, p0+p1+p2, 1.0].
         # This allows O(log n) sampling via searchsorted with a uniform random number.
         probs = np.cumsum(self.kraus_probabilities())
-        idx = int(np.searchsorted(probs, self.rng.random()))
-        kraus_gate = self.kraus_gates()[idx]
-        if kraus_gate.n_qudits == n_qudits:
+
+        if kraus_n_qudits == n_qudits:
+            idx = int(np.searchsorted(probs, self.rng.random()))
+            kraus_gate = self.kraus_gates()[idx]
             pauli_sum = kraus_gate.act(pauli_sum, qudits)
-        elif kraus_gate.n_qudits == 1:
+        elif kraus_n_qudits == 1:
             # Act independently on each qudit
             for qudit in qudits:
+                idx = int(np.searchsorted(probs, self.rng.random()))
+                kraus_gate = self.kraus_gates()[idx]
                 pauli_sum = kraus_gate.act(pauli_sum, qudit)
+
         # FIXME: handle generic case, else:...
         # this is for kraus_n_qudits > 1, e.g. 2-qudits noise on 3-qudits gate.
 
@@ -274,6 +331,9 @@ class Noiseless(NoiseModel):
     def kraus_probabilities(self) -> list[float]:
         return self._probabilities
 
+    def to_dict(self) -> dict:
+        return {"type": "Noiseless"}
+
     def apply_quantum_trajectory(self, pauli_sum: PauliSum, qudits: tuple[int, ...]) -> PauliSum:
         return pauli_sum
 
@@ -311,10 +371,13 @@ class DephasingNoise(NoiseModel):
     def kraus_probabilities(self) -> list[float]:
         return self._probabilities
 
+    def to_dict(self) -> dict:
+        return {"type": "DephasingNoise", "error_rate": 1.0 - self.p0}
+
 
 class DepolarizingNoise(NoiseModel):
     def __str__(self) -> str:
-        return f"DepolarizingNoise(error_rate={(1.0 - self.p0) / 0.75:.4f})"
+        return f"DepolarizingNoise(error_rate={(1.0 - self.p0):.4f})"
 
     def __init__(self, error_rate: float, rng: RNGGenerator | None = None) -> None:
         # The depolarizing channel has four Klaus operators: the 4 paulis.
@@ -325,7 +388,7 @@ class DepolarizingNoise(NoiseModel):
         # Ki =  sqrt(1 − p0/3) σi
         if error_rate > 1.0 or error_rate < 0.0:
             raise ValueError(f"Error rate should be between 0.0 and 1.0 (got {error_rate}).")
-        self.p0 = 1.0 - 0.75 * error_rate
+        self.p0 = 1.0 - error_rate
         self._probabilities = [self.p0, (1.0 - self.p0) / 3, (1.0 - self.p0) / 3, (1.0 - self.p0) / 3]
 
         if rng is None:
@@ -340,6 +403,9 @@ class DepolarizingNoise(NoiseModel):
 
     def kraus_probabilities(self) -> list[float]:
         return self._probabilities
+
+    def to_dict(self) -> dict:
+        return {"type": "DepolarizingNoise", "error_rate": 1.0 - self.p0}
 
 
 class CompositeNoise(NoiseModel):
@@ -387,8 +453,7 @@ class CompositeNoise(NoiseModel):
                     continue
 
                 # If operator is unity, don't add to the weight.
-                # The noiseless channel will have a weight equal to 1 - Sum toher_channels
-
+                # The noiseless channel will have a weight equal to 1 - Sum other_channels
                 if gate in gates_probabilities:
                     gates_probabilities[gate] += probability
                 else:
@@ -409,6 +474,12 @@ class CompositeNoise(NoiseModel):
 
     def kraus_probabilities(self) -> list[float]:
         return self._probabilities
+
+    def to_dict(self) -> dict:
+        return {
+            "type": "CompositeNoise",
+            "noise_models": [m.to_dict() for m in self.noise_models],
+        }
 
 
 class GenericNoise(NoiseModel):
@@ -475,6 +546,31 @@ class GenericNoise(NoiseModel):
             rng = default_rng()
         return cls(probabilities, gates, rng)
 
+    @classmethod
+    def from_paulis(cls, probabilities: list[float], rng: RNGGenerator | None = None) -> GenericNoise:
+        """
+        Create a GenericNoise from probabilities using the Pauli gates as default gates set.
+
+        Parameters
+        ----------
+        probabilities : list[float]
+            Kraus probabilities for each gate.
+        rng : numpy.random.Generator or None, optional
+            Random number generator. If ``None``, a default is used.
+
+        Returns
+        -------
+        GenericNoise
+            A new GenericNoise instance.
+        """
+        if rng is None:
+            rng = default_rng()
+
+        p0 = 1.0 - sum(probabilities)
+        probabilities = [p0, probabilities[0], probabilities[1], probabilities[2]]
+        gates = [GATES.Id, GATES.X, GATES.Y, GATES.Z]
+        return cls(probabilities, gates, rng)
+
     def n_qudits(self) -> int:
         return self._n_qudits
 
@@ -483,3 +579,10 @@ class GenericNoise(NoiseModel):
 
     def kraus_probabilities(self) -> list[float]:
         return self._probabilities
+
+    def to_dict(self) -> dict:
+        return {
+            "type": "GenericNoise",
+            "probabilities": list(self._probabilities),
+            "gates": [g.name for g in self._gates],
+        }
