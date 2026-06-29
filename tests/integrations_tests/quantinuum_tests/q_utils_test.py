@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 
-pytest.importorskip("pytket")
 from pytket.circuit import Circuit as PytketCircuit, OpType
 
 from sympleq.core.circuits.circuits import Circuit
