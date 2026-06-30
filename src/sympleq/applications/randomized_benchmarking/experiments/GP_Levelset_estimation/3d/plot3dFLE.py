@@ -26,12 +26,12 @@ RMB_JSON_PATH = Path(
 GP_GRID_PATH: Path | None = None
 PNG_PATH: Path | None = None
 
-SHOW_MEASURED_POINTS = False
+SHOW_MEASURED_POINTS = True
 LAST_BACKEND_BATCH_SIZE: int | None = None
 
-ISOSURFACE_ALPHA = 0.70
+ISOSURFACE_ALPHA = 0.1
 SHOW_ONE_SIGMA_SURFACES = True
-ONE_SIGMA_ALPHA = 0.30
+ONE_SIGMA_ALPHA = 0.1
 FIGSIZE = (8.8, 7.0)
 DPI = 220
 
@@ -207,7 +207,9 @@ def plot_fle_isosurface_3d_matplotlib(
 
     fig = plt.figure(figsize=FIGSIZE)
     ax = fig.add_subplot(111, projection="3d")
+    ax.computed_zorder = False
     ax.add_collection3d(mesh)
+    mesh.set_zorder(1)
 
     if SHOW_ONE_SIGMA_SURFACES:
         latent_target = NormalDist().inv_cdf(target)
@@ -240,6 +242,7 @@ def plot_fle_isosurface_3d_matplotlib(
             sigma_mesh.set_facecolor(color)
             sigma_mesh.set_edgecolor("none")
             ax.add_collection3d(sigma_mesh)
+            sigma_mesh.set_zorder(2)
             ax.plot([], [], [], color=color, linewidth=5, label=label)
 
     if SHOW_MEASURED_POINTS:
@@ -251,8 +254,11 @@ def plot_fle_isosurface_3d_matplotlib(
                 point_ratios[~point_outcomes],
                 point_qubits[~point_outcomes],
                 marker="x",
+                color="black",
                 s=36,
                 linewidths=1.4,
+                depthshade=False,
+                zorder=20,
                 label="Failure",
             )
             ax.scatter(
@@ -264,6 +270,8 @@ def plot_fle_isosurface_3d_matplotlib(
                 facecolors="white",
                 edgecolors="black",
                 linewidths=1.0,
+                depthshade=False,
+                zorder=20,
                 label="Success",
             )
 
@@ -276,7 +284,7 @@ def plot_fle_isosurface_3d_matplotlib(
     ax.set_zlabel("n_qubits")
 
     ax.set_title(
-        f"3D FLE GP level set | HQC={HQC_BUDGET:g} | "
+        f"3D FLE GP level set | HQC={1323} | "
         f"P(success)={target:g}"
     )
 

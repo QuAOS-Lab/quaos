@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from statistics import NormalDist
 
 import numpy as np
 import plotly.graph_objects as go
@@ -24,12 +25,14 @@ GP_GRID_PATH: Path | None = None
 HTML_PATH: Path | None = None
 
 LAST_BACKEND_BATCH_SIZE: int | None = None
-
 # Turn this off for a cleaner diagnostic.
 SHOW_VOLUME_BACKGROUND = False
 
 # Turn this off if you only want the GP level-set surface.
-SHOW_MEASURED_POINTS = False
+SHOW_MEASURED_POINTS = True
+SHOW_FAILURE_POINTS = True
+SHOW_SUCCESS_POINTS = True
+SHOW_ONE_SIGMA_SURFACES = True
 
 # Probability volume settings, only used if SHOW_VOLUME_BACKGROUND = True.
 VOLUME_OPACITY = 0.1
@@ -37,6 +40,8 @@ VOLUME_SURFACE_COUNT = 12
 
 # Main level-set surface.
 ISOSURFACE_OPACITY = 0.60
+
+ONE_SIGMA_SURFACE_OPACITY = 0.28
 
 # -------------------------------------------------------------------------
 # PATH HELPERS
@@ -157,6 +162,8 @@ def load_3d_grid(grid_path: Path) -> dict[str, np.ndarray | float]:
         ratio_grid
         qubits_grid
         probabilities
+        latent_mean
+        latent_variance
         target
     """
 
@@ -181,7 +188,18 @@ def load_3d_grid(grid_path: Path) -> dict[str, np.ndarray | float]:
     ratio_grid = np.asarray(grid["ratio_grid"], dtype=float)
     qubits_grid = np.asarray(grid["qubits_grid"], dtype=float)
     probabilities = np.asarray(grid["probabilities"], dtype=float)
+    latent_mean = (
+        np.asarray(grid["latent_mean"], dtype=float)
+        if "latent_mean" in grid.files
+        else None
+    )
+    latent_variance = (
+        np.asarray(grid["latent_variance"], dtype=float)
+        if "latent_variance" in grid.files
+        else None
+    )
     target = float(np.asarray(grid["target"]).item())
+    print(target)
 
     if probabilities.ndim != 3:
         raise ValueError(
@@ -195,7 +213,11 @@ def load_3d_grid(grid_path: Path) -> dict[str, np.ndarray | float]:
         ("gates_grid", gates_grid),
         ("ratio_grid", ratio_grid),
         ("qubits_grid", qubits_grid),
+        ("latent_mean", latent_mean),
+        ("latent_variance", latent_variance),
     ]:
+        if arr is None:
+            continue
         if arr.shape != expected_shape:
             raise ValueError(
                 f"Shape mismatch: {name}.shape={arr.shape}, "
@@ -214,6 +236,8 @@ def load_3d_grid(grid_path: Path) -> dict[str, np.ndarray | float]:
         "ratio_grid": ratio_grid,
         "qubits_grid": qubits_grid,
         "probabilities": probabilities,
+        "latent_mean": latent_mean,
+        "latent_variance": latent_variance,
         "target": target,
     }
 
@@ -227,6 +251,8 @@ def plot_fle_isosurface_3d(
     json_path: str | Path = RMB_JSON_PATH,
     grid_path: str | Path | None = GP_GRID_PATH,
     html_path: str | Path | None = HTML_PATH,
+    *,
+    show: bool = True,
 ) -> None:
     """
     Plot the 3D GP level set:
@@ -246,14 +272,22 @@ def plot_fle_isosurface_3d(
     ratio_grid = loaded["ratio_grid"]
     qubits_grid = loaded["qubits_grid"]
     probabilities = loaded["probabilities"]
+    latent_mean = loaded["latent_mean"]
+    latent_variance = loaded["latent_variance"]
     target = float(loaded["target"])
 
     # Plotly coordinates.
     # Use log10(total gates), because total gates spans decades.
-    x = np.log10(gates_grid).ravel()
-    y = ratio_grid.ravel()
-    z = qubits_grid.ravel()
+    x = ratio_grid.ravel()
+    y = qubits_grid.ravel()
+    z = np.log10(gates_grid).ravel()
     p = probabilities.ravel()
+    latent_mean_flat = None if latent_mean is None else latent_mean.ravel()
+    latent_std_flat = (
+        None
+        if latent_variance is None
+        else np.sqrt(np.clip(latent_variance, 0.0, None)).ravel()
+    )
 
     finite_mask = (
         np.isfinite(x)
@@ -266,6 +300,10 @@ def plot_fle_isosurface_3d(
     y = y[finite_mask]
     z = z[finite_mask]
     p = p[finite_mask]
+    if latent_mean_flat is not None:
+        latent_mean_flat = latent_mean_flat[finite_mask]
+    if latent_std_flat is not None:
+        latent_std_flat = latent_std_flat[finite_mask]
 
     fig = go.Figure()
 
@@ -320,6 +358,54 @@ def plot_fle_isosurface_3d(
         )
     )
 
+    if SHOW_ONE_SIGMA_SURFACES:
+        if latent_mean_flat is None or latent_std_flat is None:
+            print(
+                "[warning] skipped +/-1 sigma surfaces: "
+                "latent_mean/latent_variance not found in grid."
+            )
+        else:
+            latent_target = NormalDist().inv_cdf(target)
+            for label, values, color in [
+                (
+                    "GP latent mean - 1 sigma",
+                    latent_mean_flat - latent_std_flat,
+                    "royalblue",
+                ),
+                (
+                    "GP latent mean + 1 sigma",
+                    latent_mean_flat + latent_std_flat,
+                    "firebrick",
+                ),
+            ]:
+                if not np.nanmin(values) <= latent_target <= np.nanmax(values):
+                    print(f"[warning] skipped {label}: it does not cross the grid")
+                    continue
+
+                fig.add_trace(
+                    go.Isosurface(
+                        x=x,
+                        y=y,
+                        z=z,
+                        value=values,
+                        isomin=latent_target,
+                        isomax=latent_target,
+                        surface_count=1,
+                        opacity=ONE_SIGMA_SURFACE_OPACITY,
+                        colorscale=[
+                            [0.0, color],
+                            [1.0, color],
+                        ],
+                        caps=dict(
+                            x_show=False,
+                            y_show=False,
+                            z_show=False,
+                        ),
+                        name=label,
+                        showscale=False,
+                    )
+                )
+
     # ------------------------------------------------------------------
     # Measured training points.
     # ------------------------------------------------------------------
@@ -336,15 +422,15 @@ def plot_fle_isosurface_3d(
             failure_mask = ~point_outcomes
             success_mask = point_outcomes
 
-            if np.any(failure_mask):
+            if SHOW_FAILURE_POINTS and np.any(failure_mask):
                 fig.add_trace(
                     go.Scatter3d(
-                        x=np.log10(point_gates[failure_mask]),
-                        y=point_ratios[failure_mask],
-                        z=point_qubits[failure_mask],
+                        x=point_ratios[failure_mask],
+                        y=point_qubits[failure_mask],
+                        z=np.log10(point_gates[failure_mask]),
                         mode="markers",
                         marker=dict(
-                            size=5,
+                            size=3,
                             symbol="x",
                             color="seagreen",
                             line=dict(width=2),
@@ -353,12 +439,12 @@ def plot_fle_isosurface_3d(
                     )
                 )
 
-            if np.any(success_mask):
+            if SHOW_SUCCESS_POINTS and np.any(success_mask):
                 fig.add_trace(
                     go.Scatter3d(
-                        x=np.log10(point_gates[success_mask]),
-                        y=point_ratios[success_mask],
-                        z=point_qubits[success_mask],
+                        x=point_ratios[success_mask],
+                        y=point_qubits[success_mask],
+                        z=np.log10(point_gates[success_mask]),
                         mode="markers",
                         marker=dict(
                             size=5,
@@ -376,22 +462,22 @@ def plot_fle_isosurface_3d(
 
     fig.update_layout(
         title=(
-            f"3D FLE GP level set | HQC={HQC_BUDGET:g} | "
+            f"3D FLE GP level set | HQC={1323} | "
             f"P(success)={target:g}"
         ),
         scene=dict(
             xaxis=dict(
-                title="log10(total gates)",
-                backgroundcolor="rgba(245,245,245,0.95)",
-                gridcolor="lightgray",
-            ),
-            yaxis=dict(
                 title="Two-qubit gate ratio",
                 backgroundcolor="rgba(245,245,245,0.95)",
                 gridcolor="lightgray",
             ),
-            zaxis=dict(
+            yaxis=dict(
                 title="n_qubits",
+                backgroundcolor="rgba(245,245,245,0.95)",
+                gridcolor="lightgray",
+            ),
+            zaxis=dict(
+                title="log10(total gates)",
                 backgroundcolor="rgba(245,245,245,0.95)",
                 gridcolor="lightgray",
             ),
@@ -417,7 +503,8 @@ def plot_fle_isosurface_3d(
     print(f"[grid] target: {target}")
     print(f"[saved] interactive 3D plot: {html_path}")
 
-    fig.show()
+    if show:
+        fig.show()
 
 
 # -------------------------------------------------------------------------

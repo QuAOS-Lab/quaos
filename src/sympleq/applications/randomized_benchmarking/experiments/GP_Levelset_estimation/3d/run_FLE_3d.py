@@ -33,6 +33,7 @@ from __future__ import annotations
 
 
 import logging
+import json
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -64,6 +65,7 @@ from fantasy_levelset_estimation_3d_fix_qubits import (
     sobol_initial_candidates,
     temporary_torch_default_device,
     n_qubits_slice,
+    valid_config,
 )
 from fantasy_levelset_settings_3d import (
     FantasySettings,
@@ -202,6 +204,36 @@ def save_gp_prediction_grid(
     return grid_path
 
 
+def write_hqc_metadata(
+    json_path: Path,
+    settings: FantasySettings,
+    budget,
+    phase: str,
+    step: int | None,
+    sent_configs=None,
+) -> None:
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    payload["experiment"] = {
+        "phase": phase,
+        "step": step,
+        "spent_hqc": float(settings.hqc_budget - budget.remaining_hqc),
+        "remaining_hqc": float(budget.remaining_hqc),
+        "hqc_budget": float(settings.hqc_budget),
+    }
+    if sent_configs is not None:
+        payload["experiment"]["sent_configs"] = [
+            {
+                "n_1qb_gates": int(config.n_1qb_gates),
+                "n_2qb_gates": int(config.n_2qb_gates),
+                "n_qubits": int(config.n_qubits),
+                "n_gates": int(config.n_gates),
+                "ratio_2_qb_gates": float(config.ratio_2_qb_gates),
+            }
+            for config in sent_configs
+        ]
+    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
 def save_real_checkpoint(
     *,
     rmb,
@@ -211,6 +243,8 @@ def save_real_checkpoint(
     device: torch.device,
     phase: str,
     step: int,
+    budget,
+    sent_configs=None,
 ) -> None:
     """Save real RMB data and a GP grid after one real measurement batch."""
 
@@ -224,6 +258,7 @@ def save_real_checkpoint(
     )
     rmb.save(checkpoint_path)
     checkpoint_path = resolve_data_path(checkpoint_path)
+    write_hqc_metadata(checkpoint_path, settings, budget, phase, step, sent_configs)
     print(f"[saved] real RMB checkpoint: {checkpoint_path}")
 
     if not settings.save_gp_prediction_grid:
@@ -404,7 +439,8 @@ def run(
                 f"n_1q={config.n_1qb_gates} "
                 f"n_2q={config.n_2qb_gates} "
                 f"ratio={config.ratio_2_qb_gates:.4f} "
-                f"n_qubits={config.n_qubits}"
+                f"n_qubits={config.n_qubits} "
+                f"valid={valid_config(config)}"
             )
             measure_batch_and_update_real_strategy(
                 phase="sobol",
@@ -429,6 +465,8 @@ def run(
                 device=gp_device,
                 phase=f"sobol_{index:03d}",
                 step=checkpoint_step,
+                budget=budget,
+                sent_configs=sobol_batch,
             )
 
             if exhausted:
@@ -502,6 +540,8 @@ def run(
             device=gp_device,
             phase="globalsur",
             step=checkpoint_step,
+            budget=budget,
+            sent_configs=selected,
         )
 
     # -------------------------------------------------------------------------
@@ -542,6 +582,7 @@ def run(
         save_path.parent.mkdir(parents=True, exist_ok=True)
         rmb.save(save_path)
         base_path = resolve_data_path(save_path)
+        write_hqc_metadata(base_path, settings, budget, "final", None)
         print(f"[saved] RMB data: {base_path}")
 
     if settings.save_gp_prediction_grid and base_path is not None:

@@ -6,7 +6,7 @@ What this file does
 Stores the definitions used for fantasy-batched GP level-set estimation of the
 P(success) = target_threshold contour in:
 
-    (total gates, two-qubit gate ratio, n_qubits)
+    (total gates, two-qubit gate ratio)
 
 space.
 
@@ -26,14 +26,23 @@ from __future__ import annotations
 
 import copy
 import re
+import warnings
 from contextlib import contextmanager
 from typing import NamedTuple
 
 import numpy as np
 import torch
+from aepsych.acquisition.objective import ProbitObjective
 from aepsych.config import Config
+from aepsych.generators.monotonic_thompson_sampler_generator import (
+    MonotonicThompsonSamplerGenerator,
+)
+from aepsych.factory.monotonic import monotonic_mean_covar_factory
+from aepsych.models.monotonic_rejection_gp import MonotonicRejectionGP
 from aepsych.strategy import SequentialStrategy
+from aepsych.utils import get_dims, get_optimizer_options
 import aepsych.transforms.parameters as aepsych_parameter_transforms
+from botorch.utils.sampling import draw_sobol_samples
 
 from sympleq.applications.randomized_benchmarking.RMB import RMB
 from sympleq.applications.randomized_benchmarking.config import RMBConfig
@@ -42,18 +51,22 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     MeasurementRequest,
     batch_hqc_cost,
     candidate_axes,
+    config_points,
     print_progress,
     spend_request_batch,
     default_backend_factory,
     quantinuum_emulator_backend_factory,
 )
-from fantasy_levelset_settings_3d import FantasySettings
-from sympleq.integrations.quantinuum.utils import NATIVE_GATES_SET
+from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.fantasy_levelset_settings import (
+    FantasySettings,
+)
 
 
 _ORIGINAL_AEPSYCH_TRANSFORM_OPTIONS = aepsych_parameter_transforms.transform_options
 _ORIGINAL_AEPSYCH_STR_TO_LIST = Config._str_to_list
 _ORIGINAL_AEPSYCH_STR_TO_ARRAY = Config._str_to_array
+_ORIGINAL_MONOTONIC_GP_FROM_CONFIG = MonotonicRejectionGP.from_config
+_ORIGINAL_MONOTONIC_TS_FROM_CONFIG = MonotonicThompsonSamplerGenerator.from_config
 
 
 class Observation(NamedTuple):
@@ -61,7 +74,7 @@ class Observation(NamedTuple):
     One binary observation given to AEPsych.
 
     x_cpu:
-        Shape (1, 3). Stored on CPU so it can safely be replayed into a
+        Shape (1, 2). Stored on CPU so it can safely be replayed into a
         copied/rebuilt strategy.
 
     y:
@@ -94,109 +107,70 @@ def contour_target(settings: FantasySettings) -> float:
     return target
 
 
+def gp_target(settings: FantasySettings) -> float:
+    """
+    Return the target value used by the monotone GP.
+
+    Stored/user-facing contour is P(success) = target_threshold.
+    The monotone GP is trained on P(failure), so its target is 1 - target.
+    """
+
+    return 1.0 - contour_target(settings)
+
+
+def success_outcome_to_gp_outcome(y_success: int) -> int:
+    """
+    Convert stored RMB outcome to the outcome seen by the monotone GP.
+
+    Stored RMB convention:
+        1 = success
+        0 = failure
+
+    Monotone GP convention in this file:
+        1 = failure
+        0 = success
+
+    This makes the GP's learned probability increase with total gates and ratio.
+    """
+
+    return 1 - int(y_success)
+
+
+def gp_probability_to_success_probability(p_failure: float) -> float:
+    """Convert GP-predicted P(failure) back to P(success)."""
+
+    return 1.0 - float(p_failure)
+
+
 def point_from_config(config: RMBConfig, *, device: torch.device) -> torch.Tensor:
     """
     Convert RMBConfig to AEPsych coordinate.
 
     Returns shape:
-        (1, 3)
+        (1, 2)
 
     Coordinates:
         x[0, 0] = total gates
         x[0, 1] = two-qubit gate ratio
-        x[0, 2] = number of qubits
     """
 
     return torch.tensor(
-        [[
-            float(config.n_gates),
-            float(config.ratio_2_qb_gates),
-            float(config.n_qubits),
-        ]],
+        config_points([config]),
         dtype=torch.double,
         device=device,
-    )
-
-
-def n_qubits_bounds(settings: FantasySettings) -> tuple[int, int]:
-    """Return the AEPsych qubit-coordinate bounds."""
-
-    bounds = getattr(settings, "n_qubits_bounds", (5, 20))
-    return int(bounds[0]), int(bounds[1])
-
-
-def n_qubits_slice(settings: FantasySettings) -> int:
-    """Qubit slice used when extracting a 2D level set from the 3D GP."""
-
-    return int(getattr(settings, "level_set_n_qubits", settings.n_qubits))
-
-
-def make_config_3d(
-    settings: FantasySettings,
-    n_gates: float,
-    ratio: float,
-    n_qubits: float,
-) -> RMBConfig:
-    """Build an RMBConfig from the 3D AEPsych coordinate."""
-
-    q_min, q_max = n_qubits_bounds(settings)
-    q = int(np.clip(round(float(n_qubits)), q_min, q_max))
-    n_2qb_gates = max(0, 2 * round(float(ratio) * float(n_gates) / 2))
-    n_1qb_gates = max(2 * q, 2 * round((float(n_gates) - n_2qb_gates) / 2))
-    return (
-        RMBConfig.default()
-        .with_n_qubits(q)
-        .with_n_1qb_gates(n_1qb_gates)
-        .with_n_2qb_gates(n_2qb_gates)
-        .with_random_elimination(settings.random_elimination)
-        .with_gates_set(tuple(NATIVE_GATES_SET))
-    )
-
-
-def valid_config(config: RMBConfig) -> bool:
-    """Return whether this config has enough 1Q gates for scrambler + inverse."""
-
-    return int(config.n_1qb_gates) >= 2 * int(config.n_qubits)
-
-
-def valid_raw_config(settings: FantasySettings, n_gates: float, ratio: float, n_qubits: float) -> bool:
-    """Return whether the raw proposed 3D point has enough 1Q scrambler budget."""
-
-    q_min, q_max = n_qubits_bounds(settings)
-    q = int(np.clip(round(float(n_qubits)), q_min, q_max))
-    n_2qb_gates = max(0, 2 * round(float(ratio) * float(n_gates) / 2))
-    n_1qb_gates = 2 * round((float(n_gates) - n_2qb_gates) / 2)
-    return n_1qb_gates >= 2 * q
-
-
-def valid_aepsych_x(
-    x: torch.Tensor,
-    settings: FantasySettings,
-    fixed_n_qubits: int | None = None,
-) -> bool:
-    """Return whether AEPsych's raw point is valid before config repair."""
-
-    x_cpu = x.detach().cpu()
-    n_qubits = float(fixed_n_qubits) if fixed_n_qubits is not None else float(x_cpu[0, 2].item())
-    return valid_raw_config(
-        settings,
-        float(x_cpu[0, 0].item()),
-        float(x_cpu[0, 1].item()),
-        n_qubits,
     )
 
 
 def raw_point(
     n_gates: float,
     ratio: float,
-    n_qubits: float,
     *,
     device: torch.device,
 ) -> torch.Tensor:
     """Create an AEPsych point directly from raw coordinates."""
 
     return torch.tensor(
-        [[float(n_gates), float(ratio), float(n_qubits)]],
+        [[float(n_gates), float(ratio)]],
         dtype=torch.double,
         device=device,
     )
@@ -209,27 +183,9 @@ def config_from_aepsych_x(
     """Convert AEPsych's generated point into an RMBConfig."""
 
     x_cpu = x.detach().cpu()
-    return make_config_3d(
-        settings,
+    return settings.make_config(
         float(x_cpu[0, 0].item()),
         float(x_cpu[0, 1].item()),
-        float(x_cpu[0, 2].item()),
-    )
-
-
-def config_from_aepsych_x_fixed_qubits(
-    x: torch.Tensor,
-    settings: FantasySettings,
-    fixed_n_qubits: int,
-) -> RMBConfig:
-    """Convert AEPsych's point into an RMBConfig on one fixed qubit slice."""
-
-    x_cpu = x.detach().cpu()
-    return make_config_3d(
-        settings,
-        float(x_cpu[0, 0].item()),
-        float(x_cpu[0, 1].item()),
-        float(fixed_n_qubits),
     )
 
 
@@ -258,15 +214,9 @@ def select_affordable_prefix(
     """
 
     selected: list[RMBConfig] = []
-    fixed_n_qubits: int | None = None
     cost_cap = settings.max_cost_per_run if max_cost_per_run is None else max_cost_per_run
 
     for candidate in candidates:
-        if fixed_n_qubits is None:
-            fixed_n_qubits = candidate.n_qubits
-        elif candidate.n_qubits != fixed_n_qubits:
-            continue
-
         trial_batch = selected + [candidate]
         next_cost = batch_hqc_cost(one_shot_requests(trial_batch))
         stitched_total_gates = sum(config.n_gates for config in trial_batch)
@@ -276,7 +226,7 @@ def select_affordable_prefix(
 
         gate_budget = getattr(settings, "gate_budget", None)
 
-        if settings.backend_factory is default_backend_factory or settings.backend_factory is quantinuum_emulator_backend_factory:
+        if settings.backend_factory is quantinuum_emulator_backend_factory:
             if stitched_total_gates > gate_budget:
                 break
 
@@ -312,36 +262,26 @@ def seed_fake_corners(
     if not settings.use_fake_corners:
         return
 
-    q_min, q_max = n_qubits_bounds(settings)
     corners = [
         (
             float(settings.n_gates_bounds[0]),
             float(settings.ratio_bounds[0]),
-            float(q_min),
             int(settings.easy_corner_outcome),
         ),
         (
             float(settings.n_gates_bounds[1]),
             float(settings.ratio_bounds[1]),
-            float(q_max),
             int(settings.hard_corner_outcome),
         ),
     ]
-    for anchor in settings.extra_fake_anchors:
-        if len(anchor) == 3:
-            n_gates, ratio, outcome = anchor
-            corners.append((n_gates, ratio, float(settings.n_qubits), outcome))
-        else:
-            n_gates, ratio, n_qubits, outcome = anchor
-            corners.append((n_gates, ratio, n_qubits, outcome))
+    corners.extend(settings.extra_fake_anchors)
 
-    for n_gates, ratio, n_qubits, outcome in corners:
+    for n_gates, ratio, outcome in corners:
         n_gates = float(np.clip(n_gates, *settings.n_gates_bounds))
         ratio = float(np.clip(ratio, *settings.ratio_bounds))
-        n_qubits = float(np.clip(n_qubits, q_min, q_max))
         outcome = int(outcome)
         obs = Observation(
-            x_cpu=raw_point(n_gates, ratio, n_qubits, device=torch.device("cpu")),
+            x_cpu=raw_point(n_gates, ratio, device=torch.device("cpu")),
             y=outcome,
             source="fake",
         )
@@ -350,7 +290,7 @@ def seed_fake_corners(
         observations.append(obs)
 
         # Plotting uses native AEPsych coordinates: total gates and ratio.
-        config = make_config_3d(settings, n_gates, ratio, n_qubits)
+        config = settings.make_config(n_gates, ratio)
         results_for_plot.append(
             (
                 float(config.n_gates),
@@ -371,29 +311,12 @@ def sobol_initial_candidates(
     """
     Generate explicit Sobol warm-up candidates.
 
-    Sobol gives points in [0, 1]^2 for:
+    Sobol gives points in [0, 1]^2, then we rescale to:
         [n_gates_min, n_gates_max] x [ratio_min, ratio_max]
-
-    The qubit coordinate is assigned as distinct integer slices so Sobol can be
-    measured as separate same-qubit stitched submissions.
     """
 
     if settings.initial_sobol_samples <= 0:
         return []
-
-    q_min, q_max = n_qubits_bounds(settings)
-    available_qubits = list(range(q_min, q_max + 1))
-    n_sobol = min(int(settings.initial_sobol_samples), len(available_qubits))
-    qubit_indices: list[int] = []
-    for idx in np.rint(np.linspace(0, len(available_qubits) - 1, n_sobol)).astype(int):
-        if int(idx) not in qubit_indices:
-            qubit_indices.append(int(idx))
-    for idx in range(len(available_qubits)):
-        if len(qubit_indices) >= n_sobol:
-            break
-        if idx not in qubit_indices:
-            qubit_indices.append(idx)
-    qubit_values = [available_qubits[idx] for idx in qubit_indices[:n_sobol]]
 
     engine = torch.quasirandom.SobolEngine(
         dimension=2,
@@ -401,7 +324,7 @@ def sobol_initial_candidates(
         seed=settings.rng_seed if settings.sobol_scramble else None,
     )
 
-    unit_points = engine.draw(n_sobol).cpu().numpy()
+    unit_points = engine.draw(settings.initial_sobol_samples).cpu().numpy()
 
     n_min, n_max = settings.n_gates_bounds
     r_min, r_max = settings.ratio_bounds
@@ -409,14 +332,11 @@ def sobol_initial_candidates(
     candidates: list[RMBConfig] = []
     seen: set[RMBConfig] = set()
 
-    for (u_n, u_r), n_qubits in zip(unit_points, qubit_values):
+    for u_n, u_r in unit_points:
         n_gates = float(n_min + u_n * (n_max - n_min))
         ratio = float(r_min + u_r * (r_max - r_min))
 
-        if not valid_raw_config(settings, n_gates, ratio, n_qubits):
-            continue
-
-        config = make_config_3d(settings, n_gates, ratio, n_qubits)
+        config = settings.make_config(n_gates, ratio)
 
         # Realized gate-count rounding can create duplicates.
         if config not in seen:
@@ -433,26 +353,30 @@ def sobol_initial_candidates(
 
 def aepsych_config_string(settings: FantasySettings) -> str:
     """
-    Build AEPsych config for the GP/GlobalSUR phase only.
+    Build AEPsych config for the monotone GP phase only.
 
     Note:
         Sobol is handled explicitly by this file, not by AEPsych's init_strat.
+
+    Important:
+        AEPsych's monotone GP is monotone increasing. Physically, P(success)
+        should decrease with total gates and two-qubit ratio. Therefore this
+        file trains the GP on P(failure), then converts predictions back to
+        P(success) wherever the rest of the RMB code expects it.
     """
 
-    target = float(contour_target(settings))
+    target = float(gp_target(settings))
     n_gates_lower = float(settings.n_gates_bounds[0])
     n_gates_upper = float(settings.n_gates_bounds[1])
     ratio_lower = float(settings.ratio_bounds[0])
     ratio_upper = float(settings.ratio_bounds[1])
-    qubits_lower, qubits_upper = n_qubits_bounds(settings)
     optimization_steps = int(settings.optimization_steps)
     inducing_size = int(settings.inducing_size)
-    acquisition_restarts = int(settings.acquisition_restarts)
     acquisition_samples = int(settings.acquisition_samples)
 
     return f"""
     [common]
-    parnames = [n_gates, ratio, n_qubits]
+    parnames = [n_gates, ratio]
     outcome_types = [binary]
     strategy_names = [opt_strat]
 
@@ -466,28 +390,26 @@ def aepsych_config_string(settings: FantasySettings) -> str:
     lower_bound = {ratio_lower}
     upper_bound = {ratio_upper}
 
-    [n_qubits]
-    par_type = continuous
-    lower_bound = {float(qubits_lower)}
-    upper_bound = {float(qubits_upper)}
-
     [opt_strat]
     min_asks = {optimization_steps}
-    model = GPClassificationModel
-    generator = OptimizeAcqfGenerator
+    model = MonotonicRejectionGP
+    generator = MonotonicThompsonSamplerGenerator
 
-    [GPClassificationModel]
-    inducing_size = {inducing_size}
-    likelihood = BernoulliLikelihood
+    [MonotonicRejectionGP]
+    lb = [{n_gates_lower}, {ratio_lower}]
+    ub = [{n_gates_upper}, {ratio_upper}]
+    dim = 2
+    monotonic_idxs = [0, 1]
+    num_induc = {inducing_size}
+    num_samples = 128
+    num_rejection_samples = 40
 
-    [OptimizeAcqfGenerator]
-    acqf = {settings.acquisition_function}
-    restarts = {acquisition_restarts}
-    samps = {acquisition_samples}
-    stimuli_per_trial = 1
-
-    [{settings.acquisition_function}]
+    [MonotonicThompsonSamplerGenerator]
     target = {target}
+    dim = 2
+    num_samples = 1
+    num_rejection_samples = 40
+    num_ts_points = {acquisition_samples}
     """.strip()
 
 
@@ -530,8 +452,130 @@ def sanitized_aepsych_str_to_array(self: Config, value: str) -> np.ndarray:
     return _ORIGINAL_AEPSYCH_STR_TO_ARRAY(self, cleaned)
 
 
+def patched_monotonic_thompson_from_config(
+    cls,
+    config: Config,
+) -> MonotonicThompsonSamplerGenerator:
+    """AEPsych version compatibility patch: pass the required ``dim`` argument."""
+
+    classname = cls.__name__
+    n_samples = config.getint(classname, "num_samples", fallback=1)
+    n_rejection_samples = config.getint(
+        classname,
+        "num_rejection_samples",
+        fallback=500,
+    )
+    num_ts_points = config.getint(classname, "num_ts_points", fallback=1000)
+    target = config.getfloat(classname, "target", fallback=0.75)
+    objective = config.getobj(classname, "objective", fallback=ProbitObjective)
+    dim = config.getint(classname, "dim", fallback=2)
+    explore_features = config.getlist(
+        classname,
+        "explore_idxs",
+        element_type=int,
+        fallback=None,
+    )
+
+    return cls(
+        n_samples=n_samples,
+        n_rejection_samples=n_rejection_samples,
+        num_ts_points=num_ts_points,
+        target_value=target,
+        objective=objective,
+        dim=dim,
+        explore_features=explore_features,
+    )
+
+
+def patched_monotonic_thompson_gen(
+    self: MonotonicThompsonSamplerGenerator,
+    num_points: int,
+    model: MonotonicRejectionGP,
+    fixed_features=None,
+    **kwargs,
+) -> torch.Tensor:
+    """AEPsych version compatibility patch: sample from the wrapped base model."""
+
+    if fixed_features is not None:
+        warnings.warn(
+            "Cannot fix features when generating from MonotonicRejectionGenerator"
+        )
+
+    sample_model = getattr(model, "_base_obj", model)
+    x = draw_sobol_samples(
+        bounds=sample_model.bounds_,
+        n=self.num_ts_points,
+        q=1,
+    ).squeeze(1)
+
+    if self.explore_features is not None:
+        for idx in self.explore_features:
+            val = (
+                sample_model.bounds_[0, idx]
+                + torch.rand(1, device=x.device)
+                * (sample_model.bounds_[1, idx] - sample_model.bounds_[0, idx])
+            ).item()
+            x[:, idx] = val
+
+    f_samp = sample_model.sample(
+        x,
+        num_samples=self.n_samples,
+        num_rejection_samples=self.n_rejection_samples,
+    )
+    dist = torch.abs(self.objective(f_samp) - self.target_value)
+    if dist.ndim == 1:
+        best_idx = torch.argmin(dist).reshape(1)
+    else:
+        best_idx = torch.argmin(dist, dim=1)
+    return torch.Tensor(x[best_idx])
+
+
+def patched_monotonic_gp_from_config(cls, config: Config) -> MonotonicRejectionGP:
+    """AEPsych version compatibility patch: parse scalar counts as ints."""
+
+    classname = cls.__name__
+    num_induc = config.getint(classname, "num_induc", fallback=25)
+    num_samples = config.getint(classname, "num_samples", fallback=250)
+    num_rejection_samples = config.getint(
+        classname,
+        "num_rejection_samples",
+        fallback=5000,
+    )
+
+    lb = config.gettensor(classname, "lb")
+    ub = config.gettensor(classname, "ub")
+    dim = get_dims(config)
+    mean_covar_factory = config.getobj(
+        classname,
+        "mean_covar_factory",
+        fallback=monotonic_mean_covar_factory,
+    )
+    mean, covar = mean_covar_factory(config)
+    monotonic_idxs = config.getlist(classname, "monotonic_idxs", fallback=[-1])
+    optimizer_options = get_optimizer_options(config, classname)
+
+    return cls(
+        monotonic_idxs=monotonic_idxs,
+        lb=lb,
+        ub=ub,
+        dim=dim,
+        num_induc=num_induc,
+        num_samples=num_samples,
+        num_rejection_samples=num_rejection_samples,
+        mean_module=mean,
+        covar_module=covar,
+        optimizer_options=optimizer_options,
+    )
+
+
 def build_strategy(settings: FantasySettings) -> SequentialStrategy:
-    """Build the AEPsych GP/acquisition strategy."""
+    """Build the AEPsych monotone GP/acquisition strategy."""
+
+    # Make sure the config parser can resolve these class names from strings.
+    for obj in (MonotonicRejectionGP, MonotonicThompsonSamplerGenerator):
+        registered_names = getattr(Config, "registered_names", {})
+        if obj.__name__ not in registered_names:
+            Config.register_object(obj)
 
     config = Config()
     config.update(config_str=aepsych_config_string(settings))
@@ -539,6 +583,11 @@ def build_strategy(settings: FantasySettings) -> SequentialStrategy:
     aepsych_parameter_transforms.transform_options = sanitized_aepsych_transform_options
     Config._str_to_list = sanitized_aepsych_str_to_list
     Config._str_to_array = sanitized_aepsych_str_to_array
+    MonotonicRejectionGP.from_config = classmethod(patched_monotonic_gp_from_config)
+    MonotonicThompsonSamplerGenerator.from_config = classmethod(
+        patched_monotonic_thompson_from_config
+    )
+    MonotonicThompsonSamplerGenerator.gen = patched_monotonic_thompson_gen
     return SequentialStrategy.from_config(config)
 
 
@@ -548,10 +597,21 @@ def add_observation_to_strategy(
     *,
     device: torch.device,
 ) -> None:
-    """Add one observation to an AEPsych strategy."""
+    """
+    Add one observation to an AEPsych strategy.
+
+    The Observation object keeps the RMB convention:
+        1 = success
+        0 = failure
+
+    The monotone GP receives the inverted convention:
+        1 = failure
+        0 = success
+    """
 
     x = observation.x_cpu.to(device=device, dtype=torch.double)
-    strategy.add_data(x, [int(observation.y)])
+    y_gp = success_outcome_to_gp_outcome(observation.y)
+    strategy.add_data(x, [int(y_gp)])
 
 
 def replay_observations(
@@ -592,7 +652,7 @@ def temporary_torch_default_device(device: torch.device, enabled: bool):
     Redundant if run with CPU only. Does nothing if CUDA is unavailable.
 
     Turn off with in FantasySettings:
-        force_default_device_during_aepsych=False 
+        force_default_device_during_aepsych=False
         It means: Do not temporarily change PyTorch’s default tensor device.
 
     if your AEPsych version has device mismatch problems.
@@ -610,6 +670,7 @@ def temporary_torch_default_device(device: torch.device, enabled: bool):
         yield
     finally:
         torch.set_default_device(old_device)
+
 
 def move_strategy_models_to_device(
     strategy: SequentialStrategy,
@@ -786,7 +847,11 @@ def predict_success_probability(
     device: torch.device,
 ) -> float:
     """
-    Predict P(success | config) from the GP classifier.
+    Predict P(success | config).
+
+    Internally the monotone GP predicts P(failure), because P(failure) should
+    increase with total gates and two-qubit gate ratio. This function converts
+    the result back to P(success) for the rest of the code.
     """
 
     if strategy.model is None:
@@ -801,16 +866,18 @@ def predict_success_probability(
     ):
         with torch.no_grad():
             try:
-                p, _ = strategy.model.predict(x, probability_space=True)
+                p_failure, _ = strategy.model.predict(x, probability_space=True)
             except RuntimeError:
                 # Fallback for device mismatch.
-                p, _ = strategy.model.predict(
+                p_failure, _ = strategy.model.predict(
                     x.detach().cpu(),
                     probability_space=True,
                 )
 
-    p_float = float(p.detach().cpu().reshape(-1)[0])
-    return min(max(p_float, 0.0), 1.0)
+    p_failure_float = float(p_failure.detach().cpu().reshape(-1)[0])
+    p_success = gp_probability_to_success_probability(p_failure_float)
+    return min(max(p_success, 0.0), 1.0)
+
 
 def add_fantasy_outcome(
     fantasy_strategy: SequentialStrategy,
@@ -848,7 +915,6 @@ def select_fantasy_globalsur_batch(
 
     selected: list[RMBConfig] = []
     seen: set[RMBConfig] = set()
-    fixed_n_qubits: int | None = None
 
     fantasy_strategy = copy_strategy_for_fantasies(
         real_strategy,
@@ -871,20 +937,23 @@ def select_fantasy_globalsur_batch(
             device,
             enabled=settings.force_default_device_during_aepsych,
         ):
+            if settings.verbose_fantasies:
+                generator = fantasy_strategy._strat.generator
+                base_generator = getattr(generator, "_base_obj", generator)
+                rejection_samples = getattr(base_generator, "n_rejection_samples", None)
+                ts_points = getattr(base_generator, "num_ts_points", None)
+                print(
+                    "[fantasy-gen] "
+                    f"attempt={attempts:03d} "
+                    f"accepted={len(selected):03d}/{batch_limit} "
+                    f"rejection_samples={rejection_samples} "
+                    f"ts_points={ts_points}"
+                )
             x = fantasy_strategy.gen()
+            if settings.verbose_fantasies:
+                print("[fantasy-gen] generated candidate")
 
-        if not valid_aepsych_x(x, settings, fixed_n_qubits):
-            continue
-
-        if fixed_n_qubits is None:
-            candidate = config_from_aepsych_x(x, settings)
-            fixed_n_qubits = candidate.n_qubits
-        else:
-            candidate = config_from_aepsych_x_fixed_qubits(
-                x,
-                settings,
-                fixed_n_qubits,
-            )
+        candidate = config_from_aepsych_x(x, settings)
 
         # Rounding can cause duplicate realized configs.
         if candidate in seen:
@@ -900,19 +969,27 @@ def select_fantasy_globalsur_batch(
 
         gate_budget = getattr(settings, "gate_budget", None)
 
-        if settings.backend_factory is default_backend_factory or settings.backend_factory is quantinuum_emulator_backend_factory:
+        if settings.backend_factory is quantinuum_emulator_backend_factory:
             if stitched_total_gates > gate_budget:
                 break
 
         if next_cost > budget.remaining_hqc:
             return selected, True
 
+        if settings.verbose_fantasies:
+            print(
+                "[fantasy-predict] "
+                f"n_gates={candidate.n_gates} "
+                f"ratio={candidate.ratio_2_qb_gates:.4f}"
+            )
         p_success = predict_success_probability(
             fantasy_strategy,
             candidate,
             settings,
             device=device,
         )
+        if settings.verbose_fantasies:
+            print(f"[fantasy-predict] p_success={p_success:.4f}")
 
         virtual_outcome = int(fantasy_rng.random() < p_success)
 
@@ -931,9 +1008,7 @@ def select_fantasy_globalsur_batch(
                 "[fantasy] "
                 f"batch_index={len(selected):03d} "
                 f"n_gates={candidate.n_gates} "
-                f"n_qubits={candidate.n_qubits} "
                 f"ratio={candidate.ratio_2_qb_gates:.4f} "
-                f"valid={valid_config(candidate)} "
                 f"p_success={p_success:.4f} "
                 f"virtual={virtual_outcome} "
                 f"batch_cost={next_cost:.3f}"
@@ -957,7 +1032,6 @@ def select_plain_aepsych_batch(
 
     selected: list[RMBConfig] = []
     seen: set[RMBConfig] = set()
-    fixed_n_qubits: int | None = None
 
     batch_limit = settings.max_batch_size if settings.batching else 1
     max_attempts = max(5 * batch_limit, batch_limit + 10)
@@ -975,18 +1049,7 @@ def select_plain_aepsych_batch(
         ):
             x = strategy.gen()
 
-        if not valid_aepsych_x(x, settings, fixed_n_qubits):
-            continue
-
-        if fixed_n_qubits is None:
-            candidate = config_from_aepsych_x(x, settings)
-            fixed_n_qubits = candidate.n_qubits
-        else:
-            candidate = config_from_aepsych_x_fixed_qubits(
-                x,
-                settings,
-                fixed_n_qubits,
-            )
+        candidate = config_from_aepsych_x(x, settings)
 
         if candidate in seen:
             continue
@@ -1023,14 +1086,9 @@ def level_set_configs(
 
     gates_axis, ratio_axis = candidate_axes(settings)
     gates_grid, ratio_grid = np.meshgrid(gates_axis, ratio_axis)
-    q_slice = float(n_qubits_slice(settings))
-    qubits_grid = np.full_like(gates_grid, q_slice, dtype=float)
 
     grid = torch.tensor(
-        np.stack(
-            [gates_grid.ravel(), ratio_grid.ravel(), qubits_grid.ravel()],
-            axis=1,
-        ),
+        np.stack([gates_grid.ravel(), ratio_grid.ravel()], axis=1),
         dtype=torch.double,
         device=device,
     )
@@ -1047,7 +1105,13 @@ def level_set_configs(
                 probability_space=True,
             )
 
-    probability_grid = probabilities.detach().cpu().numpy().reshape(gates_grid.shape)
+    failure_probability_grid = (
+        probabilities.detach().cpu().numpy().reshape(gates_grid.shape)
+    )
+
+    # Convert the GP's monotone P(failure) surface back to P(success).
+    probability_grid = 1.0 - failure_probability_grid
+
     target = contour_target(settings)
     delta = probability_grid - target
 
@@ -1055,64 +1119,35 @@ def level_set_configs(
         flat_order = np.argsort(np.abs(delta.ravel()))
         measured_points = None
         if measured_data:
-            measured_points = np.array(
-                [
-                    [
-                        float(config.n_gates),
-                        float(config.ratio_2_qb_gates),
-                        float(config.n_qubits),
-                    ]
-                    for config in measured_data.keys()
-                ],
-                dtype=float,
-            )
-            q_min, q_max = n_qubits_bounds(settings)
-            lower = np.array(
-                [settings.n_gates_bounds[0], settings.ratio_bounds[0], q_min],
-                dtype=float,
-            )
-            upper = np.array(
-                [settings.n_gates_bounds[1], settings.ratio_bounds[1], q_max],
-                dtype=float,
-            )
+            measured_points = config_points(list(measured_data.keys()))
+            lower = np.array([settings.n_gates_bounds[0], settings.ratio_bounds[0]], dtype=float)
+            upper = np.array([settings.n_gates_bounds[1], settings.ratio_bounds[1]], dtype=float)
             span = np.maximum(upper - lower, 1e-12)
             measured_points = (measured_points - lower) / span
 
-        def nearest_measured_distance(
-            n_gates: float,
-            ratio: float,
-            n_qubits: float,
-        ) -> float | None:
+        def nearest_measured_distance(n_gates: float, ratio: float) -> float | None:
             if measured_points is None or len(measured_points) == 0:
                 return None
             point = (
-                np.array(
-                    [float(n_gates), float(ratio), float(n_qubits)],
-                    dtype=float,
-                )
+                np.array([float(n_gates), float(ratio)], dtype=float)
                 - lower
             ) / span
             distances = np.linalg.norm(measured_points - point, axis=1)
             return float(np.min(distances))
 
         print("[GP contour grid debug]")
-        print(f"  n_qubits slice                       = {q_slice:.6g}")
         print(f"  target                               = {target}")
-        print(f"  probability range on grid            = "
-              f"{float(np.min(probability_grid)):.6g} to {float(np.max(probability_grid)):.6g}")
+        print(
+            f"  probability range on grid            = "
+            f"{float(np.min(probability_grid)):.6g} to {float(np.max(probability_grid)):.6g}"
+        )
         print(f"  grid points closest to target        = {min(debug_limit, len(flat_order))}")
         for flat_index in flat_order[:debug_limit]:
             row, col = np.unravel_index(int(flat_index), delta.shape)
-            config = make_config_3d(
-                settings,
-                float(gates_grid[row, col]),
-                float(ratio_grid[row, col]),
-                q_slice,
-            )
+            config = settings.make_config(float(gates_grid[row, col]), float(ratio_grid[row, col]))
             nearest_distance = nearest_measured_distance(
                 float(gates_grid[row, col]),
                 float(ratio_grid[row, col]),
-                q_slice,
             )
             nearest_text = "n/a" if nearest_distance is None else f"{nearest_distance:.4f}"
             print(
@@ -1121,17 +1156,15 @@ def level_set_configs(
                 f"delta={delta[row, col]:+.6g}, "
                 f"grid_gates={float(gates_grid[row, col]):.6g}, "
                 f"grid_ratio={float(ratio_grid[row, col]):.6g}, "
-                f"grid_n_qubits={q_slice:.6g}, "
                 f"nearest_measured_norm={nearest_text}, "
-                f"config=(n_qubits={config.n_qubits}, gates={config.n_gates}, "
-                f"ratio={config.ratio_2_qb_gates:.4f})"
+                f"config=(gates={config.n_gates}, ratio={config.ratio_2_qb_gates:.4f})"
             )
 
     configs: list[RMBConfig] = []
     seen: set[RMBConfig] = set()
 
     def add_config(n_gates: float, ratio: float) -> None:
-        config = make_config_3d(settings, n_gates, ratio, q_slice)
+        config = settings.make_config(n_gates, ratio)
         if config not in seen:
             seen.add(config)
             configs.append(config)

@@ -107,7 +107,7 @@ RATIO_BOUNDS = (0.1, 0.9)
 # -------------------------------------------------------------------------
 # Set to None to use the defaults inherited from CrossingSettings.
 
-HQC_BUDGET = 5000.0
+HQC_BUDGET = 500.0
 MAX_COST_PER_RUN = 15.0
 
 # -------------------------------------------------------------------------
@@ -165,14 +165,14 @@ FORCE_DEFAULT_DEVICE_DURING_AEPSYCH = True
 # BACKEND HANDLE
 # -------------------------------------------------------------------------
 
-BACKEND_FACTORY = quantinuum_emulator_backend_factory
-# BACKEND_FACTORY = default_backend_factory
+# BACKEND_FACTORY = quantinuum_emulator_backend_factory
+BACKEND_FACTORY = default_backend_factory
 
 # -------------------------------------------------------------------------
 # REPRODUCIBILITY / DEBUG HANDLES
 # -------------------------------------------------------------------------
 
-RNG_SEEDS = [2025]
+RNG_SEEDS = [2027]
 VERBOSE_FANTASIES = True
 PLOT = True
 
