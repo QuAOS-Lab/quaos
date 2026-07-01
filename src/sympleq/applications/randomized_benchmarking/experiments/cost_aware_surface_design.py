@@ -125,6 +125,7 @@ _N_PARAMS = 7
 # code, which expects a sharpness; the boundary location itself uses only the
 # rate parameters and does not depend on it.
 _PHYSICAL_SHARPNESS = 2.0 * np.log(2.0)
+_CHECKPOINT_SCHEMA_VERSION = 2
 
 
 # --------------------------------------------------------------------------- #
@@ -219,15 +220,17 @@ def _with_backend_seed_suffix(
     *,
     backend_model: str,
     rng_seed: int | None,
+    max_qubit_window: int | None,
 ) -> str | Path | None:
-    """Append backend/seed to output file names for reproducible local runs."""
+    """Append Q-window/backend/seed to output file names for reproducible local runs."""
     if path is None or rng_seed is None:
         return path
     if backend_model not in {"sympleq", "exponential"}:
         return path
     path_type = Path if isinstance(path, Path) else str
     p = Path(path)
-    suffix = f"_{backend_model}_seed{rng_seed}"
+    qwin = 0 if max_qubit_window is None else int(max_qubit_window)
+    suffix = f"_maxqwin{qwin}_{backend_model}_seed{rng_seed}"
     if p.stem.endswith(suffix):
         return path
     new_path = p.with_name(f"{p.stem}{suffix}{p.suffix}")
@@ -364,6 +367,7 @@ class CostAwareSurfaceSettings(CrossingSettings):
                         getattr(self, attr),
                         backend_model=self.backend_model,
                         rng_seed=self.rng_seed,
+                        max_qubit_window=getattr(self, "max_qubit_window", 0),
                     ),
                 )
         if self.backend_model == "sympleq":
@@ -480,6 +484,33 @@ class CostAwareSurfaceSettings(CrossingSettings):
     # high value with freed nu axes on hardware.  0 disables (historical
     # behaviour: only the warmup (r,Q)-slice bonus applies).
     min_distinct_q_coverage: int = 0
+    # --- hardware Q-window constraint (e.g. Quantinuum H2) ------------------
+    # On a device where one stitched submission runs on a *single physical
+    # register* of constant width, a circuit that uses fewer qubits than the
+    # register leaves the rest idle.  A few idle qubits are fine, but too many
+    # inject crosstalk/memory error into the active qubits (biasing the measured
+    # q-qubit decay) and waste the wider register.  ``max_qubit_window`` caps the
+    # spread of Q within a single batch: all probes in one submission must have
+    # their Q inside a contiguous window of this width, so the physical width is
+    # W = max(Q in batch) and no config leaves more than max_qubit_window - 1
+    # idle qubits.  Example: max_qubit_window = 3 admits a batch spanning
+    # {17, 18, 19} (W = 19, at most 2 idle).  The acquisition still scores the
+    # whole (Q, r, n) grid; it then packs the *best feasible window*: each
+    # candidate window is greedily packed and the window whose packed batch
+    # delivers the most information (realized BALD, after diminishing returns and
+    # the shared base cost) is submitted.  Over successive batches the myopic
+    # per-window choice tiles Q, since a measured window loses its uncertainty.
+    # 0 disables the constraint (a single batch may span any Q); a value >= the
+    # full Q span is equivalent to disabled.  NOTE: for a window to hold several
+    # Q values the acquisition Q-candidates must be spaced finely enough to fall
+    # inside it -- set acquisition_q_resolution so the candidate Q set is dense
+    # (e.g. integer-spaced) rather than only q_values.
+    max_qubit_window: int = 0
+    # When the Q-window constraint is active, exact-pack only this many
+    # top-ranked candidate windows (ranked by a cheap per-slice pre-score) before
+    # choosing the best by realized packed value.  This bounds the extra cost of
+    # the per-window packing; 0 exact-packs every window (most thorough, slowest).
+    qubit_window_shortlist: int = 3
 
     # ---- plotting / scoring compatibility (single-Q slice at reference Q) --
     def boundary_fit(self, data) -> tuple[float, float, float] | None:
@@ -1068,6 +1099,103 @@ def _node_log_variances(
     return np.maximum(mean_sq - mean * mean, 0.0)
 
 
+def _pack_candidates(
+    candidates: list[dict],
+    settings: CostAwareSurfaceSettings,
+    affordable_cap: float,
+) -> tuple[list[MeasurementRequest], float, float]:
+    """Greedily pack one stitched submission from a candidate pool.
+
+    Returns ``(requests, total_value, total_cost)`` where ``total_value`` is the
+    sum of the realized (diminished) BALD of every accepted shot -- the actual
+    information the submission delivers -- and ``total_cost`` its exact stitched
+    HQC.  The per-shot value is the parameter mutual information (BALD).  Each
+    (r, Q) slice has diminishing returns (rho^slice_shots), which spreads shots
+    across slices.  Marginal HQC of every increment is the exact difference of
+    batch_hqc_cost, so the per-submission base cost is amortised correctly: the
+    first increment pays the base, later increments pay only marginal
+    bare/reset/measurement cost.
+    """
+    if not candidates:
+        return [], 0.0, 0.0
+
+    rho = settings.shot_diminish_rho
+    shots: dict[tuple[int, float, int], int] = {}   # (n, r, q) -> shots
+    slice_shots: dict[tuple[float, int], int] = {}
+
+    def requests_from(shots_map: dict) -> list[MeasurementRequest]:
+        return [
+            MeasurementRequest(make_config_q(settings, n, r, q), s)
+            for (n, r, q), s in shots_map.items()
+            if s > 0
+        ]
+
+    current_cost = 0.0
+    total_value = 0.0
+    while True:
+        best = None
+        best_density = 0.0
+        best_value_gain = 0.0
+        for cand in candidates:
+            key = (cand["n"], cand["r"], cand["q"])
+            if shots.get(key, 0) >= settings.max_shots_per_probe:
+                continue
+            marginal_value = cand["value"] * (rho ** slice_shots.get(cand["slice"], 0))
+            trial = dict(shots)
+            trial[key] = trial.get(key, 0) + 1
+            trial_cost = batch_hqc_cost(requests_from(trial))
+            if trial_cost > affordable_cap:
+                continue
+            marginal_cost = trial_cost - current_cost
+            if marginal_cost <= 0.0:
+                marginal_cost = _EPS
+            density = marginal_value / marginal_cost
+            if density > best_density:
+                best_density = density
+                best = (key, cand["slice"], trial_cost)
+                best_value_gain = marginal_value
+        if best is None:
+            break
+        key, slc, trial_cost = best
+        shots[key] = shots.get(key, 0) + 1
+        slice_shots[slc] = slice_shots.get(slc, 0) + 1
+        current_cost = trial_cost
+        total_value += best_value_gain
+
+    return requests_from(shots), total_value, current_cost
+
+
+def _qubit_windows(candidate_qs, width: int) -> list[tuple[int, ...]]:
+    """Maximal contiguous Q windows of the given width over the candidate Q set.
+
+    Each window is the set of candidate Q values lying in a closed interval
+    [top - width + 1, top] for some candidate ``top`` (so the physical register
+    is W = top and no member leaves more than width - 1 idle qubits).  Only
+    *maximal* windows are returned: a window that is a proper subset of another
+    feasible window is dropped, because the superset offers every candidate the
+    subset does plus more, so it weakly dominates on achievable information (and
+    the packer is free to ignore the extra high-Q candidate, leaving the physical
+    register no wider than it needs).  Consequently a width at least as large as
+    the full candidate Q span collapses to a single window (constraint inactive).
+    """
+    qs = sorted({int(q) for q in candidate_qs})
+    raw: list[tuple[int, ...]] = []
+    seen: set[tuple[int, ...]] = set()
+    for top in qs:
+        lo = top - int(width) + 1
+        grp = tuple(q for q in qs if lo <= q <= top)
+        if grp and grp not in seen:
+            seen.add(grp)
+            raw.append(grp)
+    # Keep only maximal windows (not a proper subset of another).
+    maximal: list[tuple[int, ...]] = []
+    for grp in raw:
+        gset = set(grp)
+        if not any(gset < set(other) for other in raw):
+            maximal.append(grp)
+    return maximal
+
+
 def _assemble_batch(
     params: np.ndarray,
     weights: np.ndarray,
@@ -1076,20 +1204,24 @@ def _assemble_batch(
     measured_slices: set[tuple[float, int]],
     early: bool,
 ) -> list[MeasurementRequest]:
-    """Greedily pack one stitched submission to maximise value per HQC.
-
-    The per-shot value is the parameter mutual information (BALD).  Each (r, Q)
-    slice has diminishing returns (rho^slice_shots), which spreads shots across
-    slices.  Marginal HQC of every increment is the exact difference of
-    batch_hqc_cost, so the per-submission base cost is amortised correctly: the
-    first increment pays the base, later increments pay only marginal
-    bare/reset/measurement cost.
+    """Assemble one stitched submission, optionally within a single Q-window.
 
     Candidates span the joint (Q, r, n) design (``_acquisition_slices`` x the
     per-slice candidate depths), so the design chooses register size as freely as
     ratio and depth.  A distinct-Q coverage floor keeps interior Q sampled until
     the Q axis is spanned, so a free-Q design cannot collapse onto the two Q
     extremes before any nonlinearity in the rate could be detected.
+
+    Hardware Q-window: when ``settings.max_qubit_window`` > 0 a single submission
+    must fit inside one contiguous Q-window (the device runs on a fixed physical
+    register; smaller-Q circuits leave idle qubits, and the window caps how many).
+    The whole grid is still scored; each candidate window is then packed on its
+    own and the window whose packed batch delivers the most realized information
+    is submitted.  This is more faithful than ranking windows by a raw sum of
+    node scores, because the sum ignores diminishing returns, the shared base
+    cost, and the depth/fidelity caps -- none of which the batch can actually
+    cash in full.  A cheap per-slice pre-score shortlists the windows so only the
+    most promising few are exact-packed (``qubit_window_shortlist``).
     """
     acq_slices = _acquisition_slices(settings)
     measured_q = {q for (_, q) in measured_slices}
@@ -1119,46 +1251,49 @@ def _assemble_batch(
     if not candidates:
         return []
 
-    rho = settings.shot_diminish_rho
-    shots: dict[tuple[int, float, int], int] = {}   # (n, r, q) -> shots
-    slice_shots: dict[tuple[float, int], int] = {}
+    width = int(getattr(settings, "max_qubit_window", 0) or 0)
+    if width <= 0:
+        requests, _, _ = _pack_candidates(candidates, settings, affordable_cap)
+        return requests
 
-    def requests_from(shots_map: dict) -> list[MeasurementRequest]:
-        return [
-            MeasurementRequest(make_config_q(settings, n, r, q), s)
-            for (n, r, q), s in shots_map.items()
-            if s > 0
-        ]
+    windows = _qubit_windows({c["q"] for c in candidates}, width)
+    if len(windows) <= 1:
+        # Every candidate Q already fits one window (or only one Q present):
+        # the constraint is inactive this batch.
+        requests, _, _ = _pack_candidates(candidates, settings, affordable_cap)
+        return requests
 
-    current_cost = 0.0
-    while True:
-        best = None
-        best_density = 0.0
-        for cand in candidates:
-            key = (cand["n"], cand["r"], cand["q"])
-            if shots.get(key, 0) >= settings.max_shots_per_probe:
-                continue
-            marginal_value = cand["value"] * (rho ** slice_shots.get(cand["slice"], 0))
-            trial = dict(shots)
-            trial[key] = trial.get(key, 0) + 1
-            trial_cost = batch_hqc_cost(requests_from(trial))
-            if trial_cost > affordable_cap:
-                continue
-            marginal_cost = trial_cost - current_cost
-            if marginal_cost <= 0.0:
-                marginal_cost = _EPS
-            density = marginal_value / marginal_cost
-            if density > best_density:
-                best_density = density
-                best = (key, cand["slice"], trial_cost)
-        if best is None:
-            break
-        key, slc, trial_cost = best
-        shots[key] = shots.get(key, 0) + 1
-        slice_shots[slc] = slice_shots.get(slc, 0) + 1
-        current_cost = trial_cost
+    # Cheap pre-score for shortlisting: the best single-shot value available in
+    # each (r, Q) slice of the window, summed over slices.  This ranks windows by
+    # their information *potential* without paying for a full pack of each; the
+    # shortlisted windows are then exact-packed and compared by realized value.
+    def _prescore(group: tuple[int, ...]) -> float:
+        gset = set(group)
+        best_per_slice: dict[tuple[float, int], float] = {}
+        for c in candidates:
+            if c["q"] in gset:
+                s = c["slice"]
+                if c["value"] > best_per_slice.get(s, 0.0):
+                    best_per_slice[s] = c["value"]
+        return float(sum(best_per_slice.values()))
 
-    return requests_from(shots)
+    windows_ranked = sorted(windows, key=_prescore, reverse=True)
+    shortlist = int(getattr(settings, "qubit_window_shortlist", 0) or 0)
+    if shortlist > 0:
+        windows_ranked = windows_ranked[:shortlist]
+
+    best_requests: list[MeasurementRequest] = []
+    best_value = -1.0
+    for group in windows_ranked:
+        gset = set(group)
+        group_candidates = [c for c in candidates if c["q"] in gset]
+        requests, value, _ = _pack_candidates(
+            group_candidates, settings, affordable_cap
+        )
+        if requests and value > best_value:
+            best_value = value
+            best_requests = requests
+    return best_requests
 
 
 # --------------------------------------------------------------------------- #
@@ -1322,7 +1457,7 @@ def _maybe_update_live_volume_plot(
         true_volume = _reference_surface_volume(settings, _analytic_lindblad_gates)
         if not (np.isfinite(fitted_volume) and np.isfinite(true_volume)):
             return
-        history.append((iteration, fitted_volume, true_volume))
+        _record_live_volume_point(history, iteration, fitted_volume, true_volume)
         png_path = plot_live_volume_history(
             history,
             settings,
@@ -1367,7 +1502,7 @@ def _add_prior_live_volume_point(
         true_volume = _reference_surface_volume(settings, _analytic_lindblad_gates)
         if not (np.isfinite(fitted_volume) and np.isfinite(true_volume)):
             return
-        history.append((0, fitted_volume, true_volume))
+        _record_live_volume_point(history, 0, fitted_volume, true_volume)
         png_path = plot_live_volume_history(
             history,
             settings,
@@ -1389,6 +1524,155 @@ def _add_prior_live_volume_point(
         print_progress(settings, budget, f"live volume prior skipped: {exc}")
 
 
+def _record_live_volume_point(
+    history: list[tuple[int, float, float]],
+    iteration: int,
+    fitted_volume: float,
+    true_volume: float,
+) -> None:
+    """Append or replace the live-volume point for an iteration."""
+    point = (int(iteration), float(fitted_volume), float(true_volume))
+    for i, (existing_iteration, _, _) in enumerate(history):
+        if int(existing_iteration) == int(iteration):
+            history[i] = point
+            return
+    history.append(point)
+    history.sort(key=lambda p: p[0])
+
+
+def _config_checkpoint_record(config: RMBConfig) -> dict:
+    """JSON-serializable description of an RMB config."""
+    return {
+        "n_gates": int(config.n_gates),
+        "ratio_2qb_gates": float(config.ratio_2_qb_gates),
+        "n_1qb_gates": int(config.n_1qb_gates),
+        "n_2qb_gates": int(config.n_2qb_gates),
+        "n_qubits": int(config.n_qubits),
+        "random_elimination": float(config.random_elimination),
+        "use_scrambler": bool(config.use_scrambler),
+        "gates_set": [g.name for g in config.gates_set],
+    }
+
+
+def _config_from_checkpoint_record(record: dict) -> RMBConfig:
+    """Rebuild the config fields needed by plotting/saving from checkpoint JSON."""
+    return RMBConfig(
+        n_1qb_gates=int(record["n_1qb_gates"]),
+        n_2qb_gates=int(record["n_2qb_gates"]),
+        n_qubits=int(record["n_qubits"]),
+        random_elimination=float(record.get("random_elimination", 0.0)),
+        use_scrambler=bool(record.get("use_scrambler", True)),
+    )
+
+
+def _batch_checkpoint_record(
+    *,
+    batch_number: int,
+    iteration: int,
+    cost_hqc: float,
+    requests: list[MeasurementRequest],
+    outcomes: dict[RMBConfig, list[bool]],
+    first_shot_indices: dict[RMBConfig, int],
+) -> dict:
+    """Record every shot outcome in the submitted batch."""
+    request_records = []
+    for request in requests:
+        config = request.config
+        result_list = [bool(outcome) for outcome in outcomes.get(config, [])]
+        first_shot = int(first_shot_indices.get(config, 0))
+        request_records.append(
+            {
+                "config": _config_checkpoint_record(config),
+                "requested_shots": int(request.shots),
+                "first_shot_index": first_shot,
+                "outcomes": result_list,
+                "measurements": [
+                    {"shot_index": first_shot + i, "outcome": bool(outcome)}
+                    for i, outcome in enumerate(result_list)
+                ],
+            }
+        )
+    return {
+        "batch": int(batch_number),
+        "iteration": int(iteration),
+        "cost_hqc": float(cost_hqc),
+        "requested_shots": int(sum(req.shots for req in requests)),
+        "requests": request_records,
+    }
+
+
+def _submitted_from_batch_history(batch_history: list[dict]) -> list[RMBConfig]:
+    """Recover submitted configs in submission order from checkpoint metadata."""
+    submitted: list[RMBConfig] = []
+    for batch in batch_history:
+        for request in batch.get("requests", []):
+            config_record = request.get("config")
+            if isinstance(config_record, dict):
+                submitted.append(_config_from_checkpoint_record(config_record))
+    return submitted
+
+
+def _legacy_batch_history_from_data(data) -> list[dict]:
+    """Represent pre-ledger aggregate data as one batch with unknown provenance."""
+    requests = []
+    total_shots = 0
+    for config, estimator in measured_items(data):
+        outcomes = []
+        for outcome, count in estimator.counts().items():
+            outcomes.extend([bool(outcome)] * int(count))
+        total_shots += len(outcomes)
+        requests.append(
+            {
+                "config": _config_checkpoint_record(config),
+                "requested_shots": len(outcomes),
+                "first_shot_index": 0,
+                "outcomes": outcomes,
+                "measurements": [
+                    {"shot_index": i, "outcome": bool(outcome)}
+                    for i, outcome in enumerate(outcomes)
+                ],
+            }
+        )
+    if not requests:
+        return []
+    return [
+        {
+            "batch": None,
+            "iteration": None,
+            "source": "legacy_aggregate_import",
+            "note": "Batch assignment was not present in this older checkpoint.",
+            "cost_hqc": None,
+            "requested_shots": total_shots,
+            "requests": requests,
+        }
+    ]
+
+
+def _live_volume_history_from_meta(meta: dict) -> list[tuple[int, float, float]]:
+    """Read persisted live-volume points, tolerating old checkpoint files."""
+    history = []
+    for point in meta.get("live_volume_history", []):
+        try:
+            history.append(
+                (
+                    int(point["iteration"]),
+                    float(point["fitted_volume"]),
+                    float(point["reference_volume"]),
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    history.sort(key=lambda p: p[0])
+    return history
+
+
+def _write_json_atomic(path: Path, payload: dict) -> None:
+    """Write JSON through a sibling temp file to avoid partial metadata files."""
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    tmp_path.replace(path)
+
+
 def _checkpoint_meta_path(save_path: str | Path) -> Path:
     base_path = resolve_data_path(save_path)
     return base_path.parent / f"{base_path.stem}_checkpoint.json"
@@ -1399,17 +1683,20 @@ def _save_measurement_checkpoint(
     settings: CostAwareSurfaceSettings,
     budget: Budget,
     submitted: list[RMBConfig],
+    batch_history: list[dict],
+    live_volume_history: list[tuple[int, float, float]],
     *,
     iteration: int | None = None,
     reason: str = "checkpoint",
 ) -> None:
-    """Save RMB-format measurements plus a small budget sidecar."""
+    """Save RMB-format measurements plus resumable batch/plot metadata."""
     if settings.save_path is None or not settings.checkpoint_after_batch:
         return
     try:
         rmb.save(settings.save_path)
         base_path = resolve_data_path(settings.save_path)
         meta = {
+            "schema_version": _CHECKPOINT_SCHEMA_VERSION,
             "reason": reason,
             "iteration": iteration,
             "hqc_budget": settings.hqc_budget,
@@ -1419,11 +1706,17 @@ def _save_measurement_checkpoint(
             "max_job_circuits": budget.max_job_circuits,
             "submitted_configs": len(submitted),
             "measured_configs": _measured_config_count(rmb._data),
+            "batch_history": batch_history,
+            "live_volume_history": [
+                {
+                    "iteration": int(i),
+                    "fitted_volume": float(fitted),
+                    "reference_volume": float(reference),
+                }
+                for i, fitted, reference in live_volume_history
+            ],
         }
-        _checkpoint_meta_path(settings.save_path).write_text(
-            json.dumps(meta, indent=2),
-            encoding="utf-8",
-        )
+        _write_json_atomic(_checkpoint_meta_path(settings.save_path), meta)
         print_progress(settings, budget, f"saved measurements -> {base_path}")
     except Exception as exc:  # noqa: BLE001 - checkpointing should not kill a run
         print_progress(settings, budget, f"checkpoint save skipped: {exc}")
@@ -1433,13 +1726,13 @@ def _resume_measurement_checkpoint(
     rmb: RMB,
     settings: CostAwareSurfaceSettings,
     budget: Budget,
-) -> tuple[RMB, Budget, list[RMBConfig]]:
+) -> tuple[RMB, Budget, list[RMBConfig], list[dict], list[tuple[int, float, float]]]:
     """Load saved measurements into the current backend and restore budget state."""
     if settings.save_path is None or not settings.resume_from_save:
-        return rmb, budget, []
+        return rmb, budget, [], [], []
     base_path = resolve_data_path(settings.save_path)
     if not base_path.exists():
-        return rmb, budget, []
+        return rmb, budget, [], [], []
 
     try:
         loaded = RMB.load(base_path, rng=rmb.rng)
@@ -1447,9 +1740,11 @@ def _resume_measurement_checkpoint(
         rmb._data = loaded._data
     except Exception as exc:  # noqa: BLE001 - resume is best-effort
         print_progress(settings, budget, f"resume skipped: {exc}")
-        return rmb, budget, []
+        return rmb, budget, [], [], []
 
     submitted = [config for config, _ in measured_items(rmb._data)]
+    batch_history: list[dict] = []
+    live_volume_history: list[tuple[int, float, float]] = []
     meta_path = _checkpoint_meta_path(settings.save_path)
     if meta_path.exists():
         try:
@@ -1461,6 +1756,15 @@ def _resume_measurement_checkpoint(
                 jobs=int(meta.get("jobs", 0)),
                 max_job_circuits=int(meta.get("max_job_circuits", 0)),
             )
+            raw_batch_history = meta.get("batch_history", [])
+            if isinstance(raw_batch_history, list):
+                batch_history = raw_batch_history
+                if not batch_history:
+                    batch_history = _legacy_batch_history_from_data(rmb._data)
+                restored_submitted = _submitted_from_batch_history(batch_history)
+                if restored_submitted:
+                    submitted = restored_submitted
+            live_volume_history = _live_volume_history_from_meta(meta)
         except Exception as exc:  # noqa: BLE001 - metadata is useful but optional
             print_progress(settings, budget, f"checkpoint metadata ignored: {exc}")
     else:
@@ -1475,7 +1779,7 @@ def _resume_measurement_checkpoint(
         budget,
         f"resumed {len(submitted)} measured configs from {base_path}",
     )
-    return rmb, budget, submitted
+    return rmb, budget, submitted, batch_history, live_volume_history
 
 
 # --------------------------------------------------------------------------- #
@@ -1486,7 +1790,13 @@ def run_with_budget(
 ) -> tuple[RMB, list[RMBConfig], Budget]:
     """Run the cost-aware global surface designer."""
     rng, rmb, budget = start_run(settings)
-    rmb, budget, submitted = _resume_measurement_checkpoint(rmb, settings, budget)
+    (
+        rmb,
+        budget,
+        submitted,
+        batch_history,
+        volume_history,
+    ) = _resume_measurement_checkpoint(rmb, settings, budget)
     data = rmb._data
     backend = rmb.backend
 
@@ -1495,7 +1805,6 @@ def run_with_budget(
     grid_halfwidth = settings.grid_halfwidth_sigmas * prior_std
 
     score_grid = _score_grid(settings)
-    volume_history: list[tuple[int, float, float]] = []
     _add_prior_live_volume_point(
         settings, budget, grid_centre, grid_halfwidth, volume_history
     )
@@ -1563,14 +1872,41 @@ def run_with_budget(
             print_progress(settings, budget, "no affordable informative probe; stopping")
             break
 
+        if settings.verbose and int(settings.max_qubit_window or 0) > 0:
+            batch_qs = sorted({int(req.config.n_qubits) for req in requests})
+            if batch_qs:
+                print_progress(
+                    settings,
+                    budget,
+                    f"batch Q-window {batch_qs[0]}..{batch_qs[-1]} "
+                    f"(register W={batch_qs[-1]}, max idle {batch_qs[-1] - batch_qs[0]}) "
+                    f"over Q={batch_qs}",
+                )
+
         cost = batch_hqc_cost(requests)
         if cost > remaining_global + 1e-9:
             print_progress(settings, budget, "next batch exceeds remaining budget; stopping")
             break
 
-        spend_request_batch(backend, rng, data, requests, seed=settings.rng_seed)
+        first_shot_indices = {
+            req.config: data.get(req.config, backend.default_estimator()).num_runs()
+            for req in requests
+        }
+        outcomes = spend_request_batch(
+            backend, rng, data, requests, seed=settings.rng_seed
+        )
         budget.spend_batch(cost, sum(req.shots for req in requests))
         submitted.extend(req.config for req in requests)
+        batch_history.append(
+            _batch_checkpoint_record(
+                batch_number=budget.jobs,
+                iteration=iteration + 1,
+                cost_hqc=cost,
+                requests=requests,
+                outcomes=outcomes,
+                first_shot_indices=first_shot_indices,
+            )
+        )
         _maybe_update_live_surface_plot(rmb, settings, budget, iteration + 1)
         _maybe_update_live_volume_plot(
             rmb, settings, budget, iteration + 1, volume_history
@@ -1580,6 +1916,8 @@ def run_with_budget(
             settings,
             budget,
             submitted,
+            batch_history,
+            volume_history,
             iteration=iteration + 1,
             reason="after_batch",
         )
@@ -1596,6 +1934,8 @@ def run_with_budget(
         settings,
         budget,
         submitted,
+        batch_history,
+        volume_history,
         iteration=budget.jobs,
         reason="final",
     )
@@ -1605,16 +1945,19 @@ def run_with_budget(
             from sympleq.applications.randomized_benchmarking.experiments.common import (
                 save_crossings,
             )
-            save_crossings(rmb, settings, budget, submitted)
+            base_path = save_crossings(rmb, settings, budget, submitted)
         except Exception as exc:  # noqa: BLE001 - saving is best-effort
             print_progress(settings, budget, f"save skipped: {exc}")
+            base_path = None
+    else:
+        base_path = None
 
     if settings.plot:
         try:
             from sympleq.applications.randomized_benchmarking.experiments.plots import (
                 plot_crossing_results,
             )
-            plot_crossing_results(data, settings, submitted, base_path=None)
+            plot_crossing_results(data, settings, submitted, base_path=base_path)
         except Exception as exc:  # noqa: BLE001 - plotting is best-effort
             print_progress(settings, budget, f"plot skipped: {exc}")
         if len(settings.q_values) > 1 and settings.surface_plot_path is not None:
@@ -2883,7 +3226,7 @@ if __name__ == "__main__":
         acquisition_q_resolution=7,     # Q candidates across the full Q range
         acquisition_ratio_points=12,     # r candidates across ratio_bounds
         backend_model="sympleq",
-        hqc_budget=300.0,
+        hqc_budget=500.0,
         plot=True,
         surface_plot_path=DEFAULT_SURFACE_PLOT_PATH,
         surface_plot_show=True,
@@ -2891,12 +3234,12 @@ if __name__ == "__main__":
         # New: write/show the +-1 sigma boundary-uncertainty surface at run end.
         surface_uncertainty_plot_show=True,
         surface_uncertainty_sigma=1.0,
-        gp_grid_surface_path=(
-            EXPERIMENTS_DIR.parent
-            / "rmb_data"
-            / "FLE_20260630_114233_gp_grid_3d.npz"
-        ),
-        gp_grid_surface_label="Rick/Shreya Surface",
+        # gp_grid_surface_path=(
+        #     EXPERIMENTS_DIR.parent
+        #     / "rmb_data"
+        #     / "FLE_20260630_114233_gp_grid_3d.npz"
+        # ),
+        # gp_grid_surface_label="Rick/Shreya Surface",
         rng_seed=123,
         verbose=True,
         use_scrambler=True,
@@ -2905,4 +3248,5 @@ if __name__ == "__main__":
         live_volume_plot=True,
         live_volume_plot_show=True,
         live_volume_plot_pause=0.5,
+        max_qubit_window=3,
     )
