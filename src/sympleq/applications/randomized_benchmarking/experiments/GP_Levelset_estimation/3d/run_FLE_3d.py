@@ -423,14 +423,29 @@ def run(
     sobol_candidates = sobol_initial_candidates(settings)
     sobol_submissions = 0
 
-    if sobol_candidates:
-        print("[sobol configs]")
+    max_sobol_submissions = settings.initial_sobol_submissions
+    remaining_sobol_candidates = list(sobol_candidates)
+
+    while (
+        remaining_sobol_candidates
+        and sobol_submissions < max_sobol_submissions
+        and not exhausted
+        and budget.remaining_hqc > 0
+    ):
+        print(f"[sobol configs] submission={sobol_submissions + 1}")
+
         sobol_batch, exhausted = select_affordable_prefix(
-            sobol_candidates,
+            remaining_sobol_candidates,
             settings,
             budget,
             max_cost_per_run=settings.initial_sobol_max_cost_per_run,
         )
+
+        if not sobol_batch:
+            break
+
+        # Remove the configs that are about to be measured.
+        remaining_sobol_candidates = remaining_sobol_candidates[len(sobol_batch):]
 
         for index, config in enumerate(sobol_batch, start=1):
             is_valid = valid_config(config)
@@ -443,6 +458,7 @@ def run(
                 f"n_qubits={config.n_qubits} "
                 f"valid={is_valid}"
             )
+
             if not is_valid:
                 print(
                     "[sobol invalid sent config] "
@@ -453,36 +469,40 @@ def run(
                     f"n_qubits={config.n_qubits}"
                 )
 
-        if sobol_batch:
-            measure_batch_and_update_real_strategy(
-                phase="sobol",
-                selected=sobol_batch,
-                strategy=strategy,
-                rmb=rmb,
-                rng=rng,
-                data=data,
-                budget=budget,
-                settings=settings,
-                observations=observations,
-                results_for_plot=results_for_plot,
-                device=gp_device,
-            )
-            sobol_submissions += 1
-            checkpoint_step += 1
-            save_real_checkpoint(
-                rmb=rmb,
-                strategy=strategy,
-                settings=settings,
-                observations=observations,
-                device=gp_device,
-                phase=f"sobol_{index:03d}",
-                step=checkpoint_step,
-                budget=budget,
-                sent_configs=sobol_batch,
-            )
+        measure_batch_and_update_real_strategy(
+            phase=f"sobol_{sobol_submissions + 1}",
+            selected=sobol_batch,
+            strategy=strategy,
+            rmb=rmb,
+            rng=rng,
+            data=data,
+            budget=budget,
+            settings=settings,
+            observations=observations,
+            results_for_plot=results_for_plot,
+            device=gp_device,
+        )
+
+        sobol_submissions += 1
+        checkpoint_step += 1
+
+        save_real_checkpoint(
+            rmb=rmb,
+            strategy=strategy,
+            settings=settings,
+            observations=observations,
+            device=gp_device,
+            phase=f"sobol_{sobol_submissions:03d}",
+            step=checkpoint_step,
+            budget=budget,
+            sent_configs=sobol_batch,
+        )
 
     if sobol_submissions:
-        print(f"sobol: measured {len(sobol_batch)} configs in {sobol_submissions} submission")
+        print(
+            f"sobol: completed {sobol_submissions} submissions, "
+            f"{len(sobol_candidates) - len(remaining_sobol_candidates)} configs measured"
+        )
     else:
         print_progress(settings, budget, "sobol: no affordable initial batch")
 

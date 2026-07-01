@@ -416,10 +416,14 @@ def sobol_initial_candidates(
     q_min, q_max = n_qubits_bounds(settings)
     band_length = max(0, int(settings.qubit_band_length))
     band_start_max = max(q_min, q_max - band_length)
-    n_sobol = max(1, int(settings.sobol_band_batches))
-    band_starts = np.rint(np.linspace(q_min, band_start_max, n_sobol)).astype(int)
+
+    n_bands = max(1, int(settings.sobol_band_batches))
+    band_starts = np.rint(np.linspace(q_min, band_start_max, n_bands)).astype(int)
     qubit_values = list(dict.fromkeys(int(q) for q in band_starts))
-    n_sobol = len(qubit_values)
+    n_bands = len(qubit_values)
+
+    total_samples = int(settings.initial_sobol_samples)
+    samples_per_band = max(1, int(np.ceil(total_samples / n_bands)))
 
     engine = torch.quasirandom.SobolEngine(
         dimension=2,
@@ -427,7 +431,7 @@ def sobol_initial_candidates(
         seed=settings.rng_seed if settings.sobol_scramble else None,
     )
 
-    unit_points = engine.draw(n_sobol).cpu().numpy()
+    unit_points = engine.draw(samples_per_band).cpu().numpy()
 
     n_min, n_max = settings.n_gates_bounds
     r_min, r_max = settings.ratio_bounds
@@ -435,18 +439,27 @@ def sobol_initial_candidates(
     candidates: list[RMBConfig] = []
     seen: set[RMBConfig] = set()
 
-    for (u_n, u_r), n_qubits in zip(unit_points, qubit_values):
-        n_gates = float(n_min + u_n * (n_max - n_min))
-        ratio = float(r_min + u_r * (r_max - r_min))
+    for n_qubits in qubit_values:
+        for u_n, u_r in unit_points:
+            n_gates = float(n_min + u_n * (n_max - n_min))
+            ratio = float(r_min + u_r * (r_max - r_min))
 
-        raw_is_valid, _, _, _ = raw_validity(settings, n_gates, ratio, n_qubits)
-        config = make_config_3d(settings, n_gates, ratio, n_qubits)
+            raw_is_valid, _, _, _ = raw_validity(
+                settings,
+                n_gates,
+                ratio,
+                n_qubits,
+            )
+            config = make_config_3d(settings, n_gates, ratio, n_qubits)
 
-        # Realized gate-count rounding can create duplicates.
-        if config not in seen:
-            record_repair(raw_is_valid)
-            candidates.append(config)
-            seen.add(config)
+            # Realized gate-count rounding can create duplicates.
+            if config not in seen:
+                record_repair(raw_is_valid)
+                candidates.append(config)
+                seen.add(config)
+
+            if len(candidates) >= total_samples:
+                return candidates
 
     return candidates
 

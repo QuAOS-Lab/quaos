@@ -47,6 +47,7 @@ class FantasySettings(CrossingSettings):
 
     # Explicit Sobol warm-up
     initial_sobol_samples: int = 10
+    initial_sobol_submissions: int = 5
     sobol_band_batches: int = 5
     initial_sobol_max_cost_per_run: float | None = None
     sobol_scramble: bool = False
@@ -110,7 +111,7 @@ RATIO_BOUNDS = (0.1, 0.9)
 # -------------------------------------------------------------------------
 # Set to None to use the defaults inherited from CrossingSettings.
 
-HQC_BUDGET = 200
+HQC_BUDGET = 500
 MAX_COST_PER_RUN = 15
 
 # -------------------------------------------------------------------------
@@ -133,7 +134,8 @@ EXTRA_FAKE_ANCHORS = []
 # SOBOL WARM-UP HANDLES
 # -------------------------------------------------------------------------
 
-INITIAL_SOBOL_SAMPLES = 5
+INITIAL_SOBOL_SAMPLES = 15
+INITIAL_SOBOL_SUBMISSIONS = 5
 SOBOL_BAND_BATCHES = 5
 INITIAL_SOBOL_MAX_COST_PER_RUN = 15.0
 SOBOL_SCRAMBLE = True
@@ -177,7 +179,7 @@ BACKEND_FACTORY = default_backend_factory
 # REPRODUCIBILITY / DEBUG HANDLES
 # -------------------------------------------------------------------------
 
-RNG_SEEDS = [2026]
+RNG_SEEDS = [2025,2026,2027,2028,2029,2030,2031,2032,2033,2034]
 VERBOSE_FANTASIES = True
 PLOT = True
 
@@ -192,6 +194,7 @@ def control_panel_settings_kwargs() -> dict:
         fake_qubit_slices=FAKE_QUBIT_SLICES,
         extra_fake_anchors=EXTRA_FAKE_ANCHORS,
         initial_sobol_samples=INITIAL_SOBOL_SAMPLES,
+        initial_sobol_submissions=INITIAL_SOBOL_SUBMISSIONS,
         sobol_band_batches=SOBOL_BAND_BATCHES,
         initial_sobol_max_cost_per_run=INITIAL_SOBOL_MAX_COST_PER_RUN,
         sobol_scramble=SOBOL_SCRAMBLE,
