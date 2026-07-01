@@ -209,6 +209,9 @@ DEFAULT_LIVE_SURFACE_PLOT_PATH = (
 DEFAULT_LIVE_VOLUME_PLOT_PATH = (
     EXPERIMENTS_DIR / "figs" / "boundary_volume_live.png"
 )
+DEFAULT_UNCERTAINTY_PLOT_PATH = (
+    EXPERIMENTS_DIR / "figs" / "boundary_surface_3d_uncertainty.png"
+)
 
 
 def _with_backend_seed_suffix(
@@ -251,7 +254,6 @@ class CostAwareSurfaceSettings(CrossingSettings):
     # the main JSON remains the same measurement-outcome format as FLE_*.json.
     checkpoint_after_batch: bool = True
     resume_from_save: bool = True
-    save_individual_outcomes: bool = True
     # Where the 3-D boundary-surface plot is written (multi-Q runs with plot=True).
     surface_plot_path: str | Path | None = DEFAULT_SURFACE_PLOT_PATH
     surface_plot_show: bool = False
@@ -286,6 +288,13 @@ class CostAwareSurfaceSettings(CrossingSettings):
     live_volume_plot_every: int = 1
     live_volume_plot_show: bool = False
     live_volume_plot_pause: float = 0.25
+    # Static +-1 sigma boundary-uncertainty surface plot (written at run end).
+    # Draws the posterior-mean log-boundary surface enveloped by the +-k sigma
+    # surfaces of log n*(r,Q), where k = uncertainty_plot_sigma.
+    surface_uncertainty_plot: bool = False
+    surface_uncertainty_plot_path: str | Path | None = DEFAULT_UNCERTAINTY_PLOT_PATH
+    surface_uncertainty_plot_show: bool = False
+    surface_uncertainty_sigma: float = 1.0
     backend_factory: Callable[[CrossingSettings, RNGGenerator], RMBBackend] = (
         sympleq_backend_factory
     )
@@ -305,8 +314,8 @@ class CostAwareSurfaceSettings(CrossingSettings):
     max_iterations: int = 400
 
     # --- prior on the boundary surface -------------------------------------
-    initial_one_q_pauli_error: float = BASE_1Q_PAULI_ERROR * 1.6
-    initial_two_q_pauli_error: float = BASE_2Q_PAULI_ERROR * 1.6
+    initial_one_q_pauli_error: float = BASE_1Q_PAULI_ERROR * 0.6
+    initial_two_q_pauli_error: float = BASE_2Q_PAULI_ERROR * 0.6
     initial_error_relative_uncertainty: float = 0.30
     initial_one_q_error_relative_uncertainty: float | None = None
     initial_two_q_error_relative_uncertainty: float | None = None
@@ -338,12 +347,15 @@ class CostAwareSurfaceSettings(CrossingSettings):
             object.__setattr__(self, "live_surface_plot", True)
         if self.live_volume_plot_show and not self.live_volume_plot:
             object.__setattr__(self, "live_volume_plot", True)
+        if self.surface_uncertainty_plot_show and not self.surface_uncertainty_plot:
+            object.__setattr__(self, "surface_uncertainty_plot", True)
         if self.backend_model in {"sympleq", "exponential"}:
             for attr in (
                 "save_path",
                 "surface_plot_path",
                 "live_surface_plot_path",
                 "live_volume_plot_path",
+                "surface_uncertainty_plot_path",
             ):
                 object.__setattr__(
                     self,
@@ -858,6 +870,17 @@ def _binary_entropy(p: np.ndarray) -> np.ndarray:
     return -p * np.log(p) - (1.0 - p) * np.log(1.0 - p)
 
 
+def _effective_free_params(settings: CostAwareSurfaceSettings) -> int:
+    """Number of unpinned posterior axes (grid resolution > 1).
+
+    Used as the nominal parameter count k when forming chi^2 / (N - k).  This is
+    only a nominal dof: the prior constrains the parameters, so the *effective*
+    number of parameters is somewhat smaller, but with a few hundred configs the
+    difference is negligible for a health check.
+    """
+    return int(sum(1 for res in settings.grid_resolution if int(res) > 1))
+
+
 # --------------------------------------------------------------------------- #
 # Surface uncertainty (the scoring-aligned objective)
 # --------------------------------------------------------------------------- #
@@ -1162,6 +1185,14 @@ def _residual_diagnostics(
       asymptote (< ``tail_diagnostic_pmax``): empirically dead-tail shots,
       regardless of what the model predicted for them.
 
+    Goodness-of-fit: two aggregate statistics summarise whether the surface model
+    is *adequate* (not merely precise).  ``chi2_dof`` is the Pearson
+    chi^2 = sum z_i^2 over (N - k) dof; ``dev_dof`` is the Bernoulli
+    deviance / (N - k), which is the correct likelihood-ratio analogue and stays
+    valid near p = 0 or 1 where the Gaussian z approximation degrades.  Both ~1
+    mean the model fits within shot noise; >> 1 flags systematic misfit (the
+    z-region breakdown then says *where*).
+
     All quantities use only measured counts and the current posterior, so they
     read identically on the simulator and on hardware.
     """
@@ -1175,12 +1206,17 @@ def _residual_diagnostics(
     lowr_sum = highr_sum = 0.0
     lowr_n = highr_n = 0
     tail_n = 0
+    chi2 = 0.0
+    deviance = 0.0
+    n_points = 0
     for i in range(len(ratios)):
         total = succ[i] + fail[i]
         if total <= 0:
             continue
+        n_points += 1
         pij = _link_probability(params, gates[i], ratios[i], qubits[i], settings)
         p_bar = float(np.sum(weights * pij))
+        p_bar = min(max(p_bar, _EPS), 1.0 - _EPS)
         p_hat = succ[i] / total
         sd = np.sqrt(max(p_bar * (1.0 - p_bar) / total, _EPS))
         z = (p_hat - p_bar) / sd          # signed
@@ -1193,6 +1229,18 @@ def _residual_diagnostics(
             highr_sum += z
             highr_n += 1
         tail_n += int(p_hat < pmax)        # empirical tail, keyed on observed survival
+        # Pearson chi^2 contribution (one Bernoulli cell per measured config).
+        chi2 += z * z
+        # Bernoulli deviance contribution: 2[ s log(p_hat/p_bar)
+        #   + f log((1-p_hat)/(1-p_bar)) ], with 0 log 0 = 0.
+        s, f = succ[i], fail[i]
+        if s > 0:
+            deviance += 2.0 * s * np.log(max(p_hat, _EPS) / p_bar)
+        if f > 0:
+            deviance += 2.0 * f * np.log(max(1.0 - p_hat, _EPS) / (1.0 - p_bar))
+
+    k = _effective_free_params(settings)
+    dof = max(n_points - k, 1)
     return {
         "max_abs": max_abs,
         "n_flag": n_flag,
@@ -1201,6 +1249,12 @@ def _residual_diagnostics(
         "highr_mean": highr_sum / highr_n if highr_n else 0.0,
         "highr_n": highr_n,
         "tail_n": tail_n,
+        "chi2": float(chi2),
+        "deviance": float(deviance),
+        "dof": int(dof),
+        "n_points": int(n_points),
+        "chi2_dof": float(chi2 / dof),
+        "dev_dof": float(deviance / dof),
     }
 
 
@@ -1268,9 +1322,7 @@ def _maybe_update_live_volume_plot(
         true_volume = _reference_surface_volume(settings, _analytic_lindblad_gates)
         if not (np.isfinite(fitted_volume) and np.isfinite(true_volume)):
             return
-        history[:] = [row for row in history if int(row[0]) != int(iteration)]
         history.append((iteration, fitted_volume, true_volume))
-        history.sort(key=lambda row: int(row[0]))
         png_path = plot_live_volume_history(
             history,
             settings,
@@ -1304,8 +1356,6 @@ def _add_prior_live_volume_point(
         return
     if settings.live_volume_plot_path is None and not settings.live_volume_plot_show:
         return
-    if any(int(row[0]) == 0 for row in history):
-        return
     try:
         params, log_prior, _ = _build_grid(grid_centre, grid_halfwidth, settings)
         # With no measurements this is just the normalized prior over the grid.
@@ -1318,7 +1368,6 @@ def _add_prior_live_volume_point(
         if not (np.isfinite(fitted_volume) and np.isfinite(true_volume)):
             return
         history.append((0, fitted_volume, true_volume))
-        history.sort(key=lambda row: int(row[0]))
         png_path = plot_live_volume_history(
             history,
             settings,
@@ -1345,133 +1394,11 @@ def _checkpoint_meta_path(save_path: str | Path) -> Path:
     return base_path.parent / f"{base_path.stem}_checkpoint.json"
 
 
-def _individual_outcomes_path(save_path: str | Path) -> Path:
-    base_path = resolve_data_path(save_path)
-    return base_path.parent / f"{base_path.stem}_individual_outcomes.json"
-
-
-def _volume_history_to_json(
-    history: list[tuple[int, float, float]],
-) -> list[dict[str, float | int]]:
-    return [
-        {
-            "iteration": int(iteration),
-            "fitted_volume": float(fitted_volume),
-            "reference_volume": float(reference_volume),
-        }
-        for iteration, fitted_volume, reference_volume in history
-    ]
-
-
-def _volume_history_from_json(payload) -> list[tuple[int, float, float]]:
-    history: list[tuple[int, float, float]] = []
-    if not isinstance(payload, list):
-        return history
-    for row in payload:
-        try:
-            if isinstance(row, dict):
-                iteration = int(row["iteration"])
-                fitted_volume = float(row["fitted_volume"])
-                reference_volume = float(row["reference_volume"])
-            else:
-                iteration = int(row[0])
-                fitted_volume = float(row[1])
-                reference_volume = float(row[2])
-            if np.isfinite(fitted_volume) and np.isfinite(reference_volume):
-                history.append((iteration, fitted_volume, reference_volume))
-        except Exception:
-            continue
-    # If a checkpoint was written twice for the same iteration, keep the latest
-    # entry in file order.
-    by_iteration: dict[int, tuple[int, float, float]] = {}
-    for row in history:
-        by_iteration[int(row[0])] = row
-    return sorted(by_iteration.values(), key=lambda item: int(item[0]))
-
-
-def _config_outcome_record(
-    config: RMBConfig,
-    *,
-    iteration: int,
-    shot_index: int,
-    outcome: bool,
-) -> dict:
-    return {
-        "iteration": int(iteration),
-        "shot_index": int(shot_index),
-        "outcome": bool(outcome),
-        "n_1qb_gates": int(config.n_1qb_gates),
-        "n_2qb_gates": int(config.n_2qb_gates),
-        "n_gates": int(config.n_gates),
-        "ratio_2qb_gates": float(config.ratio_2_qb_gates),
-        "n_qubits": int(config.n_qubits),
-        "random_elimination": float(config.random_elimination),
-        "use_scrambler": bool(config.use_scrambler),
-        "gates_set": [gate.name for gate in config.gates_set],
-    }
-
-
-def _append_individual_outcomes(
-    history: list[dict],
-    *,
-    iteration: int,
-    outcomes: dict[RMBConfig, list[bool]],
-) -> None:
-    """Append every single backend outcome with an iteration label."""
-    # If a checkpoint is rewritten for the same iteration, replace that
-    # iteration atomically in memory before appending the new records.
-    history[:] = [row for row in history if int(row.get("iteration", -1)) != iteration]
-    for config, results in outcomes.items():
-        for shot_index, outcome in enumerate(results):
-            history.append(
-                _config_outcome_record(
-                    config,
-                    iteration=iteration,
-                    shot_index=shot_index,
-                    outcome=bool(outcome),
-                )
-            )
-
-
-def _load_individual_outcomes(settings: CostAwareSurfaceSettings) -> list[dict]:
-    if settings.save_path is None or not settings.save_individual_outcomes:
-        return []
-    path = _individual_outcomes_path(settings.save_path)
-    if not path.exists():
-        return []
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        rows = payload.get("data", payload) if isinstance(payload, dict) else payload
-        return list(rows) if isinstance(rows, list) else []
-    except Exception:
-        return []
-
-
-def _save_individual_outcomes(
-    settings: CostAwareSurfaceSettings,
-    outcome_history: list[dict],
-) -> None:
-    if settings.save_path is None or not settings.save_individual_outcomes:
-        return
-    path = _individual_outcomes_path(settings.save_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "format": "physics_informed_individual_outcomes_v1",
-        "source_measurement_file": str(resolve_data_path(settings.save_path)),
-        "backend_model": settings.backend_model,
-        "rng_seed": settings.rng_seed,
-        "data": outcome_history,
-    }
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-
 def _save_measurement_checkpoint(
     rmb: RMB,
     settings: CostAwareSurfaceSettings,
     budget: Budget,
     submitted: list[RMBConfig],
-    volume_history: list[tuple[int, float, float]] | None = None,
-    outcome_history: list[dict] | None = None,
     *,
     iteration: int | None = None,
     reason: str = "checkpoint",
@@ -1492,19 +1419,11 @@ def _save_measurement_checkpoint(
             "max_job_circuits": budget.max_job_circuits,
             "submitted_configs": len(submitted),
             "measured_configs": _measured_config_count(rmb._data),
-            "volume_history": _volume_history_to_json(volume_history or []),
-            "individual_outcomes_path": (
-                str(_individual_outcomes_path(settings.save_path))
-                if settings.save_path is not None and settings.save_individual_outcomes
-                else None
-            ),
-            "individual_outcomes": len(outcome_history or []),
         }
         _checkpoint_meta_path(settings.save_path).write_text(
             json.dumps(meta, indent=2),
             encoding="utf-8",
         )
-        _save_individual_outcomes(settings, outcome_history or [])
         print_progress(settings, budget, f"saved measurements -> {base_path}")
     except Exception as exc:  # noqa: BLE001 - checkpointing should not kill a run
         print_progress(settings, budget, f"checkpoint save skipped: {exc}")
@@ -1514,13 +1433,13 @@ def _resume_measurement_checkpoint(
     rmb: RMB,
     settings: CostAwareSurfaceSettings,
     budget: Budget,
-) -> tuple[RMB, Budget, list[RMBConfig], list[tuple[int, float, float]], list[dict]]:
+) -> tuple[RMB, Budget, list[RMBConfig]]:
     """Load saved measurements into the current backend and restore budget state."""
     if settings.save_path is None or not settings.resume_from_save:
-        return rmb, budget, [], [], []
+        return rmb, budget, []
     base_path = resolve_data_path(settings.save_path)
     if not base_path.exists():
-        return rmb, budget, [], [], []
+        return rmb, budget, []
 
     try:
         loaded = RMB.load(base_path, rng=rmb.rng)
@@ -1528,11 +1447,9 @@ def _resume_measurement_checkpoint(
         rmb._data = loaded._data
     except Exception as exc:  # noqa: BLE001 - resume is best-effort
         print_progress(settings, budget, f"resume skipped: {exc}")
-        return rmb, budget, [], [], []
+        return rmb, budget, []
 
     submitted = [config for config, _ in measured_items(rmb._data)]
-    volume_history: list[tuple[int, float, float]] = []
-    outcome_history = _load_individual_outcomes(settings)
     meta_path = _checkpoint_meta_path(settings.save_path)
     if meta_path.exists():
         try:
@@ -1544,7 +1461,6 @@ def _resume_measurement_checkpoint(
                 jobs=int(meta.get("jobs", 0)),
                 max_job_circuits=int(meta.get("max_job_circuits", 0)),
             )
-            volume_history = _volume_history_from_json(meta.get("volume_history", []))
         except Exception as exc:  # noqa: BLE001 - metadata is useful but optional
             print_progress(settings, budget, f"checkpoint metadata ignored: {exc}")
     else:
@@ -1559,13 +1475,7 @@ def _resume_measurement_checkpoint(
         budget,
         f"resumed {len(submitted)} measured configs from {base_path}",
     )
-    if outcome_history:
-        print_progress(
-            settings,
-            budget,
-            f"resumed {len(outcome_history)} individual outcomes",
-        )
-    return rmb, budget, submitted, volume_history, outcome_history
+    return rmb, budget, submitted
 
 
 # --------------------------------------------------------------------------- #
@@ -1576,13 +1486,7 @@ def run_with_budget(
 ) -> tuple[RMB, list[RMBConfig], Budget]:
     """Run the cost-aware global surface designer."""
     rng, rmb, budget = start_run(settings)
-    (
-        rmb,
-        budget,
-        submitted,
-        volume_history,
-        outcome_history,
-    ) = _resume_measurement_checkpoint(rmb, settings, budget)
+    rmb, budget, submitted = _resume_measurement_checkpoint(rmb, settings, budget)
     data = rmb._data
     backend = rmb.backend
 
@@ -1591,23 +1495,10 @@ def run_with_budget(
     grid_halfwidth = settings.grid_halfwidth_sigmas * prior_std
 
     score_grid = _score_grid(settings)
+    volume_history: list[tuple[int, float, float]] = []
     _add_prior_live_volume_point(
         settings, budget, grid_centre, grid_halfwidth, volume_history
     )
-    if volume_history and settings.live_volume_plot:
-        try:
-            plot_live_volume_history(
-                volume_history,
-                settings,
-                png_path=settings.live_volume_plot_path,
-                show=settings.live_volume_plot_show,
-                show_block=False,
-                show_pause=settings.live_volume_plot_pause,
-                close=not settings.live_volume_plot_show,
-                figure_name="cost-aware live volume",
-            )
-        except Exception as exc:  # noqa: BLE001 - live plotting should not block resume
-            print_progress(settings, budget, f"loaded live volume plot skipped: {exc}")
     prev_log_rms = float("inf")
     stalled = 0
 
@@ -1638,7 +1529,8 @@ def run_with_budget(
                     settings,
                     budget,
                     f"iter {iteration}: configs={n_measured} ess={ess:.0f}/{len(params)} "
-                    f"log-rms={log_rms:.4f} max|z|={max_z:.1f} flagged={n_flag} "
+                    f"log-rms={log_rms:.4f} chi2/dof={diag['chi2_dof']:.2f} "
+                    f"dev/dof={diag['dev_dof']:.2f} max|z|={max_z:.1f} flagged={n_flag} "
                     f"resid<z> low-r={diag['lowr_mean']:+.2f}(n={diag['lowr_n']}) "
                     f"high-r={diag['highr_mean']:+.2f}(n={diag['highr_n']}) "
                     f"obs-tail={diag['tail_n']}",
@@ -1676,14 +1568,9 @@ def run_with_budget(
             print_progress(settings, budget, "next batch exceeds remaining budget; stopping")
             break
 
-        outcomes = spend_request_batch(backend, rng, data, requests, seed=settings.rng_seed)
+        spend_request_batch(backend, rng, data, requests, seed=settings.rng_seed)
         budget.spend_batch(cost, sum(req.shots for req in requests))
         submitted.extend(req.config for req in requests)
-        _append_individual_outcomes(
-            outcome_history,
-            iteration=iteration + 1,
-            outcomes=outcomes,
-        )
         _maybe_update_live_surface_plot(rmb, settings, budget, iteration + 1)
         _maybe_update_live_volume_plot(
             rmb, settings, budget, iteration + 1, volume_history
@@ -1693,8 +1580,6 @@ def run_with_budget(
             settings,
             budget,
             submitted,
-            volume_history,
-            outcome_history,
             iteration=iteration + 1,
             reason="after_batch",
         )
@@ -1711,8 +1596,6 @@ def run_with_budget(
         settings,
         budget,
         submitted,
-        volume_history,
-        outcome_history,
         iteration=budget.jobs,
         reason="final",
     )
@@ -1745,6 +1628,29 @@ def run_with_budget(
                 print_progress(settings, budget, f"surface plot -> {settings.surface_plot_path}")
             except Exception as exc:  # noqa: BLE001 - plotting is best-effort
                 print_progress(settings, budget, f"surface plot skipped: {exc}")
+        if (
+            len(settings.q_values) > 1
+            and settings.surface_uncertainty_plot
+            and (
+                settings.surface_uncertainty_plot_path is not None
+                or settings.surface_uncertainty_plot_show
+            )
+        ):
+            try:
+                unc_path = plot_surface_uncertainty_3d(
+                    rmb,
+                    settings,
+                    png_path=settings.surface_uncertainty_plot_path,
+                    show=settings.surface_uncertainty_plot_show,
+                )
+                if unc_path is not None:
+                    print_progress(
+                        settings, budget, f"uncertainty surface plot -> {unc_path}"
+                    )
+            except Exception as exc:  # noqa: BLE001 - plotting is best-effort
+                print_progress(
+                    settings, budget, f"uncertainty surface plot skipped: {exc}"
+                )
 
     return rmb, submitted, budget
 
@@ -1762,6 +1668,13 @@ def _report(
     print("\nSurface posterior")
     print(f"  measured configs: {_measured_config_count(rmb._data)}")
     print(f"  log-rms uncertainty over scored (r,Q): {np.sqrt(mean_var):.4f}")
+    diag = _residual_diagnostics(rmb._data, params, weights, settings)
+    print(
+        "  goodness of fit: "
+        f"chi2/dof={diag['chi2_dof']:.3f} deviance/dof={diag['dev_dof']:.3f} "
+        f"(N={diag['n_points']}, k={_effective_free_params(settings)}, "
+        f"dof={diag['dof']}, max|z|={diag['max_abs']:.1f}, flagged={diag['n_flag']})"
+    )
     a = [float(_wquantile(params[:, j], weights, 0.5)) for j in range(_N_PARAMS)]
     print(f"  median rates @Qref (L1, L2; dL/dQ: m1, m2; d2L/dQ2: nu1, nu2; V) = "
           f"({a[_I_L1]:.3g}, {a[_I_L2]:.3g}; {a[_I_M1]:.3g}, {a[_I_M2]:.3g}; "
@@ -1851,6 +1764,43 @@ def _surface_median_params(
     return np.array(
         [float(_wquantile(params[:, j], weights, 0.5)) for j in range(_N_PARAMS)]
     )
+
+
+def _surface_logn_mean_sigma(
+    data,
+    settings: CostAwareSurfaceSettings,
+    rr: np.ndarray,
+    qq: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Posterior mean and std of log n*(r,Q) on a (rr, qq) mesh.
+
+    Returns (mean_logn, sigma_logn) with the same shape as ``rr``, computed from
+    the full grid posterior.  Memory-light: loops mesh points and reduces over
+    the posterior per point, storing only per-node scalars.  The std is the
+    pointwise posterior uncertainty of the natural-log boundary -- the quantity
+    the +-sigma surfaces envelope.
+    """
+    params, weights = _stateless_posterior(data, settings)
+    if params is None or weights is None:
+        return None
+    mean_logn = np.full(rr.shape, np.nan, dtype=float)
+    sigma_logn = np.full(rr.shape, np.nan, dtype=float)
+    flat_r = rr.ravel()
+    flat_q = qq.ravel()
+    mean_flat = mean_logn.ravel()
+    sigma_flat = sigma_logn.ravel()
+    for idx in range(flat_r.size):
+        d = _denominator(params, float(flat_r[idx]), float(flat_q[idx]), settings)
+        ok = (d > 0.0) & (weights > 0.0)
+        if not np.any(ok):
+            continue
+        w = weights[ok] / np.sum(weights[ok])
+        log_n = -np.log(d[ok])
+        mean = float(np.sum(w * log_n))
+        var = float(np.sum(w * log_n * log_n) - mean * mean)
+        mean_flat[idx] = mean
+        sigma_flat[idx] = float(np.sqrt(max(var, 0.0)))
+    return mean_flat.reshape(rr.shape), sigma_flat.reshape(rr.shape)
 
 
 def _trapezoid(y: np.ndarray, x: np.ndarray, *, axis: int = -1) -> np.ndarray:
@@ -2530,6 +2480,149 @@ def plot_surface_3d(
     return png_path
 
 
+def plot_surface_uncertainty_3d(
+    rmb: RMB,
+    settings: CostAwareSurfaceSettings,
+    png_path: str | Path | None = None,
+    *,
+    show: bool = False,
+    show_block: bool = True,
+    show_pause: float = 0.001,
+    close: bool = True,
+    figure_name: str | None = None,
+):
+    """Plot the posterior-mean boundary surface enveloped by +- k sigma surfaces.
+
+    At every (r, Q) the grid posterior gives a full distribution over
+    log n*(r,Q); ``_surface_logn_mean_sigma`` returns its mean and standard
+    deviation on the plot mesh.  This draws three surfaces in log10(n):
+    the mean boundary and the mean +- k sigma envelope (k =
+    settings.surface_uncertainty_sigma).  The vertical gap between the upper and
+    lower sheets is the spatially-resolved boundary uncertainty -- it shows
+    *where* on (r, Q) the boundary is well- vs poorly-determined (typically
+    widest in the sparsely-sampled, extrapolated low-r / high-Q corner).
+
+    Note: the band is the posterior's *self-reported* uncertainty, so it is only
+    honest if the posterior is calibrated.  Read it together with the
+    goodness-of-fit chi2/dof printed in the report -- a tight band with a large
+    chi2/dof means the boundary is precisely placed at a systematically wrong
+    location (the band cannot see model misspecification).
+    """
+    import matplotlib
+    if not show:
+        matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import TwoSlopeNorm
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (registers 3d projection)
+
+    data = rmb._data
+    r_lo, r_hi = settings.ratio_bounds
+    q_lo, q_hi = min(settings.q_values), max(settings.q_values)
+    n_lo, n_hi = (
+        settings.n_gates_bounds
+        if settings.surface_plot_n_gates_bounds is None
+        else settings.surface_plot_n_gates_bounds
+    )
+    z_lo, z_hi = np.log10([max(n_lo, _EPS), max(n_hi, _EPS)])
+    k = float(settings.surface_uncertainty_sigma)
+
+    # A coarser mesh than plot_surface_3d: each node reduces over the full
+    # posterior, so keep it modest for speed/memory.
+    grid_r = np.linspace(r_lo, r_hi, 40)
+    grid_q = np.linspace(q_lo, q_hi, 40)
+    rr, qq = np.meshgrid(grid_r, grid_q)
+
+    result = _surface_logn_mean_sigma(data, settings, rr, qq)
+    if result is None:
+        return None
+    mean_logn, sigma_logn = result
+
+    ln10 = np.log(10.0)
+
+    def _clip_log10(natural_log_n):
+        n = np.exp(natural_log_n)
+        z = natural_log_n / ln10  # log10(n)
+        return np.where((n >= n_lo) & (n <= n_hi), z, np.nan)
+
+    mean_z = _clip_log10(mean_logn)
+    upper_z = _clip_log10(mean_logn + k * sigma_logn)
+    lower_z = _clip_log10(mean_logn - k * sigma_logn)
+
+    fig = plt.figure(num=figure_name, figsize=(9.5, 7.5), clear=True)
+    ax = fig.add_subplot(projection="3d")
+
+    # Mean boundary surface, coloured by the local 1-sigma width (in log10 n)
+    # so the colour itself encodes where uncertainty is large.
+    sigma_log10 = sigma_logn / ln10
+    facenorm = plt.Normalize(
+        vmin=float(np.nanmin(sigma_log10)) if np.any(np.isfinite(sigma_log10)) else 0.0,
+        vmax=float(np.nanmax(sigma_log10)) if np.any(np.isfinite(sigma_log10)) else 1.0,
+    )
+    facecolors = plt.cm.viridis(facenorm(np.nan_to_num(sigma_log10)))
+    ax.plot_surface(
+        rr, qq, mean_z, facecolors=facecolors, alpha=0.85,
+        linewidth=0, antialiased=True, rstride=1, cstride=1, shade=False,
+    )
+    # +-k sigma envelope as translucent grey sheets.
+    ax.plot_surface(
+        rr, qq, upper_z, color="0.5", alpha=0.18,
+        linewidth=0, antialiased=True, rstride=1, cstride=1, shade=False,
+    )
+    ax.plot_surface(
+        rr, qq, lower_z, color="0.5", alpha=0.18,
+        linewidth=0, antialiased=True, rstride=1, cstride=1, shade=False,
+    )
+    ax.plot_wireframe(
+        rr, qq, upper_z, color="0.35", alpha=0.45,
+        linewidth=0.5, rstride=4, cstride=4,
+    )
+    ax.plot_wireframe(
+        rr, qq, lower_z, color="0.35", alpha=0.45,
+        linewidth=0.5, rstride=4, cstride=4,
+    )
+
+    # Overlay the measured points for context (same colour convention as the
+    # main surface plot).
+    ratios, gates, qubits, succ, fail = _measured_arrays(data)
+    total = succ + fail
+    mask = total > 0
+    if np.any(mask):
+        p_hat = succ[mask] / total[mask]
+        ax.scatter(
+            ratios[mask], qubits[mask], np.log10(np.maximum(gates[mask], _EPS)),
+            c=p_hat, cmap="coolwarm_r",
+            norm=TwoSlopeNorm(vcenter=0.5, vmin=0.0, vmax=1.0),
+            s=12, edgecolor="k", linewidth=0.2, depthshade=True, alpha=0.6,
+        )
+
+    mappable = plt.cm.ScalarMappable(norm=facenorm, cmap="viridis")
+    mappable.set_array([])
+    cbar = fig.colorbar(mappable, ax=ax, shrink=0.6, pad=0.10)
+    cbar.set_label(r"$\sigma$ of $\log_{10} n_*(r,Q)$  (boundary uncertainty)")
+
+    ax.set_xlabel("two-qubit ratio  r")
+    ax.set_ylabel("n_qubits  Q")
+    ax.set_zlabel(r"$\log_{10}(\mathrm{gate\ count}\ n)$")
+    ax.set_zlim(z_lo, z_hi)
+    ax.set_title(
+        rf"Fidelity-0.5 boundary with $\pm{k:g}\sigma$ uncertainty surfaces"
+    )
+    fig.tight_layout()
+    if png_path is not None:
+        png_path = Path(png_path)
+        png_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(png_path, dpi=150)
+    if show:
+        plt.show(block=show_block)
+        if not show_block:
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+            plt.pause(max(float(show_pause), 0.001))
+    if close:
+        plt.close(fig)
+    return png_path
+
+
 def run_surface(
     *,
     q_values: tuple[int, ...] = tuple(range(5, 51, 5)),
@@ -2541,6 +2634,10 @@ def run_surface(
     surface_plot_show: bool = False,
     surface_plot_analytic: bool = True,
     surface_plot_n_gates_bounds: tuple[int, int] | None = None,
+    surface_uncertainty_plot: bool = False,
+    surface_uncertainty_plot_path: str | Path | None = DEFAULT_UNCERTAINTY_PLOT_PATH,
+    surface_uncertainty_plot_show: bool = False,
+    surface_uncertainty_sigma: float = 1.0,
     calibrated_surface_path: str | Path | None = None,
     gp_grid_surface_path: str | Path | None = None,
     gp_grid_surface_label: str | None = None,
@@ -2575,6 +2672,10 @@ def run_surface(
         surface_plot_show=surface_plot_show,
         surface_plot_analytic=surface_plot_analytic,
         surface_plot_n_gates_bounds=surface_plot_n_gates_bounds,
+        surface_uncertainty_plot=surface_uncertainty_plot or surface_uncertainty_plot_show,
+        surface_uncertainty_plot_path=surface_uncertainty_plot_path,
+        surface_uncertainty_plot_show=surface_uncertainty_plot_show,
+        surface_uncertainty_sigma=surface_uncertainty_sigma,
         calibrated_surface_path=calibrated_surface_path,
         gp_grid_surface_path=gp_grid_surface_path,
         gp_grid_surface_label=gp_grid_surface_label,
@@ -2615,24 +2716,6 @@ def run_slope_scan(
 
     from the *raw* survival counts, and fits a straight line log2 F = a0 - D n.
     The slope magnitude D is the effective per-gate decay; n* = 1/D.
-
-    Why run it: it answers, with no model in the loop, whether the Q-ramp seen in
-    the fit-vs-analytic comparison is real.
-      * If the measured D(r,Q) is flat in Q, the effective decay does NOT depend
-        on Q, so the Q-ramp is entering through the fit or the reference (and the
-        analytic reference being Q-flat is correct).
-      * If the measured D(r,Q) steepens with Q, the SympleQ effective decay
-        genuinely depends on Q, the fit is faithfully tracking it, and the
-        Q-ramp is the Q-flat analytic reference being the idealisation.
-    Two side outputs are also reported per slice: the fitted intercept ``a0``
-    (a0 != 0 means the amplitude is not 1 - B, i.e. the unit-visibility
-    assumption fails -- assumption 6), and ``r_real`` (the mean realized ratio
-    actually run, which can differ from the target near the scrambler floor).
-
-    Depths are placed at ``depth_multiples`` x n*_analytic(r) so log2 F spans a
-    well-conditioned range; only points whose realized ratio is within
-    ``realized_ratio_tol`` of the target and whose F is in ``fit_f_range`` are
-    used in the fit.
     """
     q_values = tuple(sorted({int(q) for q in q_values}))
     settings = CostAwareSurfaceSettings(
@@ -2651,8 +2734,6 @@ def run_slope_scan(
     backend = rmb.backend
     vis = float(settings.initial_visibility)
 
-    # Build and submit every probe up front (one stitched batch per call is fine;
-    # this is a diagnostic, not a budgeted design run).
     requests: list[MeasurementRequest] = []
     for r in ratios:
         n_star_analytic = float(
@@ -2742,13 +2823,7 @@ def print_run_score(
     settings: CostAwareSurfaceSettings,
     budget: Budget,
 ) -> None:
-    """Original-style fit-to-analytic-line score for the reference-Q slice.
-
-    Uses the same ``parametric_boundary_fit_score`` and
-    ``parametric_bootstrap_analytic_coverage`` as the original experiment; the
-    boundary fed to them is the surface slice at ``settings.n_qubits`` exposed
-    through ``settings.boundary_fit`` / ``settings.boundary_bootstrap``.
-    """
+    """Original-style fit-to-analytic-line score for the reference-Q slice."""
     print(f"\nRun score (n_qubits = {settings.n_qubits})")
     try:
         score = parametric_boundary_fit_score(rmb._data, settings)
@@ -2804,72 +2879,25 @@ if __name__ == "__main__":
 
     # --- previous surface run (uncomment to go back to the full design) -----
     rmb, configs, budget = run_surface(
-        q_values=tuple(range(5, 51, 5)),   # score over Q = 5,10,...,50
+        q_values=tuple(range(5, 21, 5)),   # score over Q = 5,10,...,50
         acquisition_q_resolution=7,     # Q candidates across the full Q range
         acquisition_ratio_points=12,     # r candidates across ratio_bounds
         backend_model="sympleq",
-        hqc_budget=5000.0,
+        hqc_budget=300.0,
         plot=True,
         surface_plot_path=DEFAULT_SURFACE_PLOT_PATH,
         surface_plot_show=True,
         surface_plot_n_gates_bounds=(100, 3000),
+        # New: write/show the +-1 sigma boundary-uncertainty surface at run end.
+        surface_uncertainty_plot_show=True,
+        surface_uncertainty_sigma=1.0,
         gp_grid_surface_path=(
             EXPERIMENTS_DIR.parent
             / "rmb_data"
             / "FLE_20260630_114233_gp_grid_3d.npz"
         ),
         gp_grid_surface_label="Rick/Shreya Surface",
-        rng_seed=223,
-        verbose=True,
-        use_scrambler=True,
-        live_surface_plot_show=True,
-        live_surface_plot_pause=0.5,
-        live_volume_plot=True,
-        live_volume_plot_show=True,
-        live_volume_plot_pause=0.5,
-    )
-    rmb, configs, budget = run_surface(
-        q_values=tuple(range(5, 51, 5)),   # score over Q = 5,10,...,50
-        acquisition_q_resolution=7,     # Q candidates across the full Q range
-        acquisition_ratio_points=12,     # r candidates across ratio_bounds
-        backend_model="sympleq",
-        hqc_budget=5000.0,
-        plot=True,
-        surface_plot_path=DEFAULT_SURFACE_PLOT_PATH,
-        surface_plot_show=True,
-        surface_plot_n_gates_bounds=(100, 3000),
-        gp_grid_surface_path=(
-            EXPERIMENTS_DIR.parent
-            / "rmb_data"
-            / "FLE_20260630_114233_gp_grid_3d.npz"
-        ),
-        gp_grid_surface_label="Rick/Shreya Surface",
-        rng_seed=1234,
-        verbose=True,
-        use_scrambler=True,
-        live_surface_plot_show=True,
-        live_surface_plot_pause=0.5,
-        live_volume_plot=True,
-        live_volume_plot_show=True,
-        live_volume_plot_pause=0.5,
-    )
-    rmb, configs, budget = run_surface(
-        q_values=tuple(range(5, 51, 5)),   # score over Q = 5,10,...,50
-        acquisition_q_resolution=7,     # Q candidates across the full Q range
-        acquisition_ratio_points=12,     # r candidates across ratio_bounds
-        backend_model="sympleq",
-        hqc_budget=5000.0,
-        plot=True,
-        surface_plot_path=DEFAULT_SURFACE_PLOT_PATH,
-        surface_plot_show=True,
-        surface_plot_n_gates_bounds=(100, 3000),
-        gp_grid_surface_path=(
-            EXPERIMENTS_DIR.parent
-            / "rmb_data"
-            / "FLE_20260630_114233_gp_grid_3d.npz"
-        ),
-        gp_grid_surface_label="Rick/Shreya Surface",
-        rng_seed=12345,
+        rng_seed=123,
         verbose=True,
         use_scrambler=True,
         live_surface_plot_show=True,
