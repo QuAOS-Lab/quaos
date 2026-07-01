@@ -37,14 +37,17 @@ class FantasySettings(CrossingSettings):
     use_fake_corners: bool = True
     easy_corner_outcome: int = 1
     hard_corner_outcome: int = 0
+    fake_qubit_slices: int = 5
     extra_fake_anchors: list[tuple] = field(default_factory=list)
 
     # 3D AEPsych coordinate
     n_qubits_bounds: tuple[int, int] = (5, 20)
     level_set_n_qubits: int | None = None
+    qubit_band_length: int = 5
 
     # Explicit Sobol warm-up
     initial_sobol_samples: int = 10
+    sobol_band_batches: int = 5
     initial_sobol_max_cost_per_run: float | None = None
     sobol_scramble: bool = False
 
@@ -90,9 +93,9 @@ TARGET_THRESHOLD = 0.5
 # NuUMBER of Qubits
 # -------------------------------------------------------------------------
 
-N_QUBITS = 20
-N_QUBITS_BOUNDS = (5, 20)
-LEVEL_SET_N_QUBITS = N_QUBITS
+N_QUBITS_BOUNDS = (20, 50)
+# LEVEL_SET_N_QUBITS = N_QUBITS
+QUBIT_BAND_LENGTH = 5
 
 # -------------------------------------------------------------------------
 # SEARCH-BOX HANDLES
@@ -107,8 +110,8 @@ RATIO_BOUNDS = (0.1, 0.9)
 # -------------------------------------------------------------------------
 # Set to None to use the defaults inherited from CrossingSettings.
 
-HQC_BUDGET = 500.0
-MAX_COST_PER_RUN = 15.0
+HQC_BUDGET = 200
+MAX_COST_PER_RUN = 15
 
 # -------------------------------------------------------------------------
 # Gate BUDGET HANDLES
@@ -123,13 +126,15 @@ GATE_BUDGET = 7000
 USE_FAKE_CORNERS = True
 EASY_CORNER_OUTCOME = 1
 HARD_CORNER_OUTCOME = 0
+FAKE_QUBIT_SLICES = 5
 EXTRA_FAKE_ANCHORS = []
 
 # -------------------------------------------------------------------------
 # SOBOL WARM-UP HANDLES
 # -------------------------------------------------------------------------
 
-INITIAL_SOBOL_SAMPLES = 12
+INITIAL_SOBOL_SAMPLES = 5
+SOBOL_BAND_BATCHES = 5
 INITIAL_SOBOL_MAX_COST_PER_RUN = 15.0
 SOBOL_SCRAMBLE = True
 
@@ -172,7 +177,7 @@ BACKEND_FACTORY = default_backend_factory
 # REPRODUCIBILITY / DEBUG HANDLES
 # -------------------------------------------------------------------------
 
-RNG_SEEDS = [2027]
+RNG_SEEDS = [2026]
 VERBOSE_FANTASIES = True
 PLOT = True
 
@@ -184,8 +189,10 @@ def control_panel_settings_kwargs() -> dict:
         use_fake_corners=USE_FAKE_CORNERS,
         easy_corner_outcome=EASY_CORNER_OUTCOME,
         hard_corner_outcome=HARD_CORNER_OUTCOME,
+        fake_qubit_slices=FAKE_QUBIT_SLICES,
         extra_fake_anchors=EXTRA_FAKE_ANCHORS,
         initial_sobol_samples=INITIAL_SOBOL_SAMPLES,
+        sobol_band_batches=SOBOL_BAND_BATCHES,
         initial_sobol_max_cost_per_run=INITIAL_SOBOL_MAX_COST_PER_RUN,
         sobol_scramble=SOBOL_SCRAMBLE,
         save_gp_prediction_grid=SAVE_GP_PREDICTION_GRID,
@@ -204,9 +211,10 @@ def control_panel_settings_kwargs() -> dict:
         verbose_fantasies=VERBOSE_FANTASIES,
         plot=PLOT,
         gate_budget=GATE_BUDGET,
-        n_qubits=N_QUBITS,
+        # n_qubits=N_QUBITS,
         n_qubits_bounds=N_QUBITS_BOUNDS,
-        level_set_n_qubits=LEVEL_SET_N_QUBITS,
+        # level_set_n_qubits=LEVEL_SET_N_QUBITS,
+        qubit_band_length=QUBIT_BAND_LENGTH,
     )
 
     if N_GATES_BOUNDS is not None:

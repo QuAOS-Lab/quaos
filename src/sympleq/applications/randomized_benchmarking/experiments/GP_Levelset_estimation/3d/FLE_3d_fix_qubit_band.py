@@ -82,7 +82,7 @@ class Observation(NamedTuple):
 
 
 ## =============================================================================
-# Basic helpers
+# Basic helpers h
 # =============================================================================
 
 
@@ -227,19 +227,35 @@ def config_from_aepsych_x(
     )
 
 
-def config_from_aepsych_x_fixed_qubits(
+def qubit_band_from_first_selection(
+    settings: FantasySettings,
+    first_n_qubits: float,
+) -> tuple[int, int]:
+    """Build the per-batch qubit band from the first fantasy proposal."""
+
+    q_min, q_max = n_qubits_bounds(settings)
+    band_length = max(0, int(settings.qubit_band_length))
+    band_start_max = max(q_min, q_max - band_length)
+    band_start = int(np.clip(round(float(first_n_qubits)), q_min, band_start_max))
+    band_end = min(q_max, band_start + band_length)
+    return band_start, band_end
+
+
+def config_from_aepsych_x_qubit_band(
     x: torch.Tensor,
     settings: FantasySettings,
-    fixed_n_qubits: int,
+    qubit_band: tuple[int, int],
 ) -> RMBConfig:
-    """Convert AEPsych's point into an RMBConfig on one fixed qubit slice."""
+    """Convert AEPsych's point into an RMBConfig inside one qubit band."""
 
     x_cpu = x.detach().cpu()
+    band_start, band_end = qubit_band
+    n_qubits = int(np.clip(round(float(x_cpu[0, 2].item())), band_start, band_end))
     return make_config_3d(
         settings,
         float(x_cpu[0, 0].item()),
         float(x_cpu[0, 1].item()),
-        float(fixed_n_qubits),
+        float(n_qubits),
     )
 
 
@@ -267,13 +283,13 @@ def select_affordable_prefix(
     """
 
     selected: list[RMBConfig] = []
-    fixed_n_qubits: int | None = None
+    qubit_band: tuple[int, int] | None = None
     cost_cap = settings.max_cost_per_run if max_cost_per_run is None else max_cost_per_run
 
     for candidate in candidates:
-        if fixed_n_qubits is None:
-            fixed_n_qubits = candidate.n_qubits
-        elif candidate.n_qubits != fixed_n_qubits:
+        if qubit_band is None:
+            qubit_band = qubit_band_from_first_selection(settings, candidate.n_qubits)
+        elif not qubit_band[0] <= candidate.n_qubits <= qubit_band[1]:
             continue
 
         trial_batch = selected + [candidate]
@@ -398,18 +414,12 @@ def sobol_initial_candidates(
         return []
 
     q_min, q_max = n_qubits_bounds(settings)
-    available_qubits = list(range(q_min, q_max + 1))
-    n_sobol = min(int(settings.initial_sobol_samples), len(available_qubits))
-    qubit_indices: list[int] = []
-    for idx in np.rint(np.linspace(0, len(available_qubits) - 1, n_sobol)).astype(int):
-        if int(idx) not in qubit_indices:
-            qubit_indices.append(int(idx))
-    for idx in range(len(available_qubits)):
-        if len(qubit_indices) >= n_sobol:
-            break
-        if idx not in qubit_indices:
-            qubit_indices.append(idx)
-    qubit_values = [available_qubits[idx] for idx in qubit_indices[:n_sobol]]
+    band_length = max(0, int(settings.qubit_band_length))
+    band_start_max = max(q_min, q_max - band_length)
+    n_sobol = max(1, int(settings.sobol_band_batches))
+    band_starts = np.rint(np.linspace(q_min, band_start_max, n_sobol)).astype(int)
+    qubit_values = list(dict.fromkeys(int(q) for q in band_starts))
+    n_sobol = len(qubit_values)
 
     engine = torch.quasirandom.SobolEngine(
         dimension=2,
@@ -863,7 +873,7 @@ def select_fantasy_globalsur_batch(
 
     selected: list[RMBConfig] = []
     seen: set[RMBConfig] = set()
-    fixed_n_qubits: int | None = None
+    qubit_band: tuple[int, int] | None = None
 
     fantasy_strategy = copy_strategy_for_fantasies(
         real_strategy,
@@ -891,21 +901,17 @@ def select_fantasy_globalsur_batch(
         x_cpu = x.detach().cpu()
         raw_n_gates = float(x_cpu[0, 0].item())
         raw_ratio = float(x_cpu[0, 1].item())
-        raw_n_qubits = (
-            float(x_cpu[0, 2].item())
-            if fixed_n_qubits is None
-            else float(fixed_n_qubits)
-        )
+        raw_n_qubits = float(x_cpu[0, 2].item())
 
-        if fixed_n_qubits is None:
-            candidate = config_from_aepsych_x(x, settings)
-            fixed_n_qubits = candidate.n_qubits
-        else:
-            candidate = config_from_aepsych_x_fixed_qubits(
-                x,
-                settings,
-                fixed_n_qubits,
-            )
+        if qubit_band is None:
+            qubit_band = qubit_band_from_first_selection(settings, raw_n_qubits)
+
+        candidate = config_from_aepsych_x_qubit_band(
+            x,
+            settings,
+            qubit_band,
+        )
+        raw_n_qubits = float(candidate.n_qubits)
 
         # Rounding can cause duplicate realized configs.
         if candidate in seen:
@@ -1011,7 +1017,7 @@ def select_plain_aepsych_batch(
 
     selected: list[RMBConfig] = []
     seen: set[RMBConfig] = set()
-    fixed_n_qubits: int | None = None
+    qubit_band: tuple[int, int] | None = None
 
     batch_limit = settings.max_batch_size if settings.batching else 1
     max_attempts = max(5 * batch_limit, batch_limit + 10)
@@ -1032,21 +1038,17 @@ def select_plain_aepsych_batch(
         x_cpu = x.detach().cpu()
         raw_n_gates = float(x_cpu[0, 0].item())
         raw_ratio = float(x_cpu[0, 1].item())
-        raw_n_qubits = (
-            float(x_cpu[0, 2].item())
-            if fixed_n_qubits is None
-            else float(fixed_n_qubits)
-        )
+        raw_n_qubits = float(x_cpu[0, 2].item())
 
-        if fixed_n_qubits is None:
-            candidate = config_from_aepsych_x(x, settings)
-            fixed_n_qubits = candidate.n_qubits
-        else:
-            candidate = config_from_aepsych_x_fixed_qubits(
-                x,
-                settings,
-                fixed_n_qubits,
-            )
+        if qubit_band is None:
+            qubit_band = qubit_band_from_first_selection(settings, raw_n_qubits)
+
+        candidate = config_from_aepsych_x_qubit_band(
+            x,
+            settings,
+            qubit_band,
+        )
+        raw_n_qubits = float(candidate.n_qubits)
 
         if candidate in seen:
             continue

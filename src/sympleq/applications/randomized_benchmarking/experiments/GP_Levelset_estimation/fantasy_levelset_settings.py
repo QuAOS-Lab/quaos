@@ -46,6 +46,7 @@ class FantasySettings(CrossingSettings):
 
     #GP grid saving
     save_gp_prediction_grid: bool = False
+    save_real_checkpoints: bool = True
 
     # Gate budget per stitched submission (for emulator only)
     gate_budget: int | None = None
@@ -86,6 +87,8 @@ TARGET_THRESHOLD = 0.5
 # -------------------------------------------------------------------------
 
 N_QUBITS = 5
+# For a multi-slice run, use e.g.:
+N_QUBITS = [5,20]
 
 # -------------------------------------------------------------------------
 # SEARCH-BOX HANDLES
@@ -116,9 +119,9 @@ GATE_BUDGET = 7500
 USE_FAKE_CORNERS = True
 EASY_CORNER_OUTCOME = 1
 HARD_CORNER_OUTCOME = 0
-EXTRA_FAKE_ANCHORS = [(15, 0.1, 1), (25, 0.2, 1), (20, 0.1, 1),
-                      (2900, 0.85, 0), (2890, 0.87, 0), (2788, 0.9, 0)
-                      ]
+EXTRA_FAKE_ANCHORS =[#(15, 0.1, 1), (25, 0.2, 1), (20, 0.1, 1),
+    #(2900, 0.85, 0), (2890, 0.87, 0), (2788, 0.9, 0)
+]
 
 # -------------------------------------------------------------------------
 # SOBOL WARM-UP HANDLES
@@ -129,6 +132,7 @@ INITIAL_SOBOL_MAX_COST_PER_RUN = 15.0
 SOBOL_SCRAMBLE = True
 
 SAVE_GP_PREDICTION_GRID = True
+SAVE_REAL_CHECKPOINTS = True
 
 # -------------------------------------------------------------------------
 # GP / AEPSYCH HANDLES
@@ -183,6 +187,7 @@ def control_panel_settings_kwargs() -> dict:
         initial_sobol_max_cost_per_run=INITIAL_SOBOL_MAX_COST_PER_RUN,
         sobol_scramble=SOBOL_SCRAMBLE,
         save_gp_prediction_grid=SAVE_GP_PREDICTION_GRID,
+        save_real_checkpoints=SAVE_REAL_CHECKPOINTS,
         optimization_steps=OPTIMIZATION_STEPS,
         inducing_size=INDUCING_SIZE,
         acquisition_function=ACQUISITION_FUNCTION,

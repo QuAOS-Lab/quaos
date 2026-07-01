@@ -32,14 +32,15 @@ SHOW_VOLUME_BACKGROUND = False
 SHOW_MEASURED_POINTS = True
 SHOW_FAILURE_POINTS = True
 SHOW_SUCCESS_POINTS = True
-SHOW_ONE_SIGMA_SURFACES = True
+SHOW_ONE_SIGMA_SURFACES = False
 
 # Probability volume settings, only used if SHOW_VOLUME_BACKGROUND = True.
 VOLUME_OPACITY = 0.1
 VOLUME_SURFACE_COUNT = 12
 
 # Main level-set surface.
-ISOSURFACE_OPACITY = 0.60
+ISOSURFACE_OPACITY = 0.001
+ISOSURFACE_WIDTH = 1e-3
 
 ONE_SIGMA_SURFACE_OPACITY = 0.28
 
@@ -58,6 +59,29 @@ def sibling_html_path(json_path: Path) -> Path:
     """Return the expected output HTML path."""
 
     return json_path.parent / f"{json_path.stem}_fle_isosurface_3d.html"
+
+
+def json_path_from_grid_path(grid_path: Path) -> Path | None:
+    """Return the matching JSON path for a saved grid, if one exists."""
+
+    name = grid_path.name
+    for suffix in ("_gp_grid_3d.npz", "_gp_grid.npz"):
+        if name.endswith(suffix):
+            candidate = grid_path.parent / f"{name[:-len(suffix)]}.json"
+            return candidate if candidate.exists() else None
+    return None
+
+
+def html_path_from_grid_path(grid_path: Path) -> Path:
+    """Return the output HTML path for a direct grid input."""
+
+    return grid_path.parent / f"{grid_path.stem}_fle_isosurface_3d.html"
+
+
+def slice_json_paths_for_grid(grid_path: Path) -> list[Path]:
+    """Return fixed-qubit slice JSON files next to a stacked slice grid."""
+
+    return sorted(grid_path.parent.glob("*_q*.json"))
 
 
 # -------------------------------------------------------------------------
@@ -146,6 +170,20 @@ def load_points(
         np.asarray(qubits, dtype=float),
         np.asarray(outcomes, dtype=bool),
     )
+
+
+def load_points_from_jsons(json_paths: list[Path]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Load measured points from several fixed-qubit slice JSON files."""
+
+    chunks = [load_points(path) for path in json_paths if path.exists()]
+    if not chunks:
+        return (
+            np.asarray([], dtype=float),
+            np.asarray([], dtype=float),
+            np.asarray([], dtype=float),
+            np.asarray([], dtype=bool),
+        )
+    return tuple(np.concatenate(parts) for parts in zip(*chunks))
 
 
 # -------------------------------------------------------------------------
@@ -262,9 +300,22 @@ def plot_fle_isosurface_3d(
     Saves an interactive HTML file and opens the plot.
     """
 
-    json_path = Path(json_path)
-    grid_path = sibling_grid_path(json_path) if grid_path is None else Path(grid_path)
-    html_path = sibling_html_path(json_path) if html_path is None else Path(html_path)
+    input_path = Path(json_path)
+    measured_json_paths: list[Path] = []
+
+    if input_path.suffix.lower() == ".npz":
+        grid_path = input_path if grid_path is None else Path(grid_path)
+        json_candidate = json_path_from_grid_path(grid_path)
+        if json_candidate is not None:
+            measured_json_paths = [json_candidate]
+        else:
+            measured_json_paths = slice_json_paths_for_grid(grid_path)
+        html_path = html_path_from_grid_path(grid_path) if html_path is None else Path(html_path)
+    else:
+        json_path = input_path
+        grid_path = sibling_grid_path(json_path) if grid_path is None else Path(grid_path)
+        html_path = sibling_html_path(json_path) if html_path is None else Path(html_path)
+        measured_json_paths = [json_path]
 
     loaded = load_3d_grid(grid_path)
 
@@ -340,8 +391,8 @@ def plot_fle_isosurface_3d(
             y=y,
             z=z,
             value=p,
-            isomin=target,
-            isomax=target,
+            isomin=target - ISOSURFACE_WIDTH,
+            isomax=target + ISOSURFACE_WIDTH,
             surface_count=1,
             opacity=ISOSURFACE_OPACITY,
             colorscale=[
@@ -388,8 +439,8 @@ def plot_fle_isosurface_3d(
                         y=y,
                         z=z,
                         value=values,
-                        isomin=latent_target,
-                        isomax=latent_target,
+                        isomin=latent_target - ISOSURFACE_WIDTH,
+                        isomax=latent_target + ISOSURFACE_WIDTH,
                         surface_count=1,
                         opacity=ONE_SIGMA_SURFACE_OPACITY,
                         colorscale=[
@@ -411,7 +462,9 @@ def plot_fle_isosurface_3d(
     # ------------------------------------------------------------------
 
     if SHOW_MEASURED_POINTS:
-        point_gates, point_ratios, point_qubits, point_outcomes = load_points(json_path)
+        point_gates, point_ratios, point_qubits, point_outcomes = load_points_from_jsons(
+            measured_json_paths
+        )
 
         if len(point_gates) == 0:
             print(

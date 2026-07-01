@@ -49,7 +49,7 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     print_progress,
     start_run,
 )
-from fantasy_levelset_estimation_3d_fix_qubits import (
+from FLE_3d_fix_qubit_band import (
     Observation,
     build_strategy,
     choose_gp_device,
@@ -57,7 +57,9 @@ from fantasy_levelset_estimation_3d_fix_qubits import (
     level_set_configs,
     measure_batch_and_update_real_strategy,
     move_strategy_models_to_device,
+    repair_stats,
     refreshed_strategy_for_prediction,
+    reset_repair_stats,
     seed_fake_corners,
     select_affordable_prefix,
     select_fantasy_globalsur_batch,
@@ -219,6 +221,7 @@ def write_hqc_metadata(
         "spent_hqc": float(settings.hqc_budget - budget.remaining_hqc),
         "remaining_hqc": float(budget.remaining_hqc),
         "hqc_budget": float(settings.hqc_budget),
+        "repair_stats": repair_stats(),
     }
     if sent_configs is not None:
         payload["experiment"]["sent_configs"] = [
@@ -374,6 +377,7 @@ def run(
             torch.cuda.manual_seed_all(settings.rng_seed)
 
     print_run_handles(settings, gp_device=gp_device)
+    reset_repair_stats()
 
     rng, rmb, budget = start_run(settings)
     backend_details = [
@@ -421,27 +425,35 @@ def run(
 
     if sobol_candidates:
         print("[sobol configs]")
-        for index, candidate in enumerate(sobol_candidates, start=1):
-            sobol_batch, exhausted = select_affordable_prefix(
-                [candidate],
-                settings,
-                budget,
-                max_cost_per_run=settings.initial_sobol_max_cost_per_run,
-            )
+        sobol_batch, exhausted = select_affordable_prefix(
+            sobol_candidates,
+            settings,
+            budget,
+            max_cost_per_run=settings.initial_sobol_max_cost_per_run,
+        )
 
-            if not sobol_batch:
-                break
-
-            config = sobol_batch[0]
+        for index, config in enumerate(sobol_batch, start=1):
+            is_valid = valid_config(config)
             print(
-                f"  submission={index:03d}: "
+                f"  config={index:03d}: "
                 f"n_gates={config.n_gates} "
                 f"n_1q={config.n_1qb_gates} "
                 f"n_2q={config.n_2qb_gates} "
                 f"ratio={config.ratio_2_qb_gates:.4f} "
                 f"n_qubits={config.n_qubits} "
-                f"valid={valid_config(config)}"
+                f"valid={is_valid}"
             )
+            if not is_valid:
+                print(
+                    "[sobol invalid sent config] "
+                    f"n_1q={config.n_1qb_gates} "
+                    f"n_2q={config.n_2qb_gates} "
+                    f"n_gates={config.n_gates} "
+                    f"ratio={config.ratio_2_qb_gates:.4f} "
+                    f"n_qubits={config.n_qubits}"
+                )
+
+        if sobol_batch:
             measure_batch_and_update_real_strategy(
                 phase="sobol",
                 selected=sobol_batch,
@@ -469,11 +481,8 @@ def run(
                 sent_configs=sobol_batch,
             )
 
-            if exhausted:
-                break
-
     if sobol_submissions:
-        print(f"sobol: measured {sobol_submissions} separate submissions")
+        print(f"sobol: measured {len(sobol_batch)} configs in {sobol_submissions} submission")
     else:
         print_progress(settings, budget, "sobol: no affordable initial batch")
 
@@ -568,13 +577,7 @@ def run(
         device=gp_device,
     )
 
-    crossings = level_set_configs(
-        plot_strategy,
-        settings,
-        device=gp_device,
-        measured_data=data,
-        debug=False,
-    )
+    crossings = []
 
     base_path = None
     if settings.save_path is not None:
@@ -594,8 +597,8 @@ def run(
         )
 
     if return_budget:
-        return rmb, crossings, budget
-    return rmb, crossings
+        return rmb, budget
+    return rmb
 
 
 def run_with_budget(settings: FantasySettings):

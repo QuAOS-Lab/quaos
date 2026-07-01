@@ -56,6 +56,7 @@ from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estima
 _ORIGINAL_AEPSYCH_TRANSFORM_OPTIONS = aepsych_parameter_transforms.transform_options
 _ORIGINAL_AEPSYCH_STR_TO_LIST = Config._str_to_list
 _ORIGINAL_AEPSYCH_STR_TO_ARRAY = Config._str_to_array
+_REPAIR_STATS = {"accepted_configs": 0, "repaired_configs": 0}
 
 
 class Observation(NamedTuple):
@@ -141,6 +142,46 @@ def config_from_aepsych_x(
         float(x_cpu[0, 0].item()),
         float(x_cpu[0, 1].item()),
     )
+
+
+def valid_config(config: RMBConfig) -> bool:
+    """Return whether the realized config has enough 1Q scrambler budget."""
+
+    return int(config.n_1qb_gates) >= 2 * int(config.n_qubits)
+
+
+def raw_validity(
+    settings: FantasySettings,
+    n_gates: float,
+    ratio: float,
+) -> tuple[bool, int, int, int]:
+    """Check the raw AEPsych point before make_config repairs it."""
+
+    q = int(settings.n_qubits)
+    n_2q = max(0, 2 * round(float(ratio) * float(n_gates) / 2))
+    n_1q = 2 * round((float(n_gates) - n_2q) / 2)
+    return n_1q >= 2 * q, n_1q, n_2q, q
+
+
+def reset_repair_stats() -> None:
+    _REPAIR_STATS["accepted_configs"] = 0
+    _REPAIR_STATS["repaired_configs"] = 0
+
+
+def record_repair(raw_is_valid: bool) -> None:
+    _REPAIR_STATS["accepted_configs"] += 1
+    if not raw_is_valid:
+        _REPAIR_STATS["repaired_configs"] += 1
+
+
+def repair_stats() -> dict[str, float | int]:
+    accepted = int(_REPAIR_STATS["accepted_configs"])
+    repaired = int(_REPAIR_STATS["repaired_configs"])
+    return {
+        "accepted_configs": accepted,
+        "repaired_configs": repaired,
+        "repair_fraction": float(repaired / accepted) if accepted else 0.0,
+    }
 
 
 def one_shot_requests(configs: list[RMBConfig]) -> list[MeasurementRequest]:
@@ -290,10 +331,12 @@ def sobol_initial_candidates(
         n_gates = float(n_min + u_n * (n_max - n_min))
         ratio = float(r_min + u_r * (r_max - r_min))
 
+        raw_is_valid, _, _, _ = raw_validity(settings, n_gates, ratio)
         config = settings.make_config(n_gates, ratio)
 
         # Realized gate-count rounding can create duplicates.
         if config not in seen:
+            record_repair(raw_is_valid)
             candidates.append(config)
             seen.add(config)
 
@@ -739,6 +782,9 @@ def select_fantasy_globalsur_batch(
         ):
             x = fantasy_strategy.gen()
 
+        x_cpu = x.detach().cpu()
+        raw_n_gates = float(x_cpu[0, 0].item())
+        raw_ratio = float(x_cpu[0, 1].item())
         candidate = config_from_aepsych_x(x, settings)
 
         # Rounding can cause duplicate realized configs.
@@ -780,17 +826,50 @@ def select_fantasy_globalsur_batch(
 
         selected.append(candidate)
         seen.add(candidate)
+        raw_is_valid, raw_n_1q, raw_n_2q, raw_q = raw_validity(
+            settings,
+            raw_n_gates,
+            raw_ratio,
+        )
+        record_repair(raw_is_valid)
 
         if settings.verbose_fantasies:
+            is_valid = valid_config(candidate)
             print(
                 "[fantasy] "
                 f"batch_index={len(selected):03d} "
+                f"raw_gates={raw_n_gates:.4g} "
+                f"raw_ratio={raw_ratio:.4f} "
+                f"raw_q={raw_q} "
+                f"raw_valid={raw_is_valid} "
                 f"n_gates={candidate.n_gates} "
+                f"n_qubits={candidate.n_qubits} "
                 f"ratio={candidate.ratio_2_qb_gates:.4f} "
+                f"valid={is_valid} "
                 f"p_success={p_success:.4f} "
                 f"virtual={virtual_outcome} "
                 f"batch_cost={next_cost:.3f}"
             )
+            if not raw_is_valid:
+                print(
+                    "[fantasy repaired config] "
+                    f"raw_n_1q={raw_n_1q} "
+                    f"raw_n_2q={raw_n_2q} "
+                    f"chosen_n_1q={candidate.n_1qb_gates} "
+                    f"chosen_n_2q={candidate.n_2qb_gates} "
+                    f"chosen_gates={candidate.n_gates} "
+                    f"chosen_ratio={candidate.ratio_2_qb_gates:.4f} "
+                    f"chosen_q={candidate.n_qubits}"
+                )
+            if not is_valid:
+                print(
+                    "[fantasy invalid sent config] "
+                    f"n_1q={candidate.n_1qb_gates} "
+                    f"n_2q={candidate.n_2qb_gates} "
+                    f"n_gates={candidate.n_gates} "
+                    f"ratio={candidate.ratio_2_qb_gates:.4f} "
+                    f"n_qubits={candidate.n_qubits}"
+                )
 
     return selected, False
 
@@ -827,6 +906,9 @@ def select_plain_aepsych_batch(
         ):
             x = strategy.gen()
 
+        x_cpu = x.detach().cpu()
+        raw_n_gates = float(x_cpu[0, 0].item())
+        raw_ratio = float(x_cpu[0, 1].item())
         candidate = config_from_aepsych_x(x, settings)
 
         if candidate in seen:
@@ -842,6 +924,7 @@ def select_plain_aepsych_batch(
 
         selected.append(candidate)
         seen.add(candidate)
+        record_repair(raw_validity(settings, raw_n_gates, raw_ratio)[0])
 
     return selected, False
 

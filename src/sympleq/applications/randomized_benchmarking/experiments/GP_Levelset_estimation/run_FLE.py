@@ -33,6 +33,7 @@ from __future__ import annotations
 
 
 import logging
+import json
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -56,7 +57,9 @@ from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estima
     level_set_configs,
     measure_batch_and_update_real_strategy,
     move_strategy_models_to_device,
+    repair_stats,
     refreshed_strategy_for_prediction,
+    reset_repair_stats,
     seed_fake_corners,
     select_affordable_prefix,
     select_fantasy_globalsur_batch,
@@ -73,12 +76,33 @@ from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estima
 
 # Storing
 
-def timestamped_personal_save_path(seed: int | None = None) -> Path:
+def timestamped_personal_save_path(
+    seed: int | None = None,
+    *,
+    timestamp: str | None = None,
+    n_qubits: int | None = None,
+    multi_qubit: bool = False,
+) -> Path:
     """Timestamped JSON output path under the repository's Personal folder."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
     if seed is None:
+        if multi_qubit:
+            return Path("Personal") / f"FLE_{timestamp}" / f"FLE_{timestamp}_q{n_qubits}.json"
         return Path("Personal") / f"FLE_{timestamp}.json"
+    if multi_qubit:
+        return (
+            Path("Personal")
+            / f"seed_{seed}"
+            / f"FLE_{timestamp}"
+            / f"FLE_{timestamp}_q{n_qubits}.json"
+        )
     return Path("Personal") / f"seed_{seed}" / f"FLE_{timestamp}.json"
+
+
+def qubit_slices(value) -> list[int]:
+    if isinstance(value, (list, tuple)):
+        return [int(q) for q in value]
+    return [int(value)]
 
 
 # Prediction
@@ -127,6 +151,122 @@ def predict_native_level_set(
         gates_grid,
         ratio_grid,
     )
+
+
+def save_gp_prediction_grid(
+    strategy: SequentialStrategy,
+    settings: FantasySettings,
+    *,
+    device: torch.device,
+    json_path: Path,
+) -> Path:
+    (
+        probabilities,
+        latent_mean,
+        latent_variance,
+        gates_grid,
+        ratio_grid,
+    ) = predict_native_level_set(
+        strategy,
+        settings,
+        device=device,
+    )
+
+    grid_path = json_path.parent / f"{json_path.stem}_gp_grid.npz"
+    np.savez_compressed(
+        grid_path,
+        gates_grid=gates_grid,
+        ratio_grid=ratio_grid,
+        x_grid=gates_grid,
+        y_grid=ratio_grid,
+        probabilities=probabilities,
+        latent_mean=latent_mean,
+        latent_variance=latent_variance,
+        target=np.asarray(contour_target(settings), dtype=float),
+        coordinate_system=np.asarray("total_ratio"),
+        rng_seed=np.asarray(
+            -1 if settings.rng_seed is None else settings.rng_seed,
+            dtype=int,
+        ),
+    )
+    print(f"[saved] GP grid: {grid_path}")
+    return grid_path
+
+
+def write_hqc_metadata(
+    json_path: Path,
+    settings: FantasySettings,
+    budget,
+    phase: str,
+    step: int | None,
+    sent_configs=None,
+) -> None:
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    payload["experiment"] = {
+        "phase": phase,
+        "step": step,
+        "spent_hqc": float(settings.hqc_budget - budget.remaining_hqc),
+        "remaining_hqc": float(budget.remaining_hqc),
+        "hqc_budget": float(settings.hqc_budget),
+        "repair_stats": repair_stats(),
+    }
+    if sent_configs is not None:
+        payload["experiment"]["sent_configs"] = [
+            {
+                "n_1qb_gates": int(config.n_1qb_gates),
+                "n_2qb_gates": int(config.n_2qb_gates),
+                "n_qubits": int(config.n_qubits),
+                "n_gates": int(config.n_gates),
+                "ratio_2_qb_gates": float(config.ratio_2_qb_gates),
+            }
+            for config in sent_configs
+        ]
+    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def save_real_checkpoint(
+    *,
+    rmb,
+    strategy: SequentialStrategy,
+    settings: FantasySettings,
+    observations: list[Observation],
+    device: torch.device,
+    phase: str,
+    step: int,
+    budget,
+    sent_configs=None,
+) -> None:
+    if not settings.save_real_checkpoints or settings.save_path is None:
+        return
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    checkpoint_path = (
+        Path(settings.save_path).parent
+        / f"measurement_{step:03d}_{phase}_{timestamp}.json"
+    )
+    rmb.save(checkpoint_path)
+    checkpoint_path = resolve_data_path(checkpoint_path)
+    write_hqc_metadata(checkpoint_path, settings, budget, phase, step, sent_configs)
+    print(f"[saved] real RMB checkpoint: {checkpoint_path}")
+
+    if not settings.save_gp_prediction_grid:
+        return
+
+    try:
+        checkpoint_strategy = refreshed_strategy_for_prediction(
+            strategy,
+            settings,
+            observations,
+            device=device,
+        )
+        save_gp_prediction_grid(
+            checkpoint_strategy,
+            settings,
+            device=device,
+            json_path=checkpoint_path,
+        )
+    except Exception as exc:
+        print(f"[checkpoint] GP grid was not saved: {exc}")
 
 
 def print_run_handles(
@@ -222,6 +362,7 @@ def run(
             torch.cuda.manual_seed_all(settings.rng_seed)
 
     print_run_handles(settings, gp_device=gp_device)
+    reset_repair_stats()
 
     rng, rmb, budget = start_run(settings)
     backend_details = [
@@ -244,6 +385,7 @@ def run(
 
     observations: list[Observation] = []
     results_for_plot: list[tuple[float, float, int]] = []
+    checkpoint_step = 0
 
     # -------------------------------------------------------------------------
     # 1. Fake anchors
@@ -284,6 +426,18 @@ def run(
             observations=observations,
             results_for_plot=results_for_plot,
             device=gp_device,
+        )
+        checkpoint_step += 1
+        save_real_checkpoint(
+            rmb=rmb,
+            strategy=strategy,
+            settings=settings,
+            observations=observations,
+            device=gp_device,
+            phase="sobol",
+            step=checkpoint_step,
+            budget=budget,
+            sent_configs=sobol_batch,
         )
     else:
         print_progress(settings, budget, "sobol: no affordable initial batch")
@@ -342,6 +496,18 @@ def run(
             results_for_plot=results_for_plot,
             device=gp_device,
         )
+        checkpoint_step += 1
+        save_real_checkpoint(
+            rmb=rmb,
+            strategy=strategy,
+            settings=settings,
+            observations=observations,
+            device=gp_device,
+            phase="globalsur",
+            step=checkpoint_step,
+            budget=budget,
+            sent_configs=selected,
+        )
 
     # -------------------------------------------------------------------------
     # 4. Summary and contour extraction
@@ -381,39 +547,16 @@ def run(
         save_path.parent.mkdir(parents=True, exist_ok=True)
         rmb.save(save_path)
         base_path = resolve_data_path(save_path)
+        write_hqc_metadata(base_path, settings, budget, "final", None)
         print(f"[saved] RMB data: {base_path}")
 
     if settings.save_gp_prediction_grid and base_path is not None:
-        (
-            probabilities,
-            latent_mean,
-            latent_variance,
-            gates_grid,
-            ratio_grid,
-        ) = predict_native_level_set(
+        save_gp_prediction_grid(
             plot_strategy,
             settings,
             device=gp_device,
+            json_path=base_path,
         )
-        if settings.save_gp_prediction_grid:
-            grid_path = base_path.parent / f"{base_path.stem}_gp_grid.npz"
-            np.savez_compressed(
-                grid_path,
-                gates_grid=gates_grid,
-                ratio_grid=ratio_grid,
-                x_grid=gates_grid,
-                y_grid=ratio_grid,
-                probabilities=probabilities,
-                latent_mean=latent_mean,
-                latent_variance=latent_variance,
-                target=np.asarray(contour_target(settings), dtype=float),
-                coordinate_system=np.asarray("total_ratio"),
-                rng_seed=np.asarray(
-                    -1 if settings.rng_seed is None else settings.rng_seed,
-                    dtype=int,
-                ),
-            )
-            print(f"[saved] GP grid: {grid_path}")
 
     if return_budget:
         return rmb, crossings, budget
@@ -427,16 +570,28 @@ def run_with_budget(settings: FantasySettings):
 
 def main() -> None:
     kwargs = control_panel_settings_kwargs()
+    qubits = qubit_slices(kwargs.pop("n_qubits"))
+    multi_qubit = len(qubits) > 1
 
     for run_index, rng_seed in enumerate(RNG_SEEDS, start=1):
-        seed_kwargs = dict(kwargs)
-        seed_kwargs["rng_seed"] = rng_seed
-        seed_kwargs["save_path"] = timestamped_personal_save_path(seed=rng_seed)
-        print(
-            f"\n[seed run] {run_index}/{len(RNG_SEEDS)} "
-            f"rng_seed={rng_seed} save_path={seed_kwargs['save_path']}\n"
-        )
-        run(FantasySettings(**seed_kwargs))
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        for qubit_index, n_qubits in enumerate(qubits, start=1):
+            seed_kwargs = dict(kwargs)
+            seed_kwargs["rng_seed"] = rng_seed
+            seed_kwargs["n_qubits"] = n_qubits
+            seed_kwargs["save_path"] = timestamped_personal_save_path(
+                seed=rng_seed,
+                timestamp=timestamp,
+                n_qubits=n_qubits,
+                multi_qubit=multi_qubit,
+            )
+            print(
+                f"\n[seed run] {run_index}/{len(RNG_SEEDS)} "
+                f"qubit slice {qubit_index}/{len(qubits)} "
+                f"rng_seed={rng_seed} n_qubits={n_qubits} "
+                f"save_path={seed_kwargs['save_path']}\n"
+            )
+            run(FantasySettings(**seed_kwargs))
 
 
 if __name__ == "__main__":
