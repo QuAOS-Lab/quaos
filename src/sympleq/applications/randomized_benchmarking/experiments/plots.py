@@ -273,7 +273,7 @@ def parametric_boundary_fit(
 def boundary_fit_for_settings(
     data: RMBData,
     settings: CrossingSettings | None = None,
-) -> tuple[float, float, float] | None:
+) -> tuple[float, ...] | None:
     """Boundary fit, allowing an experiment to provide its own fitted model."""
     if settings is not None:
         fit_method = getattr(settings, "boundary_fit", None)
@@ -324,7 +324,7 @@ def boundary_bootstrap_for_settings(
     *,
     n_bootstrap: int = 100,
     seed: int | None = None,
-) -> list[tuple[float, float, float]]:
+) -> list[tuple[float, ...]]:
     """Boundary bootstrap, allowing an experiment to provide its own model."""
     if settings is not None:
         bootstrap_method = getattr(settings, "boundary_bootstrap", None)
@@ -333,19 +333,35 @@ def boundary_bootstrap_for_settings(
     return parametric_boundary_bootstrap(data, n_bootstrap=n_bootstrap, seed=seed)
 
 
+def gate_counts_from_boundary_fit(
+    fit: tuple[float, ...],
+    ratios: np.ndarray,
+) -> np.ndarray:
+    """Evaluate a 3- or 4-parameter inverse-boundary fit on a ratio grid."""
+    if len(fit) == 3:
+        q, slope, _ = fit
+        denominator = q + slope * ratios
+    elif len(fit) == 4:
+        q, slope, curvature, _ = fit
+        denominator = q + slope * ratios + curvature * ratios * (1.0 - ratios)
+    else:
+        raise ValueError(f"Unsupported boundary fit length {len(fit)}.")
+    gates = 1.0 / denominator
+    gates[~np.isfinite(gates)] = np.nan
+    gates[gates <= 0.0] = np.nan
+    return gates
+
+
 def parametric_boundary_gate_samples(
-    fits: list[tuple[float, float, float]],
+    fits: list[tuple[float, ...]],
     ratios: np.ndarray,
 ) -> np.ndarray:
     """Total-gate boundary samples for fitted inverse-boundary parameters."""
     if not fits:
         return np.empty((0, len(ratios)), dtype=float)
     samples = []
-    for q, slope, _ in fits:
-        gates = 1.0 / (q + slope * ratios)
-        gates[~np.isfinite(gates)] = np.nan
-        gates[gates <= 0.0] = np.nan
-        samples.append(gates)
+    for fit in fits:
+        samples.append(gate_counts_from_boundary_fit(fit, ratios))
     return np.asarray(samples, dtype=float)
 
 
@@ -358,11 +374,7 @@ def parametric_boundary_gate_counts(
     fit = boundary_fit_for_settings(data, settings)
     if fit is None:
         return None
-    q, slope, _ = fit
-    gates = 1.0 / (q + slope * ratios)
-    gates[~np.isfinite(gates)] = np.nan
-    gates[gates <= 0.0] = np.nan
-    return gates
+    return gate_counts_from_boundary_fit(fit, ratios)
 
 
 def parametric_boundary_fit_score(
@@ -576,9 +588,8 @@ def plot_parametric_boundary_total_ratio_line(
     fit = boundary_fit_for_settings(data, settings)
     if fit is None:
         return
-    q, slope, _ = fit
     ratios = np.linspace(settings.ratio_bounds[0], settings.ratio_bounds[1], 400)
-    gates = 1.0 / (q + slope * ratios)
+    gates = gate_counts_from_boundary_fit(fit, ratios)
     mask = (
         np.isfinite(gates)
         & (gates > 0.0)
@@ -616,9 +627,8 @@ def plot_parametric_boundary_gate_plane_line(
     fit = boundary_fit_for_settings(data, settings)
     if fit is None:
         return
-    q, slope, _ = fit
     ratios = np.linspace(settings.ratio_bounds[0], settings.ratio_bounds[1], 400)
-    total_gates = 1.0 / (q + slope * ratios)
+    total_gates = gate_counts_from_boundary_fit(fit, ratios)
     one_q_gates = total_gates * (1.0 - ratios)
     two_q_gates = total_gates * ratios
     mask = (

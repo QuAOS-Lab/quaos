@@ -12,7 +12,12 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 from pathlib import Path
+import sys
 from typing import Literal
+
+_SRC_ROOT = Path(__file__).resolve().parents[4]
+sys.path = [path for path in sys.path if path != str(_SRC_ROOT)]
+sys.path.insert(0, str(_SRC_ROOT))
 
 import numpy as np
 from numpy.random import Generator as RNGGenerator
@@ -26,6 +31,7 @@ from sympleq.applications.randomized_benchmarking.backends.base import (
 from sympleq.applications.randomized_benchmarking.backends.sympleq import SympleqBackend
 from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBData
 from sympleq.applications.randomized_benchmarking.experiments.common import (
+    batch_hqc_cost,
     Budget,
     CrossingSettings,
     print_crossing,
@@ -87,6 +93,43 @@ def spend_measurements(
         estimator.record(bool(outcome))
 
 
+def spend_request_batch_local(
+    backend: RMBBackend,
+    rng: RNGGenerator,
+    data: RMBData,
+    requests: list[MeasurementRequest],
+    budget: Budget,
+    ratio_budget: Budget,
+    *,
+    seed: int | None,
+) -> None:
+    """Record a stitched batch using this module's estimator constructor."""
+    requests = [request for request in requests if request.shots > 0]
+    if not requests:
+        return
+    cost = batch_hqc_cost(requests)
+    if cost > spendable_ratio_budget(budget, ratio_budget):
+        return
+
+    offsets: dict[RMBConfig, int] = {}
+    for request in requests:
+        estimator = data.setdefault(request.config, new_estimator())
+        offsets.setdefault(request.config, estimator.num_runs())
+
+    shot_rng = None
+    if seed is not None:
+        def shot_rng(config: RMBConfig, index: int) -> RNGGenerator:
+            return measurement_rng(seed, config, offsets[config] + index)
+
+    outcomes = backend.fidelity_estimation(requests, rng, shot_rng=shot_rng).outcomes
+    for config, results in outcomes.items():
+        for outcome in results:
+            data[config].record(bool(outcome))
+    n_circuits = sum(request.shots for request in requests)
+    budget.spend_batch(cost, n_circuits)
+    ratio_budget.spend_batch(cost, n_circuits)
+
+
 def sympleq_backend_factory(
     settings: CrossingSettings,
     rng: RNGGenerator,
@@ -120,38 +163,45 @@ class MonotoneTracingSettings(CrossingSettings):
         sympleq_backend_factory
     )
 
-    adaptive_ratio_step: bool = False
+    adaptive_ratio_step: bool = True
     min_ratio_step: float = 0.04
     max_ratio_step: float = 0.2
     target_hqc_per_ratio: float = 35.0
 
-    n_gates_resolution: float = 0.08
+    n_gates_resolution: float = 0.1
     max_shots_per_config: int = 7
-    decision_confidence: float = 0.75
-    max_hqc_per_ratio: float | None = 45.0
+    decision_confidence: float = 0.70
+    max_hqc_per_ratio: float | None = 35.0
     accept_uncertain_crossing: bool = True
     min_crossing_confidence: float = 0.6
     extra_midpoint_shots: int = 4
 
-    initial_bracket_fraction: float = 0.1
+    initial_bracket_fraction: float = 0.35
     high_ratio_gate_bias_power: float = 1.0
     low_to_high_growth_factor: float = 1.7
     bracket_half_width_fraction: float = 0.24
-    trace_gate_growth: float = 1.7
-    trace_gate_shrink: float = 0.6
-    bracket_hint: Literal["line", "surface", "both"] = "line"
+    trace_gate_growth: float = 2.4
+    trace_gate_shrink: float = 0.65
+    bracket_hint: Literal["line", "surface", "both"] = "surface"
     use_surface_bracket_hint: bool = True
-    surface_min_configs: int = 8
+    surface_min_configs: int = 12
     refine_initial_crossing: bool = True
-    initial_refine_hqc: float = 25.0
+    initial_refine_hqc: float = 35.0
     initial_refine_half_width_fraction: float = 0.25
-    initial_refine_extra_shots: int = 3
-    initial_refine_decision_confidence: float = 0.85
-    initial_refine_min_crossing_confidence: float = 0.75
+    initial_refine_extra_shots: int = 5
+    initial_refine_decision_confidence: float = 0.9
+    initial_refine_min_crossing_confidence: float = 0.95
+    initial_require_confident_bracket: bool = True
+    initial_batch_points: int = 5
+    initial_batch_shots: int = 2
+    initial_prediction_window_fraction: float = 0.35
+    initial_prediction_min_width: int = 80
+    initial_validation_fraction: float = 0.08
+    initial_validation_shots: int = 3
 
     enforce_ratio_monotonicity: bool = True
     monotonic_min_slack_gates: int = 2
-    monotonic_slack_fraction: float | None = 0.5
+    monotonic_slack_fraction: float | None = 0.65
 
 
 def implied_above(
@@ -500,6 +550,190 @@ def initial_sweep_bracket(
     return n_gates_min, min(n_gates_max, max(n_gates_min + 2, hi))
 
 
+def analytic_prediction(
+    settings: MonotoneTracingSettings,
+    ratio: float,
+) -> int | None:
+    """Predict a crossing from the analytic Lindblad contour."""
+    from sympleq.applications.randomized_benchmarking.experiments.plots import (
+        analytic_gate_counts,
+        analytic_noise_scales,
+    )
+
+    one_q_noise_scale, two_q_noise_scale = analytic_noise_scales(settings)
+    prediction = analytic_gate_counts(
+        np.array([ratio]),
+        one_q_noise_scale=one_q_noise_scale,
+        two_q_noise_scale=two_q_noise_scale,
+    )[0]
+    if not np.isfinite(prediction) or prediction <= 0:
+        return None
+    return round(float(prediction))
+
+
+def initial_prediction_bracket(
+    data: RMBData,
+    settings: MonotoneTracingSettings,
+    ratio: float,
+) -> tuple[int, int, str]:
+    """
+    Choose the initial-anchor batch window from the best current estimate.
+
+    Before any accepted crossing exists, the surface fit can still become
+    useful after failed high-ratio probes because the accumulated configs carry
+    shape information. If it is not ready, use the analytic contour as a cheap
+    prior. Only fall back to the broad low-to-high sweep when neither estimate
+    is usable.
+    """
+    n_gates_min, n_gates_max = settings.n_gates_bounds
+    prediction = surface_prediction(data, settings, ratio)
+    source = "surface"
+    if prediction is None:
+        prediction = analytic_prediction(settings, ratio)
+        source = "analytic"
+    if prediction is None:
+        lo, hi = initial_sweep_bracket(settings, [ratio])
+        return lo, hi, "broad"
+
+    center = int(np.clip(prediction, n_gates_min, n_gates_max))
+    half_width = max(
+        2,
+        round(settings.initial_prediction_window_fraction * center),
+        settings.initial_prediction_min_width // 2,
+    )
+    lo = max(n_gates_min, 2 * round((center - half_width) / 2))
+    hi = min(n_gates_max, 2 * round((center + half_width) / 2))
+    if hi <= lo:
+        lo, hi = initial_sweep_bracket(settings, [ratio])
+        return lo, hi, "broad"
+    return lo, hi, source
+
+
+def initial_batch_gate_counts(
+    settings: MonotoneTracingSettings,
+    lo: int,
+    hi: int,
+    *,
+    geometric: bool,
+) -> list[int]:
+    """Gate-count stack for initial anchor discovery."""
+    n_points = max(1, settings.initial_batch_points)
+    if not geometric:
+        gates = [2 * round(value / 2) for value in np.linspace(lo, hi, n_points)]
+        return sorted({int(np.clip(gate, lo, hi)) for gate in gates})
+
+    gates = [lo]
+    current = lo
+    while len(gates) < n_points and current < hi:
+        current = max(
+            current + 2,
+            2 * round((current * settings.low_to_high_growth_factor) / 2),
+        )
+        gates.append(min(current, hi))
+    return sorted(set(gates))
+
+
+def submit_initial_batch(
+    *,
+    backend: RMBBackend,
+    rng: RNGGenerator,
+    data: RMBData,
+    budget: Budget,
+    ratio_budget: Budget,
+    settings: MonotoneTracingSettings,
+    configs: list[RMBConfig],
+) -> None:
+    """Probe initial candidate configs in stitched batches."""
+    requests = [MeasurementRequest(config, settings.initial_batch_shots)
+                for config in configs
+                if settings.initial_batch_shots > 0]
+    batch: list[MeasurementRequest] = []
+    for request in requests:
+        candidate = [*batch, request]
+        if batch and batch_hqc_cost(candidate) > settings.max_cost_per_run:
+            spend_request_batch_local(
+                backend, rng, data, batch, budget, ratio_budget,
+                seed=settings.rng_seed)
+            batch = [request]
+        else:
+            batch = candidate
+
+        if batch_hqc_cost(batch) > spendable_ratio_budget(budget, ratio_budget):
+            return
+
+    if batch:
+        spend_request_batch_local(
+            backend, rng, data, batch, budget, ratio_budget,
+            seed=settings.rng_seed)
+
+
+def initial_batch_bracket(
+    *,
+    backend: RMBBackend,
+    rng: RNGGenerator,
+    data: RMBData,
+    budget: Budget,
+    ratio_budget: Budget,
+    settings: MonotoneTracingSettings,
+    ratio: float,
+    lo: int,
+    hi: int,
+    source: str,
+) -> tuple[int, int] | None:
+    """
+    Batch-probe an initial vertical slice and return a confident bracket.
+
+    This avoids rejecting a high-ratio slice after only the minimum-gate point
+    and amortizes the stitched submission base cost across several configs.
+    """
+    gates = initial_batch_gate_counts(settings, lo, hi, geometric=source == "broad")
+    configs = [settings.make_config(gate, ratio) for gate in gates]
+    print_progress(
+        settings,
+        budget,
+        f"  initial batch {source} window ratio={ratio:.3f}: "
+        f"n_gates {lo} to {hi}, probes={gates}",
+    )
+    submit_initial_batch(
+        backend=backend,
+        rng=rng,
+        data=data,
+        budget=budget,
+        ratio_budget=ratio_budget,
+        settings=settings,
+        configs=configs,
+    )
+
+    previous_above: RMBConfig | None = None
+    summaries = []
+    for config in configs:
+        estimator = data.get(config)
+        if estimator is None or estimator.num_runs() <= 0:
+            continue
+        mean = estimator.posterior_mean()
+        above = posterior_above(estimator)
+        summaries.append(f"n={config.n_gates} p={mean:.2f}")
+        if confidently_above(above, settings):
+            previous_above = config
+            continue
+        if previous_above is not None and confidently_below(above, settings):
+            print_progress(
+                settings,
+                budget,
+                "  initial batch bracket: "
+                + ", ".join(summaries)
+                + f" -> [{previous_above.n_gates}, {config.n_gates}]",
+            )
+            return previous_above.n_gates, config.n_gates
+
+    print_progress(
+        settings,
+        budget,
+        "  initial batch no bracket: " + ", ".join(summaries),
+    )
+    return None
+
+
 def ratio_biased_gate_cap(settings: MonotoneTracingSettings, ratio: float) -> int:
     """
     Maximum total-gate endpoint to try at this ratio.
@@ -782,6 +1016,94 @@ def find_crossing(
     return settings.make_config((lo + hi) // 2, ratio)
 
 
+def validate_initial_crossing(
+    *,
+    backend,
+    rng: RNGGenerator,
+    data: RMBData,
+    budget: Budget,
+    ratio_budget: Budget,
+    settings: MonotoneTracingSettings,
+    crossing: RMBConfig,
+) -> bool:
+    """Validate local ordering around a proposed first crossing."""
+    if settings.initial_validation_shots <= 0:
+        return True
+
+    ratio = crossing.ratio_2_qb_gates
+    span = max(2, round(settings.initial_validation_fraction * crossing.n_gates))
+    lower_gates = max(settings.n_gates_bounds[0], 2 * round((crossing.n_gates - span) / 2))
+    upper_gates = min(settings.n_gates_bounds[1], 2 * round((crossing.n_gates + span) / 2))
+    if lower_gates >= crossing.n_gates or upper_gates <= crossing.n_gates:
+        return False
+
+    validation_settings = replace(
+        settings,
+        max_shots_per_config=(
+            settings.max_shots_per_config
+            + settings.initial_refine_extra_shots
+            + settings.initial_validation_shots
+        ),
+        decision_confidence=max(
+            settings.decision_confidence,
+            settings.initial_refine_decision_confidence,
+        ),
+        min_crossing_confidence=max(
+            settings.min_crossing_confidence,
+            settings.initial_refine_min_crossing_confidence,
+        ),
+        accept_uncertain_crossing=False,
+    )
+    lower = settings.make_config(lower_gates, ratio)
+    center = settings.make_config(crossing.n_gates, ratio)
+    upper = settings.make_config(upper_gates, ratio)
+
+    lower_p, lower_above = probe_fidelity(
+        backend=backend,
+        rng=rng,
+        data=data,
+        config=lower,
+        budget=budget,
+        ratio_budget=ratio_budget,
+        settings=validation_settings,
+    )
+    center_p, _ = probe_fidelity(
+        backend=backend,
+        rng=rng,
+        data=data,
+        config=center,
+        budget=budget,
+        ratio_budget=ratio_budget,
+        settings=validation_settings,
+    )
+    upper_p, upper_above = probe_fidelity(
+        backend=backend,
+        rng=rng,
+        data=data,
+        config=upper,
+        budget=budget,
+        ratio_budget=ratio_budget,
+        settings=validation_settings,
+    )
+    if lower_p is None or center_p is None or upper_p is None:
+        return False
+
+    valid = (
+        confidently_above(lower_above, validation_settings)
+        and confidently_below(upper_above, validation_settings)
+    )
+    print_progress(
+        settings,
+        budget,
+        "  validate initial crossing: "
+        f"lower n={lower.n_gates} p={lower_p:.2f}, "
+        f"center n={center.n_gates} p={center_p:.2f}, "
+        f"upper n={upper.n_gates} p={upper_p:.2f}, "
+        f"{'accepted' if valid else 'rejected'}",
+    )
+    return valid
+
+
 def refine_first_crossing(
     *,
     backend,
@@ -820,6 +1142,10 @@ def refine_first_crossing(
             settings.min_crossing_confidence,
             settings.initial_refine_min_crossing_confidence,
         ),
+        accept_uncertain_crossing=(
+            settings.accept_uncertain_crossing
+            and not settings.initial_require_confident_bracket
+        ),
     )
 
     ratio = crossing.ratio_2_qb_gates
@@ -846,12 +1172,48 @@ def refine_first_crossing(
         hi=hi,
     )
     if refined is None:
+        refined = crossing
+    elif refined.n_gates != crossing.n_gates:
+        print_progress(
+            settings,
+            budget,
+            f"  refined initial crossing: ratio={ratio:.3f} "
+            f"n_gates={crossing.n_gates} -> {refined.n_gates}",
+        )
+
+    if validate_initial_crossing(
+        backend=backend,
+        rng=rng,
+        data=data,
+        budget=budget,
+        ratio_budget=ratio_budget,
+        settings=settings,
+        crossing=refined,
+    ):
+        return refined
+
+    if refined.n_gates != crossing.n_gates and validate_initial_crossing(
+        backend=backend,
+        rng=rng,
+        data=data,
+        budget=budget,
+        ratio_budget=ratio_budget,
+        settings=settings,
+        crossing=crossing,
+    ):
+        print_progress(
+            settings,
+            budget,
+            f"  kept original initial crossing after validation: "
+            f"ratio={ratio:.3f} n_gates={crossing.n_gates}",
+        )
         return crossing
+
     print_progress(
         settings,
         budget,
-        f"  refined initial crossing: ratio={ratio:.3f} "
-        f"n_gates={crossing.n_gates} -> {refined.n_gates}",
+        f"  initial crossing validation failed; keeping candidate anyway: "
+        f"ratio={ratio:.3f} n_gates={refined.n_gates}",
     )
     return refined
 
@@ -882,7 +1244,26 @@ def search_one_ratio(
             )
             return None
     else:
-        lo, hi = initial_sweep_bracket(settings, [ratio])
+        lo, hi, source = initial_prediction_bracket(data, settings, ratio)
+        bracket = initial_batch_bracket(
+            backend=rmb.backend,
+            rng=rng,
+            data=data,
+            budget=budget,
+            ratio_budget=ratio_budget,
+            settings=settings,
+            ratio=ratio,
+            lo=lo,
+            hi=hi,
+            source=source,
+        )
+        if bracket is None:
+            return None
+        lo, hi = bracket
+
+    search_settings = settings
+    if not crossings and settings.initial_require_confident_bracket:
+        search_settings = replace(settings, accept_uncertain_crossing=False)
 
     crossing = find_crossing(
         backend=rmb.backend,
@@ -890,7 +1271,7 @@ def search_one_ratio(
         data=data,
         budget=budget,
         ratio_budget=ratio_budget,
-        settings=settings,
+        settings=search_settings,
         ratio=ratio,
         lo=lo,
         hi=hi,
@@ -904,7 +1285,7 @@ def search_one_ratio(
         fallback_lo,
         fallback_hi,
     )
-    if crossing is None and fallback_hi > fallback_lo and (lo, hi) != (
+    if crossings and crossing is None and fallback_hi > fallback_lo and (lo, hi) != (
         fallback_lo,
         fallback_hi,
     ):
@@ -915,7 +1296,7 @@ def search_one_ratio(
             data=data,
             budget=budget,
             ratio_budget=ratio_budget,
-            settings=settings,
+            settings=search_settings,
             ratio=ratio,
             lo=fallback_lo,
             hi=fallback_hi,
@@ -989,6 +1370,9 @@ def run_with_budget(
     if settings.save_path is not None:
         base_path = save_crossings(rmb, settings, budget, crossings)
 
+    if settings.verbose:
+        print_run_score(rmb, crossings, budget, settings)
+
     if settings.plot:
         from sympleq.applications.randomized_benchmarking.experiments.plots import (
             plot_crossing_results,
@@ -1005,5 +1389,132 @@ def run(settings: MonotoneTracingSettings) -> tuple[RMB, list[RMBConfig]]:
     return rmb, crossings
 
 
+def fitted_gate_counts(data: RMBData, ratios: np.ndarray) -> np.ndarray | None:
+    """Parametric inverse-boundary gate counts on ``ratios``."""
+    from sympleq.applications.randomized_benchmarking.experiments.plots import (
+        parametric_boundary_fit,
+    )
+
+    fit = parametric_boundary_fit(data)
+    if fit is None:
+        return None
+    q, slope, _ = fit
+    gates = 1.0 / (q + slope * ratios)
+    gates[~np.isfinite(gates)] = np.nan
+    gates[gates <= 0.0] = np.nan
+    return gates
+
+
+def fit_score(data: RMBData, settings: MonotoneTracingSettings) -> float:
+    """Score the fitted boundary against the analytic Lindblad boundary."""
+    from sympleq.applications.randomized_benchmarking.experiments.plots import (
+        analytic_gate_counts,
+        analytic_noise_scales,
+    )
+
+    ratios = np.linspace(settings.ratio_bounds[0], settings.ratio_bounds[1], 300)
+    fitted = fitted_gate_counts(data, ratios)
+    if fitted is None:
+        return 0.0
+    one_q_noise_scale, two_q_noise_scale = analytic_noise_scales(settings)
+    analytic = analytic_gate_counts(
+        ratios,
+        one_q_noise_scale=one_q_noise_scale,
+        two_q_noise_scale=two_q_noise_scale,
+    )
+    mask = (
+        np.isfinite(fitted)
+        & np.isfinite(analytic)
+        & (fitted > 0.0)
+        & (analytic > 0.0)
+    )
+    if not np.any(mask):
+        return 0.0
+    log_error = np.log(fitted[mask] / analytic[mask])
+    return float(np.exp(-np.sqrt(np.mean(log_error**2))))
+
+
+def nan_quantiles(
+    samples: np.ndarray,
+    quantiles: tuple[float, ...],
+) -> tuple[np.ndarray, ...]:
+    """Column-wise nan-safe quantiles without all-NaN warnings."""
+    output = [np.full(samples.shape[1], np.nan, dtype=float) for _ in quantiles]
+    for column_index in range(samples.shape[1]):
+        column = samples[:, column_index]
+        column = column[np.isfinite(column)]
+        if len(column) == 0:
+            continue
+        for output_array, quantile in zip(output, quantiles):
+            output_array[column_index] = float(np.quantile(column, quantile))
+    return tuple(output)
+
+
+def bootstrap_coverage(
+    data: RMBData,
+    settings: MonotoneTracingSettings,
+    *,
+    n_bootstrap: int = 100,
+) -> tuple[float, float]:
+    """Fraction of analytic Lindblad points inside bootstrap 50% and 90% bands."""
+    from sympleq.applications.randomized_benchmarking.experiments.plots import (
+        analytic_gate_counts,
+        analytic_noise_scales,
+        parametric_boundary_bootstrap,
+        parametric_boundary_gate_samples,
+    )
+
+    ratios = np.linspace(settings.ratio_bounds[0], settings.ratio_bounds[1], 200)
+    fits = parametric_boundary_bootstrap(
+        data,
+        n_bootstrap=n_bootstrap,
+        seed=None if settings.rng_seed is None else settings.rng_seed + 500_000,
+    )
+    samples = parametric_boundary_gate_samples(fits, ratios)
+    if len(samples) == 0:
+        return 0.0, 0.0
+
+    one_q_noise_scale, two_q_noise_scale = analytic_noise_scales(settings)
+    analytic = analytic_gate_counts(
+        ratios,
+        one_q_noise_scale=one_q_noise_scale,
+        two_q_noise_scale=two_q_noise_scale,
+    )
+    q05, q25, q75, q95 = nan_quantiles(samples, (0.05, 0.25, 0.75, 0.95))
+    valid50 = np.isfinite(q25) & np.isfinite(q75) & np.isfinite(analytic)
+    valid90 = np.isfinite(q05) & np.isfinite(q95) & np.isfinite(analytic)
+    coverage50 = (
+        np.mean((q25[valid50] <= analytic[valid50])
+                & (analytic[valid50] <= q75[valid50]))
+        if np.any(valid50)
+        else 0.0
+    )
+    coverage90 = (
+        np.mean((q05[valid90] <= analytic[valid90])
+                & (analytic[valid90] <= q95[valid90]))
+        if np.any(valid90)
+        else 0.0
+    )
+    return float(coverage50), float(coverage90)
+
+
+def print_run_score(
+    rmb: RMB,
+    crossings: list[RMBConfig],
+    budget: Budget,
+    settings: MonotoneTracingSettings,
+) -> None:
+    """Print the direct-run benchmark metrics for one monotone tracing run."""
+    score = fit_score(rmb._data, settings)
+    coverage50, coverage90 = bootstrap_coverage(rmb._data, settings)
+    print("\nRun score")
+    print(f"  score: {score:.3f}")
+    print(f"  analytic line inside bootstrap 50% band: {100.0 * coverage50:.1f}%")
+    print(f"  analytic line inside bootstrap 90% band: {100.0 * coverage90:.1f}%")
+    print(f"  spent: {budget.spent_hqc:.1f} HQC")
+    print(f"  crossings: {len(crossings)}")
+
+
 if __name__ == "__main__":
-    rmb, crossings = run(MonotoneTracingSettings(rng_seed=None))
+    settings = MonotoneTracingSettings(rng_seed=None)
+    rmb, crossings, budget = run_with_budget(settings)

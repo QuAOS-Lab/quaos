@@ -11,6 +11,19 @@ REFERENCE_SLOPE = 3.65e-3
 SIGMA_FLOOR = 1e-8
 
 
+def integrate_trapezoid(
+    y: np.ndarray,
+    x: np.ndarray,
+    *,
+    axis: int = -1,
+) -> np.ndarray:
+    """NumPy-version compatible trapezoid integration."""
+    trapezoid = getattr(np, "trapezoid", None)
+    if trapezoid is not None:
+        return trapezoid(y, x, axis=axis)
+    return np.trapz(y, x, axis=axis)
+
+
 def true_log_gates(
     ratio: np.ndarray,
     one_q_noise_scale: float,
@@ -89,11 +102,11 @@ def gp_grid_scores(
         two_q_noise_scale=two_q_noise_scale,
     )
     delta = np.abs(gp_log_gates - analytic_log_gates)
-    a_gp = float(np.trapz(gp_log_gates, ratio))
+    a_gp = float(integrate_trapezoid(gp_log_gates, ratio))
 
     return {
-        "S1": float(np.trapz(delta, ratio) / a_gp),
-        "S2": float(np.trapz(sigma, ratio) / a_gp),
+        "S1": float(integrate_trapezoid(delta, ratio) / a_gp),
+        "S2": float(integrate_trapezoid(sigma, ratio) / a_gp),
         "A_gp": a_gp,
         "mean_delta_log_gates": float(np.mean(delta)),
         "mean_sigma_contour": float(np.mean(sigma)),

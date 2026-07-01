@@ -56,10 +56,15 @@ from sympleq.applications.randomized_benchmarking.experiments.bootstrap_batched_
     BootstrapBatchedMonotoneTracingSettings,
     run_with_budget as run_bootstrap_batched_monotone_tracing_with_budget,
 )
+from sympleq.applications.randomized_benchmarking.experiments.cost_aware_surface_design import (
+    CostAwareSurfaceSettings,
+    run_with_budget as run_cost_aware_surface_design_with_budget,
+)
 from sympleq.applications.randomized_benchmarking.experiments.plots import (
     analytic_gate_counts,
     boundary_bootstrap_for_settings,
     boundary_fit_for_settings,
+    gate_counts_from_boundary_fit,
     parametric_boundary_bootstrap,
     parametric_boundary_fit,
     parametric_boundary_gate_samples,
@@ -72,11 +77,14 @@ N_NOISE_VALUES = 5
 N_REALISATIONS = 10
 NOISE_SPREAD = 0.5
 N_BOOTSTRAP = 100
+HQC_BUDGET = float(os.environ.get("BENCHMARKBENCHMARK_HQC_BUDGET", "150.0"))
+MAX_COST_PER_RUN = float(os.environ.get("BENCHMARKBENCHMARK_MAX_COST_PER_RUN", "45.0"))
 FIG_DIR = Path(__file__).resolve().parent / "figs" / "monotone_tracing"
 RESULTS_JSON = FIG_DIR / "results.json"
 RUNS_CSV = FIG_DIR / "runs.csv"
 MAX_WORKERS = int(os.environ.get("BENCHMARKBENCHMARK_WORKERS", "12")) or None
-APPROACHES = ["bootstrap_batched_monotone_tracing"]  #, "batched_monotone_tracing""monotone_tracing" , "level_crossing"
+APPROACHES = ["bootstrap_batched_monotone_tracing", "cost_aware_surface_design"
+]  #, "batched_monotone_tracing""monotone_tracing" , "level_crossing"
 
 
 def scaled_noise_backend_factory(
@@ -119,11 +127,7 @@ def fitted_gate_counts(data, ratios: np.ndarray) -> np.ndarray | None:
     fit = parametric_boundary_fit(data)
     if fit is None:
         return None
-    q, slope, _ = fit
-    gates = 1.0 / (q + slope * ratios)
-    gates[~np.isfinite(gates)] = np.nan
-    gates[gates <= 0.0] = np.nan
-    return gates
+    return gate_counts_from_boundary_fit(fit, ratios)
 
 
 def fitted_gate_counts_for_settings(
@@ -135,11 +139,7 @@ def fitted_gate_counts_for_settings(
     fit = boundary_fit_for_settings(data, settings)
     if fit is None:
         return None
-    q, slope, _ = fit
-    gates = 1.0 / (q + slope * ratios)
-    gates[~np.isfinite(gates)] = np.nan
-    gates[gates <= 0.0] = np.nan
-    return gates
+    return gate_counts_from_boundary_fit(fit, ratios)
 
 
 def fit_score(
@@ -277,6 +277,8 @@ def run_approach(approach: str, settings: CrossingSettings):
         return run_batched_monotone_tracing_with_budget(settings)
     if approach == "bootstrap_batched_monotone_tracing":
         return run_bootstrap_batched_monotone_tracing_with_budget(settings)
+    if approach == "cost_aware_surface_design":
+        return run_cost_aware_surface_design_with_budget(settings)
     if approach == "charlie_simple":
         return run_charlie_simple_with_budget(settings)
     if approach == "level_crossing":
@@ -296,6 +298,8 @@ def approach_settings(
         "plot": False,
         "verbose": False,
         "save_path": None,
+        "hqc_budget": HQC_BUDGET,
+        "max_cost_per_run": MAX_COST_PER_RUN,
         "backend_factory": scaled_noise_backend_factory(
             one_q_noise_scale,
             two_q_noise_scale,
@@ -307,6 +311,12 @@ def approach_settings(
         settings = BatchedMonotoneTracingSettings(**kwargs)
     elif approach == "bootstrap_batched_monotone_tracing":
         settings = BootstrapBatchedMonotoneTracingSettings(
+            **kwargs,
+            initial_one_q_pauli_error=BASE_1Q_PAULI_ERROR * one_q_noise_scale,
+            initial_two_q_pauli_error=BASE_2Q_PAULI_ERROR * two_q_noise_scale,
+        )
+    elif approach == "cost_aware_surface_design":
+        settings = CostAwareSurfaceSettings(
             **kwargs,
             initial_one_q_pauli_error=BASE_1Q_PAULI_ERROR * one_q_noise_scale,
             initial_two_q_pauli_error=BASE_2Q_PAULI_ERROR * two_q_noise_scale,
@@ -410,7 +420,8 @@ def main() -> None:
     )
     print(
         f"Running {len(APPROACHES)} approaches, {N_NOISE_VALUES} noise values, "
-        f"{N_REALISATIONS} realisations per noise value with {max_workers} workers"
+        f"{N_REALISATIONS} realisations per noise value with {max_workers} workers "
+        f"(budget {HQC_BUDGET:.1f} HQC, max cost/run {MAX_COST_PER_RUN:.1f} HQC)"
     )
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -443,6 +454,8 @@ def main() -> None:
         "n_runs": len(rows),
         "noise_spread": NOISE_SPREAD,
         "n_bootstrap": N_BOOTSTRAP,
+        "hqc_budget": HQC_BUDGET,
+        "max_cost_per_run": MAX_COST_PER_RUN,
         "by_approach": by_approach,
     }
     RESULTS_JSON.write_text(

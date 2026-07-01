@@ -27,18 +27,20 @@ from sympleq.applications.randomized_benchmarking.config import RMBConfig, RMBDa
 from sympleq.applications.randomized_benchmarking.experiments.common import (
     Budget,
     CrossingSettings,
-    new_estimator,
-    posterior_above,
     print_crossing,
     print_experiment_summary,
     print_progress,
     save_crossings,
     single_circuit_bare_hqc,
-    spend_measurements,
     start_run,
     stitch_batch_size,
     stitched_batch_hqc,
     try_fit_monotone_fidelity_surface,
+)
+from sympleq.applications.randomized_benchmarking.experiments.monotone_tracing import (
+    new_estimator,
+    posterior_above,
+    spend_measurements,
 )
 
 

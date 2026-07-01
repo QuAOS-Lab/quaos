@@ -93,8 +93,11 @@ def backend_from_dict(payload: dict) -> RMBBackend:
     """
     from sympleq.applications.randomized_benchmarking.backends.sympleq import SympleqBackend
     from sympleq.applications.randomized_benchmarking.backends.quantinuum import QuantinuumBackend
+    from sympleq.applications.randomized_benchmarking.backends.exponential import ExponentialBackend
 
     type_name = payload["type"]
+    if type_name == ExponentialBackend.type:
+        return ExponentialBackend.from_dict(payload)
     if type_name == SympleqBackend.type:
         return SympleqBackend.from_dict(payload)
     if type_name == QuantinuumBackend.type:
