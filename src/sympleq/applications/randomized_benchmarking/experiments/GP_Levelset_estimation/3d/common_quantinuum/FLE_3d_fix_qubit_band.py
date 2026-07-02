@@ -41,6 +41,7 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     Budget,
     MeasurementRequest,
     batch_hqc_cost,
+    candidate_axes,
     print_progress,
     spend_request_batch,
     default_backend_factory,
@@ -124,6 +125,13 @@ def n_qubits_bounds(settings: FantasySettings) -> tuple[int, int]:
     bounds = getattr(settings, "n_qubits_bounds", (5, 20))
     return int(bounds[0]), int(bounds[1])
 
+
+def n_qubits_slice(settings: FantasySettings) -> int:
+    """Qubit slice used when extracting a 2D level set from the 3D GP."""
+
+    return int(getattr(settings, "level_set_n_qubits", settings.n_qubits))
+
+
 def make_config_3d(
     settings: FantasySettings,
     n_gates: float,
@@ -202,6 +210,22 @@ def raw_point(
         dtype=torch.double,
         device=device,
     )
+
+
+def config_from_aepsych_x(
+    x: torch.Tensor,
+    settings: FantasySettings,
+) -> RMBConfig:
+    """Convert AEPsych's generated point into an RMBConfig."""
+
+    x_cpu = x.detach().cpu()
+    return make_config_3d(
+        settings,
+        float(x_cpu[0, 0].item()),
+        float(x_cpu[0, 1].item()),
+        float(x_cpu[0, 2].item()),
+    )
+
 
 def qubit_band_from_first_selection(
     settings: FantasySettings,
@@ -583,6 +607,8 @@ def replay_observations(
 # =============================================================================
 # Device handling for AEPsych/GP/GlobalSUR (Kinda legacy; if GPU enabled ever)
 # =============================================================================
+
+
 def choose_gp_device(settings: FantasySettings) -> torch.device:
     """
     Choose device for AEPsych/GP/acquisition.
@@ -914,6 +940,7 @@ def select_fantasy_globalsur_batch(
 
         gate_budget = getattr(settings, "gate_budget", None)
 
+        #if settings.backend_factory is default_backend_factory or settings.backend_factory is quantinuum_emulator_backend_factory:
         if settings.backend_factory is quantinuum_emulator_backend_factory:
             if stitched_total_gates > gate_budget:
                 break
@@ -986,3 +1013,332 @@ def select_fantasy_globalsur_batch(
                 )
 
     return selected, False
+
+
+def select_plain_aepsych_batch(
+    strategy: SequentialStrategy,
+    settings: FantasySettings,
+    budget: Budget,
+    *,
+    device: torch.device,
+) -> tuple[list[RMBConfig], bool]:
+    """
+    Non-fantasy fallback batch selection.
+
+    Useful for comparison/debugging.
+    """
+
+    selected: list[RMBConfig] = []
+    seen: set[RMBConfig] = set()
+    qubit_band: tuple[int, int] | None = None
+
+    batch_limit = settings.max_batch_size if settings.batching else 1
+    max_attempts = max(5 * batch_limit, batch_limit + 10)
+
+    attempts = 0
+
+    while len(selected) < batch_limit and attempts < max_attempts:
+        attempts += 1
+
+        move_strategy_models_to_device(strategy, device)
+
+        with temporary_torch_default_device(
+            device,
+            enabled=settings.force_default_device_during_aepsych,
+        ):
+            x = strategy.gen()
+
+        x_cpu = x.detach().cpu()
+        raw_n_gates = float(x_cpu[0, 0].item())
+        raw_ratio = float(x_cpu[0, 1].item())
+        raw_n_qubits = float(x_cpu[0, 2].item())
+
+        if qubit_band is None:
+            qubit_band = qubit_band_from_first_selection(settings, raw_n_qubits)
+
+        candidate = config_from_aepsych_x_qubit_band(
+            x,
+            settings,
+            qubit_band,
+        )
+        raw_n_qubits = float(candidate.n_qubits)
+
+        if candidate in seen:
+            continue
+
+        next_cost = batch_hqc_cost(one_shot_requests(selected + [candidate]))
+
+        if next_cost > settings.max_cost_per_run:
+            break
+
+        if next_cost > budget.remaining_hqc:
+            return selected, True
+
+        selected.append(candidate)
+        seen.add(candidate)
+        record_repair(raw_validity(settings, raw_n_gates, raw_ratio, raw_n_qubits)[0])
+
+    return selected, False
+
+
+def level_set_configs(
+    strategy: SequentialStrategy,
+    settings: FantasySettings,
+    *,
+    device: torch.device,
+    measured_data=None,
+    debug: bool = False,
+    debug_limit: int = 12,
+) -> list[RMBConfig]:
+    """
+    Extract configs on the GP-predicted P(success)=target contour.
+    """
+
+    if strategy.model is None:
+        return []
+
+    gates_axis, ratio_axis = candidate_axes(settings)
+    gates_grid, ratio_grid = np.meshgrid(gates_axis, ratio_axis)
+    q_slice = float(n_qubits_slice(settings))
+    qubits_grid = np.full_like(gates_grid, q_slice, dtype=float)
+
+    grid = torch.tensor(
+        np.stack(
+            [gates_grid.ravel(), ratio_grid.ravel(), qubits_grid.ravel()],
+            axis=1,
+        ),
+        dtype=torch.double,
+        device=device,
+    )
+
+    move_strategy_models_to_device(strategy, device)
+
+    with temporary_torch_default_device(
+        device,
+        enabled=settings.force_default_device_during_aepsych,
+    ):
+        with torch.no_grad():
+            probabilities, _ = strategy.model.predict(
+                grid,
+                probability_space=True,
+            )
+
+    probability_grid = probabilities.detach().cpu().numpy().reshape(gates_grid.shape)
+    target = contour_target(settings)
+    delta = probability_grid - target
+
+    if debug:
+        flat_order = np.argsort(np.abs(delta.ravel()))
+        measured_points = None
+        if measured_data:
+            measured_points = np.array(
+                [
+                    [
+                        float(config.n_gates),
+                        float(config.ratio_2_qb_gates),
+                        float(config.n_qubits),
+                    ]
+                    for config in measured_data.keys()
+                ],
+                dtype=float,
+            )
+            q_min, q_max = n_qubits_bounds(settings)
+            lower = np.array(
+                [settings.n_gates_bounds[0], settings.ratio_bounds[0], q_min],
+                dtype=float,
+            )
+            upper = np.array(
+                [settings.n_gates_bounds[1], settings.ratio_bounds[1], q_max],
+                dtype=float,
+            )
+            span = np.maximum(upper - lower, 1e-12)
+            measured_points = (measured_points - lower) / span
+
+        def nearest_measured_distance(
+            n_gates: float,
+            ratio: float,
+            n_qubits: float,
+        ) -> float | None:
+            if measured_points is None or len(measured_points) == 0:
+                return None
+            point = (
+                np.array(
+                    [float(n_gates), float(ratio), float(n_qubits)],
+                    dtype=float,
+                )
+                - lower
+            ) / span
+            distances = np.linalg.norm(measured_points - point, axis=1)
+            return float(np.min(distances))
+
+        print("[GP contour grid debug]")
+        print(f"  n_qubits slice                       = {q_slice:.6g}")
+        print(f"  target                               = {target}")
+        print(f"  probability range on grid            = "
+              f"{float(np.min(probability_grid)):.6g} to {float(np.max(probability_grid)):.6g}")
+        print(f"  grid points closest to target        = {min(debug_limit, len(flat_order))}")
+        for flat_index in flat_order[:debug_limit]:
+            row, col = np.unravel_index(int(flat_index), delta.shape)
+            config = make_config_3d(
+                settings,
+                float(gates_grid[row, col]),
+                float(ratio_grid[row, col]),
+                q_slice,
+            )
+            nearest_distance = nearest_measured_distance(
+                float(gates_grid[row, col]),
+                float(ratio_grid[row, col]),
+                q_slice,
+            )
+            nearest_text = "n/a" if nearest_distance is None else f"{nearest_distance:.4f}"
+            print(
+                "    "
+                f"p={probability_grid[row, col]:.6g}, "
+                f"delta={delta[row, col]:+.6g}, "
+                f"grid_gates={float(gates_grid[row, col]):.6g}, "
+                f"grid_ratio={float(ratio_grid[row, col]):.6g}, "
+                f"grid_n_qubits={q_slice:.6g}, "
+                f"nearest_measured_norm={nearest_text}, "
+                f"config=(n_qubits={config.n_qubits}, gates={config.n_gates}, "
+                f"ratio={config.ratio_2_qb_gates:.4f})"
+            )
+
+    configs: list[RMBConfig] = []
+    seen: set[RMBConfig] = set()
+
+    def add_config(n_gates: float, ratio: float) -> None:
+        config = make_config_3d(settings, n_gates, ratio, q_slice)
+        if config not in seen:
+            seen.add(config)
+            configs.append(config)
+
+    for row in range(delta.shape[0]):
+        crossing = np.where(delta[row, :-1] * delta[row, 1:] < 0)[0]
+
+        if len(crossing) == 0:
+            continue
+
+        i = int(crossing[0])
+
+        left = abs(delta[row, i])
+        right = abs(delta[row, i + 1])
+        t = left / (left + right)
+
+        n_gates = float((1.0 - t) * gates_axis[i] + t * gates_axis[i + 1])
+        ratio = float(ratio_axis[row])
+        add_config(n_gates, ratio)
+
+    return sorted(
+        configs,
+        key=lambda c: (c.ratio_2_qb_gates, c.n_gates),
+    )
+
+
+# # =============================================================================
+# # Final GP contour extraction
+# # =============================================================================
+
+
+# def predict_level_set(
+#     strategy: SequentialStrategy,
+#     settings: FantasySettings,
+#     *,
+#     one_q_bounds: tuple[int, int],
+#     two_q_bounds: tuple[int, int],
+#     device: torch.device,
+# ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+#     """
+#     Evaluate fitted GP on a grid for plotting.
+#     """
+
+#     plots = import_experiment_module(settings.plots_module)
+#     gate_plane_points = plots.gate_plane_points
+#     level_set_grid = plots.level_set_grid
+
+#     one_q_grid, two_q_grid = level_set_grid(one_q_bounds, two_q_bounds)
+#     points = gate_plane_points(one_q_grid, two_q_grid)
+
+#     grid = torch.tensor(
+#         np.column_stack(
+#             [
+#                 np.clip(
+#                     points[:, 0],
+#                     settings.n_gates_bounds[0],
+#                     settings.n_gates_bounds[1],
+#                 ),
+#                 np.clip(
+#                     points[:, 1],
+#                     settings.ratio_bounds[0],
+#                     settings.ratio_bounds[1],
+#                 ),
+#             ]
+#         ),
+#         dtype=torch.double,
+#         device=device,
+#     )
+
+#     move_strategy_models_to_device(strategy, device)
+
+#     with temporary_torch_default_device(
+#         device,
+#         enabled=settings.force_default_device_during_aepsych,
+#     ):
+#         with torch.no_grad():
+#             probabilities, _ = strategy.model.predict(
+#                 grid,
+#                 probability_space=True,
+#             )
+#             latent_mean, latent_variance = strategy.model.predict(grid)
+
+#     return (
+#         probabilities.detach().cpu().numpy().reshape(one_q_grid.shape),
+#         latent_mean.detach().cpu().numpy().reshape(one_q_grid.shape),
+#         latent_variance.detach().cpu().numpy().reshape(one_q_grid.shape),
+#     )
+
+
+# def predict_native_level_set(
+#     strategy: SequentialStrategy,
+#     settings: FantasySettings,
+#     *,
+#     device: torch.device,
+#     n_grid: int = 100,
+# ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+#     """Evaluate fitted GP on its native total-gates/ratio mesh."""
+#     gates_axis = np.geomspace(
+#         max(1.0, float(settings.n_gates_bounds[0])),
+#         float(settings.n_gates_bounds[1]),
+#         n_grid,
+#     )
+#     ratio_axis = np.linspace(
+#         float(settings.ratio_bounds[0]),
+#         float(settings.ratio_bounds[1]),
+#         n_grid,
+#     )
+#     gates_grid, ratio_grid = np.meshgrid(gates_axis, ratio_axis)
+#     grid = torch.tensor(
+#         np.column_stack([gates_grid.ravel(), ratio_grid.ravel()]),
+#         dtype=torch.double,
+#         device=device,
+#     )
+
+#     move_strategy_models_to_device(strategy, device)
+
+#     with temporary_torch_default_device(
+#         device,
+#         enabled=settings.force_default_device_during_aepsych,
+#     ):
+#         with torch.no_grad():
+#             probabilities, _ = strategy.model.predict(
+#                 grid,
+#                 probability_space=True,
+#             )
+#             latent_mean, latent_variance = strategy.model.predict(grid)
+
+#     return (
+#         probabilities.detach().cpu().numpy().reshape(gates_grid.shape),
+#         latent_mean.detach().cpu().numpy().reshape(gates_grid.shape),
+#         latent_variance.detach().cpu().numpy().reshape(gates_grid.shape),
+#         gates_grid,
+#         ratio_grid,
+#     )

@@ -6,9 +6,11 @@ FLE is implemened.
 For Cost_aware:
 Should define a settings class as FLE_settings and definition as FLE_3d_fix_qubit_band
        use write_hqc_metadata for storing intermediate results in json
+       
 
 The GP grid saving is not implemented for Cost_Aware
-The save_real_checkpoint saves only the real RMB data and not the GP grid for Cost_Aware
+The save_real_checkpoint saves only the real RMB data in a json file and not the GP grid for Cost_Aware
+Saves in "Path("Personal") / model_folder / seed_folder / f"FLE_{timestamp}"
 
 run_FLE runs only FLE; the storing of configs and data/grid is done through this after each *real* measurement
 
@@ -64,7 +66,6 @@ if MODEL == "FLE":
         seed_fake_corners,
         select_affordable_prefix,
         select_fantasy_globalsur_batch,
-        select_plain_aepsych_batch,
         sobol_initial_candidates,
         temporary_torch_default_device,
         valid_config,
