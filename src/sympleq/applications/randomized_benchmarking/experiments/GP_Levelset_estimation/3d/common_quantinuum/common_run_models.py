@@ -376,7 +376,7 @@ def run_FLE(
     """
 
     logging.getLogger().setLevel(logging.WARNING)
-
+    warnings.filterwarnings("ignore")
     torch.set_default_dtype(torch.float64)
 
     gp_device = choose_gp_device(settings)
