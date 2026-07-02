@@ -15,9 +15,13 @@ from sympleq.integrations.quantinuum.utils import BASE_SIMULATION_COST
 
 FOLDER = Path(r"Personal\seed_2025")
 
-LABELS = ['Emulator','Sympleq_Seed-2025', 'Sympleq_Seed-2026',
-          'Sympleq_Seed-2027','Sympleq_Seed-2028', 'Sympleq_Seed-2029']
-SAVE_FIG_PATH = Path(r"Personal\RMB_results_figs\Volume\score_vs_nss_20q.pdf")
+LABELS = ['Sympleq_Seed-2025', 'Sympleq_Seed-2026',
+          'Sympleq_Seed-2027','Sympleq_Seed-2028',
+          'Sympleq_Seed-2029', 'Sympleq_Seed-2030',
+          'Sympleq_Seed-2031', 'Sympleq_Seed-2032',
+          'Sympleq_Seed-2033', 'Sympleq_Seed-2034']
+
+SAVE_FIG_PATH = Path(r"Personal\RMB_results_figs\Volume\score_vs_nss_batched_20_50q.pdf")
 
 # LABELS = ['Emulator (Upto 20q)']
 # SAVE_FIG_PATH = Path(r"Personal\RMB_results_figs\Volume\score_vs_nss_emulator20.png")
@@ -52,7 +56,7 @@ def sibling_grid(json_path: Path) -> Path:
     return json_path.parent / f"{json_path.stem}_gp_grid_3d.npz"
 
 
-def plot_folder(folder: str | Path, use_x: str| None = None, label: str | None = None) -> bool:
+def plot_folder(folder: str | Path, use_x: str| None = None, label: str | None = None, sobol=False) -> bool:
     spent = 0.0
     previous: dict[tuple[int, int, int, bool], int] = {}
     xs: list[float] = []
@@ -92,6 +96,7 @@ def plot_folder(folder: str | Path, use_x: str| None = None, label: str | None =
         plt.ylabel("Success-side volume")
         if sobol_done_x is not None:
             plt.axvline(sobol_done_x, color="black", linestyle="--", linewidth=1.0, label='Initial Sobol')
+
     else:
         num_mes = [i+1 for i in range(len(ys))]
         if label is not None:
@@ -101,9 +106,9 @@ def plot_folder(folder: str | Path, use_x: str| None = None, label: str | None =
         plt.xlabel("Number of stitched submissions")
         plt.ylabel("Success-side volume")
 
-        if sobol_done_x is not None:
-            plt.axvline(sobol_done_mes, color="black",
-                        linestyle="--", linewidth=1.0, label='Initial Sobol')
+    if sobol_done_x is not None and sobol:
+        plt.axvline(sobol_done_mes, color="black",
+                    linestyle="--", linewidth=1.0, label='Initial Sobol')
     return True
 
 
@@ -113,7 +118,10 @@ def main(folders: list[str | Path] | None = None) -> None:
 
     for index, folder in enumerate(folders):
         label = LABELS[index] if index < len(LABELS) else None
-        plotted = plot_folder(folder, label=label) or plotted
+        if index ==0:
+            plotted = plot_folder(folder, label=label, sobol=True) or plotted
+        else:
+            plotted = plot_folder(folder, label=label) or plotted
 
     if not plotted:
         return

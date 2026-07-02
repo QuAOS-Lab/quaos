@@ -813,10 +813,8 @@ def select_fantasy_globalsur_batch(
         if next_cost > settings.max_cost_per_run:
             break
 
-        gate_budget = getattr(settings, "gate_budget", None)
-
         if settings.backend_factory is default_backend_factory or settings.backend_factory is quantinuum_emulator_backend_factory:
-            if stitched_total_gates > gate_budget:
+            if stitched_total_gates > settings.gate_budget:
                 break
 
         if next_cost > budget.remaining_hqc:

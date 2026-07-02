@@ -57,7 +57,7 @@ class FantasySettings(CrossingSettings):
     save_real_checkpoints: bool = True
 
     # Gate budget per stitched submission (for emulator only)
-    gate_budget: int | None = None
+    gate_budget: int | 7000
 
     # AEPsych / GP / acquisition
     optimization_steps: int = 10000
@@ -179,7 +179,7 @@ BACKEND_FACTORY = default_backend_factory
 # REPRODUCIBILITY / DEBUG HANDLES
 # -------------------------------------------------------------------------
 
-RNG_SEEDS = [2025,2026,2027,2028,2029,2030,2031,2032,2033,2034]
+RNG_SEEDS = [2025]
 VERBOSE_FANTASIES = True
 PLOT = True
 
