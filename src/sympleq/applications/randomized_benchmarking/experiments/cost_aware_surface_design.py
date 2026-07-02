@@ -123,7 +123,6 @@ from sympleq.applications.randomized_benchmarking.experiments.plots import (
 )
 from sympleq.applications.randomized_benchmarking.experiments.scores import (
     success_side_log_volume,
-    surface_log_ratio_rows,
     surface_log_scores,
 )
 from sympleq.core.noise.noise_model import GenericNoise
@@ -1847,7 +1846,7 @@ def _maybe_update_live_surface_plot(
         mesh = _surface_plot_mesh(params, weights, settings)
         if mesh is None:
             return
-        png_path = plot_boundary_surface(
+        plot_boundary_surface(
             *mesh,
             _measured_arrays(rmb._data),
             settings,
@@ -1858,12 +1857,6 @@ def _maybe_update_live_surface_plot(
             close=not settings.live_surface_plot_show,
             figure_name="cost-aware live surface",
         )
-        if png_path is not None:
-            print_progress(
-                settings,
-                budget,
-                f"live surface plot -> {png_path}",
-            )
     except Exception as exc:  # noqa: BLE001 - live plotting should never kill a run
         print_progress(settings, budget, f"live surface plot skipped: {exc}")
 
@@ -1899,7 +1892,7 @@ def _maybe_update_live_volume_plot(
         )
         if point is None:
             return
-        png_path = plot_live_volume_history(
+        plot_live_volume_history(
             history,
             settings,
             png_path=settings.live_volume_plot_path,
@@ -1909,14 +1902,6 @@ def _maybe_update_live_volume_plot(
             close=not settings.live_volume_plot_show,
             figure_name="cost-aware live volume",
         )
-        if png_path is not None:
-            _, fitted_volume, true_volume, _, _ = point
-            ratio = fitted_volume / true_volume if true_volume else float("nan")
-            print_progress(
-                settings,
-                budget,
-                f"live volume plot -> {png_path} (ratio {ratio:.4g})",
-            )
     except Exception as exc:  # noqa: BLE001 - live plotting should never kill a run
         print_progress(settings, budget, f"live volume plot skipped: {exc}")
 
@@ -1993,7 +1978,7 @@ def _add_prior_live_volume_point(
             fitted_volume,
             true_volume,
         )
-        png_path = plot_live_volume_history(
+        plot_live_volume_history(
             history,
             settings,
             png_path=settings.live_volume_plot_path,
@@ -2003,13 +1988,6 @@ def _add_prior_live_volume_point(
             close=not settings.live_volume_plot_show,
             figure_name="cost-aware live volume",
         )
-        if png_path is not None:
-            ratio = fitted_volume / true_volume if true_volume else float("nan")
-            print_progress(
-                settings,
-                budget,
-                f"live volume prior -> {png_path} (ratio {ratio:.4g})",
-            )
     except Exception as exc:  # noqa: BLE001 - live plotting should never kill a run
         print_progress(settings, budget, f"live volume prior skipped: {exc}")
 
@@ -2243,7 +2221,6 @@ def _save_measurement_checkpoint(
             ],
         }
         _write_json_atomic(_checkpoint_meta_path(settings.save_path), meta)
-        print_progress(settings, budget, f"saved measurements -> {base_path}")
     except Exception as exc:  # noqa: BLE001 - checkpointing should not kill a run
         print_progress(settings, budget, f"checkpoint save skipped: {exc}")
 
@@ -2387,19 +2364,12 @@ def run_with_budget(
         if n_measured >= settings.posterior_min_configs:
             mean_var, _ = _surface_log_uncertainty(params, weights, score_grid, settings)
             log_rms = float(np.sqrt(mean_var))
-            diag = _residual_diagnostics(data, params, weights, settings)
-            max_z, n_flag = diag["max_abs"], diag["n_flag"]
-            if settings.verbose:
-                print_progress(
-                    settings,
-                    budget,
-                    f"iter {iteration}: configs={n_measured} ess={ess:.0f}/{len(params)} "
-                    f"log-rms={log_rms:.4f} chi2/dof={diag['chi2_dof']:.2f} "
-                    f"dev/dof={diag['dev_dof']:.2f} max|z|={max_z:.1f} flagged={n_flag} "
-                    f"resid<z> low-r={diag['lowr_mean']:+.2f}(n={diag['lowr_n']}) "
-                    f"high-r={diag['highr_mean']:+.2f}(n={diag['highr_n']}) "
-                    f"obs-tail={diag['tail_n']}",
-                )
+            print_progress(
+                settings,
+                budget,
+                f"iter {iteration}: configs={n_measured} ess={ess:.0f}/{len(params)} "
+                f"log-rms={log_rms:.4f}",
+            )
             if log_rms <= settings.target_log_rms:
                 print_progress(settings, budget, "target surface accuracy reached")
                 break
@@ -2427,17 +2397,6 @@ def run_with_budget(
         if not requests:
             print_progress(settings, budget, "no affordable informative probe; stopping")
             break
-
-        if settings.verbose and int(settings.max_qubit_window or 0) > 0:
-            batch_qs = sorted({int(req.config.n_qubits) for req in requests})
-            if batch_qs:
-                print_progress(
-                    settings,
-                    budget,
-                    f"batch Q-window {batch_qs[0]}..{batch_qs[-1]} "
-                    f"(register W={batch_qs[-1]}, max idle {batch_qs[-1] - batch_qs[0]}) "
-                    f"over Q={batch_qs}",
-                )
 
         # Charge the batch at the physical register width W = max Q in the batch
         # (H2 runs one submission on one register; idle qubits are paid for).
@@ -2501,11 +2460,11 @@ def run_with_budget(
             continuous_t_hat, continuous_result = _continuous_map_fit(
                 data, settings, t_init
             )
-            if continuous_t_hat is not None:
+            if continuous_t_hat is not None and settings.verbose:
                 _report_continuous_fit(
                     data, settings, continuous_t_hat, params, weights, continuous_result
                 )
-            else:
+            elif continuous_t_hat is None:
                 print_progress(
                     settings,
                     budget,
@@ -2568,7 +2527,7 @@ def run_with_budget(
                         settings.surface_uncertainty_plot_show
                         or settings.surface_plot_show
                     )
-                    png_path = plot_boundary_uncertainty_surface(
+                    plot_boundary_uncertainty_surface(
                         *mesh,
                         _measured_arrays(data),
                         settings,
@@ -2579,12 +2538,6 @@ def run_with_budget(
                         close=not show_uncertainty,
                         figure_name="cost-aware final uncertainty surface",
                     )
-                    if png_path is not None:
-                        print_progress(
-                            settings,
-                            budget,
-                            f"uncertainty surface plot -> {png_path}",
-                        )
 
         _best_effort(
             settings,
@@ -2617,7 +2570,7 @@ def run_with_budget(
                     settings.surface_plot_show
                     or settings.surface_uncertainty_plot_show
                 )
-                png_path = plot_grid_vs_continuous_surface(
+                plot_grid_vs_continuous_surface(
                     grid_med,
                     cont_params,
                     _measured_arrays(data),
@@ -2629,12 +2582,6 @@ def run_with_budget(
                     close=not show_cmp,
                     figure_name="grid vs continuous surface",
                 )
-                if png_path is not None:
-                    print_progress(
-                        settings,
-                        budget,
-                        f"grid-vs-continuous surface plot -> {png_path}",
-                    )
 
         _best_effort(
             settings,
@@ -2662,12 +2609,6 @@ def run_with_budget(
                 png_path=fixed_q_path,
                 show=settings.surface_plot_show,
             )
-            if axes and fixed_q_path is not None:
-                print_progress(
-                    settings,
-                    budget,
-                    f"fixed-Q threshold plot -> {fixed_q_path}",
-                )
             if axes and not settings.surface_plot_show:
                 plt.close(axes[0].figure)
 
@@ -2675,7 +2616,7 @@ def run_with_budget(
 
         def plot_final_volume() -> None:
             if settings.live_volume_plot_path is not None or settings.live_volume_plot_show:
-                png_path = plot_live_volume_history(
+                plot_live_volume_history(
                     volume_history,
                     settings,
                     png_path=settings.live_volume_plot_path,
@@ -2685,8 +2626,6 @@ def run_with_budget(
                     close=not settings.live_volume_plot_show,
                     figure_name="cost-aware final volume",
                 )
-                if png_path is not None:
-                    print_progress(settings, budget, f"volume plot -> {png_path}")
 
         _best_effort(settings, budget, "volume plot", plot_final_volume)
 
@@ -2702,24 +2641,33 @@ def _report(
     score_grid: list[tuple[float, int]],
 ) -> None:
     print_experiment_summary(rmb._data, settings, budget)
-    mean_var, per_node = _surface_log_uncertainty(params, weights, score_grid, settings)
-    print("\nSurface posterior")
-    print(f"  measured configs: {_measured_config_count(rmb._data)}")
+    mean_var, _ = _surface_log_uncertainty(params, weights, score_grid, settings)
+    print("\nFinal surface summary")
+    print(
+        f"  spent: {budget.spent_hqc:.1f} / {settings.hqc_budget} HQC; "
+        f"configs: {_measured_config_count(rmb._data)}; jobs: {budget.jobs}"
+    )
     print(f"  log-rms uncertainty over scored (r,Q): {np.sqrt(mean_var):.4f}")
     diag = _residual_diagnostics(rmb._data, params, weights, settings)
     print(
-        "  goodness of fit (grid): "
+        "  goodness of fit: "
         f"chi2/dof={diag['chi2_dof']:.3f} deviance/dof={diag['dev_dof']:.3f} "
-        f"(N={diag['n_points']}, k={_effective_free_params(settings)}, "
-        f"dof={diag['dof']}, max|z|={diag['max_abs']:.1f}, flagged={diag['n_flag']})"
+        f"(max|z|={diag['max_abs']:.1f}, flagged={diag['n_flag']})"
     )
-    a = [float(_wquantile(params[:, j], weights, 0.5)) for j in range(_N_PARAMS)]
-    print(f"  median rates @Qref (L1, L2; dL/dQ: m1, m2; d2L/dQ2: nu1, nu2; V) = "
-          f"({a[_I_L1]:.3g}, {a[_I_L2]:.3g}; {a[_I_M1]:.3g}, {a[_I_M2]:.3g}; "
-          f"{a[_I_N1]:.3g}, {a[_I_N2]:.3g}; {a[_I_V]:.3g})")
-    surface_scores = _surface_s1_s2(params, weights, settings, _analytic_lindblad_gates)
+    if settings.gp_grid_surface_path is not None:
+        reference_label = _gp_grid_surface_label(settings)
+        reference_gates = _gp_grid_surface_gates
+    elif settings.calibrated_surface_path is not None:
+        reference_label = _calibrated_surface_label(settings)
+        reference_gates = _calibrated_surface_gates
+    else:
+        reference_label = "analytic Lindblad"
+        reference_gates = _analytic_lindblad_gates
+
+    surface_scores = _surface_s1_s2(params, weights, settings, reference_gates)
+    print(f"  reference: {reference_label}")
     print(
-        "  analytic Lindblad surface S1/S2: "
+        "  S1/S2: "
         f"{surface_scores['surface_S1']:.5g} / {surface_scores['surface_S2']:.5g}"
     )
     print(
@@ -2728,75 +2676,12 @@ def _report(
         f"{surface_scores['surface_mean_sigma_log_gates']:.5g}"
     )
     print(
-        "  analytic Lindblad success-side log-volume fit/reference "
+        "  success-side log-volume fit/reference "
         "(log10 gates x ratio x Q): "
         f"{surface_scores['surface_volume_fit']:.5g} / "
         f"{surface_scores['surface_volume_reference']:.5g} "
         f"(ratio {surface_scores['surface_volume_ratio']:.5g})"
     )
-    _print_surface_log_ratio_grid(
-        params,
-        weights,
-        settings,
-        _analytic_lindblad_gates,
-        "analytic Lindblad",
-    )
-
-    if settings.calibrated_surface_path is not None:
-        calibrated_label = _calibrated_surface_label(settings)
-        calibrated_scores = _surface_s1_s2(
-            params,
-            weights,
-            settings,
-            _calibrated_surface_gates,
-        )
-        print(
-            f"  {calibrated_label} surface S1/S2: "
-            f"{calibrated_scores['surface_S1']:.5g} / "
-            f"{calibrated_scores['surface_S2']:.5g}"
-        )
-        print(
-            f"  {calibrated_label} success-side log-volume fit/reference "
-            "(log10 gates x ratio x Q): "
-            f"{calibrated_scores['surface_volume_fit']:.5g} / "
-            f"{calibrated_scores['surface_volume_reference']:.5g} "
-            f"(ratio {calibrated_scores['surface_volume_ratio']:.5g})"
-        )
-        _print_surface_log_ratio_grid(
-            params,
-            weights,
-            settings,
-            _calibrated_surface_gates,
-            calibrated_label,
-        )
-
-    if settings.gp_grid_surface_path is not None:
-        gp_label = _gp_grid_surface_label(settings)
-        gp_scores = _surface_s1_s2(
-            params,
-            weights,
-            settings,
-            _gp_grid_surface_gates,
-        )
-        print(
-            f"  {gp_label} surface S1/S2: "
-            f"{gp_scores['surface_S1']:.5g} / "
-            f"{gp_scores['surface_S2']:.5g}"
-        )
-        print(
-            f"  {gp_label} success-side log-volume fit/reference "
-            "(log10 gates x ratio x Q): "
-            f"{gp_scores['surface_volume_fit']:.5g} / "
-            f"{gp_scores['surface_volume_reference']:.5g} "
-            f"(ratio {gp_scores['surface_volume_ratio']:.5g})"
-        )
-        _print_surface_log_ratio_grid(
-            params,
-            weights,
-            settings,
-            _gp_grid_surface_gates,
-            gp_label,
-        )
 
     if settings.truth_boundary is not None:
         sq_log = []
@@ -2818,36 +2703,6 @@ def _report(
 def run(settings: CostAwareSurfaceSettings) -> tuple[RMB, list[RMBConfig]]:
     rmb, submitted, _ = run_with_budget(settings)
     return rmb, submitted
-
-
-def _surface_log_ratio_grid(
-    params: np.ndarray,
-    weights: np.ndarray,
-    settings: CostAwareSurfaceSettings,
-    reference_gates,
-) -> tuple[np.ndarray, list[tuple[int, list[float]]]]:
-    """Rows of log(n_fit/n_reference) using the volume convention."""
-    r_lo, r_hi = settings.ratio_bounds
-    ratios = np.linspace(r_lo, r_hi, max(settings.score_ratio_points, 2))
-    qubits = np.asarray(settings.q_values, dtype=float)
-    rr, qq = np.meshgrid(ratios, qubits)
-    _, _, fitted_gates = _logn_mean_sigma_mesh(params, weights, settings, rr, qq)
-    reference = reference_gates(rr, qq, settings)
-    return ratios, surface_log_ratio_rows(fitted_gates, reference, qubits)
-
-
-def _print_surface_log_ratio_grid(
-    params: np.ndarray,
-    weights: np.ndarray,
-    settings: CostAwareSurfaceSettings,
-    reference_gates,
-    label: str,
-) -> None:
-    ratios, rows = _surface_log_ratio_grid(params, weights, settings, reference_gates)
-    print(f"  log(n_fit/n_reference) grid ({label}; fit uses exp(mean log n*))")
-    print("    r      " + " ".join(f"{r:>+6.2f}" for r in ratios))
-    for q, row in rows:
-        print(f"    Q={q:<3d} " + " ".join(f"{x:+.2f}" for x in row))
 
 
 def _surface_s1_s2(
