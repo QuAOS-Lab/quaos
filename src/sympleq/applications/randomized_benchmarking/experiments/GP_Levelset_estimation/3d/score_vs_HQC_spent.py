@@ -15,11 +15,12 @@ from sympleq.integrations.quantinuum.utils import BASE_SIMULATION_COST
 
 FOLDER = Path(r"Personal\seed_2025")
 
-LABELS = ['Sympleq_Seed-2025', 'Sympleq_Seed-2026',
-          'Sympleq_Seed-2027','Sympleq_Seed-2028',
-          'Sympleq_Seed-2029', 'Sympleq_Seed-2030',
-          'Sympleq_Seed-2031', 'Sympleq_Seed-2032',
-          'Sympleq_Seed-2033', 'Sympleq_Seed-2034']
+LABELS = ['Sympleq_Seed-2025-qband-1', 'Sympleq_Seed-2025-qband-5',
+          #   'Sympleq_Seed-2027','Sympleq_Seed-2028',
+          #   'Sympleq_Seed-2029', 'Sympleq_Seed-2030',
+          #   'Sympleq_Seed-2031', 'Sympleq_Seed-2032',
+          #   'Sympleq_Seed-2033', 'Sympleq_Seed-2034'
+          ]
 
 SAVE_FIG_PATH = Path(r"Personal\RMB_results_figs\Volume\score_vs_nss_batched_20_50q.pdf")
 

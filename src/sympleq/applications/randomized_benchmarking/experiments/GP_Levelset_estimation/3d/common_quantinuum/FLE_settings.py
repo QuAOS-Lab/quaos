@@ -96,7 +96,7 @@ TARGET_THRESHOLD = 0.5
 
 N_QUBITS_BOUNDS = (20, 50)
 # LEVEL_SET_N_QUBITS = N_QUBITS
-QUBIT_BAND_LENGTH = 5
+QUBIT_BAND_LENGTH = 1
 
 # -------------------------------------------------------------------------
 # SEARCH-BOX HANDLES
