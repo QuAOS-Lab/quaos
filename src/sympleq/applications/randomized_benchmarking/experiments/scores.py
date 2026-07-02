@@ -133,6 +133,113 @@ def success_side_log_volume(
     )
 
 
+def surface_boundary_scores_2d(
+    *,
+    fitted_log_gates: np.ndarray,
+    reference_log_gates: np.ndarray,
+    sigma_log_gates: np.ndarray,
+    ratio_axis: np.ndarray,
+    qubit_axis: np.ndarray,
+    volume_fit_gates: np.ndarray,
+    volume_sigma_log_gates: np.ndarray,
+    volume_reference_gates: np.ndarray,
+    volume_ratio_axis: np.ndarray,
+    volume_qubit_axis: np.ndarray,
+    min_gates: float,
+    max_gates: float,
+    eps: float = 1e-12,
+) -> dict[str, float | int]:
+    """S1/S2 and success-side volume scores for 2-D boundary surfaces."""
+    scores = surface_log_scores(
+        fitted_log_gates,
+        reference_log_gates,
+        sigma_log_gates,
+        ratio_axis,
+        qubit_axis,
+        eps=eps,
+    )
+    if int(scores["score_points"]) < 2:
+        return {
+            "surface_S1": float("nan"),
+            "surface_S2": float("nan"),
+            "surface_volume_fit": float("nan"),
+            "surface_volume_lower_1sigma": float("nan"),
+            "surface_volume_upper_1sigma": float("nan"),
+            "surface_volume_reference": float("nan"),
+            "surface_volume_ratio": float("nan"),
+            "surface_mean_delta_log_gates": float("nan"),
+            "surface_mean_sigma_log_gates": float("nan"),
+            "surface_score_points": int(scores["score_points"]),
+        }
+
+    volume_fit_gates = np.asarray(volume_fit_gates, dtype=float)
+    volume_sigma_log_gates = np.asarray(volume_sigma_log_gates, dtype=float)
+    volume_reference_gates = np.asarray(volume_reference_gates, dtype=float)
+    valid_volume = (
+        np.isfinite(volume_fit_gates)
+        & np.isfinite(volume_reference_gates)
+        & np.isfinite(volume_sigma_log_gates)
+        & (volume_fit_gates > 0.0)
+        & (volume_reference_gates > 0.0)
+    )
+    volume_fit_gates = np.where(valid_volume, volume_fit_gates, np.nan)
+    volume_sigma_log_gates = np.where(valid_volume, volume_sigma_log_gates, np.nan)
+    volume_reference_gates = np.where(valid_volume, volume_reference_gates, np.nan)
+    volume_fit = success_side_log_volume(
+        volume_fit_gates,
+        volume_ratio_axis,
+        volume_qubit_axis,
+        min_gates,
+        max_gates,
+        eps=eps,
+    )
+    volume_lower = success_side_log_volume(
+        volume_fit_gates * np.exp(-volume_sigma_log_gates),
+        volume_ratio_axis,
+        volume_qubit_axis,
+        min_gates,
+        max_gates,
+        eps=eps,
+    )
+    volume_upper = success_side_log_volume(
+        volume_fit_gates * np.exp(volume_sigma_log_gates),
+        volume_ratio_axis,
+        volume_qubit_axis,
+        min_gates,
+        max_gates,
+        eps=eps,
+    )
+    volume_reference = success_side_log_volume(
+        volume_reference_gates,
+        volume_ratio_axis,
+        volume_qubit_axis,
+        min_gates,
+        max_gates,
+        eps=eps,
+    )
+    volume_ratio = (
+        float(volume_fit / volume_reference)
+        if (
+            np.isfinite(volume_fit)
+            and np.isfinite(volume_reference)
+            and abs(volume_reference) > eps
+        )
+        else float("nan")
+    )
+    return {
+        "surface_S1": float(scores["S1"]),
+        "surface_S2": float(scores["S2"]),
+        "surface_volume_fit": float(volume_fit),
+        "surface_volume_lower_1sigma": float(volume_lower),
+        "surface_volume_upper_1sigma": float(volume_upper),
+        "surface_volume_reference": float(volume_reference),
+        "surface_volume_ratio": volume_ratio,
+        "surface_mean_delta_log_gates": float(scores["mean_delta_log_gates"]),
+        "surface_mean_sigma_log_gates": float(scores["mean_sigma_log_gates"]),
+        "surface_score_points": int(scores["score_points"]),
+    }
+
+
 def surface_log_ratio_rows(
     fitted_gates: np.ndarray,
     reference_gates: np.ndarray,
