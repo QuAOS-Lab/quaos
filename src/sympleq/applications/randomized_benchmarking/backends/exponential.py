@@ -13,6 +13,17 @@ from sympleq.applications.randomized_benchmarking.config import RMBConfig
 from sympleq.core.bayesian_estimation import BayesianEstimator
 
 
+def asymptote_value(model: str | float, q: int | float) -> float:
+    """Survival asymptote B(Q) for an RB exponential-link model."""
+    if isinstance(model, str):
+        if model == "depolarizing":
+            return 2.0 ** (-int(q))
+        if model == "zero":
+            return 0.0
+        raise ValueError(f"Unknown asymptote model: {model!r}")
+    return float(model)
+
+
 class ExponentialBackend(RMBBackend):
     """
     Direct Bernoulli simulator for the RB exponential link.
@@ -54,13 +65,7 @@ class ExponentialBackend(RMBBackend):
         self.asymptote_model = asymptote_model
 
     def _asymptote(self, q: int) -> float:
-        if isinstance(self.asymptote_model, str):
-            if self.asymptote_model == "depolarizing":
-                return 2.0 ** (-int(q))
-            if self.asymptote_model == "zero":
-                return 0.0
-            raise ValueError(f"Unknown asymptote model: {self.asymptote_model!r}")
-        return float(self.asymptote_model)
+        return asymptote_value(self.asymptote_model, q)
 
     def _rate(self, config: RMBConfig) -> float:
         q = float(config.n_qubits)

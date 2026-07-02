@@ -202,6 +202,31 @@ def batch_hqc_cost(requests: list[MeasurementRequest]) -> float:
                                   for request in requests))
 
 
+def bare_hqc_at_register_width(config: RMBConfig, register_width: int) -> float:
+    """Bare HQC for the real circuit, reset/register-priced at width W.
+
+    The circuit gates stay those of ``config``; only the per-shot
+    register/reset term is lifted from q/5000 to W/5000.  This is useful when
+    a stitched batch runs on a physical register whose width is set by the
+    largest circuit in the batch, while smaller circuits leave qubits idle.
+    """
+    width = max(int(register_width), int(config.n_qubits))
+    return single_circuit_bare_hqc(config) + (width - int(config.n_qubits)) / 5000
+
+
+def batch_hqc_cost_at_physical_width(requests: list[MeasurementRequest]) -> float:
+    """HQC cost with every circuit priced at the batch's physical register width."""
+    requests = [request for request in requests if request.shots > 0]
+    if not requests:
+        return 0.0
+    width = max(int(request.config.n_qubits) for request in requests)
+    total_bare = sum(
+        request.shots * bare_hqc_at_register_width(request.config, width)
+        for request in requests
+    )
+    return stitched_batch_hqc(total_bare)
+
+
 def marginal_hqc_cost(config: RMBConfig, shots: int) -> float:
     """Marginal stitched cost of one config's shots inside a non-empty batch."""
     return max(1e-12, shots * single_circuit_bare_hqc(config))
