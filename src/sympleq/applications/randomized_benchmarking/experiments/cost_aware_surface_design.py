@@ -122,7 +122,9 @@ from sympleq.applications.randomized_benchmarking.experiments.plots import (
     parametric_bootstrap_analytic_coverage,
 )
 from sympleq.applications.randomized_benchmarking.experiments.scores import (
-    integrate_trapezoid as _trapezoid,
+    success_side_log_volume,
+    surface_log_ratio_rows,
+    surface_log_scores,
 )
 from sympleq.core.noise.noise_model import GenericNoise
 
@@ -806,29 +808,31 @@ def _q_reference(settings: CostAwareSurfaceSettings) -> float:
     return 0.5 * (min(settings.q_values) + max(settings.q_values))
 
 
-def _lambdas(params: np.ndarray, dq: float) -> tuple[np.ndarray, np.ndarray]:
-    """Per-gate rates at register offset dq = Q - Qref, for every parameter row.
+def _lambdas(params: np.ndarray, dq: float | np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Per-gate rates at register offset dq = Q - Qref.
 
         Li(Q) = Li0 + mi (Q - Qref) + nu_i (Q - Qref)^2,   i = 1, 2.
 
+    ``params`` may be a single parameter vector or an array of parameter rows.
     The quadratic coefficients nu_i (columns _I_N1, _I_N2) are pinned to zero by
     default (their grid axes have resolution 1), so this reduces to the linear
     law unless the curvature axes are explicitly freed for a device whose
     Q-dependence is expected to be nonlinear (e.g. crosstalk on hardware).
     """
+    params = np.asarray(params, dtype=float)
     dq2 = dq * dq
-    lam1 = params[:, _I_L1] + params[:, _I_M1] * dq + params[:, _I_N1] * dq2
-    lam2 = params[:, _I_L2] + params[:, _I_M2] * dq + params[:, _I_N2] * dq2
+    lam1 = params[..., _I_L1] + params[..., _I_M1] * dq + params[..., _I_N1] * dq2
+    lam2 = params[..., _I_L2] + params[..., _I_M2] * dq + params[..., _I_N2] * dq2
     return lam1, lam2
 
 
 def _denominator(
     params: np.ndarray,
-    r: float,
-    q: float,
+    r: float | np.ndarray,
+    q: float | np.ndarray,
     settings: CostAwareSurfaceSettings,
 ) -> np.ndarray:
-    """Inverse boundary 1/n*(r, Q) for every parameter row.
+    """Inverse boundary 1/n*(r, Q) for one vector or many parameter rows.
 
         1/n* = [ L1(Q) (1-r) + L2(Q) r ] / ln 2,
         Li(Q) = Li0 + mi (Q - Qref) + nu_i (Q - Qref)^2.
@@ -870,21 +874,36 @@ def _link_probability(
     q: float,
     settings: CostAwareSurfaceSettings,
 ) -> np.ndarray:
-    """RB exponential survival probability at (n, r, Q) for every parameter row.
+    """RB exponential survival probability at (n, r, Q).
 
         p = V * (1 - B(Q)) * 2^{-n D(r,Q)} + B(Q),     D = 1 / n*.
 
     The transition sharpness is the physical constant ln 2 inside the exponent
-    (not a free parameter); V is the visibility (params[:, _I_V]) and B(Q) the
+    (not a free parameter); V is the visibility and B(Q) the
     asymptote.  At n D = 1 the renormalised fidelity (p - B)/(V(1-B)) equals 0.5,
     so the boundary n* = 1/D is independent of V and B.
     """
     d = _denominator(params, r, q, settings)
     b = _asymptote(settings, q)
-    visibility = params[:, _I_V]
+    visibility = np.asarray(params)[..., _I_V]
     fidelity = np.power(2.0, -n * d)  # 2^{-n D} in (0, 1]
     p = visibility * (1.0 - b) * fidelity + b
     return np.clip(p, _EPS, 1.0 - _EPS)
+
+
+def _log_likelihood(
+    params: np.ndarray,
+    arrays: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    settings: CostAwareSurfaceSettings,
+) -> np.ndarray:
+    """Bernoulli log-likelihood for one parameter vector or a parameter grid."""
+    ratios, gates, qubits, succ, fail = arrays
+    params = np.asarray(params, dtype=float)
+    log_lik = np.zeros(params.shape[:-1], dtype=float)
+    for i in range(len(ratios)):
+        pij = _link_probability(params, gates[i], ratios[i], qubits[i], settings)
+        log_lik += succ[i] * np.log(pij) + fail[i] * np.log(1.0 - pij)
+    return log_lik
 
 
 def _grid_posterior(
@@ -907,11 +926,7 @@ def _grid_posterior(
     for r, q in corners:
         valid &= _denominator(params, r, q, settings) > settings.denom_floor
 
-    ratios, gates, qubits, succ, fail = _measured_arrays(data)
-    log_lik = np.zeros(len(params))
-    for i in range(len(ratios)):
-        pij = _link_probability(params, gates[i], ratios[i], qubits[i], settings)
-        log_lik += succ[i] * np.log(pij + _EPS) + fail[i] * np.log(1.0 - pij + _EPS)
+    log_lik = _log_likelihood(params, _measured_arrays(data), settings)
 
     temperature = max(settings.likelihood_temperature, 1e-6)
     log_post = log_prior + log_lik / temperature
@@ -1437,41 +1452,14 @@ def _surface_uncertainty_plot_mesh(
     grid_r = np.linspace(r_lo, r_hi, 40)
     grid_q = np.linspace(q_lo, q_hi, 40)
     rr, qq = np.meshgrid(grid_r, grid_q)
-
-    mean_log = np.full(rr.shape, np.nan, dtype=float)
-    sigma_log = np.full(rr.shape, np.nan, dtype=float)
-    flat_r = rr.ravel()
-    flat_q = qq.ravel()
-    mean_flat = mean_log.ravel()
-    sigma_flat = sigma_log.ravel()
-    raw = bool(getattr(settings, "plot_raw_fidelity_boundary", False))
-    for idx in range(flat_r.size):
-        q = float(flat_q[idx])
-        d = _denominator(params, float(flat_r[idx]), q, settings)
-        ok = (d > 0.0) & (weights > 0.0)
-        if not np.any(ok):
-            continue
-        w = weights[ok]
-        log_n = -np.log(d[ok])                    # log n* (renormalised) per row
-        if raw:
-            # log n_raw = log n* + log g(Q, V_row); this folds any V posterior
-            # spread into the band and masks rows with no raw p=0.5 crossing.
-            b = _asymptote(settings, q)
-            vrow = params[ok, _I_V]
-            denom = vrow * (1.0 - b)
-            with np.errstate(divide="ignore", invalid="ignore"):
-                x = np.where(denom > 0.0, (0.5 - b) / denom, np.nan)
-                g = np.where((x > 0.0) & (x < 1.0), -np.log2(x), np.nan)
-            good = np.isfinite(g) & (g > 0.0)
-            if not np.any(good):
-                continue
-            log_n = log_n[good] + np.log(g[good])
-            w = w[good]
-        w = w / np.sum(w)
-        mean = float(np.sum(w * log_n))
-        var = float(np.sum(w * log_n * log_n) - mean * mean)
-        mean_flat[idx] = mean
-        sigma_flat[idx] = float(np.sqrt(max(var, 0.0)))
+    mean_log, sigma_log, _ = _logn_mean_sigma_mesh(
+        params,
+        weights,
+        settings,
+        rr,
+        qq,
+        raw=bool(getattr(settings, "plot_raw_fidelity_boundary", False)),
+    )
 
     k = float(settings.surface_uncertainty_sigma)
     ln10 = np.log(10.0)
@@ -1516,10 +1504,7 @@ def _boundary_log10_from_param_vector(
     grid_r = np.linspace(r_lo, r_hi, n_r)
     grid_q = np.linspace(q_lo, q_hi, n_q)
     rr, qq = np.meshgrid(grid_r, grid_q)
-    dq = qq - _q_reference(settings)
-    lam1 = p[_I_L1] + p[_I_M1] * dq + p[_I_N1] * dq * dq
-    lam2 = p[_I_L2] + p[_I_M2] * dq + p[_I_N2] * dq * dq
-    d = (lam1 * (1.0 - rr) + lam2 * rr) / _LN2
+    d = _denominator(p, rr, qq, settings)
     gates = np.where(d > 0.0, 1.0 / np.maximum(d, _EPS), np.nan)
     if getattr(settings, "plot_raw_fidelity_boundary", False):
         # Remap n* (renormalised 2^{-nD}=0.5 crossing) onto the raw survival
@@ -1539,7 +1524,7 @@ def _boundary_log10_from_param_vector(
 def _raw_fidelity_gate_factor(
     settings: CostAwareSurfaceSettings,
     qq: np.ndarray,
-    visibility: float,
+    visibility: float | np.ndarray,
 ) -> np.ndarray:
     """Per-(r,Q) factor g(Q) mapping the renormalised boundary onto raw p=0.5.
 
@@ -1554,7 +1539,7 @@ def _raw_fidelity_gate_factor(
     p=0.5 depth exists (B(Q) >= 0.5, or the un-decayed top V(1-B)+B < 0.5), i.e.
     where 0 < (0.5-B)/(V(1-B)) < 1 fails.
     """
-    v = float(visibility)
+    v = np.asarray(visibility, dtype=float)
     uq = np.unique(qq)
     b_of_q = {float(q): float(_asymptote(settings, float(q))) for q in uq}
     b = np.vectorize(b_of_q.get, otypes=[float])(qq)
@@ -1563,6 +1548,55 @@ def _raw_fidelity_gate_factor(
         x = np.where(denom > 0.0, (0.5 - b) / denom, np.nan)
         g = np.where((x > 0.0) & (x < 1.0), -np.log2(x), np.nan)
     return g
+
+
+def _logn_mean_sigma_mesh(
+    params: np.ndarray,
+    weights: np.ndarray,
+    settings: CostAwareSurfaceSettings,
+    rr: np.ndarray,
+    qq: np.ndarray,
+    *,
+    raw: bool = False,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Posterior mean/sigma of log n* and exp(mean log n*) fit mesh."""
+    params = np.asarray(params, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+    mean_log = np.full(rr.shape, np.nan, dtype=float)
+    sigma_log = np.full(rr.shape, np.nan, dtype=float)
+    geometric_gates = np.full(rr.shape, np.nan, dtype=float)
+
+    flat_r = rr.ravel()
+    flat_q = qq.ravel()
+    mean_flat = mean_log.ravel()
+    sigma_flat = sigma_log.ravel()
+    gates_flat = geometric_gates.ravel()
+    for idx in range(flat_r.size):
+        r = float(flat_r[idx])
+        q = float(flat_q[idx])
+        d = _denominator(params, r, q, settings)
+        ok = (d > 0.0) & (weights > 0.0)
+        if not np.any(ok):
+            continue
+        w = weights[ok]
+        d_ok = d[ok]
+
+        log_n = -np.log(d_ok)
+        if raw:
+            g = _raw_fidelity_gate_factor(settings, np.asarray(q), params[ok, _I_V])
+            good = np.isfinite(g) & (g > 0.0)
+            if not np.any(good):
+                continue
+            log_n = log_n[good] + np.log(g[good])
+            w = w[good]
+
+        w = w / np.sum(w)
+        mean = float(np.sum(w * log_n))
+        var = float(np.sum(w * log_n * log_n) - mean * mean)
+        mean_flat[idx] = mean
+        sigma_flat[idx] = float(np.sqrt(max(var, 0.0)))
+        gates_flat[idx] = float(np.exp(mean))
+    return mean_log, sigma_log, geometric_gates
 
 
 def _free_axis_indices(settings: CostAwareSurfaceSettings) -> list[int]:
@@ -1594,17 +1628,13 @@ def _continuous_map_fit(
     free = _free_axis_indices(settings)
     if not free:
         return None, None
-    ratios, gates, qubits, succ, fail = _measured_arrays(data)
+    arrays = _measured_arrays(data)
+    ratios, _, qubits, _, _ = arrays
     if ratios.size == 0:
         return None, None
 
     prior_centre, prior_std = _prior_moments(settings)
-    b = np.array([_asymptote(settings, q) for q in qubits], dtype=float)
-    qref = _q_reference(settings)
-    dq = qubits - qref
     corners = _region_corners(settings)
-    corner_dq = corners[:, 1] - qref
-    corner_r = corners[:, 0]
 
     # Base vector: pinned axes fixed at their prior centre; free axes overwritten.
     t_base = t_init.astype(float).copy()
@@ -1622,19 +1652,13 @@ def _continuous_map_fit(
         t = t_from_z(z_free)
         p = _params_from_t(t[None, :])[0]
         # Admissibility over the scored rectangle (bilinear -> corners suffice).
-        cl1 = p[_I_L1] + p[_I_M1] * corner_dq + p[_I_N1] * corner_dq * corner_dq
-        cl2 = p[_I_L2] + p[_I_M2] * corner_dq + p[_I_N2] * corner_dq * corner_dq
-        cd = (cl1 * (1.0 - corner_r) + cl2 * corner_r) / _LN2
+        cd = _denominator(p, corners[:, 0], corners[:, 1], settings)
         if not np.all(cd > settings.denom_floor):
             return 1e18
-        lam1 = p[_I_L1] + p[_I_M1] * dq + p[_I_N1] * dq * dq
-        lam2 = p[_I_L2] + p[_I_M2] * dq + p[_I_N2] * dq * dq
-        d = (lam1 * (1.0 - ratios) + lam2 * ratios) / _LN2
+        d = _denominator(p, ratios, qubits, settings)
         if not np.all(d > 0.0):
             return 1e18
-        fid = np.power(2.0, -gates * d)
-        pr = np.clip(p[_I_V] * (1.0 - b) * fid + b, _EPS, 1.0 - _EPS)
-        loglik = float(np.sum(succ * np.log(pr) + fail * np.log(1.0 - pr)))
+        loglik = float(_log_likelihood(p, arrays, settings))
         zvec = (t - prior_centre) / prior_std
         logprior = -0.5 * float(np.sum(zvec * zvec))
         return -(loglik + logprior)
@@ -2298,6 +2322,22 @@ def _resume_measurement_checkpoint(
     return rmb, budget, submitted, batch_history, live_volume_history
 
 
+def _best_effort(
+    settings: CostAwareSurfaceSettings,
+    budget: Budget,
+    label: str,
+    fn: Callable[[], object],
+    *,
+    default: object = None,
+) -> object:
+    """Run an optional finalisation step without letting it kill the run."""
+    try:
+        return fn()
+    except Exception as exc:  # noqa: BLE001 - finalisation is best-effort
+        print_progress(settings, budget, f"{label} skipped: {exc}")
+        return default
+
+
 # --------------------------------------------------------------------------- #
 # Main run loop
 # --------------------------------------------------------------------------- #
@@ -2493,20 +2533,21 @@ def run_with_budget(
         reason="final",
     )
 
-    if settings.save_path is not None:
-        try:
-            from sympleq.applications.randomized_benchmarking.experiments.common import (
-                save_crossings,
-            )
-            base_path = save_crossings(rmb, settings, budget, submitted)
-        except Exception as exc:  # noqa: BLE001 - saving is best-effort
-            print_progress(settings, budget, f"save skipped: {exc}")
-            base_path = None
-    else:
-        base_path = None
+    def save_final_crossings():
+        from sympleq.applications.randomized_benchmarking.experiments.common import (
+            save_crossings,
+        )
+
+        return save_crossings(rmb, settings, budget, submitted)
+
+    base_path = (
+        _best_effort(settings, budget, "save", save_final_crossings)
+        if settings.save_path is not None
+        else None
+    )
 
     if settings.plot:
-        try:
+        def plot_uncertainty_surface() -> None:
             if (
                 settings.surface_uncertainty_plot
                 and (
@@ -2544,10 +2585,16 @@ def run_with_budget(
                             budget,
                             f"uncertainty surface plot -> {png_path}",
                         )
-        except Exception as exc:  # noqa: BLE001 - plotting is best-effort
-            print_progress(settings, budget, f"uncertainty surface plot skipped: {exc}")
+
+        _best_effort(
+            settings,
+            budget,
+            "uncertainty surface plot",
+            plot_uncertainty_surface,
+        )
+
         # Grid-median vs continuous-MAP comparison surface.
-        try:
+        def plot_grid_vs_continuous() -> None:
             if (
                 settings.continuous_refit
                 and continuous_t_hat is not None
@@ -2588,11 +2635,15 @@ def run_with_budget(
                         budget,
                         f"grid-vs-continuous surface plot -> {png_path}",
                     )
-        except Exception as exc:  # noqa: BLE001 - plotting is best-effort
-            print_progress(
-                settings, budget, f"grid-vs-continuous plot skipped: {exc}"
-            )
-        try:
+
+        _best_effort(
+            settings,
+            budget,
+            "grid-vs-continuous plot",
+            plot_grid_vs_continuous,
+        )
+
+        def plot_fixed_q_threshold() -> None:
             if not settings.surface_plot_show:
                 import matplotlib
                 matplotlib.use("Agg")
@@ -2619,9 +2670,10 @@ def run_with_budget(
                 )
             if axes and not settings.surface_plot_show:
                 plt.close(axes[0].figure)
-        except Exception as exc:  # noqa: BLE001 - plotting is best-effort
-            print_progress(settings, budget, f"plot skipped: {exc}")
-        try:
+
+        _best_effort(settings, budget, "plot", plot_fixed_q_threshold)
+
+        def plot_final_volume() -> None:
             if settings.live_volume_plot_path is not None or settings.live_volume_plot_show:
                 png_path = plot_live_volume_history(
                     volume_history,
@@ -2635,8 +2687,8 @@ def run_with_budget(
                 )
                 if png_path is not None:
                     print_progress(settings, budget, f"volume plot -> {png_path}")
-        except Exception as exc:  # noqa: BLE001 - plotting is best-effort
-            print_progress(settings, budget, f"volume plot skipped: {exc}")
+
+        _best_effort(settings, budget, "volume plot", plot_final_volume)
 
     return rmb, submitted, budget
 
@@ -2753,7 +2805,8 @@ def _report(
             ok = (d > 0.0) & (weights > 0.0)
             if not np.any(ok):
                 continue
-            n_hat = float(np.sum((weights[ok] / np.sum(weights[ok])) * (1.0 / d[ok])))
+            w = weights[ok] / np.sum(weights[ok])
+            n_hat = float(np.exp(np.sum(w * -np.log(d[ok]))))
             n_true = float(settings.truth_boundary(r, q))
             if n_hat > 0 and n_true > 0:
                 sq_log.append((np.log(n_hat / n_true)) ** 2)
@@ -2776,28 +2829,11 @@ def _surface_log_ratio_grid(
     """Rows of log(n_fit/n_reference) using the volume convention."""
     r_lo, r_hi = settings.ratio_bounds
     ratios = np.linspace(r_lo, r_hi, max(settings.score_ratio_points, 2))
-    rows: list[tuple[int, list[float]]] = []
-    for q_raw in settings.q_values:
-        q = int(q_raw)
-        row = []
-        reference = reference_gates(
-            ratios,
-            np.full_like(ratios, float(q)),
-            settings,
-        )
-        for r, n_true in zip(ratios, reference):
-            d = _denominator(params, float(r), float(q), settings)
-            ok = (d > 0.0) & (weights > 0.0)
-            value = float("nan")
-            if np.any(ok) and np.isfinite(n_true) and n_true > 0.0:
-                w = weights[ok] / np.sum(weights[ok])
-                mean_d = float(np.sum(w * d[ok]))
-                if mean_d > 0.0:
-                    n_fit = 1.0 / mean_d
-                    value = float(np.log(n_fit / n_true))
-            row.append(value)
-        rows.append((q, row))
-    return ratios, rows
+    qubits = np.asarray(settings.q_values, dtype=float)
+    rr, qq = np.meshgrid(ratios, qubits)
+    _, _, fitted_gates = _logn_mean_sigma_mesh(params, weights, settings, rr, qq)
+    reference = reference_gates(rr, qq, settings)
+    return ratios, surface_log_ratio_rows(fitted_gates, reference, qubits)
 
 
 def _print_surface_log_ratio_grid(
@@ -2808,7 +2844,7 @@ def _print_surface_log_ratio_grid(
     label: str,
 ) -> None:
     ratios, rows = _surface_log_ratio_grid(params, weights, settings, reference_gates)
-    print(f"  log(n_fit/n_reference) grid ({label}; fit uses 1/mean D)")
+    print(f"  log(n_fit/n_reference) grid ({label}; fit uses exp(mean log n*))")
     print("    r      " + " ".join(f"{r:>+6.2f}" for r in ratios))
     for q, row in rows:
         print(f"    Q={q:<3d} " + " ".join(f"{x:+.2f}" for x in row))
@@ -2825,39 +2861,19 @@ def _surface_s1_s2(
     ratios = np.linspace(r_lo, r_hi, max(settings.score_ratio_points, 2))
     qubits = np.asarray(settings.q_values, dtype=float)
     rr, qq = np.meshgrid(ratios, qubits)
-    med = np.asarray([float(_wquantile(params[:, j], weights, 0.5)) for j in range(_N_PARAMS)])
-    _qref = _q_reference(settings)
-    _dq = qq - _qref
-    _lam1 = med[_I_L1] + med[_I_M1] * _dq + med[_I_N1] * _dq * _dq
-    _lam2 = med[_I_L2] + med[_I_M2] * _dq + med[_I_N2] * _dq * _dq
-    d_med = (_lam1 * (1.0 - rr) + _lam2 * rr) / _LN2
-    fitted_log = np.where(d_med > 0.0, -np.log(d_med), np.nan)
     reference = reference_gates(rr, qq, settings)
     reference_log = np.where(reference > 0.0, np.log(reference), np.nan)
 
-    sigma = np.full_like(fitted_log, np.nan, dtype=float)
-    mean_d_gates = np.full_like(fitted_log, np.nan, dtype=float)
-    for q_index, q in enumerate(qubits):
-        for r_index, r in enumerate(ratios):
-            d = _denominator(params, r, q, settings)
-            ok = (d > 0.0) & (weights > 0.0)
-            if not np.any(ok):
-                continue
-            w = weights[ok] / np.sum(weights[ok])
-            mean_d = float(np.sum(w * d[ok]))
-            if mean_d > 0.0:
-                mean_d_gates[q_index, r_index] = 1.0 / mean_d
-            log_n = -np.log(d[ok])
-            mean = float(np.sum(w * log_n))
-            var = float(np.sum(w * log_n * log_n) - mean * mean)
-            sigma[q_index, r_index] = float(np.sqrt(max(var, 0.0)))
-
-    valid = (
-        np.isfinite(fitted_log)
-        & np.isfinite(reference_log)
-        & np.isfinite(sigma)
+    fitted_log, sigma, _ = _logn_mean_sigma_mesh(params, weights, settings, rr, qq)
+    scores = surface_log_scores(
+        fitted_log,
+        reference_log,
+        sigma,
+        ratios,
+        qubits,
+        eps=_EPS,
     )
-    if np.count_nonzero(valid) < 2:
+    if int(scores["score_points"]) < 2:
         return {
             "surface_S1": float("nan"),
             "surface_S2": float("nan"),
@@ -2868,30 +2884,8 @@ def _surface_s1_s2(
             "surface_volume_ratio": float("nan"),
             "surface_mean_delta_log_gates": float("nan"),
             "surface_mean_sigma_log_gates": float("nan"),
-            "surface_score_points": int(np.count_nonzero(valid)),
+            "surface_score_points": int(scores["score_points"]),
         }
-
-    fitted_log = np.where(valid, fitted_log, np.nan)
-    delta = np.where(valid, np.abs(fitted_log - reference_log), np.nan)
-    sigma = np.where(valid, sigma, np.nan)
-    r_span = max(r_hi - r_lo, _EPS)
-    q_span = float(max(qubits) - min(qubits))
-
-    def _surface_average(values: np.ndarray) -> float:
-        values = np.nan_to_num(values)
-        if len(qubits) == 1:
-            return float(_trapezoid(values[0], ratios) / r_span)
-        return float(
-            _trapezoid(_trapezoid(values, ratios, axis=1), qubits)
-            / max(r_span * q_span, _EPS)
-        )
-
-    normaliser = abs(_surface_average(fitted_log))
-    if not np.isfinite(normaliser) or normaliser <= _EPS:
-        normaliser = float(np.nanmean(np.abs(fitted_log)))
-    normaliser = max(float(normaliser), _EPS)
-    s1 = float(_surface_average(delta) / normaliser)
-    s2 = float(_surface_average(sigma) / normaliser)
 
     def _volume_axes() -> tuple[np.ndarray, np.ndarray, float, float]:
         if (
@@ -2909,86 +2903,54 @@ def _surface_s1_s2(
         n_lo, n_hi = settings.n_gates_bounds
         return ratios, qubits, float(n_lo), float(n_hi)
 
-    def _success_side_volume(
-        boundary_gates: np.ndarray,
-        ratio_axis: np.ndarray,
-        qubit_axis: np.ndarray,
-        min_gates: float,
-        max_gates: float,
-    ) -> float:
-        valid_boundary = np.isfinite(boundary_gates) & (boundary_gates > 0.0)
-        if not np.any(valid_boundary):
-            return float("nan")
-        min_gates = max(float(min_gates), _EPS)
-        max_gates = max(float(max_gates), min_gates)
-        clipped = np.clip(boundary_gates, min_gates, max_gates)
-        height = np.where(
-            valid_boundary,
-            np.maximum(np.log10(clipped) - np.log10(min_gates), 0.0),
-            np.nan,
-        )
-        height = np.nan_to_num(height)
-        if len(qubit_axis) == 1:
-            return float(_trapezoid(height[0], ratio_axis))
-        return float(_trapezoid(_trapezoid(height, ratio_axis, axis=1), qubit_axis))
-
     volume_ratios, volume_qubits, volume_min_gates, volume_max_gates = _volume_axes()
     v_rr, v_qq = np.meshgrid(volume_ratios, volume_qubits)
-    volume_mean_d_gates = np.full(v_rr.shape, np.nan, dtype=float)
-    volume_sigma = np.full(v_rr.shape, np.nan, dtype=float)
-    for q_index, q in enumerate(volume_qubits):
-        for r_index, r in enumerate(volume_ratios):
-            d = _denominator(params, float(r), float(q), settings)
-            ok = (d > 0.0) & (weights > 0.0)
-            if not np.any(ok):
-                continue
-            w = weights[ok] / np.sum(weights[ok])
-            mean_d = float(np.sum(w * d[ok]))
-            if mean_d > 0.0:
-                volume_mean_d_gates[q_index, r_index] = 1.0 / mean_d
-            log_n = -np.log(d[ok])
-            mean = float(np.sum(w * log_n))
-            var = float(np.sum(w * log_n * log_n) - mean * mean)
-            volume_sigma[q_index, r_index] = float(np.sqrt(max(var, 0.0)))
+    _, volume_sigma, volume_fit_gates = _logn_mean_sigma_mesh(
+        params, weights, settings, v_rr, v_qq
+    )
     volume_reference_gates = reference_gates(v_rr, v_qq, settings)
 
     valid_volume = (
-        np.isfinite(volume_mean_d_gates)
+        np.isfinite(volume_fit_gates)
         & np.isfinite(volume_reference_gates)
         & np.isfinite(volume_sigma)
-        & (volume_mean_d_gates > 0.0)
+        & (volume_fit_gates > 0.0)
         & (volume_reference_gates > 0.0)
     )
-    volume_mean_d_gates = np.where(valid_volume, volume_mean_d_gates, np.nan)
+    volume_fit_gates = np.where(valid_volume, volume_fit_gates, np.nan)
     volume_sigma = np.where(valid_volume, volume_sigma, np.nan)
     volume_reference_gates = np.where(valid_volume, volume_reference_gates, np.nan)
-    volume_fit = _success_side_volume(
-        volume_mean_d_gates,
+    volume_fit = success_side_log_volume(
+        volume_fit_gates,
         volume_ratios,
         volume_qubits,
         volume_min_gates,
         volume_max_gates,
+        eps=_EPS,
     )
-    volume_lower = _success_side_volume(
-        volume_mean_d_gates * np.exp(-volume_sigma),
+    volume_lower = success_side_log_volume(
+        volume_fit_gates * np.exp(-volume_sigma),
         volume_ratios,
         volume_qubits,
         volume_min_gates,
         volume_max_gates,
+        eps=_EPS,
     )
-    volume_upper = _success_side_volume(
-        volume_mean_d_gates * np.exp(volume_sigma),
+    volume_upper = success_side_log_volume(
+        volume_fit_gates * np.exp(volume_sigma),
         volume_ratios,
         volume_qubits,
         volume_min_gates,
         volume_max_gates,
+        eps=_EPS,
     )
-    volume_reference = _success_side_volume(
+    volume_reference = success_side_log_volume(
         volume_reference_gates,
         volume_ratios,
         volume_qubits,
         volume_min_gates,
         volume_max_gates,
+        eps=_EPS,
     )
     volume_ratio = (
         float(volume_fit / volume_reference)
@@ -3000,16 +2962,16 @@ def _surface_s1_s2(
         else float("nan")
     )
     return {
-        "surface_S1": s1,
-        "surface_S2": s2,
+        "surface_S1": float(scores["S1"]),
+        "surface_S2": float(scores["S2"]),
         "surface_volume_fit": float(volume_fit),
         "surface_volume_lower_1sigma": float(volume_lower),
         "surface_volume_upper_1sigma": float(volume_upper),
         "surface_volume_reference": float(volume_reference),
         "surface_volume_ratio": volume_ratio,
-        "surface_mean_delta_log_gates": float(np.nanmean(delta)),
-        "surface_mean_sigma_log_gates": float(np.nanmean(sigma)),
-        "surface_score_points": int(np.count_nonzero(valid)),
+        "surface_mean_delta_log_gates": float(scores["mean_delta_log_gates"]),
+        "surface_mean_sigma_log_gates": float(scores["mean_sigma_log_gates"]),
+        "surface_score_points": int(scores["score_points"]),
     }
 
 
@@ -3113,7 +3075,7 @@ if __name__ == "__main__":
     # comparison surface is written alongside the usual plots.
     rmb, configs, budget = run_surface(
         q_values=tuple(range(20, 51, 1)),   # score over Q = 20, 21, ..., 50
-        acquisition_q_resolution=12,     # Q candidates across the full Q range
+        acquisition_q_resolution=30,     # Q candidates across the full Q range
         acquisition_ratio_points=15,     # r candidates across ratio_bounds
         backend_model="sympleq",
         hqc_budget=500.0,

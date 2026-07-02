@@ -1,4 +1,4 @@
-"""Small score helpers for modified-crossing GP grids."""
+"""Score helpers for randomized-benchmarking boundary fits."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,6 +22,137 @@ def integrate_trapezoid(
     if trapezoid is not None:
         return trapezoid(y, x, axis=axis)
     return np.trapz(y, x, axis=axis)
+
+
+def surface_average(
+    values: np.ndarray,
+    ratio_axis: np.ndarray,
+    qubit_axis: np.ndarray,
+    *,
+    eps: float = 1e-12,
+) -> float:
+    """Average a surface over ratio and qubit axes with trapezoid integration."""
+    values = np.nan_to_num(np.asarray(values, dtype=float))
+    ratio_axis = np.asarray(ratio_axis, dtype=float)
+    qubit_axis = np.asarray(qubit_axis, dtype=float)
+    r_span = max(float(np.nanmax(ratio_axis) - np.nanmin(ratio_axis)), eps)
+    if len(qubit_axis) == 1:
+        return float(integrate_trapezoid(values[0], ratio_axis) / r_span)
+    q_span = max(float(np.nanmax(qubit_axis) - np.nanmin(qubit_axis)), eps)
+    return float(
+        integrate_trapezoid(
+            integrate_trapezoid(values, ratio_axis, axis=1),
+            qubit_axis,
+        )
+        / max(r_span * q_span, eps)
+    )
+
+
+def surface_log_scores(
+    fitted_log_gates: np.ndarray,
+    reference_log_gates: np.ndarray,
+    sigma_log_gates: np.ndarray,
+    ratio_axis: np.ndarray,
+    qubit_axis: np.ndarray,
+    *,
+    eps: float = 1e-12,
+) -> dict[str, float | int]:
+    """Return S1/S2 scores for fitted/reference log-gate surfaces."""
+    fitted_log_gates = np.asarray(fitted_log_gates, dtype=float)
+    reference_log_gates = np.asarray(reference_log_gates, dtype=float)
+    sigma_log_gates = np.asarray(sigma_log_gates, dtype=float)
+    valid = (
+        np.isfinite(fitted_log_gates)
+        & np.isfinite(reference_log_gates)
+        & np.isfinite(sigma_log_gates)
+    )
+    n_points = int(np.count_nonzero(valid))
+    if n_points < 2:
+        return {
+            "S1": float("nan"),
+            "S2": float("nan"),
+            "mean_delta_log_gates": float("nan"),
+            "mean_sigma_log_gates": float("nan"),
+            "score_points": n_points,
+        }
+
+    fitted = np.where(valid, fitted_log_gates, np.nan)
+    reference = np.where(valid, reference_log_gates, np.nan)
+    sigma = np.where(valid, sigma_log_gates, np.nan)
+    delta = np.where(valid, np.abs(fitted - reference), np.nan)
+
+    normaliser = abs(surface_average(fitted, ratio_axis, qubit_axis, eps=eps))
+    if not np.isfinite(normaliser) or normaliser <= eps:
+        normaliser = float(np.nanmean(np.abs(fitted)))
+    normaliser = max(float(normaliser), eps)
+    return {
+        "S1": float(
+            surface_average(delta, ratio_axis, qubit_axis, eps=eps) / normaliser
+        ),
+        "S2": float(
+            surface_average(sigma, ratio_axis, qubit_axis, eps=eps) / normaliser
+        ),
+        "mean_delta_log_gates": float(np.nanmean(delta)),
+        "mean_sigma_log_gates": float(np.nanmean(sigma)),
+        "score_points": n_points,
+    }
+
+
+def success_side_log_volume(
+    boundary_gates: np.ndarray,
+    ratio_axis: np.ndarray,
+    qubit_axis: np.ndarray,
+    min_gates: float,
+    max_gates: float,
+    *,
+    eps: float = 1e-12,
+) -> float:
+    """Log10-gate success-side volume under a boundary surface."""
+    boundary_gates = np.asarray(boundary_gates, dtype=float)
+    ratio_axis = np.asarray(ratio_axis, dtype=float)
+    qubit_axis = np.asarray(qubit_axis, dtype=float)
+    valid_boundary = np.isfinite(boundary_gates) & (boundary_gates > 0.0)
+    if not np.any(valid_boundary):
+        return float("nan")
+    min_gates = max(float(min_gates), eps)
+    max_gates = max(float(max_gates), min_gates)
+    clipped = np.clip(boundary_gates, min_gates, max_gates)
+    height = np.where(
+        valid_boundary,
+        np.maximum(np.log10(clipped) - np.log10(min_gates), 0.0),
+        np.nan,
+    )
+    height = np.nan_to_num(height)
+    if len(qubit_axis) == 1:
+        return float(integrate_trapezoid(height[0], ratio_axis))
+    return float(
+        integrate_trapezoid(
+            integrate_trapezoid(height, ratio_axis, axis=1),
+            qubit_axis,
+        )
+    )
+
+
+def surface_log_ratio_rows(
+    fitted_gates: np.ndarray,
+    reference_gates: np.ndarray,
+    qubit_axis: np.ndarray,
+) -> list[tuple[int, list[float]]]:
+    """Rows of log(fitted/reference) values for printing or saving."""
+    fitted_gates = np.asarray(fitted_gates, dtype=float)
+    reference_gates = np.asarray(reference_gates, dtype=float)
+    rows: list[tuple[int, list[float]]] = []
+    for q, fitted_row, reference_row in zip(qubit_axis, fitted_gates, reference_gates):
+        valid = (
+            np.isfinite(fitted_row)
+            & np.isfinite(reference_row)
+            & (fitted_row > 0.0)
+            & (reference_row > 0.0)
+        )
+        row = np.full_like(fitted_row, np.nan, dtype=float)
+        row[valid] = np.log(fitted_row[valid] / reference_row[valid])
+        rows.append((int(q), [float(value) for value in row]))
+    return rows
 
 
 def true_log_gates(

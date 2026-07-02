@@ -43,13 +43,10 @@ def circuit_stitching(
     :returns: Circuit
     """
 
-    n_qubits = input_circuits[0].n_qubits
-    if any(n_qubits != c.n_qubits for c in input_circuits[1:]):
-        raise ValueError("All circuits should have the same number of qubits.")
+    n_qubits = max([c.n_qubits for c in input_circuits])
 
     sum_circuit = Circuit(n_qubits)
     reset_box = reset_operations(n_qubits)
-    qreg = sum_circuit.q_registers
 
     creg_index = 0
     for idx in range(len(input_circuits)):
@@ -59,8 +56,10 @@ def circuit_stitching(
         # registers, in the lexicographic order add_circbox_regwise expects.
         cregs = []
         for src_creg in sorted(s_circuit.c_registers, key=lambda r: r.name):
-            cregs.append(sum_circuit.add_c_register(f"creg_{creg_index}", src_creg.size))
+            cregs.append(sum_circuit.add_cregister(f"creg{creg_index}", src_creg.size))
             creg_index += 1
+
+        qreg = s_circuit.q_registers
         sum_circuit.add_circbox_regwise(CircBox(s_circuit), qreg, cregs)
         if idx == len(input_circuits) - 1:
             continue
