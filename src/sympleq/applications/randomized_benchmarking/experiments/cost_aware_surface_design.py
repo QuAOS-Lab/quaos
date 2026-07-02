@@ -3113,8 +3113,8 @@ if __name__ == "__main__":
     # comparison surface is written alongside the usual plots.
     rmb, configs, budget = run_surface(
         q_values=tuple(range(20, 51, 1)),   # score over Q = 20, 21, ..., 50
-        acquisition_q_resolution=7,     # Q candidates across the full Q range
-        acquisition_ratio_points=12,     # r candidates across ratio_bounds
+        acquisition_q_resolution=12,     # Q candidates across the full Q range
+        acquisition_ratio_points=15,     # r candidates across ratio_bounds
         backend_model="sympleq",
         hqc_budget=500.0,
         plot=True,
@@ -3134,7 +3134,7 @@ if __name__ == "__main__":
         live_volume_plot=True,
         live_volume_plot_show=True,
         live_volume_plot_pause=0.5,
-        max_qubit_window=5,
+        max_qubit_window=1,
         min_distinct_q_coverage=10,
         # Free the two-qubit quadratic curvature nu2 (grid index 5) in both the
         # design-loop grid and the finer scoring grid; nu1 and V stay pinned.
