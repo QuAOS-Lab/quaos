@@ -102,7 +102,7 @@ def circuit_stitching(
         # registers, in the lexicographic order add_circbox_regwise expects.
         cregs = []
         for src_creg in sorted(s_circuit.c_registers, key=lambda r: r.name):
-            cregs.append(sum_circuit.add_cregister(f"creg{creg_index}", src_creg.size))
+            cregs.append(sum_circuit.add_c_register(f"creg{creg_index}", src_creg.size))
             creg_index += 1
 
         qreg = s_circuit.q_registers
