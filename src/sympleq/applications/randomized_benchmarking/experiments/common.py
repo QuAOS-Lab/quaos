@@ -101,7 +101,7 @@ class CrossingSettings:
     n_qubits: int = 5
     random_elimination: float = 0.1
     use_scrambler: bool = True
-    n_gates_bounds: tuple[int, int] = (100, 15000)
+    n_gates_bounds: tuple[int, int] = (10, 3000)
     ratio_bounds: tuple[float, float] = (0.1, 0.9)
     hqc_budget: float = 250.0
     max_cost_per_run: float = 35.0

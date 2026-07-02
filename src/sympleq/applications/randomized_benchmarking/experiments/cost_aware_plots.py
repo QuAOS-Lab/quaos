@@ -9,8 +9,44 @@ from sympleq.applications.randomized_benchmarking.experiments.cost_aware_referen
     analytic_lindblad_gates,
     gp_grid_surface_gates,
     gp_grid_surface_label,
-    reference_surface_volume,
 )
+from sympleq.applications.randomized_benchmarking.experiments.scores import (
+    integrate_trapezoid,
+)
+
+
+def _success_side_log_volume(
+    boundary_gates: np.ndarray,
+    ratios: np.ndarray,
+    qubits: np.ndarray,
+    min_gates: float,
+    max_gates: float,
+) -> float:
+    min_gates = max(float(min_gates), 1e-12)
+    max_gates = max(float(max_gates), min_gates)
+    valid = np.isfinite(boundary_gates) & (boundary_gates > 0.0)
+    if not np.any(valid):
+        return float("nan")
+    clipped = np.clip(boundary_gates, min_gates, max_gates)
+    height = np.where(
+        valid,
+        np.maximum(np.log10(clipped) - np.log10(min_gates), 0.0),
+        np.nan,
+    )
+    height = np.nan_to_num(height)
+    if len(qubits) == 1:
+        return float(integrate_trapezoid(height[0], ratios))
+    return float(integrate_trapezoid(integrate_trapezoid(height, ratios, axis=1), qubits))
+
+
+def _analytic_success_side_log_volume(settings) -> float:
+    r_lo, r_hi = settings.ratio_bounds
+    ratios = np.linspace(r_lo, r_hi, max(settings.score_ratio_points, 2))
+    qubits = np.asarray(settings.q_values, dtype=float)
+    rr, qq = np.meshgrid(ratios, qubits)
+    boundary = analytic_lindblad_gates(rr, qq, settings)
+    n_lo, n_hi = settings.n_gates_bounds
+    return _success_side_log_volume(boundary, ratios, qubits, n_lo, n_hi)
 
 
 def plot_boundary_surface(
@@ -70,6 +106,28 @@ def plot_boundary_surface(
             cstride=4,
             label="analytic Lindblad",
         )
+    if getattr(settings, "gp_grid_surface_path", None) is not None:
+        gp_surface = gp_grid_surface_gates(ratios, qubits, settings)
+        n_bounds = getattr(settings, "surface_plot_n_gates_bounds", None)
+        if n_bounds is None:
+            n_bounds = settings.n_gates_bounds
+        n_lo, n_hi = n_bounds
+        gp_z = np.where(
+            (gp_surface >= n_lo) & (gp_surface <= n_hi),
+            np.log10(gp_surface),
+            np.nan,
+        )
+        ax.plot_wireframe(
+            ratios,
+            qubits,
+            gp_z,
+            color="black",
+            linewidth=1.3,
+            alpha=0.85,
+            rstride=4,
+            cstride=4,
+            label=gp_grid_surface_label(settings),
+        )
 
     ratios_m, gates_m, qubits_m, succ_m, fail_m = measured
     total = succ_m + fail_m
@@ -97,8 +155,118 @@ def plot_boundary_surface(
     ax.set_zlabel(r"$\log_{10}(\mathrm{gate\ count}\ n)$")
     ax.set_zlim(np.log10(max(n_lo, 1e-12)), np.log10(max(n_hi, 1e-12)))
     ax.set_title(r"Fidelity-0.5 boundary surface  $\log_{10} n_*(r, Q)$")
-    if getattr(settings, "surface_plot_analytic", True):
+    if getattr(settings, "surface_plot_analytic", True) or getattr(
+        settings, "gp_grid_surface_path", None
+    ) is not None:
         ax.legend(loc="upper left")
+
+    fig.tight_layout()
+    if png_path is not None:
+        png_path = Path(png_path)
+        png_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(png_path, dpi=150)
+    if show:
+        plt.show(block=show_block)
+        if not show_block:
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+            plt.pause(max(float(show_pause), 0.001))
+    if close:
+        plt.close(fig)
+    return png_path
+
+
+def plot_boundary_uncertainty_surface(
+    ratios: np.ndarray,
+    qubits: np.ndarray,
+    mean_log10_gates: np.ndarray,
+    lower_log10_gates: np.ndarray,
+    upper_log10_gates: np.ndarray,
+    measured: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    settings,
+    png_path: str | Path | None = None,
+    *,
+    show: bool = False,
+    show_block: bool = True,
+    show_pause: float = 0.001,
+    close: bool = True,
+    figure_name: str | None = None,
+):
+    """Plot the fitted boundary surface with +-1 sigma log-boundary sheets."""
+    import matplotlib
+    if not show:
+        matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import TwoSlopeNorm
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (registers 3d projection)
+
+    fig = plt.figure(num=figure_name, figsize=(9.5, 7.5), clear=True)
+    ax = fig.add_subplot(projection="3d")
+    ax.plot_surface(
+        ratios,
+        qubits,
+        mean_log10_gates,
+        cmap="viridis",
+        alpha=0.78,
+        linewidth=0,
+        antialiased=True,
+        shade=False,
+    )
+    for sheet, label in (
+        (upper_log10_gates, r"$+1\sigma$"),
+        (lower_log10_gates, r"$-1\sigma$"),
+    ):
+        ax.plot_surface(
+            ratios,
+            qubits,
+            sheet,
+            color="0.55",
+            alpha=0.18,
+            linewidth=0,
+            antialiased=True,
+            shade=False,
+        )
+        ax.plot_wireframe(
+            ratios,
+            qubits,
+            sheet,
+            color="0.35",
+            alpha=0.45,
+            linewidth=0.5,
+            rstride=4,
+            cstride=4,
+            label=label,
+        )
+
+    ratios_m, gates_m, qubits_m, succ_m, fail_m = measured
+    total = succ_m + fail_m
+    mask = total > 0
+    if np.any(mask):
+        p_hat = succ_m[mask] / total[mask]
+        ax.scatter(
+            ratios_m[mask],
+            qubits_m[mask],
+            np.log10(np.maximum(gates_m[mask], 1e-12)),
+            c=p_hat,
+            cmap="coolwarm_r",
+            norm=TwoSlopeNorm(vcenter=0.5, vmin=0.0, vmax=1.0),
+            s=12,
+            edgecolor="k",
+            linewidth=0.2,
+            depthshade=True,
+            alpha=0.6,
+        )
+
+    n_bounds = getattr(settings, "surface_plot_n_gates_bounds", None)
+    if n_bounds is None:
+        n_bounds = settings.n_gates_bounds
+    n_lo, n_hi = n_bounds
+    ax.set_xlabel("two-qubit ratio  r")
+    ax.set_ylabel("n_qubits  Q")
+    ax.set_zlabel(r"$\log_{10}(\mathrm{gate\ count}\ n)$")
+    ax.set_zlim(np.log10(max(n_lo, 1e-12)), np.log10(max(n_hi, 1e-12)))
+    ax.set_title(r"Fidelity-0.5 boundary with $\pm1\sigma$ surfaces")
+    ax.legend(loc="upper left")
 
     fig.tight_layout()
     if png_path is not None:
@@ -147,7 +315,6 @@ def plot_live_volume_history(
         dtype=float,
     )
     ref = float(reference[-1])
-    ratio = fitted / ref if ref else np.full_like(fitted, np.nan)
 
     fig = plt.figure(num=figure_name, figsize=(8.5, 5.2), clear=True)
     ax = fig.add_subplot(111)
@@ -174,39 +341,26 @@ def plot_live_volume_history(
         color="crimson",
         linestyle="--",
         linewidth=1.6,
-        label="known-rate exponential reference",
+        label=(
+            gp_grid_surface_label(settings)
+            if getattr(settings, "gp_grid_surface_path", None) is not None
+            else "known-rate exponential reference"
+        ),
     )
-    if getattr(settings, "gp_grid_surface_path", None) is not None:
-        gp_ref = reference_surface_volume(settings, gp_grid_surface_gates)
-        if np.isfinite(gp_ref):
-            ax.axhline(
-                gp_ref,
-                color="black",
-                linestyle="--",
-                linewidth=1.6,
-                label=gp_grid_surface_label(settings),
-            )
+    analytic_ref = _analytic_success_side_log_volume(settings)
+    if np.isfinite(analytic_ref) and not np.isclose(analytic_ref, ref):
+        ax.axhline(
+            analytic_ref,
+            color="darkorange",
+            linestyle="--",
+            linewidth=1.4,
+            label="analytic Lindblad reference",
+        )
     ax.set_xlabel("iteration")
-    ax.set_ylabel(r"$\int \log_{10} n_*(r,Q)\,dr\,dQ$")
-    ax.set_title(r"Fidelity-0.5 surface volume in $\log_{10}(n)$")
+    ax.set_ylabel(r"success-side volume in $(\log_{10} n, r, Q)$")
+    ax.set_title(r"Fidelity-0.5 success-side log-volume")
     ax.grid(alpha=0.25)
     ax.legend(loc="best")
-
-    ax_ratio = ax.twinx()
-    ax_ratio.plot(
-        iterations,
-        ratio,
-        color="0.25",
-        linestyle=":",
-        marker=".",
-        alpha=0.8,
-        label="fit/reference",
-    )
-    ax_ratio.set_ylabel("fit / reference")
-    ax_ratio.axhline(1.0, color="0.25", linestyle=":", linewidth=1.0, alpha=0.6)
-    if ref:
-        left_lo, left_hi = ax.get_ylim()
-        ax_ratio.set_ylim(left_lo / ref, left_hi / ref)
 
     fig.tight_layout()
     if png_path is not None:

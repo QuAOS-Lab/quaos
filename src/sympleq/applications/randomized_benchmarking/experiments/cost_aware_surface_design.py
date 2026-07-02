@@ -103,6 +103,7 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     stitched_batch_hqc,
 )
 from sympleq.applications.randomized_benchmarking.experiments.cost_aware_plots import (
+    plot_boundary_uncertainty_surface,
     plot_boundary_surface,
     plot_live_volume_history,
 )
@@ -110,7 +111,9 @@ from sympleq.applications.randomized_benchmarking.experiments.cost_aware_referen
     analytic_lindblad_gates as _analytic_lindblad_gates,
     calibrated_surface_gates as _calibrated_surface_gates,
     calibrated_surface_label as _calibrated_surface_label,
-    reference_surface_volume as _reference_surface_volume,
+    gp_grid_surface_gates as _gp_grid_surface_gates,
+    gp_grid_surface_label as _gp_grid_surface_label,
+    load_gp_grid_surface as _load_gp_grid_surface,
 )
 from sympleq.applications.randomized_benchmarking.experiments.plots import (
     REFERENCE_OFFSET,
@@ -232,6 +235,9 @@ DEFAULT_LIVE_VOLUME_PLOT_PATH = (
 DEFAULT_UNCERTAINTY_PLOT_PATH = (
     EXPERIMENTS_DIR / "figs" / "boundary_surface_3d_uncertainty.png"
 )
+DEFAULT_GRID_VS_CONTINUOUS_PLOT_PATH = (
+    EXPERIMENTS_DIR / "figs" / "boundary_surface_3d_grid_vs_continuous.png"
+)
 
 
 def _with_run_suffix(
@@ -330,10 +336,35 @@ class CostAwareSurfaceSettings(CrossingSettings):
     # Static +-1 sigma boundary-uncertainty surface plot (written at run end).
     # Draws the posterior-mean log-boundary surface enveloped by the +-k sigma
     # surfaces of log n*(r,Q), where k = uncertainty_plot_sigma.
-    surface_uncertainty_plot: bool = False
+    surface_uncertainty_plot: bool = True
     surface_uncertainty_plot_path: str | Path | None = DEFAULT_UNCERTAINTY_PLOT_PATH
     surface_uncertainty_plot_show: bool = False
     surface_uncertainty_sigma: float = 1.0
+    # Plot the *raw* survival p=0.5 boundary (real fidelity) instead of the
+    # renormalised-fidelity boundary n* = 1/D.  The renormalised boundary sits
+    # where 2^{-nD} = 0.5; the raw survival p = V(1-B)2^{-nD}+B crosses 0.5
+    # deeper, at
+    #     n_raw(r,Q) = n*(r,Q) * ( -log2[ (0.5 - B(Q)) / (V (1 - B(Q))) ] ),
+    # a per-Q rescale depending only on the asymptote B(Q) and visibility V (not
+    # on r).  Where the raw curve never reaches 0.5 (B(Q) >= 0.5, or the
+    # un-decayed top V(1-B)+B < 0.5) the crossing does not exist and those (r,Q)
+    # are masked.  This remaps the three 3-D boundary-surface plots (main,
+    # +-sigma uncertainty, grid-vs-continuous).  The S1/S2/volume *scores* and
+    # any analytic/calibrated/GP reference overlays drawn by the shared plotting
+    # module stay in the renormalised convention (they cannot be remapped from
+    # here); at large Q (B ~ 0) the factor -> 1, so the two nearly coincide.
+    plot_raw_fidelity_boundary: bool = True
+    # Continuous MAP re-fit (grid-initialised) run once at the end on all
+    # gathered data.  It optimises the *same* free parameters as the grid (the
+    # axes with grid_resolution > 1), holding the pinned axes at their prior
+    # centre, but over a continuous parameter space -- so the boundary and the
+    # curvature nu2 land between grid ticks and the reported goodness-of-fit is
+    # evaluated at the true optimum rather than at a quantised grid node.  A
+    # separate comparison plot overlays the grid-median and continuous surfaces.
+    continuous_refit: bool = True
+    grid_vs_continuous_plot_path: str | Path | None = (
+        DEFAULT_GRID_VS_CONTINUOUS_PLOT_PATH
+    )
     backend_factory: Callable[[CrossingSettings, RNGGenerator], RMBBackend] = (
         sympleq_backend_factory
     )
@@ -353,8 +384,8 @@ class CostAwareSurfaceSettings(CrossingSettings):
     max_iterations: int = 400
 
     # --- prior on the boundary surface -------------------------------------
-    initial_one_q_pauli_error: float = BASE_1Q_PAULI_ERROR * 0.6
-    initial_two_q_pauli_error: float = BASE_2Q_PAULI_ERROR * 0.6
+    initial_one_q_pauli_error: float = BASE_1Q_PAULI_ERROR # * 0.6
+    initial_two_q_pauli_error: float = BASE_2Q_PAULI_ERROR # * 0.6
     initial_error_relative_uncertainty: float = 0.30
     initial_one_q_error_relative_uncertainty: float | None = None
     initial_two_q_error_relative_uncertainty: float | None = None
@@ -395,6 +426,7 @@ class CostAwareSurfaceSettings(CrossingSettings):
                 "live_surface_plot_path",
                 "live_volume_plot_path",
                 "surface_uncertainty_plot_path",
+                "grid_vs_continuous_plot_path",
             ):
                 object.__setattr__(
                     self,
@@ -1030,16 +1062,6 @@ def _candidate_n_values(
     w = weights[ok]
     n_lo, n_hi = settings.n_gates_bounds
     median_nstar = _wquantile(boundary, w, 0.5)
-    # Cap probe depth at the tighter of two scales:
-    #   (i)  a fraction of the deepest measurable gate count (global guard), and
-    #   (ii) a multiple of *this slice's* predicted boundary n* (local guard).
-    # The local guard is the important one for the low-r / high-Q corner: there
-    # n* is large and the broad-posterior boundary quantiles below would
-    # otherwise reach far past the crossing, where survival has saturated to the
-    # floor and a measurement is uninformative (flat curve, negligible Fisher
-    # information) yet, because low-r gates are cheap, still wins on BALD-per-HQC.
-    # Tying the cap to the local n* removes those runaway probes at their cause
-    # without suppressing genuine near-boundary measurements anywhere.
     global_cap = min(n_hi, max(n_lo, int(settings.max_probe_depth_fraction * n_hi)))
     mult = settings.max_probe_depth_nstar_multiple
     if mult > 0.0 and np.isfinite(median_nstar) and median_nstar > 0:
@@ -1058,11 +1080,6 @@ def _candidate_n_values(
             gates.append(int(np.clip(2 * round(val / 2), n_lo, depth_cap)))
     candidates = sorted(set(g for g in gates if g > 0))
 
-    # Predicted-survival floor: drop candidate depths where the model already
-    # expects near-certain failure (posterior-mean p below the floor).  These
-    # deep-tail shots are uninformative about the crossing yet leverage the
-    # asymptote, so they skew the shared rate fit (notably overestimating n* at
-    # low r).  Applied in p-space so it self-adjusts across (r, Q).
     floor = settings.min_predicted_survival
     if floor > 0.0 and candidates:
         kept = []
@@ -1070,17 +1087,8 @@ def _candidate_n_values(
             pij = _link_probability(params, g, r, q, settings)
             if float(np.sum(weights * pij)) >= floor:
                 kept.append(g)
-        # Never return empty purely because of the floor: if every candidate is
-        # below it (e.g. a very small-B(Q) high-Q slice), keep the shallowest so
-        # the slice still contributes its most-informative available depth.
         candidates = kept if kept else candidates[:1]
 
-    # Predicted-fidelity cap: drop candidate depths that sit too high on the
-    # decay curve (posterior-mean renormalised F = 2^{-nD} above the cap).  These
-    # shallow points are where the single-exponential link is least valid -- the
-    # circuit is not yet twirled, so an early-depth measurement carries the
-    # finite-depth transient (apparent F(0) > 1) that biases the fitted slope.
-    # F is independent of B(Q) and V, so the cap self-adjusts across (r, Q).
     fmax = settings.max_predicted_fidelity
     if 0.0 < fmax < 1.0 and candidates:
         kept = []
@@ -1088,9 +1096,6 @@ def _candidate_n_values(
             fid = np.power(2.0, -g * np.maximum(d, 0.0))   # renormalised F per row
             if float(np.sum(weights * fid)) <= fmax:
                 kept.append(g)
-        # If every candidate is above the cap (all too shallow, e.g. a very
-        # large-n* slice whose boundary lies beyond the depth cap), keep the
-        # deepest -- the lowest-F, most-decayed available probe.
         candidates = kept if kept else candidates[-1:]
     return candidates
 
@@ -1131,11 +1136,7 @@ def _contour_log_matrices(
     score_grid: list[tuple[float, int]],
     settings: CostAwareSurfaceSettings,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return L and L^2 where L[g, k] = log n*(node g) for parameter row k.
-
-    Entries with non-positive denominator are set to 0; the corresponding
-    parameter rows always have zero posterior weight, so they never contribute.
-    """
+    """Return L and L^2 where L[g, k] = log n*(node g) for parameter row k."""
     log_n = np.zeros((len(score_grid), len(params)))
     for g, (r, q) in enumerate(score_grid):
         d = _denominator(params, r, q, settings)
@@ -1162,23 +1163,12 @@ def _pack_candidates(
 ) -> tuple[list[MeasurementRequest], float, float]:
     """Greedily pack one stitched submission from a candidate pool.
 
-    Returns ``(requests, total_value, total_cost)`` where ``total_value`` is the
-    sum of the realized (diminished) BALD of every accepted shot -- the actual
-    information the submission delivers -- and ``total_cost`` its exact stitched
-    HQC.  The per-shot value is the parameter mutual information (BALD).  Each
-    (r, Q) slice has diminishing returns (rho^slice_shots), which spreads shots
-    across slices.  Marginal HQC of every increment is the exact difference of
-    batch_hqc_cost, so the per-submission base cost is amortised correctly: the
-    first increment pays the base, later increments pay only marginal
-    bare/reset/measurement cost.
-
     The batch is priced at the *physical register width* W = max Q in the batch
     (the H2 model): a smaller-Q circuit sharing the submission pays for the idle
     qubits of the wider register.  Because widening the batch reprices every
     circuit already in it, the greedy density (value per marginal HQC) sees a
     high-Q probe as expensive when the rest of the batch is low-Q, so the packer
-    prefers Q-homogeneous submissions on its own -- and does so exactly, since
-    the marginal cost of each increment is the physical batch cost difference.
+    prefers Q-homogeneous submissions on its own.
     """
     if not candidates:
         return [], 0.0, 0.0
@@ -1191,7 +1181,6 @@ def _pack_candidates(
     }
 
     def requests_from(shots_map: dict) -> list[MeasurementRequest]:
-        # Real-Q requests (what actually gets submitted / measured).
         return [
             MeasurementRequest(config_by_key[(n, r, q)], s)
             for (n, r, q), s in shots_map.items()
@@ -1199,9 +1188,6 @@ def _pack_candidates(
         ]
 
     def cost_of(shots_map: dict) -> float:
-        # Physical batch cost: charge every circuit at the register width
-        # W = max Q in the batch (idle qubits of smaller-Q circuits are paid for),
-        # without inflating any circuit's gate counts.
         items = [(n, r, q, s) for (n, r, q), s in shots_map.items() if s > 0]
         if not items:
             return 0.0
@@ -1248,18 +1234,7 @@ def _pack_candidates(
 
 
 def _qubit_windows(candidate_qs, width: int) -> list[tuple[int, ...]]:
-    """Maximal contiguous Q windows of the given width over the candidate Q set.
-
-    Each window is the set of candidate Q values lying in a closed interval
-    [top - width + 1, top] for some candidate ``top`` (so the physical register
-    is W = top and no member leaves more than width - 1 idle qubits).  Only
-    *maximal* windows are returned: a window that is a proper subset of another
-    feasible window is dropped, because the superset offers every candidate the
-    subset does plus more, so it weakly dominates on achievable information (and
-    the packer is free to ignore the extra high-Q candidate, leaving the physical
-    register no wider than it needs).  Consequently a width at least as large as
-    the full candidate Q span collapses to a single window (constraint inactive).
-    """
+    """Maximal contiguous Q windows of the given width over the candidate Q set."""
     qs = sorted({int(q) for q in candidate_qs})
     raw: list[tuple[int, ...]] = []
     seen: set[tuple[int, ...]] = set()
@@ -1269,7 +1244,6 @@ def _qubit_windows(candidate_qs, width: int) -> list[tuple[int, ...]]:
         if grp and grp not in seen:
             seen.add(grp)
             raw.append(grp)
-    # Keep only maximal windows (not a proper subset of another).
     maximal: list[tuple[int, ...]] = []
     for grp in raw:
         gset = set(grp)
@@ -1286,34 +1260,11 @@ def _assemble_batch(
     measured_slices: set[tuple[float, int]],
     early: bool,
 ) -> list[MeasurementRequest]:
-    """Assemble one stitched submission, optionally within a single Q-window.
-
-    Candidates span the joint (Q, r, n) design (``_acquisition_slices`` x the
-    per-slice candidate depths), so the design chooses register size as freely as
-    ratio and depth.  A distinct-Q coverage floor keeps interior Q sampled until
-    the Q axis is spanned, so a free-Q design cannot collapse onto the two Q
-    extremes before any nonlinearity in the rate could be detected.
-
-    Hardware Q-window: when ``settings.max_qubit_window`` > 0 a single submission
-    must fit inside one contiguous Q-window (the device runs on a fixed physical
-    register; smaller-Q circuits leave idle qubits, and the window caps how many).
-    The whole grid is still scored; each candidate window is then packed on its
-    own and the window whose packed batch delivers the most realized information
-    is submitted.  This is more faithful than ranking windows by a raw sum of
-    node scores, because the sum ignores diminishing returns, the shared base
-    cost, and the depth/fidelity caps -- none of which the batch can actually
-    cash in full.  A cheap per-slice pre-score shortlists the windows so only the
-    most promising few are exact-packed (``qubit_window_shortlist``).
-
-    Independently of the window cap, every candidate batch is priced by
-    _pack_candidates at the physical register width W = max Q in that batch, so
-    the cost already reflects the H2 single-register model.
-    """
+    """Assemble one stitched submission, optionally within a single Q-window."""
     acq_slices = _acquisition_slices(settings)
     measured_q = {q for (_, q) in measured_slices}
     need_q_coverage = len(measured_q) < int(settings.min_distinct_q_coverage)
 
-    # Build the candidate pool: a few near-boundary n per candidate (r, Q) slice.
     candidates: list[dict] = []
     for r, q in acq_slices:
         for n in _candidate_n_values(params, weights, settings, r, q):
@@ -1323,10 +1274,6 @@ def _assemble_batch(
             value = _bald_per_shot(params, weights, n, r, q, settings)
             if value <= 0.0:
                 continue
-            # Coverage bonus: during warmup for any unmeasured (r, Q) slice, and
-            # (independently) for any unmeasured Q while the distinct-Q floor is
-            # unmet -- the latter is what prevents endpoint collapse under a
-            # free-Q design.
             slice_new = (r, q) not in measured_slices
             q_new = q not in measured_q
             bonus = 1.0
@@ -1354,15 +1301,9 @@ def _assemble_batch(
 
     windows = _qubit_windows({c["q"] for c in candidates}, width)
     if len(windows) <= 1:
-        # Every candidate Q already fits one window (or only one Q present):
-        # the constraint is inactive this batch.
         requests, _, _ = _pack_candidates(candidates, settings, affordable_cap)
         return requests
 
-    # Cheap pre-score for shortlisting: the best single-shot value available in
-    # each (r, Q) slice of the window, summed over slices.  This ranks windows by
-    # their information *potential* without paying for a full pack of each; the
-    # shortlisted windows are then exact-packed and compared by realized value.
     def _prescore(group: tuple[int, ...]) -> float:
         gset = set(group)
         best_per_slice: dict[tuple[float, int], float] = {}
@@ -1401,31 +1342,12 @@ def _residual_diagnostics(
     weights: np.ndarray,
     settings: CostAwareSurfaceSettings,
 ) -> dict:
-    """Standardised-residual diagnostics over measured points (truth-free).
+    """Standardised-residual + goodness-of-fit diagnostics over measured points.
 
-    Returns a dict with the global ``max_abs`` |z| and ``n_flag`` (count of
-    |z| > 3), plus a breakdown of the *signed* mean residual by ratio region and
-    an empirical-tail count.  The signed means are the informative part:
-
-    * ``lowr_mean`` strongly negative  ->  at low r the model predicts higher
-      survival than observed, i.e. it has placed the boundary *too deep*
-      (overestimated n*).  This is the fingerprint of the low-r skew, and it is
-      invisible to any predicted-p test because the model believes those probes
-      sit near p = 0.5.
-    * ``tail_n`` counts points whose *observed* survival p_hat is near the
-      asymptote (< ``tail_diagnostic_pmax``): empirically dead-tail shots,
-      regardless of what the model predicted for them.
-
-    Goodness-of-fit: two aggregate statistics summarise whether the surface model
-    is *adequate* (not merely precise).  ``chi2_dof`` is the Pearson
-    chi^2 = sum z_i^2 over (N - k) dof; ``dev_dof`` is the Bernoulli
-    deviance / (N - k), which is the correct likelihood-ratio analogue and stays
-    valid near p = 0 or 1 where the Gaussian z approximation degrades.  Both ~1
-    mean the model fits within shot noise; >> 1 flags systematic misfit (the
-    z-region breakdown then says *where*).
-
-    All quantities use only measured counts and the current posterior, so they
-    read identically on the simulator and on hardware.
+    ``chi2_dof`` is the Pearson chi^2 / (N - k); ``dev_dof`` the Bernoulli
+    deviance / (N - k).  Evaluated at the posterior-mean predicted p (single-row
+    ``params`` with weight 1 gives the value at a point estimate, e.g. the
+    continuous MAP fit).
     """
     ratios, gates, qubits, succ, fail = _measured_arrays(data)
     r_lo, r_hi = settings.ratio_bounds
@@ -1459,11 +1381,8 @@ def _residual_diagnostics(
         else:
             highr_sum += z
             highr_n += 1
-        tail_n += int(p_hat < pmax)        # empirical tail, keyed on observed survival
-        # Pearson chi^2 contribution (one Bernoulli cell per measured config).
+        tail_n += int(p_hat < pmax)
         chi2 += z * z
-        # Bernoulli deviance contribution: 2[ s log(p_hat/p_bar)
-        #   + f log((1-p_hat)/(1-p_bar)) ], with 0 log 0 = 0.
         s, f = succ[i], fail[i]
         if s > 0:
             deviance += 2.0 * s * np.log(max(p_hat, _EPS) / p_bar)
@@ -1498,6 +1417,15 @@ def _surface_plot_mesh(
     med = np.asarray(
         [float(_wquantile(params[:, j], weights, 0.5)) for j in range(_N_PARAMS)]
     )
+    return _boundary_log10_from_param_vector(med, settings)
+
+
+def _surface_uncertainty_plot_mesh(
+    params: np.ndarray,
+    weights: np.ndarray,
+    settings: CostAwareSurfaceSettings,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
+    """Posterior mean boundary and +-1 sigma surfaces as log10 gates."""
     r_lo, r_hi = settings.ratio_bounds
     q_lo, q_hi = min(settings.q_values), max(settings.q_values)
     n_bounds = (
@@ -1506,22 +1434,369 @@ def _surface_plot_mesh(
         else settings.surface_plot_n_gates_bounds
     )
     n_lo, n_hi = n_bounds
-    grid_r = np.linspace(r_lo, r_hi, 48)
-    grid_q = np.linspace(q_lo, q_hi, 48)
+    grid_r = np.linspace(r_lo, r_hi, 40)
+    grid_q = np.linspace(q_lo, q_hi, 40)
+    rr, qq = np.meshgrid(grid_r, grid_q)
+
+    mean_log = np.full(rr.shape, np.nan, dtype=float)
+    sigma_log = np.full(rr.shape, np.nan, dtype=float)
+    flat_r = rr.ravel()
+    flat_q = qq.ravel()
+    mean_flat = mean_log.ravel()
+    sigma_flat = sigma_log.ravel()
+    raw = bool(getattr(settings, "plot_raw_fidelity_boundary", False))
+    for idx in range(flat_r.size):
+        q = float(flat_q[idx])
+        d = _denominator(params, float(flat_r[idx]), q, settings)
+        ok = (d > 0.0) & (weights > 0.0)
+        if not np.any(ok):
+            continue
+        w = weights[ok]
+        log_n = -np.log(d[ok])                    # log n* (renormalised) per row
+        if raw:
+            # log n_raw = log n* + log g(Q, V_row); this folds any V posterior
+            # spread into the band and masks rows with no raw p=0.5 crossing.
+            b = _asymptote(settings, q)
+            vrow = params[ok, _I_V]
+            denom = vrow * (1.0 - b)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                x = np.where(denom > 0.0, (0.5 - b) / denom, np.nan)
+                g = np.where((x > 0.0) & (x < 1.0), -np.log2(x), np.nan)
+            good = np.isfinite(g) & (g > 0.0)
+            if not np.any(good):
+                continue
+            log_n = log_n[good] + np.log(g[good])
+            w = w[good]
+        w = w / np.sum(w)
+        mean = float(np.sum(w * log_n))
+        var = float(np.sum(w * log_n * log_n) - mean * mean)
+        mean_flat[idx] = mean
+        sigma_flat[idx] = float(np.sqrt(max(var, 0.0)))
+
+    k = float(settings.surface_uncertainty_sigma)
+    ln10 = np.log(10.0)
+
+    def _clip_log10(natural_log_n: np.ndarray) -> np.ndarray:
+        gates = np.exp(natural_log_n)
+        z = natural_log_n / ln10
+        return np.where((gates >= n_lo) & (gates <= n_hi), z, np.nan)
+
+    mean_z = _clip_log10(mean_log)
+    lower_z = _clip_log10(mean_log - k * sigma_log)
+    upper_z = _clip_log10(mean_log + k * sigma_log)
+    if not np.any(np.isfinite(mean_z)):
+        return None
+    return rr, qq, mean_z, lower_z, upper_z
+
+
+# --------------------------------------------------------------------------- #
+# Continuous MAP re-fit (grid-initialised) and grid-vs-continuous comparison
+# --------------------------------------------------------------------------- #
+def _boundary_log10_from_param_vector(
+    param_vector: np.ndarray,
+    settings: CostAwareSurfaceSettings,
+    *,
+    n_r: int = 48,
+    n_q: int = 48,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """log10 n*(r, Q) mesh for a single natural parameter vector.
+
+    Shared by the grid-median surface plot and the continuous-fit surface plot so
+    both are drawn with identical meshing and gate-count clipping.
+    """
+    p = np.asarray(param_vector, dtype=float)
+    r_lo, r_hi = settings.ratio_bounds
+    q_lo, q_hi = min(settings.q_values), max(settings.q_values)
+    n_bounds = (
+        settings.n_gates_bounds
+        if settings.surface_plot_n_gates_bounds is None
+        else settings.surface_plot_n_gates_bounds
+    )
+    n_lo, n_hi = n_bounds
+    grid_r = np.linspace(r_lo, r_hi, n_r)
+    grid_q = np.linspace(q_lo, q_hi, n_q)
     rr, qq = np.meshgrid(grid_r, grid_q)
     dq = qq - _q_reference(settings)
-    lam1 = med[_I_L1] + med[_I_M1] * dq + med[_I_N1] * dq * dq
-    lam2 = med[_I_L2] + med[_I_M2] * dq + med[_I_N2] * dq * dq
+    lam1 = p[_I_L1] + p[_I_M1] * dq + p[_I_N1] * dq * dq
+    lam2 = p[_I_L2] + p[_I_M2] * dq + p[_I_N2] * dq * dq
     d = (lam1 * (1.0 - rr) + lam2 * rr) / _LN2
     gates = np.where(d > 0.0, 1.0 / np.maximum(d, _EPS), np.nan)
+    if getattr(settings, "plot_raw_fidelity_boundary", False):
+        # Remap n* (renormalised 2^{-nD}=0.5 crossing) onto the raw survival
+        # p=0.5 depth n_raw = n* * g(Q), with visibility V from this parameter
+        # vector.  g is nan where the raw 0.5 crossing does not exist (masked).
+        gates = gates * _raw_fidelity_gate_factor(settings, qq, float(p[_I_V]))
     log10_gates = np.where(
-        (gates >= n_lo) & (gates <= n_hi),
-        np.log10(gates),
+        np.isfinite(gates) & (gates >= n_lo) & (gates <= n_hi),
+        np.log10(np.where(np.isfinite(gates) & (gates > 0.0), gates, np.nan)),
         np.nan,
     )
     if not np.any(np.isfinite(log10_gates)):
         return None
     return rr, qq, log10_gates
+
+
+def _raw_fidelity_gate_factor(
+    settings: CostAwareSurfaceSettings,
+    qq: np.ndarray,
+    visibility: float,
+) -> np.ndarray:
+    """Per-(r,Q) factor g(Q) mapping the renormalised boundary onto raw p=0.5.
+
+    The renormalised boundary n* sits where 2^{-nD} = 0.5.  The raw survival
+    p = V(1-B)2^{-nD} + B crosses 0.5 at n_raw = n* * g(Q), with
+
+        g(Q) = -log2[ (0.5 - B(Q)) / (V (1 - B(Q))) ].
+
+    g depends only on the asymptote B(Q) and visibility V (not on r); it is >= 1
+    wherever the crossing exists and -> 1 as B -> 0 (large Q), so the raw and
+    renormalised boundaries nearly coincide at high Q.  Returns nan where no raw
+    p=0.5 depth exists (B(Q) >= 0.5, or the un-decayed top V(1-B)+B < 0.5), i.e.
+    where 0 < (0.5-B)/(V(1-B)) < 1 fails.
+    """
+    v = float(visibility)
+    uq = np.unique(qq)
+    b_of_q = {float(q): float(_asymptote(settings, float(q))) for q in uq}
+    b = np.vectorize(b_of_q.get, otypes=[float])(qq)
+    denom = v * (1.0 - b)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        x = np.where(denom > 0.0, (0.5 - b) / denom, np.nan)
+        g = np.where((x > 0.0) & (x < 1.0), -np.log2(x), np.nan)
+    return g
+
+
+def _free_axis_indices(settings: CostAwareSurfaceSettings) -> list[int]:
+    """Transformed-space axes the continuous fit optimises (grid resolution > 1).
+
+    The continuous re-fit deliberately fits the *same* model the grid did: the
+    axes pinned in the grid (resolution 1) stay pinned at their prior centre, so
+    e.g. nu2 is only fitted when the grid freed it (nesting the linear model
+    inside the quadratic one).
+    """
+    return [d for d, res in enumerate(settings.grid_resolution) if int(res) > 1]
+
+
+def _continuous_map_fit(
+    data,
+    settings: CostAwareSurfaceSettings,
+    t_init: np.ndarray,
+) -> tuple[np.ndarray | None, object]:
+    """Continuous MAP fit over the free transformed axes, initialised at t_init.
+
+    Maximises log_likelihood + log_prior (the same objective the grid scores),
+    but over a continuous parameter vector rather than a lattice, so the boundary
+    and any freed curvature nu2 land between grid ticks.  Pinned axes are held at
+    the prior centre.  Optimisation runs in prior-standardised coordinates so the
+    wildly different natural scales (log-rates ~ 1, slopes ~ 1e-6, curvatures ~
+    1e-8) are all O(1) and Nelder-Mead is well conditioned.  Returns
+    (t_hat, optimiser_result); t_hat is None if there is nothing to fit.
+    """
+    free = _free_axis_indices(settings)
+    if not free:
+        return None, None
+    ratios, gates, qubits, succ, fail = _measured_arrays(data)
+    if ratios.size == 0:
+        return None, None
+
+    prior_centre, prior_std = _prior_moments(settings)
+    b = np.array([_asymptote(settings, q) for q in qubits], dtype=float)
+    qref = _q_reference(settings)
+    dq = qubits - qref
+    corners = _region_corners(settings)
+    corner_dq = corners[:, 1] - qref
+    corner_r = corners[:, 0]
+
+    # Base vector: pinned axes fixed at their prior centre; free axes overwritten.
+    t_base = t_init.astype(float).copy()
+    for d in range(_N_PARAMS):
+        if d not in free:
+            t_base[d] = prior_centre[d]
+
+    def t_from_z(z_free: np.ndarray) -> np.ndarray:
+        t = t_base.copy()
+        for j, d in enumerate(free):
+            t[d] = prior_centre[d] + z_free[j] * prior_std[d]
+        return t
+
+    def neg_log_post(z_free: np.ndarray) -> float:
+        t = t_from_z(z_free)
+        p = _params_from_t(t[None, :])[0]
+        # Admissibility over the scored rectangle (bilinear -> corners suffice).
+        cl1 = p[_I_L1] + p[_I_M1] * corner_dq + p[_I_N1] * corner_dq * corner_dq
+        cl2 = p[_I_L2] + p[_I_M2] * corner_dq + p[_I_N2] * corner_dq * corner_dq
+        cd = (cl1 * (1.0 - corner_r) + cl2 * corner_r) / _LN2
+        if not np.all(cd > settings.denom_floor):
+            return 1e18
+        lam1 = p[_I_L1] + p[_I_M1] * dq + p[_I_N1] * dq * dq
+        lam2 = p[_I_L2] + p[_I_M2] * dq + p[_I_N2] * dq * dq
+        d = (lam1 * (1.0 - ratios) + lam2 * ratios) / _LN2
+        if not np.all(d > 0.0):
+            return 1e18
+        fid = np.power(2.0, -gates * d)
+        pr = np.clip(p[_I_V] * (1.0 - b) * fid + b, _EPS, 1.0 - _EPS)
+        loglik = float(np.sum(succ * np.log(pr) + fail * np.log(1.0 - pr)))
+        zvec = (t - prior_centre) / prior_std
+        logprior = -0.5 * float(np.sum(zvec * zvec))
+        return -(loglik + logprior)
+
+    z0 = np.array(
+        [(t_init[d] - prior_centre[d]) / prior_std[d] for d in free], dtype=float
+    )
+    try:
+        from scipy.optimize import minimize
+    except Exception as exc:  # noqa: BLE001 - scipy is the only external need here
+        raise RuntimeError(
+            "continuous re-fit requires scipy.optimize (install scipy)"
+        ) from exc
+    result = minimize(
+        neg_log_post,
+        z0,
+        method="Nelder-Mead",
+        options={"xatol": 1e-6, "fatol": 1e-8, "maxiter": 8000, "maxfev": 16000},
+    )
+    t_hat = t_from_z(np.asarray(result.x, dtype=float))
+    return t_hat, result
+
+
+def _report_continuous_fit(
+    data,
+    settings: CostAwareSurfaceSettings,
+    t_hat: np.ndarray,
+    grid_params: np.ndarray,
+    grid_weights: np.ndarray,
+    result: object,
+) -> None:
+    """Print the continuous MAP parameters, its goodness-of-fit, and grid deltas."""
+    params_hat = _params_from_t(np.asarray(t_hat, dtype=float)[None, :])
+    a = params_hat[0]
+    diag = _residual_diagnostics(data, params_hat, np.array([1.0]), settings)
+    k = _effective_free_params(settings)
+    free = _free_axis_indices(settings)
+    names = ["L1", "L2", "m1", "m2", "nu1", "nu2", "V"]
+    converged = bool(getattr(result, "success", True)) if result is not None else True
+    print("\nContinuous MAP re-fit (grid-initialised; free axes = grid_resolution>1)")
+    print(
+        "  free parameters: "
+        + ", ".join(names[d] for d in free)
+        + f"  ({'converged' if converged else 'did NOT fully converge'})"
+    )
+    print(
+        f"  MAP rates @Qref (L1, L2; m1, m2; nu1, nu2; V) = "
+        f"({a[_I_L1]:.3g}, {a[_I_L2]:.3g}; {a[_I_M1]:.3g}, {a[_I_M2]:.3g}; "
+        f"{a[_I_N1]:.3g}, {a[_I_N2]:.3g}; {a[_I_V]:.3g})"
+    )
+    print(
+        "  goodness of fit @ MAP: "
+        f"chi2/dof={diag['chi2_dof']:.3f} deviance/dof={diag['dev_dof']:.3f} "
+        f"(N={diag['n_points']}, k={k}, dof={diag['dof']}, "
+        f"max|z|={diag['max_abs']:.1f}, flagged={diag['n_flag']})"
+    )
+    gmed = [
+        float(_wquantile(grid_params[:, j], grid_weights, 0.5))
+        for j in range(_N_PARAMS)
+    ]
+    print("  grid median vs continuous MAP (natural params):")
+    for j, name in enumerate(names):
+        marker = "  <- freed" if j in free else ""
+        print(f"    {name:>3s}: grid={gmed[j]:+.4g}  cont={a[j]:+.4g}{marker}")
+
+
+def plot_grid_vs_continuous_surface(
+    grid_param_vector: np.ndarray,
+    continuous_param_vector: np.ndarray,
+    measured_arrays: tuple[np.ndarray, ...],
+    settings: CostAwareSurfaceSettings,
+    png_path: str | Path | None = None,
+    *,
+    show: bool = False,
+    show_block: bool = True,
+    show_pause: float = 0.001,
+    close: bool = True,
+    figure_name: str | None = None,
+):
+    """Overlay the grid-median and continuous-MAP boundary surfaces in log10 n.
+
+    Blue is the grid posterior-median surface (quantised by the design lattice);
+    orange is the continuous MAP surface (between ticks).  Where they separate is
+    where grid quantisation moved the estimate -- typically along a freed axis
+    such as the curvature nu2.  Measured configs are scattered for context.
+    """
+    import matplotlib
+    if not show:
+        matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (registers 3d projection)
+
+    grid_mesh = _boundary_log10_from_param_vector(grid_param_vector, settings)
+    cont_mesh = _boundary_log10_from_param_vector(continuous_param_vector, settings)
+    if grid_mesh is None and cont_mesh is None:
+        return None
+
+    fig = plt.figure(num=figure_name, figsize=(9.5, 7.5), clear=True)
+    ax = fig.add_subplot(projection="3d")
+
+    if grid_mesh is not None:
+        rr, qq, zg = grid_mesh
+        ax.plot_surface(
+            rr, qq, zg, color="tab:blue", alpha=0.30,
+            linewidth=0, antialiased=True, rstride=1, cstride=1, shade=False,
+        )
+        ax.plot_wireframe(
+            rr, qq, zg, color="tab:blue", alpha=0.55,
+            linewidth=0.6, rstride=4, cstride=4,
+        )
+    if cont_mesh is not None:
+        rr, qq, zc = cont_mesh
+        ax.plot_surface(
+            rr, qq, zc, color="tab:orange", alpha=0.30,
+            linewidth=0, antialiased=True, rstride=1, cstride=1, shade=False,
+        )
+        ax.plot_wireframe(
+            rr, qq, zc, color="tab:orange", alpha=0.65,
+            linewidth=0.6, rstride=4, cstride=4,
+        )
+
+    ratios, gates, qubits, succ, fail = measured_arrays
+    total = succ + fail
+    mask = total > 0
+    if np.any(mask):
+        ax.scatter(
+            ratios[mask], qubits[mask], np.log10(np.maximum(gates[mask], _EPS)),
+            c="0.25", s=10, alpha=0.5, depthshade=True,
+        )
+
+    handles = [
+        Line2D([0], [0], color="tab:blue", lw=2, label="grid posterior median"),
+        Line2D([0], [0], color="tab:orange", lw=2, label="continuous MAP fit"),
+    ]
+    ax.legend(handles=handles, loc="upper left")
+    ax.set_xlabel("two-qubit ratio  r")
+    ax.set_ylabel("n_qubits  Q")
+    ax.set_zlabel(r"$\log_{10}(\mathrm{gate\ count}\ n)$")
+    if getattr(settings, "plot_raw_fidelity_boundary", False):
+        ax.set_title(
+            "Grid-median vs continuous-MAP boundary surface\n"
+            r"(raw survival $p=0.5$ depth $\log_{10} n_{\mathrm{raw}}(r, Q)$)"
+        )
+    else:
+        ax.set_title(
+            r"Grid-median vs continuous-MAP boundary surface  $\log_{10} n_*(r, Q)$"
+        )
+    fig.tight_layout()
+    if png_path is not None:
+        png_path = Path(png_path)
+        png_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(png_path, dpi=150)
+    if show:
+        plt.show(block=show_block)
+        if not show_block:
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+            plt.pause(max(float(show_pause), 0.001))
+    if close:
+        plt.close(fig)
+    return png_path
 
 
 def _maybe_update_live_surface_plot(
@@ -1630,11 +1905,16 @@ def _record_volume_point_from_posterior(
     history: list[LiveVolumePoint],
 ) -> LiveVolumePoint | None:
     """Record fitted/reference/+-1 sigma volume for this posterior state."""
-    scores = _surface_s1_s2(params, weights, settings, _analytic_lindblad_gates)
+    scores = _surface_s1_s2(
+        params,
+        weights,
+        settings,
+        _volume_reference_gates(settings),
+    )
     fitted_volume = float(scores["surface_volume_fit"])
     lower_volume = float(scores["surface_volume_lower_1sigma"])
     upper_volume = float(scores["surface_volume_upper_1sigma"])
-    true_volume = _reference_surface_volume(settings, _analytic_lindblad_gates)
+    true_volume = float(scores["surface_volume_reference"])
     if not (np.isfinite(fitted_volume) and np.isfinite(true_volume)):
         return None
     _record_live_volume_point(
@@ -1668,15 +1948,19 @@ def _add_prior_live_volume_point(
         return
     try:
         params, log_prior, _ = _build_grid(grid_centre, grid_halfwidth, settings)
-        # With no measurements this is just the normalized prior over the grid.
         log_w = log_prior - np.max(log_prior)
         weights = np.exp(log_w)
         weights = weights / np.sum(weights)
-        scores = _surface_s1_s2(params, weights, settings, _analytic_lindblad_gates)
+        scores = _surface_s1_s2(
+            params,
+            weights,
+            settings,
+            _volume_reference_gates(settings),
+        )
         fitted_volume = float(scores["surface_volume_fit"])
         lower_volume = float(scores["surface_volume_lower_1sigma"])
         upper_volume = float(scores["surface_volume_upper_1sigma"])
-        true_volume = _reference_surface_volume(settings, _analytic_lindblad_gates)
+        true_volume = float(scores["surface_volume_reference"])
         if not (np.isfinite(fitted_volume) and np.isfinite(true_volume)):
             return
         _record_live_volume_point(
@@ -1704,6 +1988,13 @@ def _add_prior_live_volume_point(
             )
     except Exception as exc:  # noqa: BLE001 - live plotting should never kill a run
         print_progress(settings, budget, f"live volume prior skipped: {exc}")
+
+
+def _volume_reference_gates(settings: CostAwareSurfaceSettings):
+    """Reference surface used by the volume-vs-iteration history."""
+    if settings.gp_grid_surface_path is not None:
+        return _gp_grid_surface_gates
+    return _analytic_lindblad_gates
 
 
 def _record_live_volume_point(
@@ -1971,7 +2262,6 @@ def _resume_measurement_checkpoint(
 
     try:
         loaded = RMB.load(base_path, rng=rmb.rng)
-        # Keep the currently configured backend, but reuse the saved estimators.
         rmb._data = loaded._data
     except Exception as exc:  # noqa: BLE001 - resume is best-effort
         print_progress(settings, budget, f"resume skipped: {exc}")
@@ -2154,9 +2444,37 @@ def run_with_budget(
         grid_centre, grid_halfwidth = _axis_layout(t, weights, settings, prior_std)
 
     # --- final report ------------------------------------------------------
-    params, log_prior, _ = _build_grid(grid_centre, grid_halfwidth, settings)
+    params, log_prior, t_final = _build_grid(grid_centre, grid_halfwidth, settings)
     weights, ess = _grid_posterior(data, params, log_prior, settings)
     _report(rmb, settings, budget, params, weights, score_grid)
+
+    # --- continuous MAP re-fit on all gathered data (grid-initialised) -----
+    # Runs once at the end.  Optimises the same free parameters as the grid over
+    # a continuous space (so nu2 / the boundary land between grid ticks) and
+    # reports the goodness-of-fit at the true optimum -- this is the chi2/dof to
+    # trust in preference to the grid's quantised value.
+    continuous_t_hat = None
+    continuous_result = None
+    if settings.continuous_refit:
+        try:
+            t_init = np.sum(weights[:, None] * t_final, axis=0)
+            continuous_t_hat, continuous_result = _continuous_map_fit(
+                data, settings, t_init
+            )
+            if continuous_t_hat is not None:
+                _report_continuous_fit(
+                    data, settings, continuous_t_hat, params, weights, continuous_result
+                )
+            else:
+                print_progress(
+                    settings,
+                    budget,
+                    "continuous re-fit skipped: no free axes or no measured data",
+                )
+        except Exception as exc:  # noqa: BLE001 - re-fit is a best-effort readout
+            print_progress(settings, budget, f"continuous re-fit skipped: {exc}")
+            continuous_t_hat = None
+
     _record_volume_point_from_posterior(
         params,
         weights,
@@ -2188,6 +2506,92 @@ def run_with_budget(
         base_path = None
 
     if settings.plot:
+        try:
+            if (
+                settings.surface_uncertainty_plot
+                and (
+                    settings.surface_uncertainty_plot_path is not None
+                    or settings.surface_uncertainty_plot_show
+                    or settings.surface_plot_show
+                )
+            ):
+                mesh = _surface_uncertainty_plot_mesh(params, weights, settings)
+                if mesh is None:
+                    print_progress(
+                        settings,
+                        budget,
+                        "uncertainty surface plot skipped: no finite surface in plot bounds",
+                    )
+                else:
+                    show_uncertainty = (
+                        settings.surface_uncertainty_plot_show
+                        or settings.surface_plot_show
+                    )
+                    png_path = plot_boundary_uncertainty_surface(
+                        *mesh,
+                        _measured_arrays(data),
+                        settings,
+                        png_path=settings.surface_uncertainty_plot_path,
+                        show=show_uncertainty,
+                        show_block=False,
+                        show_pause=settings.live_surface_plot_pause,
+                        close=not show_uncertainty,
+                        figure_name="cost-aware final uncertainty surface",
+                    )
+                    if png_path is not None:
+                        print_progress(
+                            settings,
+                            budget,
+                            f"uncertainty surface plot -> {png_path}",
+                        )
+        except Exception as exc:  # noqa: BLE001 - plotting is best-effort
+            print_progress(settings, budget, f"uncertainty surface plot skipped: {exc}")
+        # Grid-median vs continuous-MAP comparison surface.
+        try:
+            if (
+                settings.continuous_refit
+                and continuous_t_hat is not None
+                and (
+                    settings.grid_vs_continuous_plot_path is not None
+                    or settings.surface_plot_show
+                    or settings.surface_uncertainty_plot_show
+                )
+            ):
+                grid_med = np.asarray(
+                    [
+                        float(_wquantile(params[:, j], weights, 0.5))
+                        for j in range(_N_PARAMS)
+                    ]
+                )
+                cont_params = _params_from_t(
+                    np.asarray(continuous_t_hat, dtype=float)[None, :]
+                )[0]
+                show_cmp = (
+                    settings.surface_plot_show
+                    or settings.surface_uncertainty_plot_show
+                )
+                png_path = plot_grid_vs_continuous_surface(
+                    grid_med,
+                    cont_params,
+                    _measured_arrays(data),
+                    settings,
+                    png_path=settings.grid_vs_continuous_plot_path,
+                    show=show_cmp,
+                    show_block=False,
+                    show_pause=settings.live_surface_plot_pause,
+                    close=not show_cmp,
+                    figure_name="grid vs continuous surface",
+                )
+                if png_path is not None:
+                    print_progress(
+                        settings,
+                        budget,
+                        f"grid-vs-continuous surface plot -> {png_path}",
+                    )
+        except Exception as exc:  # noqa: BLE001 - plotting is best-effort
+            print_progress(
+                settings, budget, f"grid-vs-continuous plot skipped: {exc}"
+            )
         try:
             if not settings.surface_plot_show:
                 import matplotlib
@@ -2252,7 +2656,7 @@ def _report(
     print(f"  log-rms uncertainty over scored (r,Q): {np.sqrt(mean_var):.4f}")
     diag = _residual_diagnostics(rmb._data, params, weights, settings)
     print(
-        "  goodness of fit: "
+        "  goodness of fit (grid): "
         f"chi2/dof={diag['chi2_dof']:.3f} deviance/dof={diag['dev_dof']:.3f} "
         f"(N={diag['n_points']}, k={_effective_free_params(settings)}, "
         f"dof={diag['dof']}, max|z|={diag['max_abs']:.1f}, flagged={diag['n_flag']})"
@@ -2272,8 +2676,8 @@ def _report(
         f"{surface_scores['surface_mean_sigma_log_gates']:.5g}"
     )
     print(
-        "  analytic Lindblad log10-gate surface volume fit/reference "
-        "(fit uses log10(1/mean D)): "
+        "  analytic Lindblad success-side log-volume fit/reference "
+        "(log10 gates x ratio x Q): "
         f"{surface_scores['surface_volume_fit']:.5g} / "
         f"{surface_scores['surface_volume_reference']:.5g} "
         f"(ratio {surface_scores['surface_volume_ratio']:.5g})"
@@ -2300,8 +2704,8 @@ def _report(
             f"{calibrated_scores['surface_S2']:.5g}"
         )
         print(
-            f"  {calibrated_label} log10-gate surface volume fit/reference "
-            "(fit uses log10(1/mean D)): "
+            f"  {calibrated_label} success-side log-volume fit/reference "
+            "(log10 gates x ratio x Q): "
             f"{calibrated_scores['surface_volume_fit']:.5g} / "
             f"{calibrated_scores['surface_volume_reference']:.5g} "
             f"(ratio {calibrated_scores['surface_volume_ratio']:.5g})"
@@ -2312,6 +2716,34 @@ def _report(
             settings,
             _calibrated_surface_gates,
             calibrated_label,
+        )
+
+    if settings.gp_grid_surface_path is not None:
+        gp_label = _gp_grid_surface_label(settings)
+        gp_scores = _surface_s1_s2(
+            params,
+            weights,
+            settings,
+            _gp_grid_surface_gates,
+        )
+        print(
+            f"  {gp_label} surface S1/S2: "
+            f"{gp_scores['surface_S1']:.5g} / "
+            f"{gp_scores['surface_S2']:.5g}"
+        )
+        print(
+            f"  {gp_label} success-side log-volume fit/reference "
+            "(log10 gates x ratio x Q): "
+            f"{gp_scores['surface_volume_fit']:.5g} / "
+            f"{gp_scores['surface_volume_reference']:.5g} "
+            f"(ratio {gp_scores['surface_volume_ratio']:.5g})"
+        )
+        _print_surface_log_ratio_grid(
+            params,
+            weights,
+            settings,
+            _gp_grid_surface_gates,
+            gp_label,
         )
 
     if settings.truth_boundary is not None:
@@ -2335,18 +2767,13 @@ def run(settings: CostAwareSurfaceSettings) -> tuple[RMB, list[RMBConfig]]:
     return rmb, submitted
 
 
-
 def _surface_log_ratio_grid(
     params: np.ndarray,
     weights: np.ndarray,
     settings: CostAwareSurfaceSettings,
     reference_gates,
 ) -> tuple[np.ndarray, list[tuple[int, list[float]]]]:
-    """Rows of log(n_fit/n_reference) using the volume convention.
-
-    The fitted contour here is exactly the same estimator used by the printed
-    volume ratio: n_fit(r,Q) = 1 / E[D(r,Q)].
-    """
+    """Rows of log(n_fit/n_reference) using the volume convention."""
     r_lo, r_hi = settings.ratio_bounds
     ratios = np.linspace(r_lo, r_hi, max(settings.score_ratio_points, 2))
     rows: list[tuple[int, list[float]]] = []
@@ -2393,12 +2820,7 @@ def _surface_s1_s2(
     settings: CostAwareSurfaceSettings,
     reference_gates,
 ) -> dict[str, float | int]:
-    """3-D extension of S1/S2 over the scored (r,Q) surface.
-
-    S1 integrates absolute log-boundary error over r and Q and normalises by
-    the fitted log-boundary volume.  S2 integrates posterior standard deviation
-    of log n*(r,Q) over the same surface and uses the same normalisation.
-    """
+    """3-D extension of S1/S2 over the scored (r,Q) surface."""
     r_lo, r_hi = settings.ratio_bounds
     ratios = np.linspace(r_lo, r_hi, max(settings.score_ratio_points, 2))
     qubits = np.asarray(settings.q_values, dtype=float)
@@ -2464,40 +2886,109 @@ def _surface_s1_s2(
             / max(r_span * q_span, _EPS)
         )
 
-    def _surface_integral(values: np.ndarray) -> float:
-        values = np.nan_to_num(values)
-        if len(qubits) == 1:
-            return float(_trapezoid(values[0], ratios))
-        return float(_trapezoid(_trapezoid(values, ratios, axis=1), qubits))
-
-    # Fill invalid cells as zero for integration.  The score grid is regular,
-    # and invalid cells are rare unless the posterior gives nonphysical rates.
     normaliser = abs(_surface_average(fitted_log))
     if not np.isfinite(normaliser) or normaliser <= _EPS:
         normaliser = float(np.nanmean(np.abs(fitted_log)))
     normaliser = max(float(normaliser), _EPS)
     s1 = float(_surface_average(delta) / normaliser)
     s2 = float(_surface_average(sigma) / normaliser)
+
+    def _volume_axes() -> tuple[np.ndarray, np.ndarray, float, float]:
+        if (
+            reference_gates is _gp_grid_surface_gates
+            and settings.gp_grid_surface_path is not None
+        ):
+            gp_surface = _load_gp_grid_surface(str(Path(settings.gp_grid_surface_path)))
+            gate_axis = np.asarray(gp_surface["gates"], dtype=float)
+            return (
+                np.asarray(gp_surface["ratios"], dtype=float),
+                np.asarray(gp_surface["qubits"], dtype=float),
+                float(np.nanmin(gate_axis)),
+                float(np.nanmax(gate_axis)),
+            )
+        n_lo, n_hi = settings.n_gates_bounds
+        return ratios, qubits, float(n_lo), float(n_hi)
+
+    def _success_side_volume(
+        boundary_gates: np.ndarray,
+        ratio_axis: np.ndarray,
+        qubit_axis: np.ndarray,
+        min_gates: float,
+        max_gates: float,
+    ) -> float:
+        valid_boundary = np.isfinite(boundary_gates) & (boundary_gates > 0.0)
+        if not np.any(valid_boundary):
+            return float("nan")
+        min_gates = max(float(min_gates), _EPS)
+        max_gates = max(float(max_gates), min_gates)
+        clipped = np.clip(boundary_gates, min_gates, max_gates)
+        height = np.where(
+            valid_boundary,
+            np.maximum(np.log10(clipped) - np.log10(min_gates), 0.0),
+            np.nan,
+        )
+        height = np.nan_to_num(height)
+        if len(qubit_axis) == 1:
+            return float(_trapezoid(height[0], ratio_axis))
+        return float(_trapezoid(_trapezoid(height, ratio_axis, axis=1), qubit_axis))
+
+    volume_ratios, volume_qubits, volume_min_gates, volume_max_gates = _volume_axes()
+    v_rr, v_qq = np.meshgrid(volume_ratios, volume_qubits)
+    volume_mean_d_gates = np.full(v_rr.shape, np.nan, dtype=float)
+    volume_sigma = np.full(v_rr.shape, np.nan, dtype=float)
+    for q_index, q in enumerate(volume_qubits):
+        for r_index, r in enumerate(volume_ratios):
+            d = _denominator(params, float(r), float(q), settings)
+            ok = (d > 0.0) & (weights > 0.0)
+            if not np.any(ok):
+                continue
+            w = weights[ok] / np.sum(weights[ok])
+            mean_d = float(np.sum(w * d[ok]))
+            if mean_d > 0.0:
+                volume_mean_d_gates[q_index, r_index] = 1.0 / mean_d
+            log_n = -np.log(d[ok])
+            mean = float(np.sum(w * log_n))
+            var = float(np.sum(w * log_n * log_n) - mean * mean)
+            volume_sigma[q_index, r_index] = float(np.sqrt(max(var, 0.0)))
+    volume_reference_gates = reference_gates(v_rr, v_qq, settings)
+
     valid_volume = (
-        np.isfinite(mean_d_gates)
-        & np.isfinite(reference)
-        & np.isfinite(sigma)
-        & (mean_d_gates > 0.0)
-        & (reference > 0.0)
+        np.isfinite(volume_mean_d_gates)
+        & np.isfinite(volume_reference_gates)
+        & np.isfinite(volume_sigma)
+        & (volume_mean_d_gates > 0.0)
+        & (volume_reference_gates > 0.0)
     )
-    fitted_log10 = np.where(valid_volume, np.log10(mean_d_gates), np.nan)
-    sigma_log10 = np.where(valid_volume, sigma / np.log(10.0), np.nan)
-    volume_fit = _surface_integral(
-        fitted_log10
+    volume_mean_d_gates = np.where(valid_volume, volume_mean_d_gates, np.nan)
+    volume_sigma = np.where(valid_volume, volume_sigma, np.nan)
+    volume_reference_gates = np.where(valid_volume, volume_reference_gates, np.nan)
+    volume_fit = _success_side_volume(
+        volume_mean_d_gates,
+        volume_ratios,
+        volume_qubits,
+        volume_min_gates,
+        volume_max_gates,
     )
-    volume_lower = _surface_integral(
-        fitted_log10 - sigma_log10
+    volume_lower = _success_side_volume(
+        volume_mean_d_gates * np.exp(-volume_sigma),
+        volume_ratios,
+        volume_qubits,
+        volume_min_gates,
+        volume_max_gates,
     )
-    volume_upper = _surface_integral(
-        fitted_log10 + sigma_log10
+    volume_upper = _success_side_volume(
+        volume_mean_d_gates * np.exp(volume_sigma),
+        volume_ratios,
+        volume_qubits,
+        volume_min_gates,
+        volume_max_gates,
     )
-    volume_reference = _surface_integral(
-        np.where(valid_volume, np.log10(reference), np.nan)
+    volume_reference = _success_side_volume(
+        volume_reference_gates,
+        volume_ratios,
+        volume_qubits,
+        volume_min_gates,
+        volume_max_gates,
     )
     volume_ratio = (
         float(volume_fit / volume_reference)
@@ -2522,7 +3013,6 @@ def _surface_s1_s2(
     }
 
 
-
 def run_surface(
     *,
     q_values: tuple[int, ...] = tuple(range(5, 51, 5)),
@@ -2534,7 +3024,7 @@ def run_surface(
     surface_plot_show: bool = False,
     surface_plot_analytic: bool = True,
     surface_plot_n_gates_bounds: tuple[int, int] | None = None,
-    surface_uncertainty_plot: bool = False,
+    surface_uncertainty_plot: bool = True,
     surface_uncertainty_plot_path: str | Path | None = DEFAULT_UNCERTAINTY_PLOT_PATH,
     surface_uncertainty_plot_show: bool = False,
     surface_uncertainty_sigma: float = 1.0,
@@ -2553,12 +3043,7 @@ def run_surface(
     live_volume_plot_pause: float = 0.25,
     **settings_overrides,
 ) -> tuple[RMB, list[RMBConfig], Budget]:
-    """Run a full multi-Q surface fit and (optionally) write the 3-D plot.
-
-    Leaves the rate Q-slopes m1, m2 free (the Q-dependence) via the default grid
-    resolution and pins only the visibility; the acquisition measures a sparse
-    subset of Q and the linear-in-Q surface fills the range.
-    """
+    """Run a full multi-Q surface fit and (optionally) write the 3-D plot."""
     hqc_budget = float(settings_overrides.pop("hqc_budget", hqc_budget))
     backend_model = str(settings_overrides.pop("backend_model", backend_model))
     settings = CostAwareSurfaceSettings(
@@ -2618,25 +3103,16 @@ def print_run_score(
 
 
 if __name__ == "__main__":
-    # Single n_qubits = 5 fit: pin m1, m2 = 0 (the pure single-Q inverse boundary
-    # ln 2 / (L1 (1-r) + L2 r)) and pin V = 1 (no SPAM on the simulator), so
-    # only the two rate parameters are free.  Directly comparable to the original
-    # experiment; reports the original-style score.
-    # settings = CostAwareSurfaceSettings(
-    #     n_qubits=5,
-    #     q_values=(5,),
-    #     grid_resolution=(25, 25, 1, 1, 1, 1, 1),
-    #     boundary_fit_resolution=(41, 41, 1, 1, 1, 1, 1),
-    #     hqc_budget=100.0,
-    #     rng_seed=0,
-    #     verbose=False,
-    # )
-    # rmb, _configs, budget = run_with_budget(settings)
-    # print_run_score(rmb, settings, budget)
-
-    # --- previous surface run (uncomment to go back to the full design) -----
+    # --- surface run with quadratic (nu2) Q-dependence freed ----------------
+    # grid_resolution / boundary_fit_resolution free the two-qubit curvature axis
+    # nu2 (index 5): the linear model is nested inside the quadratic one, so with
+    # the mean-zero shrinkage prior nu2 stays near 0 if the rate is linear and
+    # moves off 0 only if there is real curvature.  nu1 (index 4) and V (index 6)
+    # stay pinned.  The continuous MAP re-fit then reports nu2 and the
+    # goodness-of-fit at the true (unquantised) optimum, and a grid-vs-continuous
+    # comparison surface is written alongside the usual plots.
     rmb, configs, budget = run_surface(
-        q_values=tuple(range(20, 50, 5)),   # score over Q = 5,10,...,50
+        q_values=tuple(range(20, 51, 1)),   # score over Q = 20, 21, ..., 50
         acquisition_q_resolution=7,     # Q candidates across the full Q range
         acquisition_ratio_points=12,     # r candidates across ratio_bounds
         backend_model="sympleq",
@@ -2644,6 +3120,12 @@ if __name__ == "__main__":
         plot=True,
         surface_plot_show=True,
         surface_plot_n_gates_bounds=(100, 3000),
+        gp_grid_surface_path=(
+            EXPERIMENTS_DIR.parent
+            / "rmb_data"
+            / "FLE_20260702_063751_gp_grid_3d.npz"
+        ),
+        gp_grid_surface_label="Rick/Shreya Grid",
         rng_seed=123,
         verbose=True,
         use_scrambler=True,
@@ -2652,4 +3134,12 @@ if __name__ == "__main__":
         live_volume_plot=True,
         live_volume_plot_show=True,
         live_volume_plot_pause=0.5,
+        max_qubit_window=5,
+        min_distinct_q_coverage=10,
+        # Free the two-qubit quadratic curvature nu2 (grid index 5) in both the
+        # design-loop grid and the finer scoring grid; nu1 and V stay pinned.
+        grid_resolution=(11, 11, 7, 7, 1, 5, 1),
+        boundary_fit_resolution=(17, 17, 9, 9, 1, 7, 1),
+        # Continuous MAP re-fit + grid-vs-continuous comparison plot (defaults on).
+        continuous_refit=True,
     )
