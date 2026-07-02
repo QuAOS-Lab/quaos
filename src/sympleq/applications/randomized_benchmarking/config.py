@@ -35,12 +35,17 @@ class RMBConfig:
     random_elimination : float
         Probability used to randomly replace single-qudit gates with
         identities in order to make the circuit asymmetric. In ``[0, 1]``.
+    use_scrambler : bool
+        Whether to wrap the random circuit with one random Pauli gate per
+        qubit and its inverse. Disabling this removes the irreducible ``2 *
+        n_qubits`` one-qubit gate floor.
     """
     n_1qb_gates: int = 1
     n_2qb_gates: int = 0
     gates_set: tuple[Gate, ...] = tuple(DEFAULT_GATES_SET)
     n_qubits: int = 1
     random_elimination: float = 0.0
+    use_scrambler: bool = True
     dimensions: np.ndarray = field(init=False, compare=False, hash=False, repr=False)
     _initial_state: PauliSum = field(init=False, compare=False, hash=False, repr=False)
 
@@ -119,6 +124,10 @@ class RMBConfig:
         """Return a copy of this config with ``random_elimination`` replaced."""
         return replace(self, random_elimination=random_elimination)
 
+    def with_use_scrambler(self, use_scrambler: bool) -> RMBConfig:
+        """Return a copy of this config with ``use_scrambler`` replaced."""
+        return replace(self, use_scrambler=bool(use_scrambler))
+
     def with_gates_set(self, gates_set: tuple[Gate, ...]) -> RMBConfig:
         """Return a copy of this config with ``gates_set`` replaced."""
         return replace(self, gates_set=gates_set)
@@ -144,10 +153,10 @@ class RMBConfig:
 
         Builds a random circuit of depth ``self.depth`` from
         ``self.gates_set`` with the configured two-qudit gate ratio,
-        wraps it with a scrambler layer of Pauli gates and its inverse plus
-        the inverse of the random circuit, applies the configured
-        noise models, and finally optionally turns matching single-qudit
-        gates into identities according to ``self.random_elimination``.
+        optionally wraps it with a scrambler layer of Pauli gates and its
+        inverse plus the inverse of the random circuit, applies the configured
+        noise models, and finally optionally turns matching single-qudit gates
+        into identities according to ``self.random_elimination``.
 
         Parameters
         ----------
@@ -165,20 +174,25 @@ class RMBConfig:
 
         target_n_2qb_gates = self.n_2qb_gates // 2
         _scrambler = Circuit.empty(self.dimensions)
-        scrambling_gates = [GATES.X, GATES.Y, GATES.Z]
-        for q_idx in range(self.n_qubits):
-            gate_idx = rng.integers(0, len(scrambling_gates))
-            gate = scrambling_gates[gate_idx]
-            _scrambler.add_gate(gate, q_idx)
+        scrambler_gates = self.n_qubits if self.use_scrambler else 0
+        if self.use_scrambler:
+            scrambling_gates = [GATES.X, GATES.Y, GATES.Z]
+            for q_idx in range(self.n_qubits):
+                gate_idx = rng.integers(0, len(scrambling_gates))
+                gate = scrambling_gates[gate_idx]
+                _scrambler.add_gate(gate, q_idx)
 
-        target_n_1qb_gates = self.n_1qb_gates // 2 - self.n_qubits
+        target_n_1qb_gates = self.n_1qb_gates // 2 - scrambler_gates
         _circuit = Circuit.from_number_of_gates(target_n_1qb_gates,
                                                 target_n_2qb_gates,
                                                 self.dimensions,
                                                 gates_set=self.gates_set,
                                                 rng=rng)
 
-        circuit = _scrambler + _circuit + _circuit.inverse() + _scrambler.inverse()
+        if self.use_scrambler:
+            circuit = _scrambler + _circuit + _circuit.inverse() + _scrambler.inverse()
+        else:
+            circuit = _circuit + _circuit.inverse()
         _initial_state = self.initial_state()
 
         # Eliminate and insert identity gates from and to the circuit to make it asymmetric.

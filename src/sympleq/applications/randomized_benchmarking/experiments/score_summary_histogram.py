@@ -1,132 +1,265 @@
-"""Print average/std of modified-crossing scores and plot score summaries."""
+"""Print average/std of contour scores and plot score summaries."""
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import matplotlib
 
-matplotlib.use("Agg")
+if os.environ.get("SCORE_SUMMARY_USE_AGG", "0") == "1":
+    matplotlib.use("Agg", force=False)
 import matplotlib.pyplot as plt
 import numpy as np
 
 
-# Change this to the benchmark output you want to summarize.
 RESULTS_JSON = Path(
-    r"C:\Users\sb1580\OneDrive - University of Exeter\SimpleQ\src\sympleq\applications\randomized_benchmarking\experiments\figs\rick_modified_scores\20260619_192426\results.json"
-)
-
-OUT_HIST_PNG = Path(
-    "src/sympleq/applications/randomized_benchmarking/experiments/"
-    "figs/rick_modified_scores/score_summary_histogram.png"
-)
-OUT_NOISE_PLANE_PNG = Path(
-    "src/sympleq/applications/randomized_benchmarking/experiments/"
-    "figs/rick_modified_scores/score_noise_plane.png"
-)
-OUT_S1_S2_PLANE_PNG = Path(
-    "src/sympleq/applications/randomized_benchmarking/experiments/"
-    "figs/rick_modified_scores/score_s1_s2_plane.png"
+    os.environ.get(
+        "SCORE_SUMMARY_RESULTS_JSON",
+        "src/sympleq/applications/randomized_benchmarking/experiments/"
+        "figs/benchmarkbenchmark_scores/results.json",
+    )
 )
 
 
-def main() -> None:
+def _resolve_repo_path(path: Path) -> Path:
     repo_root = Path(__file__).resolve().parents[4]
-    results_path = RESULTS_JSON
-    if not results_path.is_absolute():
-        results_path = repo_root / results_path
+    if path.is_absolute():
+        return path
+    return repo_root / path
+
+
+def _finite_array(rows: list[dict], key: str) -> np.ndarray:
+    values = []
+    for row in rows:
+        value = row.get(key)
+        if value is None:
+            continue
+        value = float(value)
+        if np.isfinite(value):
+            values.append(value)
+    return np.asarray(values, dtype=float)
+
+
+def _finite_rows(rows: list[dict], keys: tuple[str, ...]) -> dict[str, np.ndarray]:
+    values = {key: [] for key in keys}
+    for row in rows:
+        parsed = {}
+        for key in keys:
+            value = row.get(key)
+            if value is None:
+                break
+            value = float(value)
+            if not np.isfinite(value):
+                break
+            parsed[key] = value
+        else:
+            for key, value in parsed.items():
+                values[key].append(value)
+    return {key: np.asarray(items, dtype=float) for key, items in values.items()}
+
+
+def _approach(row: dict) -> str:
+    return str(row.get("approach", "method"))
+
+
+def _print_score_summary(runs: list[dict], approaches: list[str]) -> None:
+    print(f"runs: {len(runs)}")
+    for approach in approaches:
+        rows = [row for row in runs if _approach(row) == approach]
+        print(f"  {approach}")
+        for key in ("S1", "S2", "S_total"):
+            values = _finite_array(rows, key)
+            if len(values) == 0:
+                print(f"    {key}: unavailable")
+                continue
+            std = np.std(values, ddof=1) if len(values) > 1 else 0.0
+            print(
+                f"    {key} mean: {np.mean(values):.6g}, "
+                f"std: {std:.6g}, best: {np.min(values):.6g}, "
+                f"worst: {np.max(values):.6g}"
+            )
+
+
+def _plot_histograms(
+    runs: list[dict],
+    approaches: list[str],
+    path: Path,
+    *,
+    show: bool = False,
+) -> None:
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.2), constrained_layout=True)
+    colors = plt.get_cmap("tab10")
+    for index, approach in enumerate(approaches):
+        rows = [row for row in runs if _approach(row) == approach]
+        color = colors(index % 10)
+        for ax, key in zip(axes, ("S1", "S2")):
+            values = _finite_array(rows, key)
+            if len(values) == 0:
+                continue
+            label = f"{approach} mean={np.mean(values):.3g}"
+            ax.hist(
+                values,
+                bins="auto",
+                alpha=0.48,
+                color=color,
+                edgecolor="black",
+                linewidth=0.5,
+                label=label,
+            )
+            ax.axvline(np.mean(values), color=color, linestyle="--", linewidth=1.6)
+
+    for ax, title in zip(axes, ("S1", "S2")):
+        ax.set_title(title)
+        ax.set_xlabel("Score")
+        ax.set_ylabel("Runs")
+        ax.legend(frameon=True, fontsize=8)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=180)
+    if show:
+        fig.show()
+    else:
+        plt.close(fig)
+
+
+def _plot_noise_planes(
+    runs: list[dict],
+    approaches: list[str],
+    path: Path,
+    *,
+    show: bool = False,
+) -> None:
+    fig, axes = plt.subplots(
+        len(approaches),
+        2,
+        figsize=(11, max(4.2, 3.8 * len(approaches))),
+        constrained_layout=True,
+        squeeze=False,
+    )
+    for row_index, approach in enumerate(approaches):
+        rows = [row for row in runs if _approach(row) == approach]
+        for col_index, key in enumerate(("S1", "S2")):
+            ax = axes[row_index, col_index]
+            values = _finite_rows(rows, ("one_q_noise_scale", "two_q_noise_scale", key))
+            if len(values[key]) == 0:
+                ax.set_axis_off()
+                continue
+            scatter = ax.scatter(
+                values["one_q_noise_scale"],
+                values["two_q_noise_scale"],
+                c=values[key],
+                cmap="viridis",
+                s=75,
+                edgecolors="black",
+                linewidths=0.6,
+            )
+            ax.axvline(1.0, color="0.45", linestyle="--", linewidth=1)
+            ax.axhline(1.0, color="0.45", linestyle="--", linewidth=1)
+            ax.set_xlabel("1Q noise multiplier")
+            ax.set_ylabel("2Q noise multiplier")
+            ax.set_title(f"{approach}: {key} on noise plane")
+            fig.colorbar(scatter, ax=ax, label=key)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=180)
+    if show:
+        fig.show()
+    else:
+        plt.close(fig)
+
+
+def _plot_s1_s2_plane(
+    runs: list[dict],
+    approaches: list[str],
+    path: Path,
+    *,
+    show: bool = False,
+) -> None:
+    fig, ax = plt.subplots(figsize=(6.8, 5.4), constrained_layout=True)
+    colors = plt.get_cmap("tab10")
+    all_s1 = []
+    all_s2 = []
+    for index, approach in enumerate(approaches):
+        rows = [row for row in runs if _approach(row) == approach]
+        values = _finite_rows(rows, ("S1", "S2", "one_q_noise_scale", "two_q_noise_scale"))
+        if len(values["S1"]) == 0:
+            continue
+        noise_multiplier = 0.5 * (
+            values["one_q_noise_scale"] + values["two_q_noise_scale"]
+        )
+        scatter = ax.scatter(
+            values["S1"],
+            values["S2"],
+            c=noise_multiplier,
+            s=90,
+            cmap="viridis",
+            marker=["o", "s", "^", "D", "P", "X"][index % 6],
+            edgecolors=colors(index % 10),
+            linewidths=1.0,
+            alpha=0.9,
+            label=approach,
+        )
+        all_s1.extend(values["S1"])
+        all_s2.extend(values["S2"])
+    ax.set_xlabel("S1")
+    ax.set_ylabel("S2")
+    ax.set_title("S1-S2 score plane")
+    ax.legend(frameon=True, fontsize=8)
+    if all_s1:
+        ax.set_xlim(left=0.0, right=max(all_s1) * 1.08 if max(all_s1) > 0 else 1.0)
+    if all_s2:
+        ax.set_ylim(bottom=0.0, top=max(all_s2) * 1.08 if max(all_s2) > 0 else 1.0)
+    if all_s1 and all_s2:
+        fig.colorbar(scatter, ax=ax, label="Mean noise multiplier")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=180)
+    if show:
+        fig.show()
+    else:
+        plt.close(fig)
+
+
+def plot_score_summaries(
+    results_path: str | Path,
+    *,
+    output_dir: str | Path | None = None,
+    show: bool = False,
+) -> dict[str, Path]:
+    """Create S1/S2 summary plots for a benchmark ``results.json`` file."""
+    results_path = _resolve_repo_path(Path(results_path))
 
     payload = json.loads(results_path.read_text(encoding="utf-8"))
     runs = payload["runs"]
-    s1 = np.asarray([float(row["S1"]) for row in runs], dtype=float)
-    s2 = np.asarray([float(row["S2"]) for row in runs], dtype=float)
-    one_q = np.asarray([float(row["one_q_noise_scale"]) for row in runs], dtype=float)
-    two_q = np.asarray([float(row["two_q_noise_scale"]) for row in runs], dtype=float)
+    approaches = list(dict.fromkeys(_approach(row) for row in runs))
+    if output_dir is None:
+        output_dir = results_path.parent
+    output_dir = _resolve_repo_path(Path(output_dir))
 
-    print(f"runs: {len(runs)}")
-    print(f"S1 mean: {np.mean(s1):.6g}")
-    print(f"S1 std:  {np.std(s1, ddof=1) if len(s1) > 1 else 0.0:.6g}")
-    print(f"S2 mean: {np.mean(s2):.6g}")
-    print(f"S2 std:  {np.std(s2, ddof=1) if len(s2) > 1 else 0.0:.6g}")
+    _print_score_summary(runs, approaches)
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4), constrained_layout=True)
-    axes[0].hist(s1, bins="auto", color="tab:blue", alpha=0.8, edgecolor="black")
-    axes[0].axvline(np.mean(s1), color="black", linestyle="--", linewidth=2, label="mean")
-    axes[0].set_title("S1")
-    axes[0].set_xlabel("Score")
-    axes[0].set_ylabel("Runs")
-    axes[0].legend(frameon=True)
-
-    axes[1].hist(s2, bins="auto", color="tab:green", alpha=0.8, edgecolor="black")
-    axes[1].axvline(np.mean(s2), color="black", linestyle="--", linewidth=2, label="mean")
-    axes[1].set_title("S2")
-    axes[1].set_xlabel("Score")
-    axes[1].set_ylabel("Runs")
-    axes[1].legend(frameon=True)
-
-    hist_path = OUT_HIST_PNG
-    if not hist_path.is_absolute():
-        hist_path = repo_root / hist_path
-    hist_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(hist_path, dpi=180)
-    plt.close(fig)
-
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4.8), constrained_layout=True)
-    for ax, values, title in [
-        (axes[0], s1, "S1 on noise plane"),
-        (axes[1], s2, "S2 on noise plane"),
-    ]:
-        scatter = ax.scatter(
-            one_q,
-            two_q,
-            c=values,
-            cmap="viridis",
-            s=90,
-            edgecolors="black",
-            linewidths=0.6,
-        )
-        ax.axvline(1.0, color="0.45", linestyle="--", linewidth=1)
-        ax.axhline(1.0, color="0.45", linestyle="--", linewidth=1)
-        ax.set_xlabel("1Q noise multiplier")
-        ax.set_ylabel("2Q noise multiplier")
-        ax.set_title(title)
-        fig.colorbar(scatter, ax=ax, label="Score")
-
-    noise_path = OUT_NOISE_PLANE_PNG
-    if not noise_path.is_absolute():
-        noise_path = repo_root / noise_path
-    noise_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(noise_path, dpi=180)
-    plt.close(fig)
-
-    noise_multiplier = 0.5 * (one_q + two_q)
-
-    fig, ax = plt.subplots(figsize=(6.4, 5.2), constrained_layout=True)
-    scatter = ax.scatter(
-        s1,
-        s2,
-        c=noise_multiplier,
-        s=110,
-        cmap="viridis",
-        edgecolors="black",
-        linewidths=0.6,
-        alpha=0.9,
-    )
-    ax.set_xlabel("S1")
-    ax.set_ylabel("S2")
-    ax.set_xlim(0.0, 0.1)
-    fig.colorbar(scatter, ax=ax, label="Mean noise multiplier")
-
-    score_plane_path = OUT_S1_S2_PLANE_PNG
-    if not score_plane_path.is_absolute():
-        score_plane_path = repo_root / score_plane_path
-    score_plane_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(score_plane_path, dpi=180)
-    plt.close(fig)
+    hist_path = output_dir / "score_summary_histogram.png"
+    noise_path = output_dir / "score_noise_plane.png"
+    score_plane_path = output_dir / "score_s1_s2_plane.png"
+    _plot_histograms(runs, approaches, hist_path, show=show)
+    _plot_noise_planes(runs, approaches, noise_path, show=show)
+    _plot_s1_s2_plane(runs, approaches, score_plane_path, show=show)
+    if show:
+        plt.show()
 
     print(f"histogram: {hist_path}")
     print(f"noise plane: {noise_path}")
     print(f"S1-S2 plane: {score_plane_path}")
+    return {
+        "histogram": hist_path,
+        "noise_plane": noise_path,
+        "s1_s2_plane": score_plane_path,
+    }
+
+
+def main() -> None:
+    plot_score_summaries(RESULTS_JSON, show=True)
 
 
 if __name__ == "__main__":

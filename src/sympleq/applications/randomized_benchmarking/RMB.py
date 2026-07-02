@@ -86,6 +86,7 @@ class RMB:
                 "n_2qb_gates": config.n_2qb_gates,
                 "n_qubits": config.n_qubits,
                 "random_elimination": config.random_elimination,
+                "use_scrambler": config.use_scrambler,
                 "gates_set": [g.name for g in config.gates_set],
                 "results": [[outcome, count] for outcome, count in estimator.counts().items()],
             })
@@ -144,6 +145,7 @@ class RMB:
                 n_2qb_gates=rec["n_2qb_gates"],
                 n_qubits=rec["n_qubits"],
                 random_elimination=rec["random_elimination"],
+                use_scrambler=rec.get("use_scrambler", True),
             )
             estimator = rmb.backend.default_estimator()
             for outcome, count in rec["results"]:

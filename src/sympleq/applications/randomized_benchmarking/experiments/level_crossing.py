@@ -2,9 +2,10 @@
 Trace the fidelity = 0.5 line in (total gates, two-qubit gate ratio) space at
 fixed n_qubits.
 
-The experiment finds a first crossing by bisecting in the total gate count at
-a small fixed two-qubit ratio, then tracks the line by stepping the ratio up
-and re-bisecting inside a bracket predicted from the previous crossings.
+The experiment finds a first crossing by starting at the high two-qubit ratio
+and growing upward from a minimal gate count until the contour is bracketed.
+It then tracks the line top-down in ratio, reusing previous crossings to seed
+small low-to-high search windows instead of probing the global max gate count.
 Configs are built from the transformed parameters on demand. Every probe is
 metered in Quantinuum credits (HQC) via ``pytket_bare_simulation_cost`` with
 the base submission cost paid once per stitched batch, and the whole run stops
@@ -18,6 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from numpy.random import Generator as RNGGenerator
@@ -47,8 +49,8 @@ class LevelCrossingSettings(CrossingSettings):
     Settings for a fidelity = 0.5 level-crossing experiment.
 
     The problem definition (qubits, bounds, budget, ...) lives in
-    :class:`~.common.CrossingSettings`; crossings are traced from
-    ``ratio_bounds[0]`` up to ``ratio_bounds[1]``.
+    :class:`~.common.CrossingSettings`; by default crossings are traced from
+    ``ratio_bounds[1]`` down to ``ratio_bounds[0]``.
 
     Parameters
     ----------
@@ -64,11 +66,21 @@ class LevelCrossingSettings(CrossingSettings):
         Values at or below 0.875 let one or two unanimous shots decide a
         side, which makes bracket checks unreliable; keep it above that.
     """
-    ratio_step: float = 0.05
+    ratio_step: float = 0.1
+    start_ratio: float | None = None
+    trace_direction: Literal["up", "down"] = "down"
     n_gates_resolution: float = 0.05
     max_shots_per_config: int = 24
     decision_confidence: float = 0.975
     save_path: str | Path | None = "level_crossing.json"
+
+    # Avoid immediately probing the expensive high-gate endpoint. Each ratio
+    # starts from a low gate count and grows upward until the crossing is
+    # bracketed or this capped search window is exhausted.
+    initial_bracket_fraction: float = 0.1
+    low_to_high_growth_factor: float = 1.9
+    trace_gate_growth: float = 1.5
+    trace_gate_shrink: float = 0.75
 
 
 def implied_above(data: RMBData, config: RMBConfig,
@@ -200,14 +212,91 @@ def predict_crossing(crossings: list[RMBConfig], ratio: float) -> int | None:
     return round(1.0 / inverse)
 
 
+def even_gate_count(value: float) -> int:
+    return max(2, 2 * round(value / 2))
+
+
+def resolved_start_ratio(settings: LevelCrossingSettings) -> float:
+    low, high = settings.ratio_bounds
+    if settings.start_ratio is None:
+        return high if settings.trace_direction == "down" else low
+    if not low <= settings.start_ratio <= high:
+        raise ValueError(
+            f"start_ratio={settings.start_ratio} outside ratio_bounds={settings.ratio_bounds}."
+        )
+    return settings.start_ratio
+
+
+def ratio_sweep(settings: LevelCrossingSettings) -> list[float]:
+    """Inclusive ratio sweep, descending by default from the high-ratio end."""
+    if settings.ratio_step <= 0:
+        raise ValueError(f"ratio_step must be positive, got {settings.ratio_step}.")
+    low, high = settings.ratio_bounds
+    start = resolved_start_ratio(settings)
+    stop = low if settings.trace_direction == "down" else high
+    direction = -1.0 if settings.trace_direction == "down" else 1.0
+
+    ratios: list[float] = []
+    current = start
+    while direction * (current - stop) <= 1e-9:
+        ratios.append(float(current))
+        current += direction * settings.ratio_step
+    if ratios and abs(ratios[-1] - stop) > 1e-9:
+        ratios.append(float(stop))
+    return ratios
+
+
+def initial_search_cap(settings: LevelCrossingSettings) -> int:
+    """Low initial high endpoint; deliberately below the global max bound."""
+    n_gates_min, n_gates_max = settings.n_gates_bounds
+    cap = even_gate_count(settings.initial_bracket_fraction * n_gates_max)
+    return min(n_gates_max - 2, max(n_gates_min + 2, cap))
+
+
+def next_bracket(
+    crossings: list[RMBConfig],
+    settings: LevelCrossingSettings,
+    ratio: float,
+) -> tuple[int, int]:
+    """
+    Search window for the next ratio, anchored by the traced contour so far.
+
+    Moving downward in two-qubit ratio should require more total gates, so the
+    next high endpoint grows from the nearest previous crossing instead of
+    jumping to ``n_gates_bounds[1]``.
+    """
+    n_gates_min, n_gates_max = settings.n_gates_bounds
+    cap = n_gates_max - 2
+    if not crossings:
+        return n_gates_min, initial_search_cap(settings)
+
+    predicted = predict_crossing(crossings, ratio)
+    if predicted is not None:
+        lo = even_gate_count(settings.trace_gate_shrink * predicted)
+        hi = even_gate_count(settings.trace_gate_growth * predicted)
+    else:
+        anchor = crossings[-1]
+        if ratio < anchor.ratio_2_qb_gates:
+            lo = even_gate_count(settings.trace_gate_shrink * anchor.n_gates)
+            hi = even_gate_count(settings.trace_gate_growth * anchor.n_gates)
+        else:
+            lo = n_gates_min
+            hi = even_gate_count(anchor.n_gates)
+
+    lo = max(n_gates_min, min(cap - 2, lo))
+    hi = min(cap, max(lo + 2, hi))
+    return lo, hi
+
+
 def find_crossing(*, backend, rng: RNGGenerator, data: RMBData, budget: Budget,
                   settings: LevelCrossingSettings,
                   ratio: float, lo: int, hi: int) -> RMBConfig | None:
     """
-    Bisect in total gates for the fidelity = 0.5 crossing at fixed ratio.
+    Search low-to-high, then bisect in total gates at fixed ratio.
 
     Fidelity decreases monotonically with gate count, so the bracket needs
-    fidelity confidently above 0.5 at ``lo`` and confidently below at ``hi``.
+    fidelity confidently above 0.5 at ``lo`` and confidently below at a grown
+    high endpoint. The global maximum gate bound is not probed directly.
     The bisection only branches on confident side decisions; any point whose
     shot cap cannot tell it from 0.5, endpoints included, is statistically on
     the line and is returned as the crossing directly.
@@ -227,6 +316,36 @@ def find_crossing(*, backend, rng: RNGGenerator, data: RMBData, budget: Budget,
         if 1.0 - above_lo < settings.decision_confidence:
             return config_lo
         return None
+
+    previous = lo
+    probe_hi = even_gate_count(
+        max(lo + 2, lo * settings.low_to_high_growth_factor)
+    )
+    while probe_hi < hi:
+        config_hi = settings.make_config(probe_hi, ratio)
+        p_hi, above_hi = probe_fidelity(backend=backend, rng=rng, data=data,
+                                        config=config_hi, budget=budget,
+                                        settings=settings)
+        if p_hi is None:
+            return None
+        print_progress(
+            settings,
+            budget,
+            f"  bracket ratio={ratio:.3f}: n_gates={probe_hi} p={p_hi:.2f}",
+        )
+        if above_hi < settings.decision_confidence:
+            if 1.0 - above_hi < settings.decision_confidence:
+                return config_hi
+            lo = previous
+            hi = probe_hi
+            break
+        previous = probe_hi
+        probe_hi = even_gate_count(
+            max(probe_hi + 2, probe_hi * settings.low_to_high_growth_factor)
+        )
+    else:
+        lo = previous
+
     config_hi = settings.make_config(hi, ratio)
     p_hi, above_hi = probe_fidelity(backend=backend, rng=rng, data=data,
                                     config=config_hi, budget=budget, settings=settings)
@@ -261,31 +380,31 @@ def find_crossing(*, backend, rng: RNGGenerator, data: RMBData, budget: Budget,
     return settings.make_config((lo + hi) // 2, ratio)
 
 
-def run(settings: LevelCrossingSettings) -> tuple[RMB, list[RMBConfig]]:
+def run_with_budget(settings: LevelCrossingSettings) -> tuple[RMB, list[RMBConfig], Budget]:
     """
-    Find the fidelity = 0.5 line and trace it up in the two-qubit gate ratio.
+    Find the fidelity = 0.5 line and trace it through the ratio sweep.
 
     Returns
     -------
-    tuple[RMB, list[RMBConfig]]
-        The RMB holding all recorded data and the crossing configs in
-        increasing ratio order.
+    tuple[RMB, list[RMBConfig], Budget]
+        The RMB holding all recorded data, the crossing configs in traced
+        ratio order, and the final budget state.
     """
     rng, rmb, budget = start_run(settings)
     data = rmb._data
     crossings: list[RMBConfig] = []
 
-    n_gates_min, n_gates_max = settings.n_gates_bounds
-    lo, hi = n_gates_min, n_gates_max
-    step_index = 0
-    ratio = settings.ratio_bounds[0]
-
-    while ratio <= settings.ratio_bounds[1] + 1e-9 and budget.remaining_hqc > 0:
+    lo, hi = next_bracket(crossings, settings, resolved_start_ratio(settings))
+    for ratio in ratio_sweep(settings):
+        if budget.remaining_hqc <= 0:
+            break
         crossing = find_crossing(backend=rmb.backend, rng=rng, data=data, budget=budget,
                                  settings=settings, ratio=ratio, lo=lo, hi=hi)
-        if crossing is None and (lo, hi) != (n_gates_min, n_gates_max):
-            # The predicted bracket missed the line; retry with full bounds.
-            lo, hi = n_gates_min, n_gates_max
+        fallback_lo, fallback_hi = next_bracket([], settings, ratio)
+        if crossing is None and (lo, hi) != (fallback_lo, fallback_hi):
+            # The predicted bracket missed the line; retry from the low-gate
+            # initial window, still avoiding the global max endpoint.
+            lo, hi = fallback_lo, fallback_hi
             crossing = find_crossing(backend=rmb.backend, rng=rng, data=data, budget=budget,
                                      settings=settings, ratio=ratio, lo=lo, hi=hi)
 
@@ -299,21 +418,12 @@ def run(settings: LevelCrossingSettings) -> tuple[RMB, list[RMBConfig]]:
             reason = "budget exhausted" if budget.remaining_hqc <= 0 else "endpoints unresolved"
             print_progress(settings, budget, f"No crossing found at ratio={ratio:.3f} ({reason})")
 
-        step_index += 1
-        ratio = settings.ratio_bounds[0] + step_index * settings.ratio_step
-
-        # Bracket the next crossing around the inverse-linear fit prediction;
-        # before the fit is possible, search below the previous crossing.
-        predicted = predict_crossing(crossings, ratio)
-        if predicted is not None:
-            lo = max(n_gates_min, predicted // 2)
-            hi = min(n_gates_max, 2 * predicted)
-        elif crossings:
-            lo, hi = n_gates_min, crossings[-1].n_gates
-        else:
-            lo, hi = n_gates_min, n_gates_max
-        if hi <= lo:
-            lo, hi = n_gates_min, n_gates_max
+        next_ratio = (
+            ratio - settings.ratio_step
+            if settings.trace_direction == "down"
+            else ratio + settings.ratio_step
+        )
+        lo, hi = next_bracket(crossings, settings, next_ratio)
 
     print_progress(settings, budget, f"\nTraced {len(crossings)} crossings")
     if settings.verbose:
@@ -329,8 +439,14 @@ def run(settings: LevelCrossingSettings) -> tuple[RMB, list[RMBConfig]]:
         from sympleq.applications.randomized_benchmarking.experiments.plots import plot_crossing_results
         plot_crossing_results(data, settings, crossings, base_path=base_path)
 
+    return rmb, crossings, budget
+
+
+def run(settings: LevelCrossingSettings) -> tuple[RMB, list[RMBConfig]]:
+    """Trace the fidelity = 0.5 line and return the run data and crossings."""
+    rmb, crossings, _ = run_with_budget(settings)
     return rmb, crossings
 
 
 if __name__ == "__main__":
-    rmb, crossings = run(BaselineCrossingSettings())
+    rmb, crossings = run(LevelCrossingSettings())

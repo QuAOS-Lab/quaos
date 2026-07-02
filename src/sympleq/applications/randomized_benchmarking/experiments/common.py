@@ -63,6 +63,9 @@ class CrossingSettings:
         Fixed number of qubits for the whole run.
     random_elimination : float
         ``RMBConfig.random_elimination`` used for every probed config.
+    use_scrambler : bool
+        ``RMBConfig.use_scrambler`` used for every probed config. Disabling it
+        removes the ``2 * n_qubits`` one-qubit gate floor from config creation.
     n_gates_bounds : tuple[int, int]
         Search range for the total gate count.
     ratio_bounds : tuple[float, float]
@@ -107,10 +110,11 @@ class CrossingSettings:
     """
     n_qubits: int = 5
     random_elimination: float = 0.1
-    n_gates_bounds: tuple[int, int] = (100, 15000)
-    ratio_bounds: tuple[float, float] = (0.05, 0.9)
+    use_scrambler: bool = True
+    n_gates_bounds: tuple[int, int] = (10, 3000)
+    ratio_bounds: tuple[float, float] = (0.1, 0.9)
     hqc_budget: float = 250.0
-    max_cost_per_run: float = 45.0
+    max_cost_per_run: float = 35.0
     monotone_l2: float = 1e-3
     min_fit_points: int = 16
     candidate_grid_size: tuple[int, int] = (50, 50)
@@ -127,18 +131,21 @@ class CrossingSettings:
         Build a valid native-gate RMBConfig from total gates and two-qubit ratio.
 
         Gate counts are rounded to the even values the circuit construction
-        actually realizes, with at least the 2 * n_qubits scrambler one-qubit
-        gates, so the config matches the generated circuits and the Quantinuum
-        cost is computed for what would really run.
+        actually realizes.  With the scrambler enabled there must be at least
+        the 2 * n_qubits scrambler one-qubit gates, so the config matches the
+        generated circuits and the Quantinuum cost is computed for what would
+        really run.
         """
         n_2qb_gates = max(0, 2 * round(ratio * n_gates / 2))
-        n_1qb_gates = max(2 * self.n_qubits, 2 * round((n_gates - n_2qb_gates) / 2))
+        min_1qb_gates = 2 * self.n_qubits if self.use_scrambler else 0
+        n_1qb_gates = max(min_1qb_gates, 2 * round((n_gates - n_2qb_gates) / 2))
         return (
             RMBConfig.default()
             .with_n_qubits(self.n_qubits)
             .with_n_1qb_gates(n_1qb_gates)
             .with_n_2qb_gates(n_2qb_gates)
             .with_random_elimination(self.random_elimination)
+            .with_use_scrambler(self.use_scrambler)
             .with_gates_set(tuple(NATIVE_GATES_SET))
         )
 
@@ -203,6 +210,31 @@ def batch_hqc_cost(requests: list[MeasurementRequest]) -> float:
         return 0.0
     return stitched_batch_hqc(sum(request.shots * single_circuit_bare_hqc(request.config)
                                   for request in requests))
+
+
+def bare_hqc_at_register_width(config: RMBConfig, register_width: int) -> float:
+    """Bare HQC for the real circuit, reset/register-priced at width W.
+
+    The circuit gates stay those of ``config``; only the per-shot
+    register/reset term is lifted from q/5000 to W/5000.  This is useful when
+    a stitched batch runs on a physical register whose width is set by the
+    largest circuit in the batch, while smaller circuits leave qubits idle.
+    """
+    width = max(int(register_width), int(config.n_qubits))
+    return single_circuit_bare_hqc(config) + (width - int(config.n_qubits)) / 5000
+
+
+def batch_hqc_cost_at_physical_width(requests: list[MeasurementRequest]) -> float:
+    """HQC cost with every circuit priced at the batch's physical register width."""
+    requests = [request for request in requests if request.shots > 0]
+    if not requests:
+        return 0.0
+    width = max(int(request.config.n_qubits) for request in requests)
+    total_bare = sum(
+        request.shots * bare_hqc_at_register_width(request.config, width)
+        for request in requests
+    )
+    return stitched_batch_hqc(total_bare)
 
 
 def marginal_hqc_cost(config: RMBConfig, shots: int) -> float:
@@ -822,6 +854,7 @@ def save_crossings(rmb: RMB, settings: CrossingSettings, budget: Budget,
                 "ratio_2qb_gates": round(c.ratio_2_qb_gates, 4),
                 "n_1qb_gates": c.n_1qb_gates,
                 "n_2qb_gates": c.n_2qb_gates,
+                "use_scrambler": c.use_scrambler,
             }
             for c in crossings
         ],
@@ -839,7 +872,8 @@ def load_crossings(path: str | Path) -> list[RMBConfig]:
     return [
         RMBConfig(n_1qb_gates=record["n_1qb_gates"],
                   n_2qb_gates=record["n_2qb_gates"],
-                  n_qubits=payload["n_qubits"])
+                  n_qubits=payload["n_qubits"],
+                  use_scrambler=record.get("use_scrambler", True))
         for record in payload["crossings"]
     ]
 
