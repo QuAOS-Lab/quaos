@@ -16,6 +16,7 @@ from sympleq.integrations.quantinuum.utils import BASE_SIMULATION_COST
 FOLDER = Path(r"Personal\seed_2025")
 
 LABELS = ['Sympleq_Seed-2025-qband-1', 'Sympleq_Seed-2025-qband-5',
+          'Sympleq_Seed-2025-qband-2', 'Sympleq_Seed-2025-qband-3'
           #   'Sympleq_Seed-2027','Sympleq_Seed-2028',
           #   'Sympleq_Seed-2029', 'Sympleq_Seed-2030',
           #   'Sympleq_Seed-2031', 'Sympleq_Seed-2032',

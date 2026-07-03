@@ -47,6 +47,14 @@ def quantinuum_emulator_backend_factory(settings: CrossingSettings, rng: RNGGene
         max_cost_per_run=settings.max_cost_per_run
     )
 
+def quantinuum_H2_backend_factory(settings: CrossingSettings, rng: RNGGenerator) -> RMBBackend:
+    """SympleQ emulation of Quantinuum hardware; nothing is submitted."""
+    return QuantinuumBackend(
+        device_name="H2-1",
+        project_name="level-benchmark",
+        batch_size=1,
+        max_cost_per_run=settings.max_cost_per_run
+    )
 
 @dataclass(frozen=True)
 class CrossingSettings:
@@ -114,7 +122,7 @@ class CrossingSettings:
     n_gates_bounds: tuple[int, int] = (10, 3000)
     ratio_bounds: tuple[float, float] = (0.1, 0.9)
     hqc_budget: float = 250.0
-    max_cost_per_run: float = 35.0
+    max_cost_per_run: float = 15.0
     monotone_l2: float = 1e-3
     min_fit_points: int = 16
     candidate_grid_size: tuple[int, int] = (50, 50)

@@ -313,6 +313,7 @@ def print_run_handles(
 
         print("[qubits]")
         print(f"  qubits                     = {settings.n_qubits}")
+        print(f"  qubit_band_length                     = {settings.qubit_band_length}")
 
         print("[fake anchors]")
         print(f"  use_fake_corners                     = {settings.use_fake_corners}")
@@ -617,7 +618,8 @@ def run_FLE(
     if settings.save_gp_prediction_grid and base_path is not None:
         save_gp_prediction_grid(
             plot_strategy,
-            settings,
+            model=model,
+            settings = settings,
             device=gp_device,
             json_path=base_path,
         )
@@ -638,7 +640,7 @@ def main(model, SettingsClass, settings_kwargs) -> None:
         # if stitched_total_gates > gate_budget:
         #     break
 
-    if backend_factory == quantinuum_emulator_backend_factory and kwargs.get("gate_budget") >= 7000:
+    if backend_factory == quantinuum_emulator_backend_factory and kwargs.get("gate_budget") > 7000:
         raise ValueError(
             "Gate budget too high for Quantinuum emulator. Please set gate_budget <= 7000."
         )

@@ -25,6 +25,7 @@ def default_backend_config(device_name: str) -> qnx.QuantinuumConfig:
         no_opt=True,
         allow_implicit_swaps=False,
         leakage_detection=False,
+        max_batch_cost=25.0,
         attempt_batching=False)
 
 

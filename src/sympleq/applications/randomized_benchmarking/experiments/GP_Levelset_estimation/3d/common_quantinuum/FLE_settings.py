@@ -9,6 +9,7 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     CrossingSettings,
     default_backend_factory,
     quantinuum_emulator_backend_factory,
+    # quantinuum_H2_backend_factory
 )
 
 
@@ -96,7 +97,7 @@ TARGET_THRESHOLD = 0.5
 
 N_QUBITS_BOUNDS = (20, 50)
 # LEVEL_SET_N_QUBITS = N_QUBITS
-QUBIT_BAND_LENGTH = 1
+QUBIT_BAND_LENGTH = 3
 
 # -------------------------------------------------------------------------
 # SEARCH-BOX HANDLES
@@ -173,7 +174,9 @@ FORCE_DEFAULT_DEVICE_DURING_AEPSYCH = True
 # -------------------------------------------------------------------------
 
 # BACKEND_FACTORY = quantinuum_emulator_backend_factory
-BACKEND_FACTORY = default_backend_factory
+# BACKEND_FACTORY = default_backend_factory
+BACKEND_FACTORY = quantinuum_emulator_backend_factory
+# BACKEND_FACTORY = quantinuum_H2_backend_factory
 
 # -------------------------------------------------------------------------
 # REPRODUCIBILITY / DEBUG HANDLES
