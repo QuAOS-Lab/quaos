@@ -30,52 +30,6 @@ def reset_operations(
     return CircBox(circuit)
 
 
-# def circuit_stitching(
-#     input_circuits: list[Circuit],
-# ) -> Circuit:
-#     r"""Generate a stitched circuit based on a list of input circuits.
-#     The circuit is depth-wise.
-
-#     :param input_circuits: Circuit instances to stitch.
-#     :param backend_info: BackendInfo instance containing information on number
-#         of device qubits, number of allowed classical register and maximum width
-#         for each classical register.
-#     :returns: Circuit
-#     """
-
-#     n_qubits = input_circuits[0].n_qubits
-#     if any(n_qubits != c.n_qubits for c in input_circuits[1:]):
-#         raise ValueError("All circuits should have the same number of qubits.")
-
-#     sum_circuit = Circuit(n_qubits)
-#     reset_box = reset_operations(n_qubits)
-#     qreg = sum_circuit.q_registers
-
-#     creg_index = 0
-#     for idx in range(len(input_circuits)):
-#         s_circuit = input_circuits[idx]
-#         # An input may carry several classical registers (e.g. when it is
-#         # itself an already-stitched circuit), so wire every one of its bit
-#         # registers, in the lexicographic order add_circbox_regwise expects.
-#         cregs = []
-#         for src_creg in sorted(s_circuit.c_registers, key=lambda r: r.name):
-#             cregs.append(sum_circuit.add_c_register(f"creg_{creg_index}", src_creg.size))
-#             creg_index += 1
-#         sum_circuit.add_circbox_regwise(CircBox(s_circuit), qreg, cregs)
-#         if idx == len(input_circuits) - 1:
-#             continue
-#         sum_circuit.add_circbox(reset_box, sum_circuit.qubits)
-
-#     # Flatten the CircBoxes into native gates so the stitched circuit is a
-#     # single genuine circuit. This is what lets gate-count-based cost and
-#     # QASM-size estimates see the stitched contents - gates inside an
-#     # undecomposed CircBox are invisible to n_1qb_gates()/n_2qb_gates(), so
-#     # without this the running cost never grows as more circuits are stitched.
-#     DecomposeBoxes().apply(sum_circuit)
-
-#     return sum_circuit
-
-
 def circuit_stitching(
     input_circuits: list[Circuit],
 ) -> Circuit:
@@ -91,6 +45,9 @@ def circuit_stitching(
 
     n_qubits = max([c.n_qubits for c in input_circuits])
 
+    # Put circuits in descending order of number of qubits.
+    input_circuits = sorted(input_circuits, key=lambda c: c.n_qubits, reverse=True)
+
     sum_circuit = Circuit(n_qubits)
     reset_box = reset_operations(n_qubits)
 
@@ -102,7 +59,7 @@ def circuit_stitching(
         # registers, in the lexicographic order add_circbox_regwise expects.
         cregs = []
         for src_creg in sorted(s_circuit.c_registers, key=lambda r: r.name):
-            cregs.append(sum_circuit.add_c_register(f"creg{creg_index}", src_creg.size))
+            cregs.append(sum_circuit.add_c_register(f"creg_{creg_index}", src_creg.size))
             creg_index += 1
 
         qreg = s_circuit.q_registers
