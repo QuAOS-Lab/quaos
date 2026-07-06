@@ -45,6 +45,9 @@ def circuit_stitching(
 
     n_qubits = max([c.n_qubits for c in input_circuits])
 
+    # Put circuits in descending order of number of qubits.
+    input_circuits = sorted(input_circuits, key=lambda c: c.n_qubits, reverse=True)
+
     sum_circuit = Circuit(n_qubits)
     reset_box = reset_operations(n_qubits)
 
