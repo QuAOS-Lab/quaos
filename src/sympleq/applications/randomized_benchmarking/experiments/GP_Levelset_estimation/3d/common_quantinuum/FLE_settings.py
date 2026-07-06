@@ -57,6 +57,10 @@ class FantasySettings(CrossingSettings):
     save_gp_prediction_grid: bool = False
     save_real_checkpoints: bool = True
 
+    # Recovery
+    recovery_mode: bool = False
+    recovery_folder: str | Path | None = None
+
     # Gate budget per stitched submission (for emulator only)
     gate_budget: int = 7000
 
@@ -97,7 +101,7 @@ TARGET_THRESHOLD = 0.5
 
 N_QUBITS_BOUNDS = (20, 50)
 # LEVEL_SET_N_QUBITS = N_QUBITS
-QUBIT_BAND_LENGTH = 3
+QUBIT_BAND_LENGTHS = [0,1,2,3,4]
 
 # -------------------------------------------------------------------------
 # SEARCH-BOX HANDLES
@@ -145,6 +149,13 @@ SAVE_GP_PREDICTION_GRID = True
 SAVE_REAL_CHECKPOINTS = True
 
 # -------------------------------------------------------------------------
+# RECOVERY HANDLES
+# -------------------------------------------------------------------------
+
+RECOVERY_MODE = False
+RECOVERY_FOLDER = Path(r"Personal\FLE\qband_0\seed_2026\FLE_20260703_143809")
+
+# -------------------------------------------------------------------------
 # GP / AEPSYCH HANDLES
 # -------------------------------------------------------------------------
 
@@ -174,15 +185,15 @@ FORCE_DEFAULT_DEVICE_DURING_AEPSYCH = True
 # -------------------------------------------------------------------------
 
 # BACKEND_FACTORY = quantinuum_emulator_backend_factory
-# BACKEND_FACTORY = default_backend_factory
-BACKEND_FACTORY = quantinuum_emulator_backend_factory
+BACKEND_FACTORY = default_backend_factory
+# BACKEND_FACTORY = quantinuum_emulator_backend_factory
 # BACKEND_FACTORY = quantinuum_H2_backend_factory
 
 # -------------------------------------------------------------------------
 # REPRODUCIBILITY / DEBUG HANDLES
 # -------------------------------------------------------------------------
 
-RNG_SEEDS = [2025]
+RNG_SEEDS = [2026, 2027, 2028, 2029, 2030]
 VERBOSE_FANTASIES = True
 PLOT = True
 
@@ -203,6 +214,8 @@ def control_panel_settings_kwargs() -> dict:
         sobol_scramble=SOBOL_SCRAMBLE,
         save_gp_prediction_grid=SAVE_GP_PREDICTION_GRID,
         save_real_checkpoints=SAVE_REAL_CHECKPOINTS,
+        recovery_mode=RECOVERY_MODE,
+        recovery_folder=RECOVERY_FOLDER,
         optimization_steps=OPTIMIZATION_STEPS,
         inducing_size=INDUCING_SIZE,
         acquisition_function=ACQUISITION_FUNCTION,
@@ -217,10 +230,8 @@ def control_panel_settings_kwargs() -> dict:
         verbose_fantasies=VERBOSE_FANTASIES,
         plot=PLOT,
         gate_budget=GATE_BUDGET,
-        # n_qubits=N_QUBITS,
         n_qubits_bounds=N_QUBITS_BOUNDS,
-        # level_set_n_qubits=LEVEL_SET_N_QUBITS,
-        qubit_band_length=QUBIT_BAND_LENGTH,
+        qubit_band_length=QUBIT_BAND_LENGTHS[0],
     )
 
     if N_GATES_BOUNDS is not None:

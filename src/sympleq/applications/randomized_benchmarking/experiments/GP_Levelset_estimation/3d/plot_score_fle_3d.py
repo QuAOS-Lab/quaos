@@ -10,7 +10,7 @@ from statistics import NormalDist
 import numpy as np
 import plotly.graph_objects as go
 
-from fantasy_levelset_settings_3d import HQC_BUDGET
+# from fantasy_levelset_settings_3d import HQC_BUDGET
 
 
 # -------------------------------------------------------------------------
