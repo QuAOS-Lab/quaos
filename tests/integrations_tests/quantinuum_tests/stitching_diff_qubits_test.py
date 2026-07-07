@@ -73,113 +73,178 @@ def print_first_commands(circ: Circuit, n: int = 20, title: str = "Circuit"):
         print(f"{i:03d}: {cmd}")
 
 
-if __name__ == "__main__":
-    ' Include more than 10 circuits to test lexicographic ordering'
-    n_circuits = 11
+# if __name__ == "__main__":
+#     ' Include more than 10 circuits to test lexicographic ordering'
+#     n_circuits = 11
 
-    circuits_sent = []
+#     circuits_sent = []
 
-    for i in range(n_circuits):
-        # Different qubit numbers: 1, 2, ..., 10, repeated.
-        nq = 1 + (i % 10)
-        circ, expected = random_native_deterministic_circuit(
-            nq=nq,
-            seed=10_000 + i,
+#     for i in range(n_circuits):
+#         # Different qubit numbers: 1, 2, ..., 10, repeated.
+#         nq = 1 + (i % 10)
+#         circ, expected = random_native_deterministic_circuit(
+#             nq=nq,
+#             seed=10_000 + i,
+#         )
+
+#         circuits_sent.append((i, circ, expected))
+
+
+#     stitched = circuit_stitching([c[1] for c in circuits_sent])
+
+#     raw_registers = list(stitched.c_registers)
+
+#     raw_names = [r.name for r in raw_registers]
+#     lex_names = [r.name for r in sorted(raw_registers, key=lambda r: r.name)]
+#     num_names = [r.name for r in sorted(raw_registers, key=lambda r: int(r.name.replace("creg_", "")))]
+
+
+#     circuits_with_expected_sorted = sorted(
+#         circuits_sent,
+#         key=lambda item: item[1].n_qubits,
+#         reverse=True,
+#     )
+
+
+#     answer = input(
+#         "\nThis will submit a job to the Quantinuum emulator and may use about "
+#         "10 minutes of emulator time. Continue? [y/N]: "
+#     ).strip().lower()
+
+#     if answer not in {"y", "yes"}:
+#         print("Cancelled before submitting to Quantinuum emulator.")
+#         sys.exit(0)
+
+#     results = run_circuits_on_device(
+#         [stitched],
+#         n_shots=1,
+#         device_name="H2-Emulator",
+#         project_name="Stitching Test",
+#         verbose=True,
+#     )
+
+
+#     stitched_result = results[0]
+
+#     # print(stitched_result)
+
+#     registers = sorted(stitched.c_registers,
+#                        key=lambda register: int(register.name.removeprefix("creg_")))  # Line 117 quantinuum.py
+
+#     destitched = destitch_results(stitched_result, registers)
+
+#     assert len(destitched) == n_circuits, (
+#         f"Expected {n_circuits} destitched results, got {len(destitched)}"
+#     )
+
+#     failures = []
+
+#     for destitched_index, result in enumerate(destitched):
+#         original_index, circ, expected = circuits_with_expected_sorted[destitched_index]
+
+#         actual = one_shot_tuple(result)
+#         print(actual)
+#         print(one_shot_tuple(result))
+
+#         if actual != expected:
+#             failures.append(
+#                 {
+#                     "destitched_index": destitched_index,
+#                     "original_index": original_index,
+#                     "n_qubits": circ.n_qubits,
+#                     "expected": expected,
+#                     "actual": actual,
+#                     "counts": result.get_counts(),
+#                 }
+#             )
+
+#     if failures:
+#         print(f"FAILED: {len(failures)} circuits did not match.")
+
+#         for failure in failures[:10]:
+#             print(failure)
+
+#         raise AssertionError("Destitched results do not match expected circuit outputs.")
+
+#     print(f"PASSED: all {n_circuits} stitched/destitched circuit results matched.")
+
+
+from sympleq.applications.randomized_benchmarking.config import RMBConfig
+from sympleq.integrations.quantinuum.utils import NATIVE_GATES_SET
+from numpy.random import default_rng
+from sympleq.applications.randomized_benchmarking.backends.base import MeasurementRequest
+from sympleq.applications.randomized_benchmarking.backends.quantinuum import QuantinuumBackend
+from sympleq.applications.randomized_benchmarking.experiments.common import (
+    quantinuum_emulator_backend_factory,
+    print_experiment_summary,
+    print_progress,
+    start_run,
+)
+
+
+class DummySettings:
+    max_cost_per_run: float = 25.0
+
+
+def main():
+    rng = default_rng(1234)
+    settings = DummySettings()
+
+    backend = quantinuum_emulator_backend_factory(settings, rng)
+
+    configs = [
+        (
+            RMBConfig.default()
+            .with_n_qubits(nq)
+            .with_n_1qb_gates(2 * nq)
+            .with_n_2qb_gates(2)
+            .with_random_elimination(0.0)
+            .with_use_scrambler(True)
+            .with_gates_set(tuple(NATIVE_GATES_SET))
+        )
+        for nq in [2, 5, 3, 8]
+    ]
+    print("\n[request order]")
+    for i, config in enumerate(configs):
+        print(
+            f"request_index={i:02d} "
+            f"n_qubits={config.n_qubits} "
+            f"n_gates={config.n_gates}"
         )
 
-        circuits_sent.append((i, circ, expected))
-
-    # print(f"qubits in sent_circuits: {[c[1].n_qubits for c in circuits_sent]}")
-
-    stitched = circuit_stitching([c[1] for c in circuits_sent])
-
-    raw_registers = list(stitched.c_registers)
-
-    raw_names = [r.name for r in raw_registers]
-    lex_names = [r.name for r in sorted(raw_registers, key=lambda r: r.name)]
-    num_names = [r.name for r in sorted(raw_registers, key=lambda r: int(r.name.replace("creg_", "")))]
-
-    # print("\nRaw stitched register order:")
-    # print(raw_names[:20])
-
-    # print("\nLexicographic sorted register order:")
-    # print(lex_names[:20])
-
-    # print("\nNumeric sorted register order:")
-    # print(num_names[:20])
-
-    # Expected_results:
-    # print(f"outcomes: {[c[2] for c in circuits_sent]}")
-
-    circuits_with_expected_sorted = sorted(
-        circuits_sent,
-        key=lambda item: item[1].n_qubits,
+    expected_stitch_order = sorted(
+        configs,
+        key=lambda config: config.n_qubits,
         reverse=True,
     )
 
-    # print_first_commands(stitched, n=30, title="Stitched circuit") # Check the descending order of qubits
-    # without sending to the emulator
+    print("\n[expected stitch order]")
+    for i, config in enumerate(expected_stitch_order):
+        print(
+            f"stitched_index={i:02d} "
+            f"n_qubits={config.n_qubits} "
+            f"n_gates={config.n_gates}"
+        )
 
-    answer = input(
-        "\nThis will submit a job to the Quantinuum emulator and may use about "
-        "10 minutes of emulator time. Continue? [y/N]: "
-    ).strip().lower()
+    requests = [
+        MeasurementRequest(config=config, shots=1)
+        for config in configs
+    ]
 
-    if answer not in {"y", "yes"}:
-        print("Cancelled before submitting to Quantinuum emulator.")
-        sys.exit(0)
+    outcomes = backend.fidelity_estimation(requests, rng)
 
-    results = run_circuits_on_device(
-        [stitched],
-        n_shots=1,
-        device_name="H2-Emulator",
-        project_name="Stitching Test",
-        verbose=True,
-    )
+    print("\n[outcome dict order]")
+    for i, (config, values) in enumerate(outcomes.outcomes.items()):
+        print(
+            f"outcome_index={i:02d} "
+            f"n_qubits={config.n_qubits} "
+            f"n_gates={config.n_gates} "
+            f"outcomes={values}"
+        )
 
-    # print('lexicographic_check')
+    # print(outcomes)
 
-    stitched_result = results[0]
+    # print(outcomes)
 
-    # print(stitched_result)
-
-    registers = sorted(stitched.c_registers,
-                       key=lambda register: int(register.name.removeprefix("creg_")))  # Line 117 quantinuum.py
-
-    destitched = destitch_results(stitched_result, registers)
-
-    assert len(destitched) == n_circuits, (
-        f"Expected {n_circuits} destitched results, got {len(destitched)}"
-    )
-
-    failures = []
-
-    for destitched_index, result in enumerate(destitched):
-        original_index, circ, expected = circuits_with_expected_sorted[destitched_index]
-
-        actual = one_shot_tuple(result)
-        print(actual)
-        print(one_shot_tuple(result))
-
-        if actual != expected:
-            failures.append(
-                {
-                    "destitched_index": destitched_index,
-                    "original_index": original_index,
-                    "n_qubits": circ.n_qubits,
-                    "expected": expected,
-                    "actual": actual,
-                    "counts": result.get_counts(),
-                }
-            )
-
-    if failures:
-        print(f"FAILED: {len(failures)} circuits did not match.")
-
-        for failure in failures[:10]:
-            print(failure)
-
-        raise AssertionError("Destitched results do not match expected circuit outputs.")
-
-    print(f"PASSED: all {n_circuits} stitched/destitched circuit results matched.")
-
+if __name__== "__main__":
+    main()
