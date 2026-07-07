@@ -306,8 +306,6 @@ def save_real_checkpoint(
         )
 
 
-### RECOVERY MODE #####
-
 def latest_recovery_json(settings) -> Path | None:
     """Return the latest cumulative RMB JSON checkpoint for recovery."""
 
