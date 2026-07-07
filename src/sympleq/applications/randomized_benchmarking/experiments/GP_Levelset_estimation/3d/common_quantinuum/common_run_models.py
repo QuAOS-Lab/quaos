@@ -124,6 +124,11 @@ def write_hqc_metadata(
         "repair_stats": repair_stats(),
     }
     if sent_configs is not None:
+        sent_configs = sorted(
+            sent_configs,
+            key=lambda config: config.n_qubits,
+            reverse=True,
+        )
         payload["experiment"]["sent_configs"] = [
             {
                 "n_1qb_gates": int(config.n_1qb_gates),
