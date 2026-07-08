@@ -24,9 +24,11 @@ if settings.backend_factory is quantinuum_emulator_backend_factory:
 This should be done as soon as the stitching is done.
 
 """
+from __future__ import annotations
 
 import logging
 import json
+import sys
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -42,7 +44,31 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
 )
 
 
-MODEL = "FLE"
+_SUPPORTED_MODELS = ("FLE", "COST_AWARE")
+_DEFAULT_MODEL = "COST_AWARE"
+
+
+def _resolve_model(argv: list[str]) -> str:
+    """Pick the model from the CLI, e.g. ``python common_run_models.py FLE``.
+
+    Falls back to ``_DEFAULT_MODEL`` when no argument is given (so imports still
+    work), and errors clearly on an unrecognised value rather than silently
+    running the default.
+    """
+    if len(argv) <= 1:
+        return _DEFAULT_MODEL
+    requested = argv[1].strip().upper()
+    if requested not in _SUPPORTED_MODELS:
+        raise SystemExit(
+            f"Unknown model {argv[1]!r}; choose one of {', '.join(_SUPPORTED_MODELS)}."
+        )
+    return requested
+
+
+# Model is taken from the command line (the conditional imports below depend on
+# it, so it must be resolved at import time).
+MODEL = _resolve_model(sys.argv)
+
 
 
 if MODEL == "FLE":
@@ -73,7 +99,12 @@ if MODEL == "FLE":
 
 
 elif MODEL == "COST_AWARE":
-    from cost_aware_surface_settings import CostAwareSettings as SettingsClass
+    from cost_aware_settings import (
+        CostAwareSettings as SettingsClass,
+        RNG_SEEDS,
+        control_panel_settings_kwargs as settings_kwargs,
+    )
+    from cost_aware_surface_design import run_with_design_plots
 
 else:
     raise ValueError(f"Unknown model: {MODEL}")
@@ -86,9 +117,20 @@ def timestamped_personal_save_path(seed: int | None = None) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     seed_folder = "seed_unseeded" if seed is None else f"seed_{seed}"
     model_folder = "CostAware" if MODEL == "COST_AWARE" else "FLE"
-    run_folder = Path("Personal") / model_folder / seed_folder / f"FLE_{timestamp}"
+    prefix = "CostAware" if MODEL == "COST_AWARE" else "FLE"
+    run_folder = Path("Personal") / model_folder / seed_folder / f"{prefix}_{timestamp}"
 
-    return run_folder / f"FLE_{timestamp}.json"
+    return run_folder / f"{prefix}_{timestamp}.json"
+
+
+def restartable_cost_aware_save_path(seed: int | None = None) -> Path:
+    seed_folder = "seed_unseeded" if seed is None else f"seed_{seed}"
+    return (
+        Path("Personal")
+        / "CostAware"
+        / seed_folder
+        / "CostAware_restartable.json"
+    )
 
 
 # Bookkeeping_
@@ -109,8 +151,9 @@ def write_hqc_metadata(
         "spent_hqc": float(settings.hqc_budget - budget.remaining_hqc),
         "remaining_hqc": float(budget.remaining_hqc),
         "hqc_budget": float(settings.hqc_budget),
-        "repair_stats": repair_stats(),
     }
+    if "repair_stats" in globals():
+        payload["experiment"]["repair_stats"] = repair_stats()
     if sent_configs is not None:
         payload["experiment"]["sent_configs"] = [
             {
@@ -360,6 +403,41 @@ def print_run_handles(
         print(f"  rng_seed                             = {settings.rng_seed}")
         print(f"  verbose_fantasies                    = {settings.verbose_fantasies}")
 
+        print("=============================================\n")
+
+    elif MODEL == "COST_AWARE":
+        print("[surface]")
+        print(f"  q_values                             = {settings.q_values}")
+        print(f"  n_gates_bounds                       = {settings.n_gates_bounds}")
+        print(f"  ratio_bounds                         = {settings.ratio_bounds}")
+
+        print("[batching / budget]")
+        print(f"  hqc_budget                           = {settings.hqc_budget}")
+        print(f"  max_cost_per_run                     = {settings.max_cost_per_run}")
+        print(f"  gate_budget                          = {settings.gate_budget}")
+        if hasattr(settings, "single_batch_gate_budget"):
+            print(f"  single_batch_gate_budget             = {settings.single_batch_gate_budget}")
+        if hasattr(settings, "emulator_max_batch_cost"):
+            print(f"  emulator_max_batch_cost              = {settings.emulator_max_batch_cost}")
+        print(f"  max_qubit_window                     = {settings.max_qubit_window}")
+
+        print("[acquisition]")
+        print(f"  acquisition_q_resolution             = {settings.acquisition_q_resolution}")
+        print(f"  acquisition_ratio_points             = {settings.acquisition_ratio_points}")
+        print(f"  grid_resolution                      = {settings.grid_resolution}")
+        print(f"  boundary_fit_resolution              = {settings.boundary_fit_resolution}")
+
+        backend_factory_name = getattr(
+            settings.backend_factory,
+            "__name__",
+            type(settings.backend_factory).__name__,
+        )
+        print("[backend]")
+        print(f"  backend_model                        = {settings.backend_model}")
+        print(f"  backend_factory                      = {backend_factory_name}")
+
+        print("[debug]")
+        print(f"  rng_seed                             = {settings.rng_seed}")
         print("=============================================\n")
 
     else:
@@ -627,6 +705,19 @@ def run_FLE(
     return rmb
 
 
+def run_COST_AWARE(
+    settings: SettingsClass,
+    *,
+    return_budget: bool = False,
+):
+    logging.getLogger().setLevel(logging.WARNING)
+    print_run_handles(settings, gp_device=None)
+    rmb, configs, budget = run_with_design_plots(settings)
+    if return_budget:
+        return rmb, budget
+    return rmb
+
+
 def main(model, SettingsClass, settings_kwargs) -> None:
     kwargs = settings_kwargs()
     backend_factory = kwargs.get("backend_factory", default_backend_factory)
@@ -638,7 +729,12 @@ def main(model, SettingsClass, settings_kwargs) -> None:
         # if stitched_total_gates > gate_budget:
         #     break
 
-    if backend_factory == quantinuum_emulator_backend_factory and kwargs.get("gate_budget") >= 7000:
+    gate_budget = kwargs.get("gate_budget")
+    if (
+        backend_factory == quantinuum_emulator_backend_factory
+        and gate_budget is not None
+        and int(gate_budget) > 7000
+    ):
         raise ValueError(
             "Gate budget too high for Quantinuum emulator. Please set gate_budget <= 7000."
         )
@@ -659,7 +755,16 @@ def main(model, SettingsClass, settings_kwargs) -> None:
             run_FLE(SettingsClass(**seed_kwargs))
 
     elif model == "COST_AWARE":
-        raise NotImplementedError("Cost-Aware model is not implemented in this script.")
+        for run_index, rng_seed in enumerate(RNG_SEEDS, start=1):
+            seed_kwargs = dict(kwargs)
+            seed_kwargs["rng_seed"] = rng_seed
+            if seed_kwargs.get("save_path") is None:
+                seed_kwargs["save_path"] = restartable_cost_aware_save_path(seed=rng_seed)
+            print(
+                f"\n[seed run] {run_index}/{len(RNG_SEEDS)} "
+                f"rng_seed={rng_seed} save_path={seed_kwargs['save_path']}\n"
+            )
+            run_COST_AWARE(SettingsClass(**seed_kwargs))
 
 
 if __name__ == "__main__":

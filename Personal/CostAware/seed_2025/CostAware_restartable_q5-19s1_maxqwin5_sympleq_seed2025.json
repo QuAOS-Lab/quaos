@@ -1,0 +1,10322 @@
+{
+  "backend": {
+    "type": "sympleq",
+    "noise_model": {
+      "type": "GenericNoise",
+      "probabilities": [
+        0.999925,
+        2.5e-05,
+        2.5e-05,
+        2.5e-05
+      ],
+      "gates": [
+        "Id",
+        "X",
+        "Y",
+        "Z"
+      ]
+    },
+    "two_qubit_noise_model": {
+      "type": "GenericNoise",
+      "probabilities": [
+        0.99763,
+        0.00079,
+        0.00079,
+        0.00079
+      ],
+      "gates": [
+        "Id",
+        "X",
+        "Y",
+        "Z"
+      ]
+    }
+  },
+  "estimator": {
+    "threshold": 0.001,
+    "min_runs": 100,
+    "max_runs": null
+  },
+  "data": [
+    {
+      "n_1qb_gates": 28,
+      "n_2qb_gates": 244,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 26,
+      "n_2qb_gates": 124,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 40,
+      "n_2qb_gates": 124,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 58,
+      "n_2qb_gates": 122,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 78,
+      "n_2qb_gates": 120,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 114,
+      "n_2qb_gates": 132,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 136,
+      "n_2qb_gates": 118,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 180,
+      "n_2qb_gates": 116,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 240,
+      "n_2qb_gates": 112,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 14,
+      "n_2qb_gates": 126,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 26,
+      "n_2qb_gates": 124,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 40,
+      "n_2qb_gates": 124,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 58,
+      "n_2qb_gates": 122,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 78,
+      "n_2qb_gates": 122,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 330,
+      "n_2qb_gates": 108,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 104,
+      "n_2qb_gates": 120,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 136,
+      "n_2qb_gates": 118,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 180,
+      "n_2qb_gates": 114,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 14,
+      "n_2qb_gates": 124,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 14,
+      "n_2qb_gates": 126,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 26,
+      "n_2qb_gates": 124,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 474,
+      "n_2qb_gates": 100,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 40,
+      "n_2qb_gates": 124,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 240,
+      "n_2qb_gates": 112,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 58,
+      "n_2qb_gates": 122,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 78,
+      "n_2qb_gates": 122,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 104,
+      "n_2qb_gates": 120,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 330,
+      "n_2qb_gates": 108,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 138,
+      "n_2qb_gates": 118,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 54,
+      "n_2qb_gates": 262,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 46,
+      "n_2qb_gates": 140,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 64,
+      "n_2qb_gates": 140,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 88,
+      "n_2qb_gates": 138,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 116,
+      "n_2qb_gates": 136,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 154,
+      "n_2qb_gates": 132,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 200,
+      "n_2qb_gates": 130,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 268,
+      "n_2qb_gates": 124,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 44,
+      "n_2qb_gates": 134,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 364,
+      "n_2qb_gates": 118,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 62,
+      "n_2qb_gates": 134,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 86,
+      "n_2qb_gates": 132,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 40,
+      "n_2qb_gates": 194,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 114,
+      "n_2qb_gates": 130,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 150,
+      "n_2qb_gates": 128,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 520,
+      "n_2qb_gates": 108,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 194,
+      "n_2qb_gates": 126,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 42,
+      "n_2qb_gates": 200,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 260,
+      "n_2qb_gates": 120,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 34,
+      "n_2qb_gates": 160,
+      "n_qubits": 17,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 42,
+      "n_2qb_gates": 130,
+      "n_qubits": 17,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 60,
+      "n_2qb_gates": 130,
+      "n_qubits": 17,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 82,
+      "n_2qb_gates": 128,
+      "n_qubits": 17,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 356,
+      "n_2qb_gates": 116,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 28,
+      "n_2qb_gates": 244,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 28,
+      "n_2qb_gates": 130,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 28,
+      "n_2qb_gates": 134,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 42,
+      "n_2qb_gates": 130,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 44,
+      "n_2qb_gates": 132,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 60,
+      "n_2qb_gates": 130,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 28,
+      "n_2qb_gates": 134,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 44,
+      "n_2qb_gates": 132,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 62,
+      "n_2qb_gates": 132,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 62,
+      "n_2qb_gates": 132,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 84,
+      "n_2qb_gates": 132,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 82,
+      "n_2qb_gates": 130,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 28,
+      "n_2qb_gates": 138,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 44,
+      "n_2qb_gates": 136,
+      "n_qubits": 14,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 84,
+      "n_2qb_gates": 132,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 44,
+      "n_2qb_gates": 138,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 28,
+      "n_2qb_gates": 138,
+      "n_qubits": 14,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 110,
+      "n_2qb_gates": 128,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 64,
+      "n_2qb_gates": 136,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 112,
+      "n_2qb_gates": 130,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 22,
+      "n_2qb_gates": 192,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 62,
+      "n_2qb_gates": 136,
+      "n_qubits": 14,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 146,
+      "n_2qb_gates": 126,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 20,
+      "n_2qb_gates": 172,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 112,
+      "n_2qb_gates": 130,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 86,
+      "n_2qb_gates": 134,
+      "n_qubits": 14,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 86,
+      "n_2qb_gates": 136,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 150,
+      "n_2qb_gates": 128,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 114,
+      "n_2qb_gates": 134,
+      "n_qubits": 14,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 150,
+      "n_2qb_gates": 128,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 114,
+      "n_2qb_gates": 134,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 198,
+      "n_2qb_gates": 126,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 274,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 146,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 48,
+      "n_2qb_gates": 144,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 68,
+      "n_2qb_gates": 144,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 92,
+      "n_2qb_gates": 142,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 122,
+      "n_2qb_gates": 140,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 160,
+      "n_2qb_gates": 138,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 210,
+      "n_2qb_gates": 136,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 280,
+      "n_2qb_gates": 130,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 382,
+      "n_2qb_gates": 124,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 16,
+      "n_2qb_gates": 146,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 144,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 46,
+      "n_2qb_gates": 144,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 66,
+      "n_2qb_gates": 142,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 90,
+      "n_2qb_gates": 140,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 16,
+      "n_2qb_gates": 148,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 120,
+      "n_2qb_gates": 138,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 546,
+      "n_2qb_gates": 114,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 156,
+      "n_2qb_gates": 136,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 206,
+      "n_2qb_gates": 132,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 274,
+      "n_2qb_gates": 128,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 16,
+      "n_2qb_gates": 140,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 138,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 44,
+      "n_2qb_gates": 138,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 64,
+      "n_2qb_gates": 136,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 60,
+      "n_2qb_gates": 284,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 50,
+      "n_2qb_gates": 152,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 70,
+      "n_2qb_gates": 152,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 96,
+      "n_2qb_gates": 150,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 128,
+      "n_2qb_gates": 148,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 168,
+      "n_2qb_gates": 146,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 222,
+      "n_2qb_gates": 142,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 294,
+      "n_2qb_gates": 138,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 402,
+      "n_2qb_gates": 132,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 48,
+      "n_2qb_gates": 148,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 68,
+      "n_2qb_gates": 148,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 40,
+      "n_2qb_gates": 190,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 94,
+      "n_2qb_gates": 146,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 124,
+      "n_2qb_gates": 144,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 576,
+      "n_2qb_gates": 120,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 164,
+      "n_2qb_gates": 142,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 40,
+      "n_2qb_gates": 190,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 216,
+      "n_2qb_gates": 138,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 288,
+      "n_2qb_gates": 134,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 48,
+      "n_2qb_gates": 144,
+      "n_qubits": 17,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 66,
+      "n_2qb_gates": 144,
+      "n_qubits": 17,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 892,
+      "n_2qb_gates": 100,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 140,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 278,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 32,
+      "n_2qb_gates": 148,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 48,
+      "n_2qb_gates": 148,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 68,
+      "n_2qb_gates": 146,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 92,
+      "n_2qb_gates": 144,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 124,
+      "n_2qb_gates": 142,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 160,
+      "n_2qb_gates": 140,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 212,
+      "n_2qb_gates": 136,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 280,
+      "n_2qb_gates": 132,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 16,
+      "n_2qb_gates": 148,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 148,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 48,
+      "n_2qb_gates": 146,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 68,
+      "n_2qb_gates": 144,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 92,
+      "n_2qb_gates": 142,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 122,
+      "n_2qb_gates": 140,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 16,
+      "n_2qb_gates": 150,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 160,
+      "n_2qb_gates": 138,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 544,
+      "n_2qb_gates": 114,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 210,
+      "n_2qb_gates": 134,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 16,
+      "n_2qb_gates": 146,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 144,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 46,
+      "n_2qb_gates": 144,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 850,
+      "n_2qb_gates": 94,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 66,
+      "n_2qb_gates": 142,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 56,
+      "n_2qb_gates": 268,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 46,
+      "n_2qb_gates": 144,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 66,
+      "n_2qb_gates": 142,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 90,
+      "n_2qb_gates": 142,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 120,
+      "n_2qb_gates": 140,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 158,
+      "n_2qb_gates": 138,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 208,
+      "n_2qb_gates": 134,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 278,
+      "n_2qb_gates": 130,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 380,
+      "n_2qb_gates": 124,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 46,
+      "n_2qb_gates": 144,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 66,
+      "n_2qb_gates": 142,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 38,
+      "n_2qb_gates": 186,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 90,
+      "n_2qb_gates": 140,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 120,
+      "n_2qb_gates": 138,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 542,
+      "n_2qb_gates": 114,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 142,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 158,
+      "n_2qb_gates": 136,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 46,
+      "n_2qb_gates": 140,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 208,
+      "n_2qb_gates": 132,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 850,
+      "n_2qb_gates": 94,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 38,
+      "n_2qb_gates": 184,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 64,
+      "n_2qb_gates": 140,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 46,
+      "n_2qb_gates": 142,
+      "n_qubits": 17,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 88,
+      "n_2qb_gates": 138,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 66,
+      "n_2qb_gates": 140,
+      "n_qubits": 17,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 46,
+      "n_2qb_gates": 142,
+      "n_qubits": 16,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 264,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 142,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 144,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 144,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 46,
+      "n_2qb_gates": 142,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 46,
+      "n_2qb_gates": 144,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 66,
+      "n_2qb_gates": 140,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 66,
+      "n_2qb_gates": 142,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 46,
+      "n_2qb_gates": 144,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 90,
+      "n_2qb_gates": 138,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 66,
+      "n_2qb_gates": 142,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 90,
+      "n_2qb_gates": 140,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 120,
+      "n_2qb_gates": 138,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 90,
+      "n_2qb_gates": 140,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 22,
+      "n_2qb_gates": 208,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 148,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 120,
+      "n_2qb_gates": 138,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 26,
+      "n_2qb_gates": 228,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 120,
+      "n_2qb_gates": 140,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 48,
+      "n_2qb_gates": 144,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 158,
+      "n_2qb_gates": 136,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 158,
+      "n_2qb_gates": 136,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 22,
+      "n_2qb_gates": 190,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 66,
+      "n_2qb_gates": 144,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 158,
+      "n_2qb_gates": 138,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 90,
+      "n_2qb_gates": 142,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 208,
+      "n_2qb_gates": 132,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 210,
+      "n_2qb_gates": 134,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 120,
+      "n_2qb_gates": 140,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 144,
+      "n_qubits": 9,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 32,
+      "n_2qb_gates": 288,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 32,
+      "n_2qb_gates": 154,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 50,
+      "n_2qb_gates": 152,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 70,
+      "n_2qb_gates": 150,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 96,
+      "n_2qb_gates": 148,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 128,
+      "n_2qb_gates": 146,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 168,
+      "n_2qb_gates": 144,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 220,
+      "n_2qb_gates": 140,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 290,
+      "n_2qb_gates": 136,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 18,
+      "n_2qb_gates": 152,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 396,
+      "n_2qb_gates": 128,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 32,
+      "n_2qb_gates": 152,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 50,
+      "n_2qb_gates": 150,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 70,
+      "n_2qb_gates": 148,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 94,
+      "n_2qb_gates": 148,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 560,
+      "n_2qb_gates": 116,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 18,
+      "n_2qb_gates": 154,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 126,
+      "n_2qb_gates": 146,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 866,
+      "n_2qb_gates": 96,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 166,
+      "n_2qb_gates": 142,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 216,
+      "n_2qb_gates": 140,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 18,
+      "n_2qb_gates": 152,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 32,
+      "n_2qb_gates": 150,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 290,
+      "n_2qb_gates": 134,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 60,
+      "n_2qb_gates": 290,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 50,
+      "n_2qb_gates": 154,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 72,
+      "n_2qb_gates": 152,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 96,
+      "n_2qb_gates": 152,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 128,
+      "n_2qb_gates": 150,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 170,
+      "n_2qb_gates": 146,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 222,
+      "n_2qb_gates": 144,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 296,
+      "n_2qb_gates": 138,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 402,
+      "n_2qb_gates": 130,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 50,
+      "n_2qb_gates": 154,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 72,
+      "n_2qb_gates": 152,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 42,
+      "n_2qb_gates": 202,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 886,
+      "n_2qb_gates": 98,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 570,
+      "n_2qb_gates": 120,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 96,
+      "n_2qb_gates": 152,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 128,
+      "n_2qb_gates": 148,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 168,
+      "n_2qb_gates": 146,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 220,
+      "n_2qb_gates": 142,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 32,
+      "n_2qb_gates": 152,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 50,
+      "n_2qb_gates": 150,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 50,
+      "n_2qb_gates": 152,
+      "n_qubits": 17,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 70,
+      "n_2qb_gates": 150,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 32,
+      "n_2qb_gates": 282,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 32,
+      "n_2qb_gates": 150,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 48,
+      "n_2qb_gates": 150,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 148,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 32,
+      "n_2qb_gates": 148,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 48,
+      "n_2qb_gates": 146,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 68,
+      "n_2qb_gates": 148,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 48,
+      "n_2qb_gates": 148,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 68,
+      "n_2qb_gates": 144,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 68,
+      "n_2qb_gates": 146,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 92,
+      "n_2qb_gates": 144,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 92,
+      "n_2qb_gates": 142,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 92,
+      "n_2qb_gates": 144,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 122,
+      "n_2qb_gates": 140,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 122,
+      "n_2qb_gates": 142,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 148,
+      "n_qubits": 14,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 146,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 24,
+      "n_2qb_gates": 210,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 48,
+      "n_2qb_gates": 146,
+      "n_qubits": 14,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 158,
+      "n_2qb_gates": 138,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 122,
+      "n_2qb_gates": 140,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 68,
+      "n_2qb_gates": 146,
+      "n_qubits": 14,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 160,
+      "n_2qb_gates": 138,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 26,
+      "n_2qb_gates": 234,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 92,
+      "n_2qb_gates": 144,
+      "n_qubits": 14,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 210,
+      "n_2qb_gates": 134,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 64,
+      "n_2qb_gates": 306,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 54,
+      "n_2qb_gates": 162,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 76,
+      "n_2qb_gates": 162,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 102,
+      "n_2qb_gates": 160,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 136,
+      "n_2qb_gates": 158,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 180,
+      "n_2qb_gates": 154,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 234,
+      "n_2qb_gates": 150,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 310,
+      "n_2qb_gates": 144,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 422,
+      "n_2qb_gates": 136,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 928,
+      "n_2qb_gates": 104,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 598,
+      "n_2qb_gates": 126,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 52,
+      "n_2qb_gates": 158,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 74,
+      "n_2qb_gates": 156,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 44,
+      "n_2qb_gates": 210,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 100,
+      "n_2qb_gates": 154,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 132,
+      "n_2qb_gates": 152,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 172,
+      "n_2qb_gates": 150,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 44,
+      "n_2qb_gates": 214,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 904,
+      "n_2qb_gates": 100,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 144,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 46,
+      "n_2qb_gates": 144,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 226,
+      "n_2qb_gates": 146,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 32,
+      "n_2qb_gates": 292,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 32,
+      "n_2qb_gates": 156,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          3
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 50,
+      "n_2qb_gates": 156,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 72,
+      "n_2qb_gates": 154,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 98,
+      "n_2qb_gates": 152,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 130,
+      "n_2qb_gates": 150,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 170,
+      "n_2qb_gates": 148,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 224,
+      "n_2qb_gates": 144,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 296,
+      "n_2qb_gates": 138,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 402,
+      "n_2qb_gates": 132,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 878,
+      "n_2qb_gates": 98,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 70,
+      "n_2qb_gates": 150,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 570,
+      "n_2qb_gates": 118,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 18,
+      "n_2qb_gates": 156,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 860,
+      "n_2qb_gates": 96,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 218,
+      "n_2qb_gates": 140,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 16,
+      "n_2qb_gates": 150,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 68,
+      "n_2qb_gates": 326,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 56,
+      "n_2qb_gates": 174,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 80,
+      "n_2qb_gates": 172,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 108,
+      "n_2qb_gates": 170,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 144,
+      "n_2qb_gates": 168,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 188,
+      "n_2qb_gates": 164,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 248,
+      "n_2qb_gates": 158,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 328,
+      "n_2qb_gates": 152,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 946,
+      "n_2qb_gates": 106,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 442,
+      "n_2qb_gates": 144,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 622,
+      "n_2qb_gates": 130,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 54,
+      "n_2qb_gates": 166,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 76,
+      "n_2qb_gates": 164,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 46,
+      "n_2qb_gates": 218,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 32,
+      "n_2qb_gates": 150,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 104,
+      "n_2qb_gates": 162,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 918,
+      "n_2qb_gates": 102,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 48,
+      "n_2qb_gates": 150,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 138,
+      "n_2qb_gates": 158,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 68,
+      "n_2qb_gates": 148,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 48,
+      "n_2qb_gates": 226,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 856,
+      "n_2qb_gates": 96,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 874,
+      "n_2qb_gates": 96,
+      "n_qubits": 16,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 266,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 142,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 46,
+      "n_2qb_gates": 140,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 64,
+      "n_2qb_gates": 140,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 22,
+      "n_2qb_gates": 188,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 88,
+      "n_2qb_gates": 138,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 118,
+      "n_2qb_gates": 138,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 120,
+      "n_2qb_gates": 138,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 142,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 26,
+      "n_2qb_gates": 224,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 46,
+      "n_2qb_gates": 140,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 118,
+      "n_2qb_gates": 136,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 68,
+      "n_2qb_gates": 144,
+      "n_qubits": 14,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 156,
+      "n_2qb_gates": 136,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 64,
+      "n_2qb_gates": 140,
+      "n_qubits": 10,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 816,
+      "n_2qb_gates": 90,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 828,
+      "n_2qb_gates": 92,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 824,
+      "n_2qb_gates": 92,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 158,
+      "n_2qb_gates": 136,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 38,
+      "n_2qb_gates": 352,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 40,
+      "n_2qb_gates": 186,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 60,
+      "n_2qb_gates": 186,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 86,
+      "n_2qb_gates": 184,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 116,
+      "n_2qb_gates": 182,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 154,
+      "n_2qb_gates": 178,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 202,
+      "n_2qb_gates": 174,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 264,
+      "n_2qb_gates": 168,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 978,
+      "n_2qb_gates": 108,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 348,
+      "n_2qb_gates": 162,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 466,
+      "n_2qb_gates": 152,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 654,
+      "n_2qb_gates": 136,
+      "n_qubits": 19,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 946,
+      "n_2qb_gates": 106,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 36,
+      "n_2qb_gates": 176,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 56,
+      "n_2qb_gates": 176,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 80,
+      "n_2qb_gates": 174,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 880,
+      "n_2qb_gates": 98,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 110,
+      "n_2qb_gates": 170,
+      "n_qubits": 18,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 922,
+      "n_2qb_gates": 102,
+      "n_qubits": 17,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 900,
+      "n_2qb_gates": 100,
+      "n_qubits": 16,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 50,
+      "n_2qb_gates": 154,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 72,
+      "n_2qb_gates": 152,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 96,
+      "n_2qb_gates": 152,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 128,
+      "n_2qb_gates": 148,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 862,
+      "n_2qb_gates": 96,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 394,
+      "n_2qb_gates": 128,
+      "n_qubits": 5,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 854,
+      "n_2qb_gates": 94,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 126,
+      "n_2qb_gates": 144,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 844,
+      "n_2qb_gates": 94,
+      "n_qubits": 7,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 164,
+      "n_2qb_gates": 142,
+      "n_qubits": 6,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 838,
+      "n_2qb_gates": 94,
+      "n_qubits": 8,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 836,
+      "n_2qb_gates": 92,
+      "n_qubits": 9,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 146,
+      "n_qubits": 9,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1540,
+      "n_2qb_gates": 172,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 148,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 48,
+      "n_2qb_gates": 146,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 68,
+      "n_2qb_gates": 144,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 30,
+      "n_2qb_gates": 146,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 92,
+      "n_2qb_gates": 142,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 48,
+      "n_2qb_gates": 144,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 66,
+      "n_2qb_gates": 144,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 24,
+      "n_2qb_gates": 212,
+      "n_qubits": 12,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 22,
+      "n_2qb_gates": 194,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 834,
+      "n_2qb_gates": 92,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 32,
+      "n_2qb_gates": 150,
+      "n_qubits": 14,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 90,
+      "n_2qb_gates": 142,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 824,
+      "n_2qb_gates": 92,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 48,
+      "n_2qb_gates": 150,
+      "n_qubits": 14,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 842,
+      "n_2qb_gates": 94,
+      "n_qubits": 14,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 70,
+      "n_2qb_gates": 148,
+      "n_qubits": 14,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 26,
+      "n_2qb_gates": 230,
+      "n_qubits": 13,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 94,
+      "n_2qb_gates": 146,
+      "n_qubits": 14,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 120,
+      "n_2qb_gates": 140,
+      "n_qubits": 11,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 850,
+      "n_2qb_gates": 94,
+      "n_qubits": 15,
+      "random_elimination": 0.1,
+      "use_scrambler": true,
+      "gates_set": [
+        "S",
+        "S_inv",
+        "X",
+        "Y",
+        "Z",
+        "V",
+        "V_inv",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    }
+  ]
+}

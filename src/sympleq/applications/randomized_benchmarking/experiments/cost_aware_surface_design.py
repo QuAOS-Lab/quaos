@@ -78,12 +78,22 @@ def _record_volume_point_from_posterior(
     settings: CostAwareSurfaceSettings,
     iteration: int,
     history: list[LiveVolumePoint],
-) -> None:
-    scores = _surface_s1_s2(params, weights, settings, _volume_reference_gates(settings))
+    secondary_reference_gates=None,
+) -> float | None:
+    """Record the fitted/reference volume point; optionally return a second
+    reference volume (e.g. analytic Lindblad) computed in the SAME
+    ``_surface_s1_s2`` call so the fitted posterior mesh is built only once."""
+    scores = _surface_s1_s2(
+        params,
+        weights,
+        settings,
+        _volume_reference_gates(settings),
+        secondary_reference_gates=secondary_reference_gates,
+    )
     fitted_volume = float(scores["surface_volume_fit"])
     true_volume = float(scores["surface_volume_reference"])
     if not (np.isfinite(fitted_volume) and np.isfinite(true_volume)):
-        return
+        return None
     _record_live_volume_point(
         history,
         iteration,
@@ -92,6 +102,10 @@ def _record_volume_point_from_posterior(
         float(scores["surface_volume_lower_1sigma"]),
         float(scores["surface_volume_upper_1sigma"]),
     )
+    secondary = scores.get("surface_volume_secondary_reference")
+    if secondary is not None and np.isfinite(secondary):
+        return float(secondary)
+    return None
 
 
 def _restore_volume_history_from_meta(settings: CostAwareSurfaceSettings) -> list[LiveVolumePoint]:
@@ -242,9 +256,9 @@ def _plot_boundary_surface_with_pending(
             qubits,
             np.log10(np.maximum(gates, 1e-12)),
             c="0.55",
-            s=46,
-            edgecolor="k",
-            linewidth=0.5,
+            marker="x",
+            s=72,
+            linewidth=1.6,
             depthshade=True,
             label="submitted, awaiting result",
         )
@@ -282,9 +296,16 @@ def _maybe_update_live_plots(
         return
     try:
         params, weights = _live_plot_params(rmb._data, settings, pending_requests)
-        if params is None or weights is None:
-            return
-        if settings.live_surface_plot and iteration % max(1, settings.live_surface_plot_every) == 0:
+    except Exception as exc:  # noqa: BLE001 - live plotting should never kill a run
+        print_progress(settings, budget, f"live plot posterior skipped: {exc}")
+        return
+    if params is None or weights is None:
+        return
+
+    # Surface plot and volume plot are guarded separately, so a failure in one
+    # is reported on its own and cannot silently hide behind the other.
+    if settings.live_surface_plot and iteration % max(1, settings.live_surface_plot_every) == 0:
+        try:
             mesh = _surface_plot_mesh(params, weights, settings)
             if mesh is not None:
                 _plot_boundary_surface_with_pending(
@@ -293,35 +314,63 @@ def _maybe_update_live_plots(
                     settings,
                     pending_requests=pending_requests,
                 )
-        if (
-            pending_requests is None
-            and settings.live_volume_plot
-            and iteration % max(1, settings.live_volume_plot_every) == 0
-        ):
+        except Exception as exc:  # noqa: BLE001 - live plotting should never kill a run
+            print_progress(settings, budget, f"live surface plot skipped: {exc}")
+
+    # Volume history is only advanced on the settled (non-pending) callback.
+    if (
+        pending_requests is None
+        and settings.live_volume_plot
+        and iteration % max(1, settings.live_volume_plot_every) == 0
+    ):
+        try:
+            # A second (analytic) reference line is only distinct from the primary
+            # when the primary reference is a GP grid; otherwise the crimson line
+            # already IS the analytic volume.  It is computed inside the single
+            # _surface_s1_s2 call in the recorder (reusing the fitted mesh), so
+            # there is one volume definition and no double compute.
+            secondary_reference_gates = (
+                _analytic_lindblad_gates
+                if settings.gp_grid_surface_path is not None
+                else None
+            )
             _record_volume_point_from_posterior(
-                params, weights, settings, iteration, volume_history
-            )
-            plot_live_volume_history(
-                volume_history,
+                params,
+                weights,
                 settings,
-                png_path=settings.live_volume_plot_path,
-                show=settings.live_volume_plot_show,
-                show_block=False,
-                show_pause=settings.live_volume_plot_pause,
-                close=not settings.live_volume_plot_show,
-                figure_name="cost-aware live volume",
+                iteration,
+                volume_history,
+                secondary_reference_gates=secondary_reference_gates,
             )
-    except Exception as exc:  # noqa: BLE001 - live plotting should never kill a run
-        print_progress(settings, budget, f"live plotting skipped: {exc}")
+            if not volume_history:
+                # The plot needs at least one finite point; if we have none yet,
+                # say so instead of silently drawing nothing (the usual cause is
+                # the boundary lying outside n_gates_bounds so the volume is NaN).
+                print_progress(
+                    settings,
+                    budget,
+                    "live volume plot: no finite volume point yet "
+                    "(boundary outside n_gates_bounds, or fit not yet started)",
+                )
+            else:
+                png = plot_live_volume_history(
+                    volume_history,
+                    settings,
+                    png_path=settings.live_volume_plot_path,
+                    show=settings.live_volume_plot_show,
+                    show_block=False,
+                    show_pause=settings.live_volume_plot_pause,
+                    close=not settings.live_volume_plot_show,
+                    figure_name="cost-aware live volume",
+                )
+                if png is not None:
+                    print_progress(settings, budget, f"live volume plot -> {png}")
+        except Exception as exc:  # noqa: BLE001 - live plotting should never kill a run
+            print_progress(settings, budget, f"live volume plot skipped: {exc}")
 
 
 def run_with_design_plots(settings: CostAwareSurfaceSettings):
     volume_history = _restore_volume_history_from_meta(settings)
-    original_save_checkpoint = _method._save_measurement_checkpoint
-
-    def save_checkpoint_with_live_volume(*args, **kwargs):
-        original_save_checkpoint(*args, **kwargs)
-        _save_volume_history_to_meta(settings, volume_history)
 
     def progress_callback(rmb, callback_settings, budget, iteration, pending_requests=None):
         _maybe_update_live_plots(
@@ -333,11 +382,17 @@ def run_with_design_plots(settings: CostAwareSurfaceSettings):
             pending_requests=pending_requests,
         )
 
-    _method._save_measurement_checkpoint = save_checkpoint_with_live_volume
-    try:
-        rmb, configs, budget = run_with_budget(settings, progress_callback=progress_callback)
-    finally:
-        _method._save_measurement_checkpoint = original_save_checkpoint
+    def on_checkpoint():
+        # Persist the live-volume sidecar into the same metadata file right after
+        # each measurement checkpoint (via run_with_budget's on_checkpoint hook,
+        # so no module-level function needs to be patched).
+        _save_volume_history_to_meta(settings, volume_history)
+
+    rmb, configs, budget = run_with_budget(
+        settings,
+        progress_callback=progress_callback,
+        on_checkpoint=on_checkpoint,
+    )
     _save_volume_history_to_meta(settings, volume_history)
 
     params, weights = _stateless_posterior(rmb._data, settings)

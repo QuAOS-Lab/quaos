@@ -9,6 +9,7 @@ from sympleq.applications.randomized_benchmarking.experiments.cost_aware_referen
     analytic_lindblad_gates,
     gp_grid_surface_gates,
     gp_grid_surface_label,
+    raw_fidelity_gate_factor,
 )
 from sympleq.applications.randomized_benchmarking.experiments.scores import (
     integrate_trapezoid,
@@ -45,6 +46,9 @@ def _analytic_success_side_log_volume(settings) -> float:
     qubits = np.asarray(settings.q_values, dtype=float)
     rr, qq = np.meshgrid(ratios, qubits)
     boundary = analytic_lindblad_gates(rr, qq, settings)
+    if getattr(settings, "plot_raw_fidelity_boundary", False):
+        # Match the fitted/volume curves, which are the raw survival p=0.5 depth.
+        boundary = boundary * raw_fidelity_gate_factor(settings, qq, 1.0)
     n_lo, n_hi = settings.n_gates_bounds
     return _success_side_log_volume(boundary, ratios, qubits, n_lo, n_hi)
 
@@ -90,6 +94,10 @@ def plot_boundary_surface(
 
     if getattr(settings, "surface_plot_analytic", True):
         analytic = analytic_lindblad_gates(ratios, qubits, settings)
+        if getattr(settings, "plot_raw_fidelity_boundary", False):
+            # The fitted surface mesh is the raw p=0.5 depth; remap the analytic
+            # overlay the same way so the two are directly comparable.
+            analytic = analytic * raw_fidelity_gate_factor(settings, qubits, 1.0)
         analytic_z = np.where(
             (analytic >= n_lo) & (analytic <= n_hi),
             np.log10(analytic),

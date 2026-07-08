@@ -1,0 +1,7447 @@
+{
+  "schema_version": 4,
+  "reason": "before_backend",
+  "iteration": 10,
+  "settings": {
+    "q_values": [
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20
+    ],
+    "backend_model": "sympleq",
+    "rng_seed": 2025,
+    "max_qubit_window": 5
+  },
+  "hqc_budget": 500.0,
+  "spent_hqc": 133.792,
+  "remaining_hqc": 366.20799999999997,
+  "jobs": 9,
+  "max_job_circuits": 36,
+  "submitted_configs": 214,
+  "measured_configs": 211,
+  "batch_history": [
+    {
+      "batch": 1,
+      "iteration": 1,
+      "cost_hqc": 14.960399999999993,
+      "requested_shots": 36,
+      "requests": [
+        {
+          "config": {
+            "n_gates": 272,
+            "ratio_2qb_gates": 0.8970588235294118,
+            "n_1qb_gates": 28,
+            "n_2qb_gates": 244,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 150,
+            "ratio_2qb_gates": 0.8266666666666667,
+            "n_1qb_gates": 26,
+            "n_2qb_gates": 124,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 164,
+            "ratio_2qb_gates": 0.7560975609756098,
+            "n_1qb_gates": 40,
+            "n_2qb_gates": 124,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 180,
+            "ratio_2qb_gates": 0.6777777777777778,
+            "n_1qb_gates": 58,
+            "n_2qb_gates": 122,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 198,
+            "ratio_2qb_gates": 0.6060606060606061,
+            "n_1qb_gates": 78,
+            "n_2qb_gates": 120,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 246,
+            "ratio_2qb_gates": 0.5365853658536586,
+            "n_1qb_gates": 114,
+            "n_2qb_gates": 132,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 254,
+            "ratio_2qb_gates": 0.4645669291338583,
+            "n_1qb_gates": 136,
+            "n_2qb_gates": 118,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 296,
+            "ratio_2qb_gates": 0.3918918918918919,
+            "n_1qb_gates": 180,
+            "n_2qb_gates": 116,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 352,
+            "ratio_2qb_gates": 0.3181818181818182,
+            "n_1qb_gates": 240,
+            "n_2qb_gates": 112,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 140,
+            "ratio_2qb_gates": 0.9,
+            "n_1qb_gates": 14,
+            "n_2qb_gates": 126,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 150,
+            "ratio_2qb_gates": 0.8266666666666667,
+            "n_1qb_gates": 26,
+            "n_2qb_gates": 124,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 164,
+            "ratio_2qb_gates": 0.7560975609756098,
+            "n_1qb_gates": 40,
+            "n_2qb_gates": 124,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 180,
+            "ratio_2qb_gates": 0.6777777777777778,
+            "n_1qb_gates": 58,
+            "n_2qb_gates": 122,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 200,
+            "ratio_2qb_gates": 0.61,
+            "n_1qb_gates": 78,
+            "n_2qb_gates": 122,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 438,
+            "ratio_2qb_gates": 0.2465753424657534,
+            "n_1qb_gates": 330,
+            "n_2qb_gates": 108,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 224,
+            "ratio_2qb_gates": 0.5357142857142857,
+            "n_1qb_gates": 104,
+            "n_2qb_gates": 120,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 254,
+            "ratio_2qb_gates": 0.4645669291338583,
+            "n_1qb_gates": 136,
+            "n_2qb_gates": 118,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 294,
+            "ratio_2qb_gates": 0.3877551020408163,
+            "n_1qb_gates": 180,
+            "n_2qb_gates": 114,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 138,
+            "ratio_2qb_gates": 0.8985507246376812,
+            "n_1qb_gates": 14,
+            "n_2qb_gates": 124,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 140,
+            "ratio_2qb_gates": 0.9,
+            "n_1qb_gates": 14,
+            "n_2qb_gates": 126,
+            "n_qubits": 7,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 150,
+            "ratio_2qb_gates": 0.8266666666666667,
+            "n_1qb_gates": 26,
+            "n_2qb_gates": 124,
+            "n_qubits": 7,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 164,
+            "ratio_2qb_gates": 0.7560975609756098,
+            "n_1qb_gates": 40,
+            "n_2qb_gates": 124,
+            "n_qubits": 7,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 352,
+            "ratio_2qb_gates": 0.3181818181818182,
+            "n_1qb_gates": 240,
+            "n_2qb_gates": 112,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 180,
+            "ratio_2qb_gates": 0.6777777777777778,
+            "n_1qb_gates": 58,
+            "n_2qb_gates": 122,
+            "n_qubits": 7,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 574,
+            "ratio_2qb_gates": 0.17421602787456447,
+            "n_1qb_gates": 474,
+            "n_2qb_gates": 100,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 200,
+            "ratio_2qb_gates": 0.61,
+            "n_1qb_gates": 78,
+            "n_2qb_gates": 122,
+            "n_qubits": 7,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 224,
+            "ratio_2qb_gates": 0.5357142857142857,
+            "n_1qb_gates": 104,
+            "n_2qb_gates": 120,
+            "n_qubits": 7,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 256,
+            "ratio_2qb_gates": 0.4609375,
+            "n_1qb_gates": 138,
+            "n_2qb_gates": 118,
+            "n_qubits": 7,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 438,
+            "ratio_2qb_gates": 0.2465753424657534,
+            "n_1qb_gates": 330,
+            "n_2qb_gates": 108,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "batch": 2,
+      "iteration": 2,
+      "cost_hqc": 14.959999999999997,
+      "requested_shots": 30,
+      "requests": [
+        {
+          "config": {
+            "n_gates": 316,
+            "ratio_2qb_gates": 0.8291139240506329,
+            "n_1qb_gates": 54,
+            "n_2qb_gates": 262,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 184,
+            "ratio_2qb_gates": 0.75,
+            "n_1qb_gates": 46,
+            "n_2qb_gates": 138,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 204,
+            "ratio_2qb_gates": 0.6862745098039216,
+            "n_1qb_gates": 64,
+            "n_2qb_gates": 140,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 226,
+            "ratio_2qb_gates": 0.6106194690265486,
+            "n_1qb_gates": 88,
+            "n_2qb_gates": 138,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 252,
+            "ratio_2qb_gates": 0.5396825396825397,
+            "n_1qb_gates": 116,
+            "n_2qb_gates": 136,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 286,
+            "ratio_2qb_gates": 0.46153846153846156,
+            "n_1qb_gates": 154,
+            "n_2qb_gates": 132,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 330,
+            "ratio_2qb_gates": 0.3939393939393939,
+            "n_1qb_gates": 200,
+            "n_2qb_gates": 130,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 392,
+            "ratio_2qb_gates": 0.3163265306122449,
+            "n_1qb_gates": 268,
+            "n_2qb_gates": 124,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 180,
+            "ratio_2qb_gates": 0.7555555555555555,
+            "n_1qb_gates": 44,
+            "n_2qb_gates": 136,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 196,
+            "ratio_2qb_gates": 0.6836734693877551,
+            "n_1qb_gates": 62,
+            "n_2qb_gates": 134,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 480,
+            "ratio_2qb_gates": 0.24583333333333332,
+            "n_1qb_gates": 362,
+            "n_2qb_gates": 118,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 218,
+            "ratio_2qb_gates": 0.6055045871559633,
+            "n_1qb_gates": 86,
+            "n_2qb_gates": 132,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 244,
+            "ratio_2qb_gates": 0.5327868852459017,
+            "n_1qb_gates": 114,
+            "n_2qb_gates": 130,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 236,
+            "ratio_2qb_gates": 0.8305084745762712,
+            "n_1qb_gates": 40,
+            "n_2qb_gates": 196,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 278,
+            "ratio_2qb_gates": 0.460431654676259,
+            "n_1qb_gates": 150,
+            "n_2qb_gates": 128,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 320,
+            "ratio_2qb_gates": 0.39375,
+            "n_1qb_gates": 194,
+            "n_2qb_gates": 126,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 628,
+            "ratio_2qb_gates": 0.17197452229299362,
+            "n_1qb_gates": 520,
+            "n_2qb_gates": 108,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 242,
+            "ratio_2qb_gates": 0.8264462809917356,
+            "n_1qb_gates": 42,
+            "n_2qb_gates": 200,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 382,
+            "ratio_2qb_gates": 0.3193717277486911,
+            "n_1qb_gates": 260,
+            "n_2qb_gates": 122,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 174,
+            "ratio_2qb_gates": 0.7586206896551724,
+            "n_1qb_gates": 42,
+            "n_2qb_gates": 132,
+            "n_qubits": 18,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 190,
+            "ratio_2qb_gates": 0.6842105263157895,
+            "n_1qb_gates": 60,
+            "n_2qb_gates": 130,
+            "n_qubits": 18,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 210,
+            "ratio_2qb_gates": 0.6095238095238096,
+            "n_1qb_gates": 82,
+            "n_2qb_gates": 128,
+            "n_qubits": 18,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 228,
+            "ratio_2qb_gates": 0.8245614035087719,
+            "n_1qb_gates": 40,
+            "n_2qb_gates": 188,
+            "n_qubits": 18,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 236,
+            "ratio_2qb_gates": 0.5338983050847458,
+            "n_1qb_gates": 110,
+            "n_2qb_gates": 126,
+            "n_qubits": 18,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "batch": 3,
+      "iteration": 3,
+      "cost_hqc": 14.822800000000003,
+      "requested_shots": 29,
+      "requests": [
+        {
+          "config": {
+            "n_gates": 308,
+            "ratio_2qb_gates": 0.9025974025974026,
+            "n_1qb_gates": 30,
+            "n_2qb_gates": 278,
+            "n_qubits": 14,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 178,
+            "ratio_2qb_gates": 0.8314606741573034,
+            "n_1qb_gates": 30,
+            "n_2qb_gates": 148,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 192,
+            "ratio_2qb_gates": 0.75,
+            "n_1qb_gates": 48,
+            "n_2qb_gates": 144,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 178,
+            "ratio_2qb_gates": 0.8314606741573034,
+            "n_1qb_gates": 30,
+            "n_2qb_gates": 148,
+            "n_qubits": 14,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 212,
+            "ratio_2qb_gates": 0.6792452830188679,
+            "n_1qb_gates": 68,
+            "n_2qb_gates": 144,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 194,
+            "ratio_2qb_gates": 0.7525773195876289,
+            "n_1qb_gates": 48,
+            "n_2qb_gates": 146,
+            "n_qubits": 14,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 234,
+            "ratio_2qb_gates": 0.6068376068376068,
+            "n_1qb_gates": 92,
+            "n_2qb_gates": 142,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 214,
+            "ratio_2qb_gates": 0.6822429906542056,
+            "n_1qb_gates": 68,
+            "n_2qb_gates": 146,
+            "n_qubits": 14,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 180,
+            "ratio_2qb_gates": 0.8222222222222222,
+            "n_1qb_gates": 32,
+            "n_2qb_gates": 148,
+            "n_qubits": 15,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 196,
+            "ratio_2qb_gates": 0.7551020408163265,
+            "n_1qb_gates": 48,
+            "n_2qb_gates": 148,
+            "n_qubits": 15,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 236,
+            "ratio_2qb_gates": 0.6101694915254238,
+            "n_1qb_gates": 92,
+            "n_2qb_gates": 144,
+            "n_qubits": 14,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 214,
+            "ratio_2qb_gates": 0.6822429906542056,
+            "n_1qb_gates": 68,
+            "n_2qb_gates": 146,
+            "n_qubits": 15,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 264,
+            "ratio_2qb_gates": 0.5378787878787878,
+            "n_1qb_gates": 122,
+            "n_2qb_gates": 142,
+            "n_qubits": 14,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 238,
+            "ratio_2qb_gates": 0.6050420168067226,
+            "n_1qb_gates": 94,
+            "n_2qb_gates": 144,
+            "n_qubits": 15,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 234,
+            "ratio_2qb_gates": 0.8974358974358975,
+            "n_1qb_gates": 24,
+            "n_2qb_gates": 210,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 184,
+            "ratio_2qb_gates": 0.8260869565217391,
+            "n_1qb_gates": 32,
+            "n_2qb_gates": 152,
+            "n_qubits": 16,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 262,
+            "ratio_2qb_gates": 0.5343511450381679,
+            "n_1qb_gates": 122,
+            "n_2qb_gates": 140,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 200,
+            "ratio_2qb_gates": 0.75,
+            "n_1qb_gates": 50,
+            "n_2qb_gates": 150,
+            "n_qubits": 16,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 220,
+            "ratio_2qb_gates": 0.6818181818181818,
+            "n_1qb_gates": 70,
+            "n_2qb_gates": 150,
+            "n_qubits": 16,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 266,
+            "ratio_2qb_gates": 0.5338345864661654,
+            "n_1qb_gates": 124,
+            "n_2qb_gates": 142,
+            "n_qubits": 15,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 296,
+            "ratio_2qb_gates": 0.46621621621621623,
+            "n_1qb_gates": 158,
+            "n_2qb_gates": 138,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 244,
+            "ratio_2qb_gates": 0.6065573770491803,
+            "n_1qb_gates": 96,
+            "n_2qb_gates": 148,
+            "n_qubits": 16,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 300,
+            "ratio_2qb_gates": 0.4666666666666667,
+            "n_1qb_gates": 160,
+            "n_2qb_gates": 140,
+            "n_qubits": 14,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 272,
+            "ratio_2qb_gates": 0.5367647058823529,
+            "n_1qb_gates": 126,
+            "n_2qb_gates": 146,
+            "n_qubits": 16,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 342,
+            "ratio_2qb_gates": 0.391812865497076,
+            "n_1qb_gates": 208,
+            "n_2qb_gates": 134,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 302,
+            "ratio_2qb_gates": 0.46357615894039733,
+            "n_1qb_gates": 162,
+            "n_2qb_gates": 140,
+            "n_qubits": 15,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 346,
+            "ratio_2qb_gates": 0.3930635838150289,
+            "n_1qb_gates": 210,
+            "n_2qb_gates": 136,
+            "n_qubits": 14,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 352,
+            "ratio_2qb_gates": 0.39204545454545453,
+            "n_1qb_gates": 214,
+            "n_2qb_gates": 138,
+            "n_qubits": 15,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 310,
+            "ratio_2qb_gates": 0.4645161290322581,
+            "n_1qb_gates": 166,
+            "n_2qb_gates": 144,
+            "n_qubits": 16,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "batch": 4,
+      "iteration": 4,
+      "cost_hqc": 14.878,
+      "requested_shots": 22,
+      "requests": [
+        {
+          "config": {
+            "n_gates": 400,
+            "ratio_2qb_gates": 0.9,
+            "n_1qb_gates": 40,
+            "n_2qb_gates": 360,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 234,
+            "ratio_2qb_gates": 0.8290598290598291,
+            "n_1qb_gates": 40,
+            "n_2qb_gates": 194,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 254,
+            "ratio_2qb_gates": 0.7559055118110236,
+            "n_1qb_gates": 62,
+            "n_2qb_gates": 192,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 278,
+            "ratio_2qb_gates": 0.6834532374100719,
+            "n_1qb_gates": 88,
+            "n_2qb_gates": 190,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 308,
+            "ratio_2qb_gates": 0.6103896103896104,
+            "n_1qb_gates": 120,
+            "n_2qb_gates": 188,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 344,
+            "ratio_2qb_gates": 0.5348837209302325,
+            "n_1qb_gates": 160,
+            "n_2qb_gates": 184,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 390,
+            "ratio_2qb_gates": 0.46153846153846156,
+            "n_1qb_gates": 210,
+            "n_2qb_gates": 180,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 452,
+            "ratio_2qb_gates": 0.3893805309734513,
+            "n_1qb_gates": 276,
+            "n_2qb_gates": 176,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 536,
+            "ratio_2qb_gates": 0.31716417910447764,
+            "n_1qb_gates": 366,
+            "n_2qb_gates": 170,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 222,
+            "ratio_2qb_gates": 0.8288288288288288,
+            "n_1qb_gates": 38,
+            "n_2qb_gates": 184,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 656,
+            "ratio_2qb_gates": 0.24695121951219512,
+            "n_1qb_gates": 494,
+            "n_2qb_gates": 162,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 242,
+            "ratio_2qb_gates": 0.7520661157024794,
+            "n_1qb_gates": 60,
+            "n_2qb_gates": 182,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 264,
+            "ratio_2qb_gates": 0.6818181818181818,
+            "n_1qb_gates": 84,
+            "n_2qb_gates": 180,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 292,
+            "ratio_2qb_gates": 0.6095890410958904,
+            "n_1qb_gates": 114,
+            "n_2qb_gates": 178,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 326,
+            "ratio_2qb_gates": 0.5337423312883436,
+            "n_1qb_gates": 152,
+            "n_2qb_gates": 174,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 372,
+            "ratio_2qb_gates": 0.46236559139784944,
+            "n_1qb_gates": 200,
+            "n_2qb_gates": 172,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 838,
+            "ratio_2qb_gates": 0.1718377088305489,
+            "n_1qb_gates": 694,
+            "n_2qb_gates": 144,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 382,
+            "ratio_2qb_gates": 0.900523560209424,
+            "n_1qb_gates": 38,
+            "n_2qb_gates": 344,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "batch": 5,
+      "iteration": 5,
+      "cost_hqc": 14.869199999999998,
+      "requested_shots": 28,
+      "requests": [
+        {
+          "config": {
+            "n_gates": 334,
+            "ratio_2qb_gates": 0.8982035928143712,
+            "n_1qb_gates": 34,
+            "n_2qb_gates": 300,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 194,
+            "ratio_2qb_gates": 0.8247422680412371,
+            "n_1qb_gates": 34,
+            "n_2qb_gates": 160,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 212,
+            "ratio_2qb_gates": 0.7547169811320755,
+            "n_1qb_gates": 52,
+            "n_2qb_gates": 160,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 232,
+            "ratio_2qb_gates": 0.6810344827586207,
+            "n_1qb_gates": 74,
+            "n_2qb_gates": 158,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 258,
+            "ratio_2qb_gates": 0.6124031007751938,
+            "n_1qb_gates": 100,
+            "n_2qb_gates": 158,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 288,
+            "ratio_2qb_gates": 0.5347222222222222,
+            "n_1qb_gates": 134,
+            "n_2qb_gates": 154,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 328,
+            "ratio_2qb_gates": 0.4634146341463415,
+            "n_1qb_gates": 176,
+            "n_2qb_gates": 152,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 378,
+            "ratio_2qb_gates": 0.3915343915343915,
+            "n_1qb_gates": 230,
+            "n_2qb_gates": 148,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 446,
+            "ratio_2qb_gates": 0.3183856502242152,
+            "n_1qb_gates": 304,
+            "n_2qb_gates": 142,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 184,
+            "ratio_2qb_gates": 0.9021739130434783,
+            "n_1qb_gates": 18,
+            "n_2qb_gates": 166,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 198,
+            "ratio_2qb_gates": 0.8282828282828283,
+            "n_1qb_gates": 34,
+            "n_2qb_gates": 164,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 216,
+            "ratio_2qb_gates": 0.75,
+            "n_1qb_gates": 54,
+            "n_2qb_gates": 162,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 236,
+            "ratio_2qb_gates": 0.6779661016949152,
+            "n_1qb_gates": 76,
+            "n_2qb_gates": 160,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 260,
+            "ratio_2qb_gates": 0.6076923076923076,
+            "n_1qb_gates": 102,
+            "n_2qb_gates": 158,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 546,
+            "ratio_2qb_gates": 0.2454212454212454,
+            "n_1qb_gates": 412,
+            "n_2qb_gates": 134,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 288,
+            "ratio_2qb_gates": 0.5347222222222222,
+            "n_1qb_gates": 134,
+            "n_2qb_gates": 154,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 326,
+            "ratio_2qb_gates": 0.4662576687116564,
+            "n_1qb_gates": 174,
+            "n_2qb_gates": 152,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 180,
+            "ratio_2qb_gates": 0.9,
+            "n_1qb_gates": 18,
+            "n_2qb_gates": 162,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 376,
+            "ratio_2qb_gates": 0.3882978723404255,
+            "n_1qb_gates": 230,
+            "n_2qb_gates": 146,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 708,
+            "ratio_2qb_gates": 0.17231638418079095,
+            "n_1qb_gates": 586,
+            "n_2qb_gates": 122,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 184,
+            "ratio_2qb_gates": 0.9021739130434783,
+            "n_1qb_gates": 18,
+            "n_2qb_gates": 166,
+            "n_qubits": 7,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 198,
+            "ratio_2qb_gates": 0.8282828282828283,
+            "n_1qb_gates": 34,
+            "n_2qb_gates": 164,
+            "n_qubits": 7,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 214,
+            "ratio_2qb_gates": 0.7570093457943925,
+            "n_1qb_gates": 52,
+            "n_2qb_gates": 162,
+            "n_qubits": 7,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 234,
+            "ratio_2qb_gates": 0.6837606837606838,
+            "n_1qb_gates": 74,
+            "n_2qb_gates": 160,
+            "n_qubits": 7,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "batch": 6,
+      "iteration": 6,
+      "cost_hqc": 14.916400000000001,
+      "requested_shots": 26,
+      "requests": [
+        {
+          "config": {
+            "n_gates": 368,
+            "ratio_2qb_gates": 0.9021739130434783,
+            "n_1qb_gates": 36,
+            "n_2qb_gates": 332,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 214,
+            "ratio_2qb_gates": 0.8317757009345794,
+            "n_1qb_gates": 36,
+            "n_2qb_gates": 178,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 234,
+            "ratio_2qb_gates": 0.7521367521367521,
+            "n_1qb_gates": 58,
+            "n_2qb_gates": 176,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 256,
+            "ratio_2qb_gates": 0.6796875,
+            "n_1qb_gates": 82,
+            "n_2qb_gates": 174,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 282,
+            "ratio_2qb_gates": 0.6099290780141844,
+            "n_1qb_gates": 110,
+            "n_2qb_gates": 172,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 316,
+            "ratio_2qb_gates": 0.5379746835443038,
+            "n_1qb_gates": 146,
+            "n_2qb_gates": 170,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 360,
+            "ratio_2qb_gates": 0.46111111111111114,
+            "n_1qb_gates": 194,
+            "n_2qb_gates": 166,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 414,
+            "ratio_2qb_gates": 0.391304347826087,
+            "n_1qb_gates": 252,
+            "n_2qb_gates": 162,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 490,
+            "ratio_2qb_gates": 0.3183673469387755,
+            "n_1qb_gates": 334,
+            "n_2qb_gates": 156,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 190,
+            "ratio_2qb_gates": 0.9052631578947369,
+            "n_1qb_gates": 18,
+            "n_2qb_gates": 172,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 206,
+            "ratio_2qb_gates": 0.8252427184466019,
+            "n_1qb_gates": 36,
+            "n_2qb_gates": 170,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 600,
+            "ratio_2qb_gates": 0.24666666666666667,
+            "n_1qb_gates": 452,
+            "n_2qb_gates": 148,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 226,
+            "ratio_2qb_gates": 0.7522123893805309,
+            "n_1qb_gates": 56,
+            "n_2qb_gates": 170,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 246,
+            "ratio_2qb_gates": 0.6829268292682927,
+            "n_1qb_gates": 78,
+            "n_2qb_gates": 168,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 272,
+            "ratio_2qb_gates": 0.6102941176470589,
+            "n_1qb_gates": 106,
+            "n_2qb_gates": 166,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 304,
+            "ratio_2qb_gates": 0.5394736842105263,
+            "n_1qb_gates": 140,
+            "n_2qb_gates": 164,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 198,
+            "ratio_2qb_gates": 0.898989898989899,
+            "n_1qb_gates": 20,
+            "n_2qb_gates": 178,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 774,
+            "ratio_2qb_gates": 0.1731266149870801,
+            "n_1qb_gates": 640,
+            "n_2qb_gates": 134,
+            "n_qubits": 5,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 344,
+            "ratio_2qb_gates": 0.46511627906976744,
+            "n_1qb_gates": 184,
+            "n_2qb_gates": 160,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 396,
+            "ratio_2qb_gates": 0.3888888888888889,
+            "n_1qb_gates": 242,
+            "n_2qb_gates": 154,
+            "n_qubits": 6,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 184,
+            "ratio_2qb_gates": 0.9021739130434783,
+            "n_1qb_gates": 18,
+            "n_2qb_gates": 166,
+            "n_qubits": 7,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 1,
+          "measurements": [
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "batch": 7,
+      "iteration": 7,
+      "cost_hqc": 14.868,
+      "requested_shots": 22,
+      "requests": [
+        {
+          "config": {
+            "n_gates": 418,
+            "ratio_2qb_gates": 0.8995215311004785,
+            "n_1qb_gates": 42,
+            "n_2qb_gates": 376,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 242,
+            "ratio_2qb_gates": 0.8264462809917356,
+            "n_1qb_gates": 42,
+            "n_2qb_gates": 200,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 264,
+            "ratio_2qb_gates": 0.7575757575757576,
+            "n_1qb_gates": 64,
+            "n_2qb_gates": 200,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 290,
+            "ratio_2qb_gates": 0.6827586206896552,
+            "n_1qb_gates": 92,
+            "n_2qb_gates": 198,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 320,
+            "ratio_2qb_gates": 0.60625,
+            "n_1qb_gates": 126,
+            "n_2qb_gates": 194,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 356,
+            "ratio_2qb_gates": 0.5337078651685393,
+            "n_1qb_gates": 166,
+            "n_2qb_gates": 190,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 402,
+            "ratio_2qb_gates": 0.4626865671641791,
+            "n_1qb_gates": 216,
+            "n_2qb_gates": 186,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 460,
+            "ratio_2qb_gates": 0.391304347826087,
+            "n_1qb_gates": 280,
+            "n_2qb_gates": 180,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 538,
+            "ratio_2qb_gates": 0.31970260223048325,
+            "n_1qb_gates": 366,
+            "n_2qb_gates": 172,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 656,
+            "ratio_2qb_gates": 0.24695121951219512,
+            "n_1qb_gates": 494,
+            "n_2qb_gates": 162,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 232,
+            "ratio_2qb_gates": 0.8275862068965517,
+            "n_1qb_gates": 40,
+            "n_2qb_gates": 192,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 252,
+            "ratio_2qb_gates": 0.753968253968254,
+            "n_1qb_gates": 62,
+            "n_2qb_gates": 190,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 274,
+            "ratio_2qb_gates": 0.6788321167883211,
+            "n_1qb_gates": 88,
+            "n_2qb_gates": 186,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 302,
+            "ratio_2qb_gates": 0.609271523178808,
+            "n_1qb_gates": 118,
+            "n_2qb_gates": 184,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 336,
+            "ratio_2qb_gates": 0.5357142857142857,
+            "n_1qb_gates": 156,
+            "n_2qb_gates": 180,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 836,
+            "ratio_2qb_gates": 0.1722488038277512,
+            "n_1qb_gates": 692,
+            "n_2qb_gates": 144,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 380,
+            "ratio_2qb_gates": 0.4631578947368421,
+            "n_1qb_gates": 204,
+            "n_2qb_gates": 176,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 1162,
+            "ratio_2qb_gates": 0.09982788296041308,
+            "n_1qb_gates": 1046,
+            "n_2qb_gates": 116,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "batch": 8,
+      "iteration": 8,
+      "cost_hqc": 14.747200000000001,
+      "requested_shots": 28,
+      "requests": [
+        {
+          "config": {
+            "n_gates": 322,
+            "ratio_2qb_gates": 0.9006211180124224,
+            "n_1qb_gates": 32,
+            "n_2qb_gates": 290,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 188,
+            "ratio_2qb_gates": 0.8297872340425532,
+            "n_1qb_gates": 32,
+            "n_2qb_gates": 156,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 204,
+            "ratio_2qb_gates": 0.7549019607843137,
+            "n_1qb_gates": 50,
+            "n_2qb_gates": 154,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 224,
+            "ratio_2qb_gates": 0.6785714285714286,
+            "n_1qb_gates": 72,
+            "n_2qb_gates": 152,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 186,
+            "ratio_2qb_gates": 0.8279569892473119,
+            "n_1qb_gates": 32,
+            "n_2qb_gates": 154,
+            "n_qubits": 11,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 248,
+            "ratio_2qb_gates": 0.6129032258064516,
+            "n_1qb_gates": 96,
+            "n_2qb_gates": 152,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 202,
+            "ratio_2qb_gates": 0.7524752475247525,
+            "n_1qb_gates": 50,
+            "n_2qb_gates": 152,
+            "n_qubits": 11,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 222,
+            "ratio_2qb_gates": 0.6846846846846847,
+            "n_1qb_gates": 70,
+            "n_2qb_gates": 152,
+            "n_qubits": 11,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 278,
+            "ratio_2qb_gates": 0.539568345323741,
+            "n_1qb_gates": 128,
+            "n_2qb_gates": 150,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 222,
+            "ratio_2qb_gates": 0.9009009009009009,
+            "n_1qb_gates": 22,
+            "n_2qb_gates": 200,
+            "n_qubits": 11,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 246,
+            "ratio_2qb_gates": 0.6097560975609756,
+            "n_1qb_gates": 96,
+            "n_2qb_gates": 150,
+            "n_qubits": 11,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 314,
+            "ratio_2qb_gates": 0.46496815286624205,
+            "n_1qb_gates": 168,
+            "n_2qb_gates": 146,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 274,
+            "ratio_2qb_gates": 0.5328467153284672,
+            "n_1qb_gates": 128,
+            "n_2qb_gates": 146,
+            "n_qubits": 11,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 184,
+            "ratio_2qb_gates": 0.8260869565217391,
+            "n_1qb_gates": 32,
+            "n_2qb_gates": 152,
+            "n_qubits": 10,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 200,
+            "ratio_2qb_gates": 0.75,
+            "n_1qb_gates": 50,
+            "n_2qb_gates": 150,
+            "n_qubits": 10,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 312,
+            "ratio_2qb_gates": 0.46153846153846156,
+            "n_1qb_gates": 168,
+            "n_2qb_gates": 144,
+            "n_qubits": 11,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 220,
+            "ratio_2qb_gates": 0.6818181818181818,
+            "n_1qb_gates": 70,
+            "n_2qb_gates": 150,
+            "n_qubits": 10,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 364,
+            "ratio_2qb_gates": 0.3901098901098901,
+            "n_1qb_gates": 222,
+            "n_2qb_gates": 142,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 220,
+            "ratio_2qb_gates": 0.9,
+            "n_1qb_gates": 22,
+            "n_2qb_gates": 198,
+            "n_qubits": 10,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 360,
+            "ratio_2qb_gates": 0.3888888888888889,
+            "n_1qb_gates": 220,
+            "n_2qb_gates": 140,
+            "n_qubits": 11,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 244,
+            "ratio_2qb_gates": 0.6065573770491803,
+            "n_1qb_gates": 96,
+            "n_2qb_gates": 148,
+            "n_qubits": 10,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 430,
+            "ratio_2qb_gates": 0.31627906976744186,
+            "n_1qb_gates": 294,
+            "n_2qb_gates": 136,
+            "n_qubits": 12,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 272,
+            "ratio_2qb_gates": 0.5367647058823529,
+            "n_1qb_gates": 126,
+            "n_2qb_gates": 146,
+            "n_qubits": 10,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 170,
+            "ratio_2qb_gates": 0.8941176470588236,
+            "n_1qb_gates": 18,
+            "n_2qb_gates": 152,
+            "n_qubits": 9,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 184,
+            "ratio_2qb_gates": 0.8260869565217391,
+            "n_1qb_gates": 32,
+            "n_2qb_gates": 152,
+            "n_qubits": 9,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 308,
+            "ratio_2qb_gates": 0.461038961038961,
+            "n_1qb_gates": 166,
+            "n_2qb_gates": 142,
+            "n_qubits": 10,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 428,
+            "ratio_2qb_gates": 0.3177570093457944,
+            "n_1qb_gates": 292,
+            "n_2qb_gates": 136,
+            "n_qubits": 11,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 200,
+            "ratio_2qb_gates": 0.75,
+            "n_1qb_gates": 50,
+            "n_2qb_gates": 150,
+            "n_qubits": 9,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "batch": 9,
+      "iteration": 9,
+      "cost_hqc": 14.770000000000001,
+      "requested_shots": 25,
+      "requests": [
+        {
+          "config": {
+            "n_gates": 382,
+            "ratio_2qb_gates": 0.8272251308900523,
+            "n_1qb_gates": 66,
+            "n_2qb_gates": 316,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 224,
+            "ratio_2qb_gates": 0.7589285714285714,
+            "n_1qb_gates": 54,
+            "n_2qb_gates": 170,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 244,
+            "ratio_2qb_gates": 0.680327868852459,
+            "n_1qb_gates": 78,
+            "n_2qb_gates": 166,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 270,
+            "ratio_2qb_gates": 0.6074074074074074,
+            "n_1qb_gates": 106,
+            "n_2qb_gates": 164,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 302,
+            "ratio_2qb_gates": 0.5364238410596026,
+            "n_1qb_gates": 140,
+            "n_2qb_gates": 162,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 344,
+            "ratio_2qb_gates": 0.46511627906976744,
+            "n_1qb_gates": 184,
+            "n_2qb_gates": 160,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 398,
+            "ratio_2qb_gates": 0.39195979899497485,
+            "n_1qb_gates": 242,
+            "n_2qb_gates": 156,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 472,
+            "ratio_2qb_gates": 0.3177966101694915,
+            "n_1qb_gates": 322,
+            "n_2qb_gates": 150,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 578,
+            "ratio_2qb_gates": 0.24567474048442905,
+            "n_1qb_gates": 436,
+            "n_2qb_gates": 142,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 218,
+            "ratio_2qb_gates": 0.7522935779816514,
+            "n_1qb_gates": 54,
+            "n_2qb_gates": 164,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 240,
+            "ratio_2qb_gates": 0.6833333333333333,
+            "n_1qb_gates": 76,
+            "n_2qb_gates": 164,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 266,
+            "ratio_2qb_gates": 0.6090225563909775,
+            "n_1qb_gates": 104,
+            "n_2qb_gates": 162,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 258,
+            "ratio_2qb_gates": 0.8294573643410853,
+            "n_1qb_gates": 44,
+            "n_2qb_gates": 214,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 750,
+            "ratio_2qb_gates": 0.17333333333333334,
+            "n_1qb_gates": 620,
+            "n_2qb_gates": 130,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 1066,
+            "ratio_2qb_gates": 0.09943714821763602,
+            "n_1qb_gates": 960,
+            "n_2qb_gates": 106,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 296,
+            "ratio_2qb_gates": 0.5337837837837838,
+            "n_1qb_gates": 138,
+            "n_2qb_gates": 158,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 186,
+            "ratio_2qb_gates": 0.8279569892473119,
+            "n_1qb_gates": 32,
+            "n_2qb_gates": 154,
+            "n_qubits": 16,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 202,
+            "ratio_2qb_gates": 0.7524752475247525,
+            "n_1qb_gates": 50,
+            "n_2qb_gates": 152,
+            "n_qubits": 16,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 222,
+            "ratio_2qb_gates": 0.6846846846846847,
+            "n_1qb_gates": 70,
+            "n_2qb_gates": 152,
+            "n_qubits": 16,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 336,
+            "ratio_2qb_gates": 0.4642857142857143,
+            "n_1qb_gates": 180,
+            "n_2qb_gates": 156,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 246,
+            "ratio_2qb_gates": 0.6097560975609756,
+            "n_1qb_gates": 96,
+            "n_2qb_gates": 150,
+            "n_qubits": 16,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 388,
+            "ratio_2qb_gates": 0.3917525773195876,
+            "n_1qb_gates": 236,
+            "n_2qb_gates": 152,
+            "n_qubits": 19,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 262,
+            "ratio_2qb_gates": 0.8244274809160306,
+            "n_1qb_gates": 46,
+            "n_2qb_gates": 216,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "S",
+              "S_inv",
+              "X",
+              "Y",
+              "Z",
+              "V",
+              "V_inv",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "pending_batch": {
+    "iteration": 10,
+    "requests": [
+      {
+        "config": {
+          "n_gates": 304,
+          "ratio_2qb_gates": 0.9013157894736842,
+          "n_1qb_gates": 30,
+          "n_2qb_gates": 274,
+          "n_qubits": 5,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 176,
+          "ratio_2qb_gates": 0.8295454545454546,
+          "n_1qb_gates": 30,
+          "n_2qb_gates": 146,
+          "n_qubits": 5,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 192,
+          "ratio_2qb_gates": 0.75,
+          "n_1qb_gates": 48,
+          "n_2qb_gates": 144,
+          "n_qubits": 5,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 212,
+          "ratio_2qb_gates": 0.6792452830188679,
+          "n_1qb_gates": 68,
+          "n_2qb_gates": 144,
+          "n_qubits": 5,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 234,
+          "ratio_2qb_gates": 0.6068376068376068,
+          "n_1qb_gates": 92,
+          "n_2qb_gates": 142,
+          "n_qubits": 5,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 262,
+          "ratio_2qb_gates": 0.5343511450381679,
+          "n_1qb_gates": 122,
+          "n_2qb_gates": 140,
+          "n_qubits": 5,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 298,
+          "ratio_2qb_gates": 0.46308724832214765,
+          "n_1qb_gates": 160,
+          "n_2qb_gates": 138,
+          "n_qubits": 5,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 346,
+          "ratio_2qb_gates": 0.3930635838150289,
+          "n_1qb_gates": 210,
+          "n_2qb_gates": 136,
+          "n_qubits": 5,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 176,
+          "ratio_2qb_gates": 0.8295454545454546,
+          "n_1qb_gates": 30,
+          "n_2qb_gates": 146,
+          "n_qubits": 6,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 164,
+          "ratio_2qb_gates": 0.9024390243902439,
+          "n_1qb_gates": 16,
+          "n_2qb_gates": 148,
+          "n_qubits": 6,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 192,
+          "ratio_2qb_gates": 0.75,
+          "n_1qb_gates": 48,
+          "n_2qb_gates": 144,
+          "n_qubits": 6,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 212,
+          "ratio_2qb_gates": 0.6792452830188679,
+          "n_1qb_gates": 68,
+          "n_2qb_gates": 144,
+          "n_qubits": 6,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 412,
+          "ratio_2qb_gates": 0.32038834951456313,
+          "n_1qb_gates": 280,
+          "n_2qb_gates": 132,
+          "n_qubits": 5,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 234,
+          "ratio_2qb_gates": 0.6068376068376068,
+          "n_1qb_gates": 92,
+          "n_2qb_gates": 142,
+          "n_qubits": 6,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 262,
+          "ratio_2qb_gates": 0.5343511450381679,
+          "n_1qb_gates": 122,
+          "n_2qb_gates": 140,
+          "n_qubits": 6,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 510,
+          "ratio_2qb_gates": 0.24705882352941178,
+          "n_1qb_gates": 384,
+          "n_2qb_gates": 126,
+          "n_qubits": 5,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 298,
+          "ratio_2qb_gates": 0.46308724832214765,
+          "n_1qb_gates": 160,
+          "n_2qb_gates": 138,
+          "n_qubits": 6,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 176,
+          "ratio_2qb_gates": 0.8295454545454546,
+          "n_1qb_gates": 30,
+          "n_2qb_gates": 146,
+          "n_qubits": 7,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 164,
+          "ratio_2qb_gates": 0.9024390243902439,
+          "n_1qb_gates": 16,
+          "n_2qb_gates": 148,
+          "n_qubits": 7,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 192,
+          "ratio_2qb_gates": 0.75,
+          "n_1qb_gates": 48,
+          "n_2qb_gates": 144,
+          "n_qubits": 7,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 964,
+          "ratio_2qb_gates": 0.0995850622406639,
+          "n_1qb_gates": 868,
+          "n_2qb_gates": 96,
+          "n_qubits": 5,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 346,
+          "ratio_2qb_gates": 0.3930635838150289,
+          "n_1qb_gates": 210,
+          "n_2qb_gates": 136,
+          "n_qubits": 6,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 212,
+          "ratio_2qb_gates": 0.6792452830188679,
+          "n_1qb_gates": 68,
+          "n_2qb_gates": 144,
+          "n_qubits": 7,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 668,
+          "ratio_2qb_gates": 0.17365269461077845,
+          "n_1qb_gates": 552,
+          "n_2qb_gates": 116,
+          "n_qubits": 5,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 234,
+          "ratio_2qb_gates": 0.6068376068376068,
+          "n_1qb_gates": 92,
+          "n_2qb_gates": 142,
+          "n_qubits": 7,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 262,
+          "ratio_2qb_gates": 0.5343511450381679,
+          "n_1qb_gates": 122,
+          "n_2qb_gates": 140,
+          "n_qubits": 7,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 414,
+          "ratio_2qb_gates": 0.3188405797101449,
+          "n_1qb_gates": 282,
+          "n_2qb_gates": 132,
+          "n_qubits": 6,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 164,
+          "ratio_2qb_gates": 0.9024390243902439,
+          "n_1qb_gates": 16,
+          "n_2qb_gates": 148,
+          "n_qubits": 5,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 164,
+          "ratio_2qb_gates": 0.9024390243902439,
+          "n_1qb_gates": 16,
+          "n_2qb_gates": 148,
+          "n_qubits": 8,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      },
+      {
+        "config": {
+          "n_gates": 176,
+          "ratio_2qb_gates": 0.8295454545454546,
+          "n_1qb_gates": 30,
+          "n_2qb_gates": 146,
+          "n_qubits": 8,
+          "random_elimination": 0.1,
+          "use_scrambler": true,
+          "gates_set": [
+            "S",
+            "S_inv",
+            "X",
+            "Y",
+            "Z",
+            "V",
+            "V_inv",
+            "ZZP",
+            "ZZP_inv"
+          ]
+        },
+        "requested_shots": 1,
+        "first_shot_index": 0
+      }
+    ]
+  },
+  "live_volume_history": [
+    [
+      1,
+      19.425092275306973,
+      19.08743867370258,
+      18.273905032137126,
+      20.576279518476827
+    ],
+    [
+      2,
+      20.026749072938983,
+      19.08743867370258,
+      19.028031819560965,
+      21.025466326316995
+    ],
+    [
+      3,
+      20.383403500520036,
+      19.08743867370258,
+      19.461563134757654,
+      21.305243866282417
+    ],
+    [
+      4,
+      20.456404829480796,
+      19.08743867370258,
+      19.589397753837368,
+      21.32341190512422
+    ],
+    [
+      5,
+      20.43997390523693,
+      19.08743867370258,
+      19.614320353483578,
+      21.265627456990288
+    ],
+    [
+      6,
+      20.326424018429492,
+      19.08743867370258,
+      19.536500272060255,
+      21.11634776479872
+    ],
+    [
+      7,
+      20.152700071061016,
+      19.08743867370258,
+      19.4032473872127,
+      20.90215275490933
+    ],
+    [
+      8,
+      20.014071279252573,
+      19.08743867370258,
+      19.316879833965356,
+      20.711262724539786
+    ],
+    [
+      9,
+      19.89634584739918,
+      19.08743867370258,
+      19.22529348402007,
+      20.567398210778286
+    ]
+  ]
+}
