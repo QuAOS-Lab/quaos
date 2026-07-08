@@ -1,4 +1,4 @@
-""" 
+"""
 Common run sript for FLE and Cost_Aware models.
 Run with python path/to/common_run_models.py "FLE" or "COST_AWARE" to run the corresponding model.
 FLE is implemened.
@@ -6,7 +6,7 @@ FLE is implemened.
 For Cost_aware:
 Should define a settings class as FLE_settings and definition as FLE_3d_fix_qubit_band
        use write_hqc_metadata for storing intermediate results in json
-       
+
 
 The GP grid saving is not implemented for Cost_Aware
 The save_real_checkpoint saves only the real RMB data in a json file and not the GP grid for Cost_Aware
@@ -14,13 +14,13 @@ Saves in "Path("Personal") / model_folder / seed_folder / f"FLE_{timestamp}"
 
 run_FLE runs only FLE; the storing of configs and data/grid is done through this after each *real* measurement
 
-IMPORTANT: The 'main' function checks if the settings allows for more than 7000 gates for the emulator, 
+IMPORTANT: The 'main' function checks if the settings allows for more than 7000 gates for the emulator,
 However, THE ACTUAL CHECK IS PASSED IN THE DEFINITION FILE (FLE_3d_fix_qubit_band.py)
 
 (SEE SELECT_AFFORDABLE_PREFIX() AND SELECT_FANTASY_GLOBALSUR_BATCH();
 if settings.backend_factory is quantinuum_emulator_backend_factory:
     if stitched_total_gates > gate_budget:
-        break 
+        break
 This should be done as soon as the stitching is done.
 
 """
@@ -33,11 +33,12 @@ from pathlib import Path
 import numpy as np
 
 
-from sympleq.applications.randomized_benchmarking.RMB import resolve_data_path
+from sympleq.applications.randomized_benchmarking.RMB import RMB, resolve_data_path
 from sympleq.applications.randomized_benchmarking.experiments.common import (
     default_backend_factory,
     quantinuum_emulator_backend_factory,
     print_experiment_summary,
+    print_progress,
     start_run,
 )
 
@@ -50,16 +51,19 @@ if MODEL == "FLE":
     from FLE_settings import (
         FantasySettings as SettingsClass,
         RNG_SEEDS,
+        QUBIT_BAND_LENGTHS,
         control_panel_settings_kwargs as settings_kwargs
     )
 
     from FLE_3d_fix_qubit_band import (
         Observation,
+        add_observation_to_strategy,
         build_strategy,
         choose_gp_device,
         contour_target,
         measure_batch_and_update_real_strategy,
         move_strategy_models_to_device,
+        point_from_config,
         repair_stats,
         refreshed_strategy_for_prediction,
         reset_repair_stats,
@@ -80,15 +84,23 @@ else:
 
 
 # Storing
-def timestamped_personal_save_path(seed: int | None = None) -> Path:
+def timestamped_personal_save_path(seed: int | None = None, qubit_band_length: int | None = None) -> Path:
     """Timestamped run folder and final JSON path under ``Personal``."""
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     seed_folder = "seed_unseeded" if seed is None else f"seed_{seed}"
+    band_folder = f"qband_{qubit_band_length}" if qubit_band_length is not None else "qband_unseeded"
     model_folder = "CostAware" if MODEL == "COST_AWARE" else "FLE"
-    run_folder = Path("Personal") / model_folder / seed_folder / f"FLE_{timestamp}"
+    run_folder = Path("Personal") / model_folder / band_folder / seed_folder / f"FLE_{timestamp}"
 
     return run_folder / f"FLE_{timestamp}.json"
+
+
+def timestamped_recovery_save_path(recovery_folder: str | Path) -> Path:
+    """Timestamped final JSON path inside an existing recovery folder."""
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Path(recovery_folder) / f"FLE_recovery_{timestamp}.json"
 
 
 # Bookkeeping_
@@ -112,6 +124,11 @@ def write_hqc_metadata(
         "repair_stats": repair_stats(),
     }
     if sent_configs is not None:
+        sent_configs = sorted(
+            sent_configs,
+            key=lambda config: config.n_qubits,
+            reverse=True,
+        )
         payload["experiment"]["sent_configs"] = [
             {
                 "n_1qb_gates": int(config.n_1qb_gates),
@@ -294,6 +311,72 @@ def save_real_checkpoint(
         )
 
 
+<<<<<<< HEAD
+=======
+def latest_recovery_json(settings) -> Path | None:
+    """Return the latest cumulative RMB JSON checkpoint for recovery."""
+
+    if settings.recovery_folder is not None:
+        folder = Path(settings.recovery_folder)
+    elif settings.save_path is not None:
+        folder = Path(settings.save_path).parent
+    else:
+        return None
+
+    candidates = sorted(folder.glob("measurement_*.json"))
+    if not candidates:
+        candidates = sorted(folder.glob("FLE_*.json"))
+
+    return candidates[-1] if candidates else None
+
+
+def recovery_hqc_spent(json_path: Path) -> float | None:
+    """Read spent HQC metadata from a recovery checkpoint if present."""
+
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    experiment = payload.get("experiment", {})
+    spent_hqc = experiment.get("spent_hqc")
+    return None if spent_hqc is None else float(spent_hqc)
+
+
+def recover_observations_from_json(
+    json_path: Path,
+    *,
+    strategy,
+    rmb,
+    observations,
+    results_for_plot,
+    device,
+) -> int:
+    """Load saved RMB data and replay its real observations into AEPsych."""
+
+    recovered_rmb = RMB.load(json_path)
+    rmb._data.update(recovered_rmb._data)
+
+    n_observations = 0
+    for config, estimator in recovered_rmb._data.items():
+        for outcome, count in estimator.counts().items():
+            for _ in range(int(count)):
+                obs = Observation(
+                    x_cpu=point_from_config(config, device=torch.device("cpu")),
+                    y=int(outcome),
+                    source="recovery",
+                )
+                add_observation_to_strategy(strategy, obs, device=device)
+                observations.append(obs)
+                results_for_plot.append(
+                    (
+                        float(config.n_gates),
+                        float(config.ratio_2_qb_gates),
+                        int(outcome),
+                    )
+                )
+                n_observations += 1
+
+    return n_observations
+
+
+>>>>>>> origin/stitching-checks-for-pr-178
 def print_run_handles(
     settings: SettingsClass,
     *,
@@ -313,6 +396,10 @@ def print_run_handles(
 
         print("[qubits]")
         print(f"  qubits                     = {settings.n_qubits}")
+<<<<<<< HEAD
+=======
+        print(f"  qubit_band_length                     = {settings.qubit_band_length}")
+>>>>>>> origin/stitching-checks-for-pr-178
 
         print("[fake anchors]")
         print(f"  use_fake_corners                     = {settings.use_fake_corners}")
@@ -326,6 +413,13 @@ def print_run_handles(
               f"{settings.initial_sobol_max_cost_per_run}")
         print(f"  sobol_scramble                       = {settings.sobol_scramble}")
 
+<<<<<<< HEAD
+=======
+        print("[recovery]")
+        print(f"  recovery_mode                        = {settings.recovery_mode}")
+        print(f"  recovery_folder                      = {settings.recovery_folder}")
+
+>>>>>>> origin/stitching-checks-for-pr-178
         print("[GP / AEPsych]")
         print(f"  acquisition_function                 = {settings.acquisition_function}")
         print(f"  optimization_steps                   = {settings.optimization_steps}")
@@ -424,13 +518,54 @@ def run_FLE(
         device=gp_device,
     )
 
+<<<<<<< HEAD
+=======
+    recovered_observations = 0
+    if settings.recovery_mode:
+        recovery_json = latest_recovery_json(settings)
+        if recovery_json is None:
+            print("[recovery] enabled, but no checkpoint JSON found; running Sobol.")
+        else:
+            recovered_hqc_spent = recovery_hqc_spent(recovery_json)
+            if recovered_hqc_spent is None:
+                print(f"[recovery] HQC spent unavailable in {recovery_json}")
+            else:
+                budget.spent_hqc = recovered_hqc_spent
+                budget.remaining_hqc = max(0.0, float(settings.hqc_budget) - recovered_hqc_spent)
+                print(f"[recovery] recovered HQC spent = {recovered_hqc_spent:.6g}")
+                print(f"[recovery] remaining HQC budget = {budget.remaining_hqc:.6g}")
+
+            recovered_observations = recover_observations_from_json(
+                recovery_json,
+                strategy=strategy,
+                rmb=rmb,
+                observations=observations,
+                results_for_plot=results_for_plot,
+                device=gp_device,
+            )
+            if recovered_observations:
+                print(
+                    f"[recovery] loaded {recovered_observations} observations "
+                    f"from {recovery_json}; skipping Sobol."
+                )
+            else:
+                print(
+                    f"[recovery] found {recovery_json}, but it contained no "
+                    "observations; running Sobol."
+                )
+
+>>>>>>> origin/stitching-checks-for-pr-178
     # -------------------------------------------------------------------------
     # 2. Sobol warm-up batch
     # -------------------------------------------------------------------------
 
     exhausted = False
 
+<<<<<<< HEAD
     sobol_candidates = sobol_initial_candidates(settings)
+=======
+    sobol_candidates = [] if recovered_observations else sobol_initial_candidates(settings)
+>>>>>>> origin/stitching-checks-for-pr-178
     sobol_submissions = 0
 
     max_sobol_submissions = settings.initial_sobol_submissions
@@ -510,6 +645,11 @@ def run_FLE(
             f"sobol: completed {sobol_submissions} submissions, "
             f"{len(sobol_candidates) - len(remaining_sobol_candidates)} configs measured"
         )
+<<<<<<< HEAD
+=======
+    elif recovered_observations:
+        print_progress(settings, budget, "sobol: skipped after recovery")
+>>>>>>> origin/stitching-checks-for-pr-178
     else:
         print_progress(settings, budget, "sobol: no affordable initial batch")
 
@@ -617,7 +757,12 @@ def run_FLE(
     if settings.save_gp_prediction_grid and base_path is not None:
         save_gp_prediction_grid(
             plot_strategy,
+<<<<<<< HEAD
             settings,
+=======
+            model=model,
+            settings = settings,
+>>>>>>> origin/stitching-checks-for-pr-178
             device=gp_device,
             json_path=base_path,
         )
@@ -638,7 +783,11 @@ def main(model, SettingsClass, settings_kwargs) -> None:
         # if stitched_total_gates > gate_budget:
         #     break
 
+<<<<<<< HEAD
     if backend_factory == quantinuum_emulator_backend_factory and kwargs.get("gate_budget") >= 7000:
+=======
+    if backend_factory == quantinuum_emulator_backend_factory and kwargs.get("gate_budget") > 7000:
+>>>>>>> origin/stitching-checks-for-pr-178
         raise ValueError(
             "Gate budget too high for Quantinuum emulator. Please set gate_budget <= 7000."
         )
@@ -648,6 +797,7 @@ def main(model, SettingsClass, settings_kwargs) -> None:
         # )
 
     if model == "FLE":
+<<<<<<< HEAD
         for run_index, rng_seed in enumerate(RNG_SEEDS, start=1):
             seed_kwargs = dict(kwargs)
             seed_kwargs["rng_seed"] = rng_seed
@@ -657,6 +807,30 @@ def main(model, SettingsClass, settings_kwargs) -> None:
                 f"rng_seed={rng_seed} save_path={seed_kwargs['save_path']}\n"
             )
             run_FLE(SettingsClass(**seed_kwargs))
+=======
+        for qubit_band_length in QUBIT_BAND_LENGTHS:
+            for run_index, rng_seed in enumerate(RNG_SEEDS, start=1):
+                seed_kwargs = dict(kwargs)
+                seed_kwargs["rng_seed"] = rng_seed
+                seed_kwargs["qubit_band_length"] = qubit_band_length
+                if seed_kwargs.get("recovery_mode"):
+                    if seed_kwargs.get("recovery_folder") is None:
+                        raise ValueError(
+                            "RECOVERY_FOLDER must be set when RECOVERY_MODE=True "
+                            "so resumed outputs are written into that folder."
+                        )
+                    seed_kwargs["save_path"] = timestamped_recovery_save_path(
+                        seed_kwargs["recovery_folder"]
+                    )
+                else:
+                    seed_kwargs["save_path"] = timestamped_personal_save_path(
+                        seed=rng_seed, qubit_band_length=qubit_band_length)
+                print(
+                    f"\n[seed run] {run_index}/{len(RNG_SEEDS)} "
+                    f"rng_seed={rng_seed} save_path={seed_kwargs['save_path']}\n"
+                )
+                run_FLE(SettingsClass(**seed_kwargs))
+>>>>>>> origin/stitching-checks-for-pr-178
 
     elif model == "COST_AWARE":
         raise NotImplementedError("Cost-Aware model is not implemented in this script.")

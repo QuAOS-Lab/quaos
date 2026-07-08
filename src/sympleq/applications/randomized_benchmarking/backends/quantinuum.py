@@ -23,7 +23,7 @@ from sympleq.integrations.quantinuum.utils import (
 )
 
 
-MAX_COST_PER_RUN: float = 50.0
+MAX_COST_PER_RUN: float = 25.0
 
 
 class QuantinuumBackend(RMBBackend):
@@ -116,8 +116,24 @@ class QuantinuumBackend(RMBBackend):
             # paired with the config whose circuit wrote it.
             registers = sorted(circuit.c_registers,
                                key=lambda register: int(register.name.removeprefix("creg_")))
+            sorted_submission = sorted(submission, key=lambda item: item[1].n_qubits, reverse=True)
             unstitched_results = destitch_results(result, registers)
-            for (config, _), sub_result in zip(submission, unstitched_results):
+            print("\n[backend destitched order]", flush=True)
+            for i, ((config, _), sub_result) in enumerate(zip(
+                sorted_submission,
+                unstitched_results)):
+                counts = sub_result.get_empirical_distribution().as_counter()
+                print(
+                    f"destitched_index={i:02d} "
+                    f"config_n_qubits={config.n_qubits} "
+                    f"config_n_gates={config.n_gates} "
+                    f"register={registers[i].name} "
+                    f"counts={counts}",
+                    flush=True,
+                )
+            for (config, _), sub_result in zip(
+                sorted_submission,
+                unstitched_results):
                 counts = sub_result.get_empirical_distribution().as_counter()
                 if not counts:
                     continue
