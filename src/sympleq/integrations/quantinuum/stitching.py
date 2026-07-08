@@ -103,5 +103,7 @@ def destitch_results(
 def estimate_qasm_program_size(
     circuit: Circuit
 ) -> int:
-    qasm_str = circuit_to_qasm_str(circuit, header="hqslib1")
+    qasm_str = circuit_to_qasm_str(circuit,
+                                   header="hqslib1",
+                                   maxwidth=max(32, circuit.n_bits + 1))
     return sys.getsizeof(qasm_str) // 1024**2

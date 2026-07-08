@@ -12,7 +12,7 @@ import numpy as np
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from skimage.measure import marching_cubes
 
-from fantasy_levelset_settings_3d import HQC_BUDGET
+# from fantasy_levelset_settings_3d import HQC_BUDGET
 
 
 # -------------------------------------------------------------------------

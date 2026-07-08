@@ -27,6 +27,7 @@ This should be done as soon as the stitching is done.
 
 import logging
 import json
+import re
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -90,8 +91,10 @@ def timestamped_personal_save_path(seed: int | None = None, qubit_band_length: i
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     seed_folder = "seed_unseeded" if seed is None else f"seed_{seed}"
     band_folder = f"qband_{qubit_band_length}" if qubit_band_length is not None else "qband_unseeded"
+    backend_folder = "H2"
     model_folder = "CostAware" if MODEL == "COST_AWARE" else "FLE"
-    run_folder = Path("Personal") / model_folder / band_folder / seed_folder / f"FLE_{timestamp}"
+
+    run_folder = Path("Personal") / model_folder / backend_folder / band_folder / seed_folder / f"FLE_{timestamp}"
 
     return run_folder / f"FLE_{timestamp}.json"
 
@@ -337,6 +340,27 @@ def recovery_hqc_spent(json_path: Path) -> float | None:
     return None if spent_hqc is None else float(spent_hqc)
 
 
+def recovery_phase(json_path: Path) -> str | None:
+    """Read the checkpoint phase from recovery metadata if present."""
+
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    experiment = payload.get("experiment", {})
+    phase = experiment.get("phase")
+    return None if phase is None else str(phase)
+
+
+def read_recovered_sobol_submissions(json_path: Path, max_sobol_submissions: int) -> int:
+    """Return how many Sobol submissions are already in the recovery checkpoint."""
+
+    phase = recovery_phase(json_path)
+    if phase is None:
+        return 0
+    match = re.fullmatch(r"sobol_(\d+)", phase)
+    if match:
+        return min(int(match.group(1)), max_sobol_submissions)
+    return max_sobol_submissions
+
+
 def recover_observations_from_json(
     json_path: Path,
     *,
@@ -510,6 +534,7 @@ def run_FLE(
     )
 
     recovered_observations = 0
+    recovered_sobol_count = 0
     if settings.recovery_mode:
         recovery_json = latest_recovery_json(settings)
         if recovery_json is None:
@@ -533,9 +558,14 @@ def run_FLE(
                 device=gp_device,
             )
             if recovered_observations:
+                recovered_sobol_count = read_recovered_sobol_submissions(
+                    recovery_json,
+                    settings.initial_sobol_submissions,
+                )
                 print(
                     f"[recovery] loaded {recovered_observations} observations "
-                    f"from {recovery_json}; skipping Sobol."
+                    f"from {recovery_json}; recovered "
+                    f"{recovered_sobol_count} Sobol submissions."
                 )
             else:
                 print(
@@ -549,10 +579,21 @@ def run_FLE(
 
     exhausted = False
 
-    sobol_candidates = [] if recovered_observations else sobol_initial_candidates(settings)
-    sobol_submissions = 0
-
     max_sobol_submissions = settings.initial_sobol_submissions
+    sobol_candidates = sobol_initial_candidates(settings)
+    if recovered_observations and recovered_sobol_count < max_sobol_submissions:
+        recovered_sobol_qubits = {
+            config.n_qubits for config in rmb._data
+        }
+        print(
+            "[recovery] skipping recovered Sobol qubits: "
+            f"{sorted(recovered_sobol_qubits)}"
+        )
+        sobol_candidates = [
+            config for config in sobol_candidates
+            if config.n_qubits not in recovered_sobol_qubits
+        ]
+    sobol_submissions = recovered_sobol_count
     remaining_sobol_candidates = list(sobol_candidates)
 
     while (remaining_sobol_candidates and sobol_submissions < max_sobol_submissions and not exhausted
@@ -624,9 +665,10 @@ def run_FLE(
                              sent_configs=sobol_batch,
                              )
 
-    if sobol_submissions:
+    new_sobol_submissions = sobol_submissions - recovered_sobol_count
+    if new_sobol_submissions:
         print(
-            f"sobol: completed {sobol_submissions} submissions, "
+            f"sobol: completed {new_sobol_submissions} submissions after recovery, "
             f"{len(sobol_candidates) - len(remaining_sobol_candidates)} configs measured"
         )
     elif recovered_observations:

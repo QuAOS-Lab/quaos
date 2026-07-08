@@ -9,7 +9,7 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     CrossingSettings,
     default_backend_factory,
     quantinuum_emulator_backend_factory,
-    # quantinuum_H2_backend_factory
+    quantinuum_H2_backend_factory
 )
 
 
@@ -99,9 +99,9 @@ TARGET_THRESHOLD = 0.5
 # NuUMBER of Qubits
 # -------------------------------------------------------------------------
 
-N_QUBITS_BOUNDS = (20, 50)
+N_QUBITS_BOUNDS = (26, 56)
 # LEVEL_SET_N_QUBITS = N_QUBITS
-QUBIT_BAND_LENGTHS = [0,1,2,3,4]
+QUBIT_BAND_LENGTHS = [4]
 
 # -------------------------------------------------------------------------
 # SEARCH-BOX HANDLES
@@ -117,7 +117,7 @@ RATIO_BOUNDS = (0.1, 0.9)
 # Set to None to use the defaults inherited from CrossingSettings.
 
 HQC_BUDGET = 500
-MAX_COST_PER_RUN = 15
+MAX_COST_PER_RUN = 30
 
 # -------------------------------------------------------------------------
 # Gate BUDGET HANDLES
@@ -152,8 +152,8 @@ SAVE_REAL_CHECKPOINTS = True
 # RECOVERY HANDLES
 # -------------------------------------------------------------------------
 
-RECOVERY_MODE = False
-RECOVERY_FOLDER = Path(r"Personal\FLE\qband_0\seed_2026\FLE_20260703_143809")
+RECOVERY_MODE = True
+RECOVERY_FOLDER = Path(r"Personal\FLE\H2\qband_4\seed_2026\FLE_20260708_113322")
 
 # -------------------------------------------------------------------------
 # GP / AEPSYCH HANDLES
@@ -184,16 +184,15 @@ FORCE_DEFAULT_DEVICE_DURING_AEPSYCH = True
 # BACKEND HANDLE
 # -------------------------------------------------------------------------
 
+# BACKEND_FACTORY = default_backend_factory
 # BACKEND_FACTORY = quantinuum_emulator_backend_factory
-BACKEND_FACTORY = default_backend_factory
-# BACKEND_FACTORY = quantinuum_emulator_backend_factory
-# BACKEND_FACTORY = quantinuum_H2_backend_factory
+BACKEND_FACTORY = quantinuum_H2_backend_factory
 
 # -------------------------------------------------------------------------
 # REPRODUCIBILITY / DEBUG HANDLES
 # -------------------------------------------------------------------------
 
-RNG_SEEDS = [2026, 2027, 2028, 2029, 2030]
+RNG_SEEDS = [2026]
 VERBOSE_FANTASIES = True
 PLOT = True
 
