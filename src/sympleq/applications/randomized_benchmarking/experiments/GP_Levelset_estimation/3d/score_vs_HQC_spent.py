@@ -17,8 +17,9 @@ ROOT_FOLDER = Path(r"Personal\FLE")
 QBAND_VALUES = range(5)
 SEED_VALUES = range(2026, 2027)
 SAVE_FIG_PATH = Path(
-    r"Personal\RMB_results_figs\Volume\score_vs_hqc_spent_by_qband_emulator.pdf"
+    r"Personal\RMB_results_figs\Volume\score_vs_hqc_spent_H2.pdf"
 )
+LABELS: list[str] = ['H2-2', 'H2-1']
 
 
 def sibling_grid(json_path: Path) -> Path:
@@ -28,6 +29,18 @@ def sibling_grid(json_path: Path) -> Path:
 def measurement_step(json_path: Path) -> int:
     match = re.match(r"measurement_(\d+)_", json_path.name)
     return int(match.group(1)) if match else 0
+
+
+def sobol_step(json_path: Path) -> int | None:
+    match = re.match(r"measurement_\d+_sobol_(\d+)_", json_path.name)
+    return int(match.group(1)) if match else None
+
+
+def plot_order_key(json_path: Path) -> tuple[int, int, str]:
+    sobol = sobol_step(json_path)
+    if sobol is not None:
+        return 0, sobol, json_path.name
+    return 1, measurement_step(json_path), json_path.name
 
 
 def hqc_spent(json_path: Path) -> float:
@@ -43,7 +56,16 @@ def measurement_pairs(run_folder: Path) -> list[tuple[Path, Path]]:
         grid_path = sibling_grid(json_path)
         if grid_path.exists():
             pairs.append((json_path, grid_path))
-    return sorted(pairs, key=lambda pair: (measurement_step(pair[0]), pair[0].name))
+    return sorted(pairs, key=lambda pair: plot_order_key(pair[0]))
+
+
+def sobol_done_hqc(run_folder: Path) -> float | None:
+    sobol_hqc = [
+        hqc_spent(json_path)
+        for json_path, _ in measurement_pairs(run_folder)
+        if sobol_step(json_path) is not None
+    ]
+    return sobol_hqc[-1] if sobol_hqc else None
 
 
 def latest_seed_run(seed_folder: Path) -> Path | None:
@@ -57,18 +79,17 @@ def latest_seed_run(seed_folder: Path) -> Path | None:
     return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
-def seed_curve(seed_folder: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
-    run_folder = latest_seed_run(seed_folder)
-    if run_folder is None:
-        print(f"[skip] no usable run folder in {seed_folder}", flush=True)
-        return None
-
+def run_curve(run_folder: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     xs: list[int] = []
     hqc: list[float] = []
     scores: list[float] = []
 
-    print(f"[seed] {seed_folder.name}: {run_folder}", flush=True)
-    for submission_index, (json_path, grid_path) in enumerate(measurement_pairs(run_folder), start=1):
+    pairs = measurement_pairs(run_folder)
+    if not pairs:
+        print(f"[skip] no measurement/grid pairs in {run_folder}", flush=True)
+        return None
+
+    for submission_index, (json_path, grid_path) in enumerate(pairs, start=1):
         xs.append(submission_index)
         hqc.append(hqc_spent(json_path))
         score = score_grid(grid_path)["success_side_volume"]
@@ -84,6 +105,22 @@ def seed_curve(seed_folder: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray] |
         np.asarray(hqc, dtype=float),
         np.asarray(scores, dtype=float),
     )
+
+
+def seed_curve(seed_folder: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    run_folder = latest_seed_run(seed_folder)
+    if run_folder is None:
+        print(f"[skip] no usable run folder in {seed_folder}", flush=True)
+        return None
+
+    print(f"[seed] {seed_folder.name}: {run_folder}", flush=True)
+    return run_curve(run_folder)
+
+
+def run_label(run_folder: Path) -> str:
+    seed_folder = run_folder.parent.name
+    qband_folder = run_folder.parent.parent.name
+    return f"{qband_folder} {seed_folder} {run_folder.name}"
 
 
 def qband_folder_from_arg(path: Path) -> list[Path]:
@@ -102,6 +139,30 @@ def qband_label(qband_folder: Path) -> str:
     band_length = int(match.group(1)) + 1
     unit = "qubit" if band_length == 1 else "qubits"
     return f"band length = {band_length} {unit}"
+
+
+def plot_run_folder(run_folder: Path, label: str | None = None) -> bool:
+    curve = run_curve(run_folder)
+    if curve is None:
+        return False
+
+    _, hqc, scores = curve
+    line = plt.plot(hqc, scores, "o-", label=label or run_label(run_folder))[0]
+    sobol_hqc = sobol_done_hqc(run_folder)
+    if sobol_hqc is not None:
+        plt.axvline(
+            sobol_hqc,
+            color=line.get_color(),
+            linestyle="--",
+            linewidth=1.0,
+        )
+    print(
+        f"[run] {run_folder}: points={len(scores)}, "
+        f"hqc_range=({hqc[0]:.6g}, {hqc[-1]:.6g}), "
+        f"final_score={scores[-1]:.6g}",
+        flush=True,
+    )
+    return True
 
 
 def qband_curves(qband_folder: Path) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
@@ -155,17 +216,37 @@ def mean_std_by_hqc(
     return hqc_axis, mean, std
 
 
-def plot_qband(qband_folder: Path) -> bool:
+def qband_sobol_done_hqc(qband_folder: Path) -> float | None:
+    sobol_hqc = []
+    for seed in SEED_VALUES:
+        run_folder = latest_seed_run(qband_folder / f"seed_{seed}")
+        if run_folder is None:
+            continue
+        value = sobol_done_hqc(run_folder)
+        if value is not None:
+            sobol_hqc.append(value)
+    return float(np.mean(sobol_hqc)) if sobol_hqc else None
+
+
+def plot_qband(qband_folder: Path, label: str | None = None) -> bool:
     curves = qband_curves(qband_folder)
     if not curves:
         print(f"[skip] no seed curves for {qband_folder}", flush=True)
         return False
 
     hqc_axis, mean, std = mean_std_by_hqc(curves)
-    label = qband_label(qband_folder)
+    label = label or qband_label(qband_folder)
 
     line = plt.plot(hqc_axis, mean, "o-", label=f"{label}")[0]
     color = line.get_color()
+    sobol_hqc = qband_sobol_done_hqc(qband_folder)
+    if sobol_hqc is not None:
+        plt.axvline(
+            sobol_hqc,
+            color=color,
+            linestyle="--",
+            linewidth=1.0,
+        )
     plt.fill_between(
         hqc_axis,
         mean - std,
@@ -193,22 +274,35 @@ def plot_qband(qband_folder: Path) -> bool:
 def main(paths: list[str | Path] | None = None) -> None:
     input_paths = [ROOT_FOLDER] if not paths else [Path(path) for path in paths]
     qband_folders: list[Path] = []
+    run_folders: list[Path] = []
 
     for path in input_paths:
-        qband_folders.extend(qband_folder_from_arg(path))
+        if path.is_dir() and measurement_pairs(path):
+            run_folders.append(path)
+        else:
+            qband_folders.extend(qband_folder_from_arg(path))
 
     qband_folders = sorted(set(qband_folders), key=lambda path: path.name)
+    run_folders = sorted(set(run_folders), key=lambda path: str(path))
     plotted = False
+    label_index = 0
+
+    for run_folder in run_folders:
+        label = LABELS[label_index] if label_index < len(LABELS) else None
+        plotted = plot_run_folder(run_folder, label=label) or plotted
+        label_index += 1
 
     for qband_folder in qband_folders:
-        plotted = plot_qband(qband_folder) or plotted
+        label = LABELS[label_index] if label_index < len(LABELS) else None
+        plotted = plot_qband(qband_folder, label=label) or plotted
+        label_index += 1
 
     if not plotted:
         return
 
-    plt.xlabel("Actual HQC spent")
+    plt.xlabel("HQC spent")
     plt.ylabel("Success-side volume")
-    plt.title("3D FLE score by actual HQC spent")
+    plt.title("FLE")
     plt.legend(fontsize=8)
     plt.tight_layout()
     SAVE_FIG_PATH.parent.mkdir(parents=True, exist_ok=True)

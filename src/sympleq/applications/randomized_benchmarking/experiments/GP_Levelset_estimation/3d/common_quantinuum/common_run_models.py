@@ -36,7 +36,10 @@ import numpy as np
 
 from sympleq.applications.randomized_benchmarking.RMB import RMB, resolve_data_path
 from sympleq.applications.randomized_benchmarking.experiments.common import (
+    batch_hqc_cost,
     default_backend_factory,
+    quantinuum_H2_backend_factory,
+    quantinuum_H21E_backend_factory,
     quantinuum_emulator_backend_factory,
     print_experiment_summary,
     print_progress,
@@ -64,6 +67,7 @@ if MODEL == "FLE":
         contour_target,
         measure_batch_and_update_real_strategy,
         move_strategy_models_to_device,
+        one_shot_requests,
         point_from_config,
         repair_stats,
         refreshed_strategy_for_prediction,
@@ -217,6 +221,38 @@ def predict_native_level_set(
     )
 
 
+def is_h2_quantinuum_backend(settings) -> bool:
+    return settings.backend_factory in {
+        quantinuum_H2_backend_factory,
+        quantinuum_H21E_backend_factory,
+    }
+
+
+def select_h2_sobol_batch(candidates, settings, budget) -> tuple[list, bool]:
+    """Select one cross-qubit Sobol batch for H2, capped by Sobol HQC."""
+
+    selected = []
+    cost_cap = (
+        settings.max_cost_per_run
+        if settings.initial_sobol_max_cost_per_run is None
+        else settings.initial_sobol_max_cost_per_run
+    )
+
+    for candidate in candidates:
+        trial_batch = selected + [candidate]
+        next_cost = batch_hqc_cost(one_shot_requests(trial_batch))
+
+        if next_cost > cost_cap:
+            break
+        if next_cost > budget.remaining_hqc:
+            return selected, True
+
+        selected.append(candidate)
+        print(f"Stitched total gates: {sum(config.n_gates for config in trial_batch)}")
+
+    return selected, False
+
+
 def save_gp_prediction_grid(strategy,
                             *,
                             model: str,
@@ -331,6 +367,22 @@ def latest_recovery_json(settings) -> Path | None:
     return candidates[-1] if candidates else None
 
 
+def measurement_checkpoint_step(json_path: Path) -> int:
+    """Return the numeric step from a measurement checkpoint filename."""
+
+    match = re.match(r"measurement_(\d+)_", json_path.name)
+    return int(match.group(1)) if match else 0
+
+
+def latest_measurement_checkpoint_step(folder: Path) -> int:
+    """Return the largest measurement checkpoint step already in a folder."""
+
+    return max(
+        (measurement_checkpoint_step(path) for path in folder.glob("measurement_*.json")),
+        default=0,
+    )
+
+
 def recovery_hqc_spent(json_path: Path) -> float | None:
     """Read spent HQC metadata from a recovery checkpoint if present."""
 
@@ -355,6 +407,8 @@ def read_recovered_sobol_submissions(json_path: Path, max_sobol_submissions: int
     phase = recovery_phase(json_path)
     if phase is None:
         return 0
+    if phase.lower().startswith("globalsur"):
+        return max_sobol_submissions
     match = re.fullmatch(r"sobol_(\d+)", phase)
     if match:
         return min(int(match.group(1)), max_sobol_submissions)
@@ -540,6 +594,14 @@ def run_FLE(
         if recovery_json is None:
             print("[recovery] enabled, but no checkpoint JSON found; running Sobol.")
         else:
+            output_folder = (
+                Path(settings.save_path).parent
+                if settings.save_path is not None
+                else recovery_json.parent
+            )
+            checkpoint_step = latest_measurement_checkpoint_step(output_folder)
+            print(f"[recovery] next measurement step starts after {checkpoint_step}")
+
             recovered_hqc_spent = recovery_hqc_spent(recovery_json)
             if recovered_hqc_spent is None:
                 print(f"[recovery] HQC spent unavailable in {recovery_json}")
@@ -601,12 +663,19 @@ def run_FLE(
            ):
         print(f"[sobol configs] submission={sobol_submissions + 1}")
 
-        sobol_batch, exhausted = select_affordable_prefix(
-            remaining_sobol_candidates,
-            settings,
-            budget,
-            max_cost_per_run=settings.initial_sobol_max_cost_per_run,
-        )
+        if is_h2_quantinuum_backend(settings):
+            sobol_batch, exhausted = select_h2_sobol_batch(
+                remaining_sobol_candidates,
+                settings,
+                budget,
+            )
+        else:
+            sobol_batch, exhausted = select_affordable_prefix(
+                remaining_sobol_candidates,
+                settings,
+                budget,
+                max_cost_per_run=settings.initial_sobol_max_cost_per_run,
+            )
 
         if not sobol_batch:
             break

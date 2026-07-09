@@ -140,9 +140,9 @@ EXTRA_FAKE_ANCHORS = []
 # -------------------------------------------------------------------------
 
 INITIAL_SOBOL_SAMPLES = 15
-INITIAL_SOBOL_SUBMISSIONS = 5
+INITIAL_SOBOL_SUBMISSIONS = 15
 SOBOL_BAND_BATCHES = 5
-INITIAL_SOBOL_MAX_COST_PER_RUN = 15.0
+INITIAL_SOBOL_MAX_COST_PER_RUN = 30
 SOBOL_SCRAMBLE = True
 
 SAVE_GP_PREDICTION_GRID = True
@@ -153,7 +153,7 @@ SAVE_REAL_CHECKPOINTS = True
 # -------------------------------------------------------------------------
 
 RECOVERY_MODE = True
-RECOVERY_FOLDER = Path(r"Personal\FLE\H2\qband_4\seed_2026\FLE_20260708_113322")
+RECOVERY_FOLDER = Path(r"Personal\FLE\H2\qband_4\seed_2026\FLE_20260708_175833")
 
 # -------------------------------------------------------------------------
 # GP / AEPSYCH HANDLES
