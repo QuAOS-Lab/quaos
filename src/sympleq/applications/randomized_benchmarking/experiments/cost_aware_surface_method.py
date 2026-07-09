@@ -116,6 +116,7 @@ from sympleq.applications.randomized_benchmarking.experiments.plots import (
     REFERENCE_SLOPE,
 )
 from sympleq.applications.randomized_benchmarking.experiments.scores import (
+    axis_spacing,
     surface_boundary_scores_2d,
 )
 from sympleq.core.noise.noise_model import GenericNoise
@@ -330,6 +331,10 @@ class CostAwareSurfaceSettings(CrossingSettings):
     live_volume_plot_every: int = 1
     live_volume_plot_show: bool = False
     live_volume_plot_pause: float = 0.25
+    use_voxel_volume: bool = True
+    voxel_volume_n_gates_grid: int = 80
+    voxel_volume_n_ratio_grid: int = 80
+    voxel_volume_n_qubits_grid: int = 16
     # Static +-1 sigma boundary-uncertainty surface plot (written at run end).
     # Draws the posterior-mean log-boundary surface enveloped by the +-k sigma
     # surfaces of log n*(r,Q), where k = uncertainty_plot_sigma.
@@ -386,9 +391,9 @@ class CostAwareSurfaceSettings(CrossingSettings):
     target_log_rms: float = 0.04       # stop when sqrt(mean Var[log n*]) <= this
     max_iterations: int = 400
 
-    # --- prior on the boundary surface -------------------------------------
-    initial_one_q_pauli_error: float = BASE_1Q_PAULI_ERROR # * 0.6
-    initial_two_q_pauli_error: float = BASE_2Q_PAULI_ERROR # * 0.6
+    # --- prior on the boundary surface ------------------------------------
+    initial_one_q_pauli_error: float = BASE_1Q_PAULI_ERROR
+    initial_two_q_pauli_error: float = BASE_2Q_PAULI_ERROR
     initial_error_relative_uncertainty: float = 0.30
     initial_one_q_error_relative_uncertainty: float | None = None
     initial_two_q_error_relative_uncertainty: float | None = None
@@ -422,7 +427,8 @@ class CostAwareSurfaceSettings(CrossingSettings):
             object.__setattr__(self, "live_volume_plot", True)
         if self.surface_uncertainty_plot_show and not self.surface_uncertainty_plot:
             object.__setattr__(self, "surface_uncertainty_plot", True)
-        if self.backend_model in {"sympleq", "exponential", "emulator", "H2"}:
+        quantinuum_models = {"emulator", "H2-1", "H2-2", "H2-1E", "H2-2E"}
+        if self.backend_model in {"sympleq", "exponential", *quantinuum_models}:
             for attr in (
                 "save_path",
                 "surface_plot_path",
@@ -447,10 +453,11 @@ class CostAwareSurfaceSettings(CrossingSettings):
         if self.backend_model == "exponential":
             object.__setattr__(self, "backend_factory", exponential_backend_factory)
             return
-        if self.backend_model in {"emulator", "H2"}:
+        if self.backend_model in quantinuum_models:
             return
         raise ValueError(
-            "backend_model must be 'sympleq', 'exponential', 'emulator', or 'H2' "
+            "backend_model must be 'sympleq', 'exponential', 'emulator', "
+            "'H2-1', 'H2-2', 'H2-1E', or 'H2-2E' "
             f"(got {self.backend_model!r})"
         )
 
@@ -1353,8 +1360,10 @@ def _restrict_requests_to_gate_budget(
     settings: CostAwareSurfaceSettings,
 ) -> list[MeasurementRequest]:
     gate_budget = getattr(settings, "gate_budget", None)
+    backend_model = str(getattr(settings, "backend_model", ""))
+    gate_limited_backend = backend_model == "emulator" or backend_model.endswith("E")
     if (
-        settings.backend_model != "emulator"
+        not gate_limited_backend
         or gate_budget is None
         or int(gate_budget) <= 0
     ):
@@ -1539,11 +1548,36 @@ def _surface_plot_mesh(
     weights: np.ndarray,
     settings: CostAwareSurfaceSettings,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
-    """Posterior-median boundary surface as log10 gates on a plot mesh."""
-    med = np.asarray(
-        [float(_wquantile(params[:, j], weights, 0.5)) for j in range(_N_PARAMS)]
+    """Posterior-mean boundary surface as log10 gates on a plot mesh.
+
+    The live volume plot and the 3-D surface visualization must use the same
+    posterior summary of the boundary.  The old plot mesh used a median
+    parameter vector, which can sit above the posterior mean and produce a
+    misleading surface-volume mismatch.
+    """
+    r_lo, r_hi = settings.ratio_bounds
+    q_lo, q_hi = min(settings.q_values), max(settings.q_values)
+    n_bounds = (
+        settings.n_gates_bounds
+        if settings.surface_plot_n_gates_bounds is None
+        else settings.surface_plot_n_gates_bounds
     )
-    return _boundary_log10_from_param_vector(med, settings)
+    n_lo, n_hi = n_bounds
+    grid_r = np.linspace(r_lo, r_hi, 48)
+    grid_q = np.linspace(q_lo, q_hi, 48)
+    rr, qq = np.meshgrid(grid_r, grid_q)
+    raw = bool(getattr(settings, "plot_raw_fidelity_boundary", False))
+    _, _, geometric_gates = _logn_mean_sigma_mesh(params, weights, settings, rr, qq, raw=raw)
+    if not np.any(np.isfinite(geometric_gates)):
+        return None
+    log10_gates = np.where(
+        np.isfinite(geometric_gates) & (geometric_gates >= n_lo) & (geometric_gates <= n_hi),
+        np.log10(np.where(np.isfinite(geometric_gates) & (geometric_gates > 0.0), geometric_gates, np.nan)),
+        np.nan,
+    )
+    if not np.any(np.isfinite(log10_gates)):
+        return None
+    return rr, qq, log10_gates
 
 
 # --------------------------------------------------------------------------- #
@@ -1642,6 +1676,98 @@ def _logn_mean_sigma_mesh(
         sigma_flat[idx] = float(np.sqrt(max(var, 0.0)))
         gates_flat[idx] = float(np.exp(mean))
     return mean_log, sigma_log, geometric_gates
+
+
+def _voxel_volume_axes(
+    settings: CostAwareSurfaceSettings,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    r_lo, r_hi = settings.ratio_bounds
+    q_lo = float(min(settings.q_values))
+    q_hi = float(max(settings.q_values))
+    n_lo, n_hi = settings.n_gates_bounds
+    gates_axis = np.geomspace(max(1.0, float(n_lo)), float(n_hi), settings.voxel_volume_n_gates_grid)
+    ratio_axis = np.linspace(float(r_lo), float(r_hi), settings.voxel_volume_n_ratio_grid)
+    qubits_axis = np.linspace(q_lo, q_hi, settings.voxel_volume_n_qubits_grid)
+    return gates_axis, ratio_axis, qubits_axis
+
+
+def _success_side_voxel_volume(
+    boundary_gates: np.ndarray,
+    gates_axis: np.ndarray,
+    ratio_axis: np.ndarray,
+    qubits_axis: np.ndarray,
+) -> float:
+    boundary_gates = np.asarray(boundary_gates, dtype=float)
+    if not np.any(np.isfinite(boundary_gates)):
+        return float("nan")
+
+    gates_axis = np.asarray(gates_axis, dtype=float)
+    ratio_axis = np.asarray(ratio_axis, dtype=float)
+    qubits_axis = np.asarray(qubits_axis, dtype=float)
+
+    qubits_grid, ratio_grid, gates_grid = np.meshgrid(
+        qubits_axis,
+        ratio_axis,
+        gates_axis,
+        indexing="ij",
+    )
+    # "Success side" means depths up to the fidelity-0.5 boundary.  Larger
+    # boundaries must therefore increase the volume.
+    mask = np.isfinite(boundary_gates[..., np.newaxis]) & (
+        gates_grid <= boundary_gates[..., np.newaxis]
+    )
+    voxel_volume = (
+        axis_spacing(gates_axis, log=True)
+        * axis_spacing(ratio_axis)
+        * axis_spacing(qubits_axis)
+    )
+    return float(np.sum(mask) * voxel_volume)
+
+
+def _voxel_volume_surface_scores(
+    volume_fit_gates: np.ndarray,
+    volume_sigma_log_gates: np.ndarray,
+    volume_reference_gates: np.ndarray,
+    gates_axis: np.ndarray,
+    ratio_axis: np.ndarray,
+    qubits_axis: np.ndarray,
+) -> dict[str, float]:
+    fit_volume = _success_side_voxel_volume(
+        volume_fit_gates,
+        gates_axis,
+        ratio_axis,
+        qubits_axis,
+    )
+    lower_volume = _success_side_voxel_volume(
+        volume_fit_gates * np.exp(-volume_sigma_log_gates),
+        gates_axis,
+        ratio_axis,
+        qubits_axis,
+    )
+    upper_volume = _success_side_voxel_volume(
+        volume_fit_gates * np.exp(volume_sigma_log_gates),
+        gates_axis,
+        ratio_axis,
+        qubits_axis,
+    )
+    reference_volume = _success_side_voxel_volume(
+        volume_reference_gates,
+        gates_axis,
+        ratio_axis,
+        qubits_axis,
+    )
+    volume_ratio = (
+        float(fit_volume / reference_volume)
+        if np.isfinite(reference_volume) and abs(reference_volume) > _EPS
+        else float("nan")
+    )
+    return {
+        "surface_volume_fit": float(fit_volume),
+        "surface_volume_lower_1sigma": float(lower_volume),
+        "surface_volume_upper_1sigma": float(upper_volume),
+        "surface_volume_reference": float(reference_volume),
+        "surface_volume_ratio": volume_ratio,
+    }
 
 
 def _free_axis_indices(settings: CostAwareSurfaceSettings) -> list[int]:
@@ -1898,7 +2024,69 @@ def _checkpoint_q_values_match(meta: dict, settings: CostAwareSurfaceSettings) -
         saved_q_values = [int(q) for q in meta["settings"]["q_values"]]
     except (KeyError, TypeError, ValueError):
         return False
-    return saved_q_values == _settings_q_values(settings)
+    if saved_q_values != _settings_q_values(settings):
+        return False
+
+    # Additional settings that must match to consider a checkpoint resumable.
+    # If these are absent from older checkpoints, treat them as non-matching
+    # only when they differ from defaults.
+    try:
+        saved_min_distinct = int(meta["settings"].get("min_distinct_q_coverage", -1))
+    except (TypeError, ValueError):
+        saved_min_distinct = -1
+
+    current_min_distinct = int(getattr(settings, "min_distinct_q_coverage", -1))
+    if saved_min_distinct != -1 and saved_min_distinct != current_min_distinct:
+        return False
+
+    try:
+        saved_acq_q_res = int(meta["settings"].get("acquisition_q_resolution", -1))
+    except (TypeError, ValueError):
+        saved_acq_q_res = -1
+    current_acq_q_res = int(getattr(settings, "acquisition_q_resolution", -1))
+    if saved_acq_q_res != -1 and saved_acq_q_res != current_acq_q_res:
+        return False
+
+    try:
+        saved_acq_ratio_pts = int(meta["settings"].get("acquisition_ratio_points", -1))
+    except (TypeError, ValueError):
+        saved_acq_ratio_pts = -1
+    current_acq_ratio_pts = int(getattr(settings, "acquisition_ratio_points", -1))
+    if saved_acq_ratio_pts != -1 and saved_acq_ratio_pts != current_acq_ratio_pts:
+        return False
+
+    # max_qubit_window must match
+    try:
+        saved_max_qw = int(meta["settings"].get("max_qubit_window", -1))
+    except (TypeError, ValueError):
+        saved_max_qw = -1
+    current_max_qw = int(getattr(settings, "max_qubit_window", -1))
+    if saved_max_qw != -1 and saved_max_qw != current_max_qw:
+        return False
+
+    # max_cost_per_run must match
+    try:
+        saved_max_cost = float(meta["settings"].get("max_cost_per_run", -1.0))
+    except (TypeError, ValueError):
+        saved_max_cost = -1.0
+    current_max_cost = float(getattr(settings, "max_cost_per_run", -1.0))
+    if saved_max_cost != -1.0 and saved_max_cost != current_max_cost:
+        return False
+
+    # grid_resolution and boundary_fit_resolution: compare as lists if present
+    saved_grid = meta["settings"].get("grid_resolution")
+    if saved_grid is not None and saved_grid != []:
+        current_grid = list(getattr(settings, "grid_resolution", []))
+        if saved_grid != current_grid:
+            return False
+
+    saved_boundary = meta["settings"].get("boundary_fit_resolution")
+    if saved_boundary is not None and saved_boundary != []:
+        current_boundary = list(getattr(settings, "boundary_fit_resolution", []))
+        if saved_boundary != current_boundary:
+            return False
+
+    return True
 
 
 def _save_measurement_checkpoint(
@@ -1928,6 +2116,12 @@ def _save_measurement_checkpoint(
                 "backend_model": settings.backend_model,
                 "rng_seed": settings.rng_seed,
                 "max_qubit_window": int(settings.max_qubit_window),
+                "min_distinct_q_coverage": int(getattr(settings, "min_distinct_q_coverage", -1)),
+                "acquisition_q_resolution": int(getattr(settings, "acquisition_q_resolution", -1)),
+                "acquisition_ratio_points": int(getattr(settings, "acquisition_ratio_points", -1)),
+                "grid_resolution": list(getattr(settings, "grid_resolution", [])),
+                "boundary_fit_resolution": list(getattr(settings, "boundary_fit_resolution", [])),
+                "max_cost_per_run": float(getattr(settings, "max_cost_per_run", -1.0)),
             },
             "hqc_budget": settings.hqc_budget,
             "spent_hqc": budget.spent_hqc,
@@ -2382,7 +2576,7 @@ def _surface_s1_s2(
         reference = _reference_boundary(ref_fn, rr, qq)
         reference_log = np.where(reference > 0.0, np.log(reference), np.nan)
         volume_reference_gates = _reference_boundary(ref_fn, v_rr, v_qq)
-        return surface_boundary_scores_2d(
+        scores = surface_boundary_scores_2d(
             fitted_log_gates=fitted_log,
             reference_log_gates=reference_log,
             sigma_log_gates=sigma,
@@ -2397,6 +2591,24 @@ def _surface_s1_s2(
             max_gates=volume_max_gates,
             eps=_EPS,
         )
+        if settings.use_voxel_volume:
+            gates_axis, voxel_ratio_axis, voxel_qubits_axis = _voxel_volume_axes(settings)
+            vv_rr, vv_qq = np.meshgrid(voxel_ratio_axis, voxel_qubits_axis)
+            _, voxel_sigma, voxel_fit_gates = _logn_mean_sigma_mesh(
+                params, weights, settings, vv_rr, vv_qq, raw=raw
+            )
+            voxel_reference_gates = _reference_boundary(ref_fn, vv_rr, vv_qq)
+            scores.update(
+                _voxel_volume_surface_scores(
+                    volume_fit_gates=voxel_fit_gates,
+                    volume_sigma_log_gates=voxel_sigma,
+                    volume_reference_gates=voxel_reference_gates,
+                    gates_axis=gates_axis,
+                    ratio_axis=voxel_ratio_axis,
+                    qubits_axis=voxel_qubits_axis,
+                )
+            )
+        return scores
 
     scores = dict(_scores_for(reference_gates))
     if (

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 
 from numpy.random import Generator as RNGGenerator
 
@@ -26,18 +27,6 @@ from sympleq.applications.randomized_benchmarking.experiments.cost_aware_surface
     CostAwareSurfaceSettings,
     EXPERIMENTS_DIR,
 )
-
-
-def quantinuum_h2_backend_factory(
-    settings: CrossingSettings,
-    rng: RNGGenerator,
-) -> RMBBackend:
-    return QuantinuumBackend(
-        device_name=H2_DEVICE_NAME,
-        project_name=PROJECT_NAME,
-        batch_size=1,
-        max_cost_per_run=settings.max_cost_per_run,
-    )
 
 
 class GateLimitedQuantinuumBackend(QuantinuumBackend):
@@ -214,13 +203,24 @@ class GateLimitedQuantinuumBackend(QuantinuumBackend):
         )
 
 
-def cost_aware_emulator_backend_factory(
+def cost_aware_quantinuum_backend_factory(
     settings: CrossingSettings,
     rng: RNGGenerator,
+    *,
+    device_name: str,
+    gate_limited: bool,
 ) -> RMBBackend:
+    if not gate_limited:
+        return QuantinuumBackend(
+            device_name=device_name,
+            project_name=PROJECT_NAME,
+            batch_size=1,
+            max_cost_per_run=settings.max_cost_per_run,
+        )
+
     emulator_max_batch_cost = getattr(settings, "emulator_max_batch_cost", None)
     return GateLimitedQuantinuumBackend(
-        device_name="H2-Emulator",
+        device_name=device_name,
         project_name=PROJECT_NAME,
         batch_size=1,
         max_cost_per_run=(
@@ -245,33 +245,32 @@ class CostAwareSettings(CostAwareSurfaceSettings):
 # CONTROL PANEL
 # =============================================================================
 
-BACKEND = 'emulator'  # "emulator"  # "sympleq", "emulator", or "H2"
+BACKEND = "H2-1"  # "sympleq"  # , "emulator", "H2-1", "H2-2", "H2-1E", or "H2-2E"
 PROJECT_NAME = "fidelity-benchmark"
-H2_DEVICE_NAME = "H2-1"
 
-Q_VALUES = tuple(range(5, 21, 1))
+Q_VALUES = tuple(range(27, 57, 1))
 N_QUBITS = round(sum(Q_VALUES) / len(Q_VALUES))
 N_GATES_BOUNDS = (10, 3000)
 RATIO_BOUNDS = (0.1, 0.9)
 
-HQC_BUDGET = 250.0
+HQC_BUDGET = 500.0
 MAX_COST_PER_RUN = 35.0
 
-# Only emulator
+# Only gate-limited emulator targets: "emulator", "H2-1E", and "H2-2E".
 GATE_BUDGET = 20000
 SINGLE_BATCH_GATE_BUDGET = 4200
 EMULATOR_MAX_BATCH_COST = 12.0
 
 
-RNG_SEEDS = [2025]
+RNG_SEEDS = [2026]
 
-ACQUISITION_Q_RESOLUTION = 15 # 30
+ACQUISITION_Q_RESOLUTION = 30
 ACQUISITION_RATIO_POINTS = 15
 MAX_QUBIT_WINDOW = 5
-MIN_DISTINCT_Q_COVERAGE = 10
+MIN_DISTINCT_Q_COVERAGE = 30
 
-GRID_RESOLUTION = (11, 11, 7, 7, 1, 5, 1)
-BOUNDARY_FIT_RESOLUTION = (17, 17, 9, 9, 1, 7, 1)
+GRID_RESOLUTION = (15, 15, 9, 9, 1, 7, 1)
+BOUNDARY_FIT_RESOLUTION = (17, 17, 9, 9, 1, 9, 1)
 CONTINUOUS_REFIT = True
 
 PLOT = False
@@ -281,6 +280,10 @@ LIVE_SURFACE_PLOT_SHOW = True
 LIVE_VOLUME_PLOT = True
 LIVE_VOLUME_PLOT_SHOW = True
 LIVE_PLOT_PAUSE = 0.5
+USE_VOXEL_VOLUME = True
+VOXEL_VOLUME_N_GATES_GRID = 80
+VOXEL_VOLUME_N_RATIO_GRID = 80
+VOXEL_VOLUME_N_QUBITS_GRID = 16
 
 USE_SCRAMBLER = True
 VERBOSE = True
@@ -291,15 +294,37 @@ GP_GRID_SURFACE_PATH = None #(
 #)
 GP_GRID_SURFACE_LABEL = None # "Rick/Shreya Grid"
 
+_GATE_LIMITED_QUANTINUUM_BACKENDS = {
+    "emulator": "H2-Emulator",
+    "H2-1E": "H2-1E",
+    "H2-2E": "H2-2E",
+}
+_QUANTINUUM_HARDWARE_BACKENDS = {"H2-1", "H2-2"}
+
 
 def backend_factory_for_name(name: str):
     if name == "sympleq":
         return default_backend_factory
-    if name == "emulator":
-        return cost_aware_emulator_backend_factory
-    if name == "H2":
-        return quantinuum_h2_backend_factory
-    raise ValueError(f"Unknown cost-aware backend {name!r}")
+    if name in _GATE_LIMITED_QUANTINUUM_BACKENDS:
+        factory = partial(
+            cost_aware_quantinuum_backend_factory,
+            device_name=_GATE_LIMITED_QUANTINUUM_BACKENDS[name],
+            gate_limited=True,
+        )
+        factory.__name__ = f"cost_aware_{name.replace('-', '_')}_backend_factory"
+        return factory
+    if name in _QUANTINUUM_HARDWARE_BACKENDS:
+        factory = partial(
+            cost_aware_quantinuum_backend_factory,
+            device_name=name,
+            gate_limited=False,
+        )
+        factory.__name__ = f"cost_aware_{name.replace('-', '_')}_backend_factory"
+        return factory
+    supported = ("sympleq", "emulator", "H2-1", "H2-2", "H2-1E", "H2-2E")
+    raise ValueError(
+        f"Unknown cost-aware backend {name!r}; choose one of {', '.join(supported)}."
+    )
 
 
 def control_panel_settings_kwargs() -> dict:
@@ -331,6 +356,10 @@ def control_panel_settings_kwargs() -> dict:
         live_volume_plot=LIVE_VOLUME_PLOT,
         live_volume_plot_show=LIVE_VOLUME_PLOT_SHOW,
         live_volume_plot_pause=LIVE_PLOT_PAUSE,
+        use_voxel_volume=USE_VOXEL_VOLUME,
+        voxel_volume_n_gates_grid=VOXEL_VOLUME_N_GATES_GRID,
+        voxel_volume_n_ratio_grid=VOXEL_VOLUME_N_RATIO_GRID,
+        voxel_volume_n_qubits_grid=VOXEL_VOLUME_N_QUBITS_GRID,
         gp_grid_surface_path=GP_GRID_SURFACE_PATH,
         gp_grid_surface_label=GP_GRID_SURFACE_LABEL,
         verbose=VERBOSE,

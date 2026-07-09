@@ -11,6 +11,15 @@ REFERENCE_SLOPE = 3.65e-3
 SIGMA_FLOOR = 1e-8
 
 
+def axis_spacing(values: np.ndarray, *, log: bool = False) -> float:
+    axis = np.unique(np.asarray(values, dtype=float))
+    if log:
+        axis = np.log10(axis)
+    if len(axis) < 2:
+        return 1.0
+    return float(np.mean(np.diff(np.sort(axis))))
+
+
 def integrate_trapezoid(
     y: np.ndarray,
     x: np.ndarray,

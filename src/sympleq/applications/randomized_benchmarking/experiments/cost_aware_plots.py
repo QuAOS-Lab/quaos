@@ -14,6 +14,9 @@ from sympleq.applications.randomized_benchmarking.experiments.cost_aware_referen
 from sympleq.applications.randomized_benchmarking.experiments.scores import (
     integrate_trapezoid,
 )
+from sympleq.applications.randomized_benchmarking.experiments.cost_aware_surface_method import (
+    _checkpoint_meta_path,
+)
 
 
 def _success_side_log_volume(
@@ -322,6 +325,10 @@ def plot_live_volume_history(
         [row[4] if len(row) > 4 else np.nan for row in history],
         dtype=float,
     )
+    secondary_reference = np.asarray(
+        [row[5] if len(row) > 5 else np.nan for row in history],
+        dtype=float,
+    )
     ref = float(reference[-1])
 
     fig = plt.figure(num=figure_name, figsize=(8.5, 5.2), clear=True)
@@ -355,8 +362,9 @@ def plot_live_volume_history(
             else "known-rate exponential reference"
         ),
     )
-    analytic_ref = _analytic_success_side_log_volume(settings)
-    if np.isfinite(analytic_ref) and not np.isclose(analytic_ref, ref):
+    finite_secondary = secondary_reference[np.isfinite(secondary_reference)]
+    if finite_secondary.size:
+        analytic_ref = float(finite_secondary[-1])
         ax.axhline(
             analytic_ref,
             color="darkorange",
@@ -369,6 +377,47 @@ def plot_live_volume_history(
     ax.set_title(r"Fidelity-0.5 success-side log-volume")
     ax.grid(alpha=0.25)
     ax.legend(loc="best")
+
+    # Secondary x-axis: cumulative cost (HQC) at each iteration if checkpoint
+    # metadata is available. This adds a twin x-axis at the top with cost
+    # labels aligned to the iteration ticks.
+    try:
+        if getattr(settings, "save_path", None) is not None:
+            meta_path = _checkpoint_meta_path(settings.save_path)
+            if meta_path.exists():
+                import json
+
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                batch_history = meta.get("batch_history", []) or []
+                # Build cumulative cost mapping by iteration
+                iter_costs = {}
+                cum = 0.0
+                # sort batches by iteration (None values ignored)
+                sorted_batches = sorted(
+                    (b for b in batch_history if isinstance(b.get("iteration"), int)),
+                    key=lambda b: int(b.get("iteration")),
+                )
+                for b in sorted_batches:
+                    try:
+                        c = float(b.get("cost_hqc", 0.0) or 0.0)
+                    except (TypeError, ValueError):
+                        c = 0.0
+                    cum += c
+                    iter_costs[int(b.get("iteration"))] = cum
+                # Map costs to the plotted iterations
+                cost_ticks = [iter_costs.get(int(i), None) for i in iterations]
+                # If any cost info present, add twin axis
+                if any(ct is not None for ct in cost_ticks):
+                    ax2 = ax.twiny()
+                    ax2.set_xlim(ax.get_xlim())
+                    ax2.set_xticks(iterations)
+                    # format labels: show '' for missing
+                    labels = ["" if ct is None else f"{ct:.2f}" for ct in cost_ticks]
+                    ax2.set_xticklabels(labels, rotation=30)
+                    ax2.set_xlabel("cumulative cost (HQC)")
+    except Exception:
+        # Best-effort only; plotting should never raise for missing metadata
+        pass
 
     fig.tight_layout()
     if png_path is not None:

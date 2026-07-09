@@ -713,6 +713,15 @@ def run_COST_AWARE(
     logging.getLogger().setLevel(logging.WARNING)
     print_run_handles(settings, gp_device=None)
     rmb, configs, budget = run_with_design_plots(settings)
+    backend_details = [
+        f"{name}={value}"
+        for name in ("device_name", "project_name")
+        if (value := getattr(rmb.backend, name, None)) is not None
+    ]
+    backend_text = type(rmb.backend).__name__
+    if backend_details:
+        backend_text = f"{backend_text} ({', '.join(backend_details)})"
+    print(f"  actual rmb.backend                   = {backend_text}")
     if return_budget:
         return rmb, budget
     return rmb

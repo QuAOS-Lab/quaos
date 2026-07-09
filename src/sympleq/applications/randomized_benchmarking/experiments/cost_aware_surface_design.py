@@ -18,6 +18,7 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
 )
 from sympleq.applications.randomized_benchmarking.experiments.cost_aware_plots import (
     plot_boundary_surface,
+    plot_boundary_uncertainty_surface,
     plot_live_volume_history,
 )
 from sympleq.applications.randomized_benchmarking.experiments.cost_aware_surface_method import *  # noqa: F401,F403
@@ -32,10 +33,11 @@ from sympleq.applications.randomized_benchmarking.experiments.cost_aware_surface
     _stateless_posterior,
     _surface_s1_s2,
     _surface_plot_mesh,
+    _logn_mean_sigma_mesh,
     run_with_budget,
 )
 
-LiveVolumePoint = tuple[int, float, float, float, float]
+LiveVolumePoint = tuple[int, float, float, float, float, float]
 
 
 def __getattr__(name: str):
@@ -56,6 +58,7 @@ def _record_live_volume_point(
     true_volume: float,
     lower_volume: float,
     upper_volume: float,
+    secondary_reference_volume: float | None = None,
 ) -> None:
     point = (
         int(iteration),
@@ -63,6 +66,9 @@ def _record_live_volume_point(
         float(true_volume),
         float(lower_volume),
         float(upper_volume),
+        float(secondary_reference_volume)
+        if secondary_reference_volume is not None
+        else float("nan"),
     )
     for i, existing in enumerate(history):
         if int(existing[0]) == int(iteration):
@@ -94,6 +100,12 @@ def _record_volume_point_from_posterior(
     true_volume = float(scores["surface_volume_reference"])
     if not (np.isfinite(fitted_volume) and np.isfinite(true_volume)):
         return None
+    secondary = scores.get("surface_volume_secondary_reference")
+    secondary_volume = (
+        float(secondary)
+        if secondary is not None and np.isfinite(float(secondary))
+        else None
+    )
     _record_live_volume_point(
         history,
         iteration,
@@ -101,11 +113,9 @@ def _record_volume_point_from_posterior(
         true_volume,
         float(scores["surface_volume_lower_1sigma"]),
         float(scores["surface_volume_upper_1sigma"]),
+        secondary_volume,
     )
-    secondary = scores.get("surface_volume_secondary_reference")
-    if secondary is not None and np.isfinite(secondary):
-        return float(secondary)
-    return None
+    return secondary_volume
 
 
 def _restore_volume_history_from_meta(settings: CostAwareSurfaceSettings) -> list[LiveVolumePoint]:
@@ -122,16 +132,28 @@ def _restore_volume_history_from_meta(settings: CostAwareSurfaceSettings) -> lis
         return []
 
     history = []
-    for row in meta.get("live_volume_history", []):
-        try:
-            history.append(tuple(row))
-        except TypeError:
-            pass
+    if int(meta.get("live_volume_history_version", 0) or 0) >= 2:
+        for row in meta.get("live_volume_history", []):
+            try:
+                history.append(tuple(row))
+            except TypeError:
+                pass
     if history:
-        return [
-            (int(i), float(fit), float(ref), float(lo), float(hi))
-            for i, fit, ref, lo, hi in history
-        ]
+        restored: list[LiveVolumePoint] = []
+        for row in history:
+            if len(row) < 5:
+                continue
+            restored.append(
+                (
+                    int(row[0]),
+                    float(row[1]),
+                    float(row[2]),
+                    float(row[3]),
+                    float(row[4]),
+                    float(row[5]) if len(row) > 5 else float("nan"),
+                )
+            )
+        return restored
     return _rebuild_volume_history_from_batches(meta, settings)
 
 
@@ -163,8 +185,18 @@ def _rebuild_volume_history_from_batches(
                     estimator.record(bool(measurement["outcome"]))
         params, weights = _stateless_posterior(data, settings)
         if params is not None and weights is not None:
+            secondary_reference_gates = (
+                _analytic_lindblad_gates
+                if settings.gp_grid_surface_path is not None
+                else None
+            )
             _record_volume_point_from_posterior(
-                params, weights, settings, int(iteration), history
+                params,
+                weights,
+                settings,
+                int(iteration),
+                history,
+                secondary_reference_gates=secondary_reference_gates,
             )
     return history
 
@@ -182,6 +214,7 @@ def _save_volume_history_to_meta(
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         if not _method._checkpoint_q_values_match(meta, settings):
             return
+        meta["live_volume_history_version"] = 2
         meta["live_volume_history"] = [list(point) for point in volume_history]
         _method._write_json_atomic(meta_path, meta)
     except Exception:
@@ -397,17 +430,39 @@ def run_with_design_plots(settings: CostAwareSurfaceSettings):
 
     params, weights = _stateless_posterior(rmb._data, settings)
     if params is not None and weights is not None:
-        mesh = _surface_plot_mesh(params, weights, settings)
-        if mesh is not None:
-            plot_boundary_surface(
-                *mesh,
-                _measured_arrays(rmb._data),
-                settings,
-                png_path=settings.surface_plot_path,
-                show=settings.surface_plot_show,
-                show_block=True,
-                figure_name="cost-aware final surface",
+        # Build a fitted mean and +-sigma mesh (converted to log10) and draw
+        # the uncertainty surface into the main COST_AWARE surface plot so the
+        # final plot includes the +-sigma envelopes.
+        try:
+            r_lo, r_hi = settings.ratio_bounds
+            ratios = np.linspace(r_lo, r_hi, max(settings.score_ratio_points, 2))
+            qubits = np.asarray(settings.q_values, dtype=float)
+            rr, qq = np.meshgrid(ratios, qubits)
+            mean_log, sigma_log, _ = _logn_mean_sigma_mesh(
+                params, weights, settings, rr, qq, raw=getattr(settings, "plot_raw_fidelity_boundary", False)
             )
+            if mean_log is not None:
+                ln10 = np.log(10.0)
+                mean_log10 = mean_log / ln10
+                sigma_log10 = sigma_log / ln10
+                k = float(getattr(settings, "surface_uncertainty_sigma", 1.0))
+                lower_log10 = mean_log10 - k * sigma_log10
+                upper_log10 = mean_log10 + k * sigma_log10
+                png = plot_boundary_uncertainty_surface(
+                    rr,
+                    qq,
+                    mean_log10,
+                    lower_log10,
+                    upper_log10,
+                    _measured_arrays(rmb._data),
+                    settings,
+                    png_path=settings.surface_plot_path,
+                    show=settings.surface_plot_show,
+                    show_block=True,
+                    figure_name="cost-aware final surface",
+                )
+        except Exception as exc:  # noqa: BLE001 - final plotting should not kill a run
+            print_progress(settings, budget, f"final surface plot skipped: {exc}")
     return rmb, configs, budget
 
 
