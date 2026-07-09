@@ -13,13 +13,7 @@ GRID_PATH = Path(
 )
 
 
-def axis_spacing(values: np.ndarray, *, log: bool = False) -> float:
-    axis = np.unique(values)
-    if log:
-        axis = np.log10(axis)
-    if len(axis) < 2:
-        return 1.0
-    return float(np.mean(np.diff(np.sort(axis))))
+from sympleq.applications.randomized_benchmarking.experiments.scores import axis_spacing
 
 
 def score_grid(grid_path: str | Path = GRID_PATH) -> dict[str, float]:

@@ -66,7 +66,7 @@ def circuit_stitching(
         sum_circuit.add_circbox_regwise(CircBox(s_circuit), qreg, cregs)
         if idx == len(input_circuits) - 1:
             continue
-        sum_circuit.add_circbox(reset_box, s_circuit.qubits)
+        sum_circuit.add_circbox(reset_box, sum_circuit.qubits)
 
     # Flatten the CircBoxes into native gates so the stitched circuit is a
     # single genuine circuit. This is what lets gate-count-based cost and
@@ -103,5 +103,7 @@ def destitch_results(
 def estimate_qasm_program_size(
     circuit: Circuit
 ) -> int:
-    qasm_str = circuit_to_qasm_str(circuit, header="hqslib1")
+    qasm_str = circuit_to_qasm_str(circuit,
+                                   header="hqslib1",
+                                   maxwidth=max(32, circuit.n_bits + 1))
     return sys.getsizeof(qasm_str) // 1024**2
