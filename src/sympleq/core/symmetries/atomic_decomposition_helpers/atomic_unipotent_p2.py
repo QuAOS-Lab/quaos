@@ -289,54 +289,51 @@ def _top_coeff_candidates(m: int, *, exhaustive_limit: int = 10) -> List[np.ndar
 
 def _hyperbolic_pair_candidates(Btop: np.ndarray) -> List[Tuple[np.ndarray, np.ndarray]]:
     """
-    Deterministic candidate top pairs (c,d) with c^T Btop d = 1.
+    Deterministic quotient-normal-form W-pair extraction.
 
-    When Btop is alternating, try quotient-level Gram-Schmidt pairs first.
-    For non-alternating top forms (which occur for V_beta(2k) single-chain
-    blocks), skip Gram-Schmidt and use exhaustive coefficient pairs.  Direct
-    cyclic-module nondegeneracy checks decide whether a candidate is accepted.
+    This certified helper does **not** enumerate arbitrary coefficient vectors.
+    For alternating nonsingular top forms it uses symplectic Gram-Schmidt.  For
+    nonsingular non-alternating symmetric GF(2) forms, it first diagonalizes the
+    form into orthogonal anisotropic lines ``u_i`` and then pairs adjacent lines
+    as ``(u_i, u_i + u_j)``.  The resulting pair has
+
+        b(u_i, u_i + u_j) = 1,
+
+    with a nonsingular two-dimensional top Gram, which is the W/W_beta lifting
+    certificate used by the p=2 unipotent extractor.
     """
     Btop = mod_p(np.asarray(Btop, dtype=np.int64), 2)
+    if Btop.ndim != 2 or Btop.shape[0] != Btop.shape[1]:
+        raise ValueError(f"Btop must be square, got {Btop.shape}.")
     m = int(Btop.shape[0])
+    if m == 0:
+        return []
+    if not np.array_equal(Btop, Btop.T):
+        raise RuntimeError("p=2 top form is not symmetric; cannot extract certified W-pairs.")
 
-    e_list: List[np.ndarray] = []
-    f_list: List[np.ndarray] = []
-    if m > 0 and np.all(np.diag(Btop) % 2 == 0):
-        try:
-            e_list, f_list, _ = _p2_hyperbolic_pairs_from_alternating_form(Btop, p=2)
-        except RuntimeError:
-            # Fall through to exhaustive coefficient-pair enumeration.  The
-            # acceptor verifies every lifted block, so this is safe.
-            e_list, f_list = [], []
+    if np.all(np.diag(Btop) % 2 == 0):
+        e_list, f_list, rad_list = _p2_hyperbolic_pairs_from_alternating_form(Btop, p=2)
+        if rad_list:
+            raise RuntimeError("alternating top form has a radical in certified W-pair extraction.")
+        return [(mod_p(e, 2), mod_p(f, 2)) for e, f in zip(e_list, f_list)]
+
+    anis = _anisotropic_orthogonal_line_candidates(Btop)
+    if len(anis) != m:
+        raise RuntimeError(
+            f"non-alternating top form did not diagonalize to a full anisotropic basis: {len(anis)} != {m}"
+        )
+    if len(anis) % 2 != 0:
+        raise RuntimeError("non-alternating W-pair extraction needs an even number of anisotropic lines.")
 
     out: List[Tuple[np.ndarray, np.ndarray]] = []
-    seen: set[Tuple[Tuple[int, ...], Tuple[int, ...]]] = set()
-
-    def pair_value(c: np.ndarray, d: np.ndarray) -> int:
-        return _scalar_mod2(c.reshape(1, -1) @ Btop @ d.reshape(-1, 1))
-
-    def push(c: np.ndarray, d: np.ndarray) -> None:
-        cc = mod_p(np.asarray(c, dtype=np.int64).reshape(-1), 2)
-        dd = mod_p(np.asarray(d, dtype=np.int64).reshape(-1), 2)
-        if cc.shape[0] != m or dd.shape[0] != m:
-            return
-        if not np.any(cc) or not np.any(dd):
-            return
-        if pair_value(cc, dd) != 1:
-            return
-        key = (tuple(int(x) for x in cc), tuple(int(x) for x in dd))
-        if key not in seen:
-            seen.add(key)
-            out.append((cc, dd))
-
-    for c, d in zip(e_list, f_list):
-        push(c, d)
-
-    coeffs = _top_coeff_candidates(m, exhaustive_limit=8)
-    for c in coeffs:
-        for d in coeffs:
-            push(c, d)
-
+    for i in range(0, len(anis), 2):
+        u = mod_p(np.asarray(anis[i], dtype=np.int64).reshape(-1), 2)
+        v = mod_p(np.asarray(anis[i + 1], dtype=np.int64).reshape(-1), 2)
+        e = u
+        f = mod_p(u + v, 2)
+        if _scalar_mod2(e.reshape(1, -1) @ Btop @ f.reshape(-1, 1)) != 1:
+            raise RuntimeError("internal error: constructed non-alternating W-pair has zero top pairing.")
+        out.append((e, f))
     return out
 
 
@@ -635,8 +632,8 @@ def _p2_extract_blocks(F_sec, N, Omega, T_sec, m, max_exp0, deg_q, key, p):
         Acceptance carries the one-scalar Cor. 4.12 certificate (b_L(v,v)=1 for a
         V-line; b_L(v,w)=1 with the top Gram nonsingular for a W-pair); the direct
         nondegeneracy/invariance test in accept_block is retained as a defensive
-        runtime assertion.  The exhaustive coefficient sweeps remain only in the
-        best-effort path.
+        runtime assertion.  No arbitrary coefficient enumeration is used on the
+        certified path.
         """
         L = int(L)
         Btop = _top_pairing_matrix(A_top, Omega, N, L)
@@ -814,6 +811,8 @@ def _p2_build_certificate(blocks_meta, kernel_profile, kernel_profile_blocks,
             "unimplemented_blocks_seen": unimplemented,
             "length_dropping_used": False,
             "used_best_effort_sweep": used_best_effort,
+            "candidate_enumeration_used": False,
+            "certified_extraction_policy": "quotient_top_normal_form_no_enumeration",
         },
         "cost_certificate": {
             "lower_bound": int(sector_cost) if implemented_complete else None,

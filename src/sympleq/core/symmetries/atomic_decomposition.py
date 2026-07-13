@@ -16,6 +16,7 @@ from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_types import (
     AtomicBlock,
     AtomicInvariant,
     SectorContext,
+    SectorCostCertificate,
     ExtractionObstruction,
     SearchBudgetExceeded,
 )
@@ -417,21 +418,38 @@ def _inject_invariant_lower_bound(
     sector_cost = max((int(b.half_dim) for b in blocks), default=0)
     status_ok = (inv.data.get("status", "OK") == "OK")
 
-    cc = dict(inv.data.get("cost_certificate") or {})
-    cc["sector_cost"] = int(sector_cost)
-    cc["attained"] = True  # a decomposition was constructed; cost is sector_cost
-    cc["lower_bound"] = None if lb is None else int(lb)
-    cc["lower_bound_complete"] = bool(bound_complete and lb is not None and status_ok)
-    # ``complete`` means the invariant lower bound is available and the sector
-    # was constructed successfully.  It does *not* mean the sector attained that
-    # bound; that is recorded separately below.
-    cc["complete"] = bool(cc["lower_bound_complete"])
-    cc["certified_minimal_sector"] = bool(cc["lower_bound_complete"] and lb is not None and sector_cost == int(lb))
-    cc["certified"] = bool(cc["certified_minimal_sector"])
-    cc["lengths_present"] = list(meta.get("lengths_present", []))
-    note = cc.get("note") or ""
-    cc["note"] = (note + " | " if note else "") + "lower_bound from invariants (Phase 2)"
-    inv.data["cost_certificate"] = cc
+    legacy_cc = dict(inv.data.get("cost_certificate") or {})
+    legacy_cc["lengths_present"] = list(meta.get("lengths_present", []))
+    note = legacy_cc.get("note") or ""
+    note = (note + " | " if note else "") + "lower_bound from invariants (Phase 2)"
+
+    lower_bound_complete = bool(bound_complete and lb is not None and status_ok)
+    sector_cert = SectorCostCertificate(
+        sector_cost=int(sector_cost),
+        lower_bound=None if lb is None else int(lb),
+        lower_bound_complete=lower_bound_complete,
+        extraction_attained=bool(status_ok),
+        certified_minimal_sector=bool(lower_bound_complete and lb is not None and sector_cost == int(lb)),
+        note=note,
+        extra={
+            k: v
+            for k, v in legacy_cc.items()
+            if k
+            not in {
+                "sector_cost",
+                "lower_bound",
+                "lower_bound_complete",
+                "attained",
+                "extraction_attained",
+                "complete",
+                "certified",
+                "certified_minimal_sector",
+                "note",
+            }
+        },
+    )
+    inv.data["sector_cost_certificate"] = sector_cert
+    inv.data["cost_certificate"] = sector_cert.as_dict()
 
 
 def _build_sector(

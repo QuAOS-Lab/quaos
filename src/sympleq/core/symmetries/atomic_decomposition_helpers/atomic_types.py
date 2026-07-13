@@ -1,7 +1,7 @@
 # sympleq/core/symmetries/atomic_decomposition_helpers/atomic_types.py
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple, List, Literal, TypedDict
 
 import numpy as np
@@ -25,6 +25,47 @@ class CostCertificate(TypedDict, total=False):
     sector_certificates: List[Dict[str, Any]]
     missing: List[Dict[str, Any]]
     incomplete: List[Dict[str, Any]]
+
+
+@dataclass(frozen=True, slots=True)
+class SectorCostCertificate:
+    """Typed sector-local cost certificate.
+
+    ``lower_bound_complete`` records that the invariant-derived lower bound is
+    available for this sector.  ``extraction_attained`` records that the sector
+    extractor constructed verified blocks.  ``certified_minimal_sector`` is the
+    stronger statement that the attained sector cost equals the invariant lower
+    bound.
+
+    The public ``cost_certificate`` stored on :class:`AtomicInvariant` remains a
+    plain dictionary for backward compatibility; use :meth:`as_dict` when
+    serialising.
+    """
+
+    sector_cost: int
+    lower_bound: Optional[int]
+    lower_bound_complete: bool
+    extraction_attained: bool
+    certified_minimal_sector: bool
+    note: str = ""
+    extra: Dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = dict(self.extra)
+        out.update(
+            {
+                "sector_cost": int(self.sector_cost),
+                "lower_bound": None if self.lower_bound is None else int(self.lower_bound),
+                "lower_bound_complete": bool(self.lower_bound_complete),
+                "attained": bool(self.extraction_attained),
+                "extraction_attained": bool(self.extraction_attained),
+                "complete": bool(self.lower_bound_complete and self.extraction_attained),
+                "certified_minimal_sector": bool(self.certified_minimal_sector),
+                "certified": bool(self.certified_minimal_sector),
+                "note": str(self.note),
+            }
+        )
+        return out
 
 
 # ---------------------------------------------------------------------------

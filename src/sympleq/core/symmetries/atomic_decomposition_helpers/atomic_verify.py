@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 import numpy as np
 
 from ..modular_helpers import mod_p, omega_matrix, inv_mod_mat, rank_mod
-from .atomic_types import AtomicBlock, AtomicInvariant
+from .atomic_types import AtomicBlock, AtomicInvariant, SectorCostCertificate
 from .atomic_linear import split_uv
 
 
@@ -197,7 +197,8 @@ def verify_cost_certificate(
 
     for inv in invariants:
         data = inv.data if isinstance(inv.data, dict) else {}
-        cert = data.get("cost_certificate")
+        cert_obj = data.get("sector_cost_certificate")
+        cert = cert_obj.as_dict() if isinstance(cert_obj, SectorCostCertificate) else data.get("cost_certificate")
         label = {
             "sector_key": tuple(inv.sector_key),
             "sector_type": inv.sector_type,
@@ -215,8 +216,8 @@ def verify_cost_certificate(
             continue
 
         lb = cert.get("lower_bound")
-        attained = bool(cert.get("attained", False))
-        complete = bool(cert.get("complete", cert.get("certified", False)))
+        attained = bool(cert.get("extraction_attained", cert.get("attained", False)))
+        complete = bool(cert.get("complete", False))
         try:
             lb_int: Optional[int] = None if lb is None else int(lb)
         except Exception:
