@@ -13,8 +13,16 @@ from .atomic_linear import (
     symplectic_orthogonal_complement_in_span,
     mat_pow_mod,
 )
-from .module_invariants import jordan_chain_tops_nilpotent, cyclic_submodule_basis
+from .module_invariants import cyclic_submodule_basis
 from .atomic_witt import witt_decompose_form
+from .atomic_filtration import build_nilpotent_filtration
+from .atomic_extension import (
+    GFpExtension,
+    top_quotient_E_basis,
+    hermitian_top_matrix,
+    hermitian_orthogonal_lines,
+    top_vector_from_E_coords,
+)
 
 
 def _cyclic_basis(F: np.ndarray, N: np.ndarray, v: np.ndarray, deg_q: int, L: int, p: int) -> np.ndarray:
@@ -64,6 +72,9 @@ def _extract_block_by_quotient_witt(
     deg_q: int,
     L: int,
     p: int,
+    *,
+    top_denom: np.ndarray | None = None,
+    poly_key: Tuple[int, ...] | None = None,
 ) -> Tuple[Optional[np.ndarray], Optional[str], Dict[str, Any]]:
     """
     Deterministically extract one nondegenerate cyclic/hyperbolic summand from the
@@ -91,6 +102,48 @@ def _extract_block_by_quotient_witt(
         return None, None, {"top_dim": 0}
 
     target = int(deg_q) * int(L)
+
+    # Nonlinear self-reciprocal factors have an effective extension-field
+    # top space.  A base-field Witt decomposition of X^T Omega N^{L-1}X sees
+    # only scalar components of the E-valued Hermitian form and can miss the
+    # minimal single cyclic line.  For deg(q)>1 we therefore first perform a
+    # Hermitian Gram-Schmidt over E=GF(p)[x]/(q), using only base-field trace
+    # pairings to reconstruct the E-valued form.
+    if int(deg_q) > 1:
+        if poly_key is None:
+            raise RuntimeError("nonlinear self-sector extraction requires poly_key")
+        field = GFpExtension(poly_key, p)
+        tq = top_quotient_E_basis(
+            F, N, int(L), int(deg_q), int(p),
+            top_reps=X,
+            denom=top_denom,
+        )
+        H = hermitian_top_matrix(F, N, Omega, field, tq.e_basis_reps, int(L), p)
+        lines, hinfo = hermitian_orthogonal_lines(field, H)
+        diagnostics: Dict[str, Any] = {
+            "top_dim": int(X.shape[1]),
+            "target_cyclic_dim": int(target),
+            "algorithm": "extension_field_hermitian_top_form",
+            "dim_E": int(tq.dim_E),
+            "hermitian": hinfo,
+            "n_single_tested": 0,
+        }
+        for coords in lines:
+            diagnostics["n_single_tested"] += 1
+            for conjugate_coeffs in (False, True):
+                v = top_vector_from_E_coords(
+                    F, field, tq.e_basis_reps, coords, p,
+                    conjugate_coeffs=conjugate_coeffs,
+                )
+                C = _cyclic_span_from_top_seeds(F, N, [v], int(deg_q), int(L), p)
+                if C is None or C.shape[1] != target:
+                    continue
+                if is_nondegenerate(Omega, C, p):
+                    diagnostics["accepted_dim"] = int(C.shape[1])
+                    diagnostics["accepted_conjugate_lift"] = bool(conjugate_coeffs)
+                    return C, "single_hermitian", diagnostics
+        return None, None, diagnostics
+
     NLm1 = mat_pow_mod(N, int(L) - 1, p)
     B_top = mod_p(X.T @ Omega @ (NLm1 @ X), p)
 
@@ -190,7 +243,7 @@ def atomic_blocks_in_self_sector_nonunipotent(
         "note": "",
         "attempts": [],
         "checks_passed": [],
-        "algorithm": "quotient_form_witt",
+        "algorithm": "extension_hermitian_or_quotient_witt",
     }
 
     Omega_std = omega_matrix(m // 2, p)
@@ -228,7 +281,8 @@ def atomic_blocks_in_self_sector_nonunipotent(
         N_r = restrict_operator(Nstd, R, p)
         Omega_r = omega_matrix(dim_r // 2, p)
 
-        tops = jordan_chain_tops_nilpotent(N_r, int(max_exp), p)
+        filt = build_nilpotent_filtration(N_r, np.eye(dim_r, dtype=np.int64), int(max_exp), p)
+        tops = filt.tops
         if not tops and int(max_exp) == 1:
             tops = {1: np.eye(dim_r, dtype=np.int64)}
 
@@ -246,7 +300,9 @@ def atomic_blocks_in_self_sector_nonunipotent(
 
             try:
                 span_r, mode, diagnostics = _extract_block_by_quotient_witt(
-                    F_r, N_r, Omega_r, X, int(deg_q), int(L), p
+                    F_r, N_r, Omega_r, X, int(deg_q), int(L), p,
+                    top_denom=filt.denom.get(int(L), np.zeros((dim_r, 0), dtype=np.int64)),
+                    poly_key=poly_key,
                 )
             except Exception as exc:
                 diagnostics = {

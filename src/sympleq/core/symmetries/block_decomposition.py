@@ -1,12 +1,68 @@
-from .atomic_decomposition import atomic_block_decompose
+from .atomic_decomposition import (
+    atomic_block_decompose,
+    decompose_or_raise,
+)
 import numpy as np
 from .modular_helpers import mod_p, rank_mod
 from sympleq.core.graphs.utils import qudit_coupling_graph
 
 
+def block_decompose(F: np.ndarray, p: int, **kwargs):
+    """
+    General decomposition entry point.
+
+    Returns ``(Sigma, B, info)``.  The returned ``info`` dictionary distinguishes
+    the attained qudit cost (``Q_att``/``qudit_cost``) from the optimal cost
+    (``Q_opt``), which is only populated when minimality is certified.
+    """
+    return atomic_block_decompose(F, p, **kwargs)
+
+
+def block_decompose_certified(
+    F: np.ndarray,
+    p: int,
+    *,
+    require_minimal: bool = True,
+    **kwargs,
+):
+    """
+    Certified decomposition entry point.
+
+    Returns ``(Sigma, B, info)`` and raises ``CertificationError`` unless the
+    result is a certified atomic decomposition.  By default it also requires the
+    qudit cost to be certified minimal; set ``require_minimal=False`` to accept
+    certified atomic decompositions whose minimality is not certified.
+    """
+    min_block_size = kwargs.pop("min_block_size", None)
+    Sigma, B, info = decompose_or_raise(F, p, require_minimal=require_minimal, **kwargs)
+    if min_block_size is not None:
+        info = dict(info)
+        info["requested_min_block_size"] = int(min_block_size)
+        info.setdefault("warnings", []).append(
+            "min_block_size is a legacy compatibility option and is not used by the atomic decomposer."
+        )
+    return Sigma, B, info
+
+
 def block_decompose_optimal(F: np.ndarray, p: int, **kwargs):
-    Sigma, B, info = atomic_block_decompose(F, p)
-    return Sigma, B
+    """
+    Return a certified-minimal decomposition ``(Sigma, B, info)``.
+
+    This function intentionally raises rather than returning an uncertified
+    result.  It also returns the certificate information instead of discarding it,
+    so downstream numerics cannot confuse an attained cost with a proven optimum.
+    """
+    if "require_minimal" in kwargs:
+        raise TypeError("block_decompose_optimal always requires certified minimality; use block_decompose_certified for require_minimal=False.")
+    min_block_size = kwargs.pop("min_block_size", None)
+    Sigma, B, info = decompose_or_raise(F, p, require_minimal=True, **kwargs)
+    if min_block_size is not None:
+        info = dict(info)
+        info["requested_min_block_size"] = int(min_block_size)
+        info.setdefault("warnings", []).append(
+            "min_block_size is a legacy compatibility option and is not used by the atomic decomposer."
+        )
+    return Sigma, B, info
 
 
 def _mode_graph_from_S(S: np.ndarray, p: int) -> list[list[int]]:

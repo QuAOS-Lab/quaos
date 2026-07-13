@@ -2,6 +2,11 @@ import numpy as np
 import pytest
 
 from sympleq.core.symmetries.atomic_decomposition import atomic_block_decompose, CertificationError
+from sympleq.core.symmetries.block_decomposition import (
+    block_decompose,
+    block_decompose_certified,
+    block_decompose_optimal,
+)
 from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_linear import symplectic_left_inverse
 from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_verify import (
     verify_global_basis,
@@ -87,6 +92,20 @@ def _row_is_symplectic(B: np.ndarray, p: int) -> bool:
     return np.array_equal(mod_p(B @ Ω @ B.T, p), Ω)
 
 
+def _attained_cost(info: dict) -> int:
+    return int(info.get("Q_att", info.get("attained_qudit_cost", info["qudit_cost"])))
+
+
+def _assert_cost_semantics(info: dict) -> None:
+    assert _attained_cost(info) == int(info["qudit_cost"])
+    if info.get("minimal_cost_certified", False):
+        assert info.get("Q_opt") == _attained_cost(info)
+        assert info.get("optimal_qudit_cost") == _attained_cost(info)
+    else:
+        assert info.get("Q_opt") is None
+        assert info.get("optimal_qudit_cost") is None
+
+
 def _sector_signature(meta: dict) -> list[tuple]:
     sig = []
     for sec in meta.get("sectors", []):
@@ -148,7 +167,7 @@ class TestAtomicDecompositionAPI:
     def test_certified_paired_only_has_minimal_cost_certificate(self) -> None:
         p, n = 5, 3
         F = _symplectic_scale(2 * np.eye(n, dtype=np.int64), p)
-        Sigma, B, info = atomic_block_decompose(F, p, mode="certified")
+        Sigma, B, info = atomic_block_decompose(F, p)
         verify_global_basis(F, B, Sigma, p)
         assert info["status"] == "OK"
         assert info["certified"] is True
@@ -161,17 +180,17 @@ class TestAtomicDecompositionAPI:
         for p in [2, 3, 5]:
             for n in [1, 2, 3]:
                 F = rand_symplectic(rng, n, p, steps=8)
-                Sigma, B, info = atomic_block_decompose(F, p, mode="best_effort")
+                Sigma, B, info = atomic_block_decompose(F, p, allow_degraded=True)
                 verify_global_basis(F, B, Sigma, p)
                 assert info["status"] in {"OK", "DEGRADED"}
-                assert info["qudit_cost"] == info["Q_opt"]
+                _assert_cost_semantics(info)
                 if info["status"] != "OK" or info.get("completed"):
                     assert info["minimal_cost_certified"] is False
 
     def test_auto_mode_falls_back_but_records_last_error_when_needed(self) -> None:
         rng = np.random.default_rng(12)
         F = rand_symplectic(rng, 3, 3, steps=8)
-        Sigma, B, info = atomic_block_decompose(F, 3, mode="auto")
+        Sigma, B, info = atomic_block_decompose(F, 3, allow_degraded=True)
         verify_global_basis(F, B, Sigma, 3)
         assert info["status"] in {"OK", "DEGRADED"}
         if info["status"] == "DEGRADED":
@@ -182,7 +201,7 @@ class TestAtomicDecompositionAPI:
         p, n = 5, 2
         F_col = _symplectic_scale(2 * np.eye(n, dtype=np.int64), p)
         F_row = F_col.T
-        Sigma_row, B_row, info = atomic_block_decompose(F_row, p, mode="certified", convention="row")
+        Sigma_row, B_row, info = atomic_block_decompose(F_row, p, convention="row")
         assert info["input_convention"] == "row"
         assert _row_is_symplectic(B_row, p)
         # Row convention relation: Sigma = B F B^{-1}.
@@ -191,21 +210,39 @@ class TestAtomicDecompositionAPI:
     def test_column_convention_coordinate_identity(self) -> None:
         p, n = 7, 2
         F = _symplectic_scale(3 * np.eye(n, dtype=np.int64), p)
-        Sigma, B, info = atomic_block_decompose(F, p, mode="certified")
+        Sigma, B, info = atomic_block_decompose(F, p)
         assert np.array_equal(mod_p(F @ B, p), mod_p(B @ Sigma, p))
 
     def test_certified_failure_uses_certification_error(self) -> None:
         rng = np.random.default_rng(13)
         F = rand_symplectic(rng, 3, 3, steps=8)
         try:
-            atomic_block_decompose(F, 3, mode="certified")
+            atomic_block_decompose(F, 3)
         except Exception as exc:
             assert isinstance(exc, CertificationError)
             assert isinstance(exc.info, dict)
 
-    def test_invalid_mode_and_convention_raise_value_error(self) -> None:
+    def test_block_decomposition_wrappers_preserve_certificate_info(self) -> None:
+        p, n = 5, 2
+        F = _symplectic_scale(2 * np.eye(n, dtype=np.int64), p)
+
+        Sigma, B, info = block_decompose(F, p)
+        verify_global_basis(F, B, Sigma, p)
+        assert "Q_att" in info
+        assert "Q_opt" in info
+        _assert_cost_semantics(info)
+
+        Sigma_c, B_c, info_c = block_decompose_certified(F, p, require_minimal=True)
+        verify_global_basis(F, B_c, Sigma_c, p)
+        assert info_c["minimal_cost_certified"] is True
+        assert info_c["Q_opt"] == info_c["Q_att"]
+
+        Sigma_o, B_o, info_o = block_decompose_optimal(F, p)
+        verify_global_basis(F, B_o, Sigma_o, p)
+        assert info_o["minimal_cost_certified"] is True
+        assert info_o["Q_opt"] == info_o["Q_att"]
+
+    def test_invalid_convention_raises_value_error(self) -> None:
         F = np.eye(2, dtype=np.int64)
         with pytest.raises(ValueError):
-            atomic_block_decompose(F, 2, mode="unknown")
-        with pytest.raises(ValueError):
-            atomic_block_decompose(F, 2, mode="best_effort", convention="sideways")
+            atomic_block_decompose(F, 2, allow_degraded=True, convention="sideways")

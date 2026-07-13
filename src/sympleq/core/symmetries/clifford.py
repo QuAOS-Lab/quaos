@@ -39,7 +39,7 @@ def min_qudit_clifford_symmetry(pauli_sum: PauliSum, talk: bool = False, progres
     if talk:
         print('Got symmetry - decomposing')
 
-    S, T = block_decompose_optimal(g.symplectic, int(pauli_sum.lcm), min_block_size=4)
+    S, T, _info = block_decompose_optimal(g.symplectic, int(pauli_sum.lcm), min_block_size=4)
     h_S, h_T = clifford_phase_decomposition(g.symplectic, g.phase_vector(), S, T, int(pauli_sum.lcm))
     S_gate = Gate('S', S, h_S)
     T_gate = Gate('T', T, h_T)
@@ -60,7 +60,7 @@ def multiple_min_qudit_clifford_symmetries(pauli_sum: PauliSum,
     Ss = []
     Ts = []
     for i, g in enumerate(G):
-        S, T = block_decompose_optimal(g.symplectic, pauli_sum.lcm)
+        S, T, _info = block_decompose_optimal(g.symplectic, pauli_sum.lcm)
         h_S, h_T = clifford_phase_decomposition(g.symplectic, g.phase_vector(), S, T, int(pauli_sum.lcm))
         S_gate = Gate(f'S{i}', S, h_S)
         T_gate = Gate(f'T{i}', T, h_T)

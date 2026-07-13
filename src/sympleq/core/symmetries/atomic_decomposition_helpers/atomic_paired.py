@@ -23,10 +23,10 @@ from .atomic_linear import (
 from .module_invariants import (
     restrict_operator_invariant,
     q_of_F_restricted,
-    jordan_chain_tops_nilpotent,
     cyclic_submodule_basis,
 )
-from .atomic_krylov import _select_module_generators_from_top_space
+from .atomic_krylov import select_module_generators_from_top_quotient
+from .atomic_filtration import build_nilpotent_filtration
 
 # Single shared matrix-power implementation (B7); private name kept for callers.
 _mat_pow_mod = mat_pow_mod
@@ -84,24 +84,18 @@ def _candidate_generators_from_top_space(
     deg_q: int,
     L: int,
     p: int,
+    *,
+    denom: np.ndarray | None = None,
 ) -> np.ndarray:
     """
-    Deterministic pool of candidate generators drawn from the provided top-space basis.
-    Keeps ONLY vectors v such that cyclic_submodule_basis(Fp,Np,v) has full rank deg_q*L.
+    Deterministic module-generator pool drawn from a top quotient.
+
+    This uses quotient F-orbits rather than individual GF(p) top-basis columns,
+    so a deg(q)-dimensional base-field orbit contributes one generator.
     """
-    top_basis = independent_columns(mod_p(top_basis, p), p)
-    if top_basis.shape[1] == 0:
-        return top_basis
-
-    cols: List[np.ndarray] = []
-    for j in range(top_basis.shape[1]):
-        v = top_basis[:, j:j + 1]
-        if _cyclic_module_has_full_rank(Fp, Np, v, deg_q, L, p):
-            cols.append(v)
-
-    if not cols:
-        return np.zeros((Fp.shape[0], 0), dtype=np.int64)
-    return np.concatenate(cols, axis=1)
+    return select_module_generators_from_top_quotient(
+        Fp, Np, top_basis, int(deg_q), int(L), int(p), denom=denom
+    )
 
 
 def _select_right_generators_with_full_pairing(
@@ -246,8 +240,10 @@ def atomic_blocks_in_paired_sector(
             Nq = q_of_F_restricted(Fq, q, p)
             Nqs = q_of_F_restricted(Fqs, q_star, p)
 
-            tops_left = jordan_chain_tops_nilpotent(Nq, max_exp, p)
-            tops_right = jordan_chain_tops_nilpotent(Nqs, max_exp, p)
+            filt_left = build_nilpotent_filtration(Nq, np.eye(Fq.shape[0], dtype=np.int64), max_exp, p)
+            filt_right = build_nilpotent_filtration(Nqs, np.eye(Fqs.shape[0], dtype=np.int64), max_exp, p)
+            tops_left = filt_left.tops
+            tops_right = filt_right.tops
             if not tops_left and max_exp >= 1:
                 tops_left = {1: np.eye(Fq.shape[0], dtype=np.int64)}
             if not tops_right and max_exp >= 1:
@@ -266,8 +262,14 @@ def atomic_blocks_in_paired_sector(
                 A_raw = tops_left.get(L, np.zeros((Fq.shape[0], 0), dtype=np.int64))
                 B_raw = tops_right.get(L, np.zeros((Fqs.shape[0], 0), dtype=np.int64))
 
-                A = _select_module_generators_from_top_space(Fq, Nq, A_raw, deg_q, int(L), p)
-                pool = _candidate_generators_from_top_space(Fqs, Nqs, B_raw, deg_q, int(L), p)
+                A = select_module_generators_from_top_quotient(
+                    Fq, Nq, A_raw, deg_q, int(L), p,
+                    denom=filt_left.denom.get(int(L), np.zeros((Fq.shape[0], 0), dtype=np.int64)),
+                )
+                pool = _candidate_generators_from_top_space(
+                    Fqs, Nqs, B_raw, deg_q, int(L), p,
+                    denom=filt_right.denom.get(int(L), np.zeros((Fqs.shape[0], 0), dtype=np.int64)),
+                )
 
                 # Bookkeeping only (not used by the algorithm)
                 inv_data["length_multiplicities"][int(L)] = (int(A.shape[1]), int(pool.shape[1]))
@@ -275,31 +277,44 @@ def atomic_blocks_in_paired_sector(
                 if A.shape[1] == 0 or pool.shape[1] == 0:
                     continue
 
-                # Pick a single generator pair (v,w) with nonzero chain-level top pairing.
+                # Pick a single generator pair (v,w) with nonzero E-valued
+                # chain-level top pairing.  Earlier code tested only the scalar
+                # component <N^{L-1}v,w>; for deg(q)>1 that can vanish even when
+                # another F-orbit component of the reciprocal pairing is nonzero.
                 N_pow = _mat_pow_mod(Nq, int(L) - 1, p)
+                Fqs_pows = [np.eye(Fqs.shape[0], dtype=np.int64)]
+                for _a in range(1, deg_q):
+                    Fqs_pows.append(mod_p(Fqs_pows[-1] @ Fqs, p))
+
                 v_top = None
                 w_top = None
                 s_val = 0
+                a_val = 0
 
                 for ai in range(A.shape[1]):
                     v_cand = A[:, ai:ai + 1]
                     Nv = mod_p(N_pow @ v_cand, p)
                     for j in range(pool.shape[1]):
-                        w_cand = pool[:, j:j + 1]
-                        s = int(mod_p(Nv.T @ (P @ w_cand), p).reshape(())) % p
-                        if s != 0:
-                            v_top = v_cand
-                            w_top = w_cand
-                            s_val = s
+                        w_base = pool[:, j:j + 1]
+                        for a_idx, Fpa in enumerate(Fqs_pows):
+                            w_cand = mod_p(Fpa @ w_base, p)
+                            s = int(mod_p(Nv.T @ (P @ w_cand), p).reshape(())) % p
+                            if s != 0:
+                                v_top = v_cand
+                                w_top = w_cand
+                                s_val = s
+                                a_val = a_idx
+                                break
+                        if w_top is not None:
                             break
                     if w_top is not None:
                         break
 
                 if w_top is None or v_top is None:
-                    last_err = f"no generator pair with nonzero top pairing at L={L}"
+                    last_err = f"no generator pair with nonzero E-top pairing at L={L}"
                     continue
 
-                # Normalize so that Nv^T P w = 1.
+                # Normalize the exposed nonzero component to one.
                 w_top = mod_p(w_top * inv_mod_scalar(s_val, p), p)
 
                 # Build the cyclic submodules and lift to ambient.
@@ -343,6 +358,7 @@ def atomic_blocks_in_paired_sector(
                 inv_data["progress"].append(
                     {
                         "L": int(L),
+                        "right_F_power_component": int(a_val),
                         "block_dim": int(span.shape[1]),
                         "rem_dim_before": int(rem_dim),
                         "rem_dim_after": int(rem2_dim),

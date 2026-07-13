@@ -118,17 +118,35 @@ def _convert_column_result_to_row(Sigma_col: np.ndarray, B_col: np.ndarray, info
 
 
 def _attach_cost_certificate(info: Dict[str, Any], blocks: List[AtomicBlock], invariants: List[AtomicInvariant], *, completed: bool, p: int) -> None:
-    """Attach conservative global cost/minimality fields in-place."""
+    """
+    Attach conservative global cost/minimality fields in-place.
+
+    ``qudit_cost`` / ``Q_att`` is always the attained cost of the returned
+    block frame.  ``Q_opt`` is populated only when the invariant lower bound
+    certifies that this attained cost is optimal; otherwise it is ``None``.
+    This prevents uncertified best-effort or merely atomic decompositions from
+    being consumed downstream as proven optima.
+    """
     cert = verify_cost_certificate(blocks, invariants, p, completed=completed)
-    info["qudit_cost"] = int(cert["qudit_cost"])
+    q_att = int(cert["qudit_cost"])
+    is_minimal = bool(cert["certified_minimal"])
+
+    # Canonical public fields.
+    info["qudit_cost"] = q_att                 # retained public name: attained cost
+    info["Q_att"] = q_att                      # explicit alias for plots/tables
+    info["attained_qudit_cost"] = q_att
     info["certified_lower_bound"] = cert["lower_bound"]
-    info["certified_minimal"] = bool(cert["certified_minimal"])
+    info["certified_minimal"] = is_minimal
     info["cost_certificate"] = cert
-    # Deprecated aliases of the two canonical fields above (``certified_minimal``
-    # and ``qudit_cost``); retained as shims for older notebooks/callers.
-    info["certified_minimal_qudit_cost"] = bool(cert["certified_minimal"])
-    info["minimal_cost_certified"] = bool(cert["certified_minimal"])
-    info["Q_opt"] = int(cert["qudit_cost"])
+
+    # Optimal cost fields are meaningful only after certification.
+    info["Q_opt"] = q_att if is_minimal else None
+    info["optimal_qudit_cost"] = q_att if is_minimal else None
+
+    # Deprecated aliases of the two canonical fields above; retained as shims
+    # for older notebooks/callers, but they no longer imply that Q_opt exists.
+    info["certified_minimal_qudit_cost"] = is_minimal
+    info["minimal_cost_certified"] = is_minimal
 
 
 def _sector_contexts_from_meta(meta: Dict[str, Any]) -> List[SectorContext]:
@@ -403,9 +421,13 @@ def _inject_invariant_lower_bound(
     cc["sector_cost"] = int(sector_cost)
     cc["attained"] = True  # a decomposition was constructed; cost is sector_cost
     cc["lower_bound"] = None if lb is None else int(lb)
-    cc["complete"] = bool(bound_complete and lb is not None and status_ok)
-    cc["certified"] = cc["complete"]
-    cc["certified_minimal_sector"] = bool(lb is not None and sector_cost == int(lb))
+    cc["lower_bound_complete"] = bool(bound_complete and lb is not None and status_ok)
+    # ``complete`` means the invariant lower bound is available and the sector
+    # was constructed successfully.  It does *not* mean the sector attained that
+    # bound; that is recorded separately below.
+    cc["complete"] = bool(cc["lower_bound_complete"])
+    cc["certified_minimal_sector"] = bool(cc["lower_bound_complete"] and lb is not None and sector_cost == int(lb))
+    cc["certified"] = bool(cc["certified_minimal_sector"])
     cc["lengths_present"] = list(meta.get("lengths_present", []))
     note = cc.get("note") or ""
     cc["note"] = (note + " | " if note else "") + "lower_bound from invariants (Phase 2)"
@@ -477,13 +499,19 @@ def atomic_block_decompose(
     p: int,
     *,
     convention: Convention = "column",
+    allow_degraded: bool = False,
+    mode: str | None = None,
 ) -> Tuple[np.ndarray, np.ndarray, Dict]:
     """
     Decompose a symplectic ``F`` into atomic invariant symplectic blocks.
 
-    Single route: this always runs once and always returns ``(Sigma, B, info)``
-    with ``B`` symplectic and ``Sigma = B^{-1} F B``.  Certification is reported
-    in the output rather than selected by a mode:
+    Strict by default: sector extraction failures raise ``CertificationError``
+    instead of being hidden behind a global completion.  Set
+    ``allow_degraded=True`` to recover the previous best-effort behaviour, which
+    always tries to return ``(Sigma, B, info)`` with ``B`` symplectic and reports
+    certification in the output flags.  The legacy ``mode`` keyword is accepted
+    as a compatibility alias: ``mode="certified"`` is strict, while
+    ``mode="best_effort"``/``"degraded"`` permits degraded fallbacks.
 
       * ``info["certified"]`` -- True iff the returned basis is exactly the
         concatenated atomic block frame (no global completion was needed), every
@@ -498,6 +526,16 @@ def atomic_block_decompose(
     Callers that want a hard failure on anything less than a certified minimal
     decomposition should use :func:`decompose_or_raise`.
     """
+    if mode is not None:
+        if mode == "certified":
+            allow_degraded = False
+        elif mode in {"best_effort", "degraded"}:
+            allow_degraded = True
+        else:
+            raise ValueError(
+                f"Unknown mode={mode!r}. Expected 'certified', 'best_effort', or 'degraded'."
+            )
+
     if convention not in ("column", "row"):
         raise ValueError(f"Unknown convention={convention!r}. Expected 'column' or 'row'.")
 
@@ -510,7 +548,9 @@ def atomic_block_decompose(
     F = mod_p(F, p)
 
     if convention == "row":
-        Sigma_col, B_col, info = atomic_block_decompose(F.T, p, convention="column")
+        Sigma_col, B_col, info = atomic_block_decompose(
+            F.T, p, convention="column", allow_degraded=allow_degraded
+        )
         return _convert_column_result_to_row(Sigma_col, B_col, info, p)
 
     if not is_symplectic(F, p):
@@ -534,8 +574,13 @@ def atomic_block_decompose(
             dbg["error"] = reason
             dbg["error_kind"] = _classify_extraction_error(e)
             errors.append(dbg)
+            if not allow_degraded:
+                raise CertificationError(
+                    "Sector extraction failed in strict atomic decomposition mode.",
+                    info={"errors": errors, "failures": errors, "failed_sector": dbg},
+                ) from e
             # Degraded fallback: keep going and let global completion absorb the
-            # span. This can never raise out of the single route.
+            # span. This can never certify atomicity/minimality.
             try:
                 b_fb, inv_fb = _sector_fallback_block(F=F, p=p, ctx=ctx, reason=reason)
             except Exception as e2:
@@ -581,7 +626,7 @@ def atomic_block_decompose(
     if verif_error is not None:
         warnings.append("Independent verification reported an error; inspect verification['error'].")
     if not certified:
-        warnings.append("Result is a valid decomposition but not a certified atomic one.")
+        warnings.append("Result is a symplectic basis reduction but not a certified atomic block decomposition.")
 
     info: Dict[str, Any] = {
         "status": "OK" if certified else "DEGRADED",
@@ -592,6 +637,8 @@ def atomic_block_decompose(
         "atomic_half_dims": [int(b.half_dim) for b in blocks],
         "Lmin_star": int(meta.get("Lmin_star", 1)),
         "completed": bool(completed),
+        "allow_degraded": bool(allow_degraded),
+        "mode": "best_effort" if allow_degraded else "certified",
         "warnings": warnings,
         "verification": verification,
     }
@@ -601,6 +648,24 @@ def atomic_block_decompose(
     # Minimality lives entirely in the (invariant-derived) cost certificate.
     _attach_cost_certificate(info, blocks, sector_invariants, completed=bool(completed), p=p)
     return Sigma, B, info
+
+
+
+def atomic_block_decompose_best_effort(
+    F: np.ndarray,
+    p: int,
+    *,
+    convention: Convention = "column",
+) -> Tuple[np.ndarray, np.ndarray, Dict]:
+    """
+    Backwards-compatible best-effort wrapper.
+
+    This permits degraded sector fallbacks and global symplectic completion.  It
+    is useful for diagnostics/notebooks, but results should be treated as
+    uncertified unless ``info["certified"]`` and ``info["certified_minimal"]``
+    are both true.
+    """
+    return atomic_block_decompose(F, p, convention=convention, allow_degraded=True)
 
 
 def decompose_or_raise(
@@ -618,7 +683,7 @@ def decompose_or_raise(
     also certified minimal (``info["certified_minimal"]``).  Library code should
     prefer :func:`atomic_block_decompose` and read the flags directly.
     """
-    Sigma, B, info = atomic_block_decompose(F, p, convention=convention)
+    Sigma, B, info = atomic_block_decompose(F, p, convention=convention, allow_degraded=False)
     if not info.get("certified", False):
         raise CertificationError(
             "Result is not a certified atomic decomposition.",

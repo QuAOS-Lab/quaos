@@ -108,7 +108,7 @@ class TestAtomicBlocks:
         # a != a^{-1}, so this is a single paired sector.
         A = 2 * np.eye(n, dtype=np.int64)
         F = _symplectic_scale(A, p)
-        Sigma, B, info = atomic_block_decompose(F, p, mode="certified")
+        Sigma, B, info = atomic_block_decompose(F, p)
 
         assert info["status"] == "OK"
         assert info["certified"] is True
@@ -127,7 +127,7 @@ class TestAtomicBlocks:
         for p in [2, 3, 5]:
             for n in [2, 3]:
                 F = rand_symplectic(rng, n, p, steps=10)
-                Sigma, B, info = atomic_block_decompose(F, p, mode="best_effort")
+                Sigma, B, info = atomic_block_decompose(F, p, allow_degraded=True)
                 verify_global_basis(F, B, Sigma, p)
                 assert info["status"] in {"OK", "DEGRADED"}
                 assert info["qudit_cost"] == max(info["atomic_half_dims"], default=0)
@@ -142,8 +142,8 @@ class TestAtomicBlocks:
     def test_certified_mode_is_deterministic_on_paired_only_case(self) -> None:
         p, n = 7, 3
         F = _symplectic_scale(3 * np.eye(n, dtype=np.int64), p)
-        out1 = atomic_block_decompose(F, p, mode="certified")
-        out2 = atomic_block_decompose(F, p, mode="certified")
+        out1 = atomic_block_decompose(F, p)
+        out2 = atomic_block_decompose(F, p)
         Sigma1, B1, info1 = out1
         Sigma2, B2, info2 = out2
         assert np.array_equal(Sigma1, Sigma2)
@@ -155,7 +155,7 @@ class TestAtomicBlocks:
         rng = np.random.default_rng(456)
         F = rand_symplectic(rng, 3, 3, steps=10)
         try:
-            atomic_block_decompose(F, 3, mode="certified")
+            atomic_block_decompose(F, 3)
         except Exception as exc:
             assert isinstance(exc, CertificationError)
             assert isinstance(exc.info, dict)

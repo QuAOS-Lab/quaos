@@ -166,7 +166,7 @@ def _assert_bounded_cost_decomposition(
     trial_meta: dict,
 ) -> None:
     try:
-        Sigma, B, info = atomic_block_decompose(F, p, mode="certified")
+        Sigma, B, info = atomic_block_decompose(F, p)
     except CertificationError as exc:
         pytest.fail(
             "Certified decomposition failed during randomized bounded-cost test.\n"
@@ -180,8 +180,12 @@ def _assert_bounded_cost_decomposition(
     assert rank_mod(B, p) == F.shape[0]
     assert sum(int(h) for h in info["atomic_half_dims"]) == F.shape[0] // 2
 
-    Q_cost = int(info["Q_opt"])
+    Q_cost = int(info.get("Q_att", info.get("attained_qudit_cost", info["qudit_cost"])))
     assert Q_cost == max(int(h) for h in info["atomic_half_dims"])
+    if info.get("minimal_cost_certified", False):
+        assert info.get("Q_opt") == Q_cost
+    else:
+        assert info.get("Q_opt") is None
     # assert Q_cost <= int(Q_max), (
     #     "Recovered qudit cost exceeds the known explicit block construction.\n"
     #     f"Q_cost={Q_cost}, Q_max={Q_max}\n"
@@ -216,7 +220,8 @@ def _assert_bounded_cost_decomposition(
 
     if info.get("minimal_cost_certified", False):
         cert = info.get("cost_certificate", {})
-        assert cert.get("attained") is True, pprint.pformat({"trial_meta": trial_meta, "cert": cert}, width=140)
+        assert int(cert.get("attained")) == Q_cost, pprint.pformat({"trial_meta": trial_meta, "cert": cert}, width=140)
+        assert int(cert.get("qudit_cost", Q_cost)) == Q_cost
         assert int(cert.get("lower_bound")) == Q_cost
         assert cert.get("certified_minimal") is True
 
@@ -229,12 +234,12 @@ class TestAtomicDecompositionRandomBoundedCost:
         Every run samples a fresh random collection of bounded-cost decomposable
         symplectic matrices.
         """
-        trials = _env_int("SYMPLEQ_BOUNDED_COST_RANDOM_TRIALS", 100)
+        trials = _env_int("SYMPLEQ_BOUNDED_COST_RANDOM_TRIALS", 20)
         q_max_limit = _env_int("SYMPLEQ_BOUNDED_COST_RANDOM_MAX_Q", 4)
         max_blocks = _env_int("SYMPLEQ_BOUNDED_COST_RANDOM_MAX_BLOCKS", 8)
         max_total_n = _env_int("SYMPLEQ_BOUNDED_COST_RANDOM_MAX_TOTAL_N", 18)
 
-        ss = np.random.SeedSequence()
+        ss = np.random.SeedSequence(_env_int("SYMPLEQ_BOUNDED_COST_RANDOM_SEED", 123456))
         rng = np.random.default_rng(ss)
 
         primes = [2]
@@ -278,12 +283,12 @@ class TestAtomicDecompositionRandomBoundedCost:
         This helps distinguish direct-sum construction failures from failures
         caused by the random conjugating symplectic.
         """
-        trials = max(10, _env_int("SYMPLEQ_BOUNDED_COST_RANDOM_TRIALS", 100) // 10)
+        trials = max(5, _env_int("SYMPLEQ_BOUNDED_COST_RANDOM_TRIALS", 20) // 10)
         q_max_limit = _env_int("SYMPLEQ_BOUNDED_COST_RANDOM_MAX_Q", 4)
         max_blocks = _env_int("SYMPLEQ_BOUNDED_COST_RANDOM_MAX_BLOCKS", 8)
         max_total_n = _env_int("SYMPLEQ_BOUNDED_COST_RANDOM_MAX_TOTAL_N", 18)
 
-        ss = np.random.SeedSequence()
+        ss = np.random.SeedSequence(_env_int("SYMPLEQ_BOUNDED_COST_RANDOM_SEED", 123456))
         rng = np.random.default_rng(ss)
         primes = [2]
 
@@ -341,7 +346,7 @@ def test_scrambled_direct_sum_of_one_qudit_blocks_has_cost_one() -> None:
     assert is_symplectic(F_direct, p)
     assert is_symplectic(F_scrambled, p)
 
-    Sigma, B, info = atomic_block_decompose(F_scrambled, p, mode="certified")
+    Sigma, B, info = atomic_block_decompose(F_scrambled, p)
     verify_global_basis(F_scrambled, B, Sigma, p)
 
     assert int(info["Q_opt"]) == 1

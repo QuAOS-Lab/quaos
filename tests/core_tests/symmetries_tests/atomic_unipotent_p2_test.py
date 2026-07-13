@@ -72,7 +72,7 @@ class TestP2UnipotentBookkeeping:
         F = _symplectic_blockdiag_from_A(_unipotent_jordan(n))
         assert is_symplectic(F, p)
 
-        Sigma, B, info = atomic_block_decompose(F, p, mode="certified")
+        Sigma, B, info = atomic_block_decompose(F, p)
 
         verify_global_basis(F, B, Sigma, p)
 
@@ -92,8 +92,8 @@ class TestP2UnipotentBookkeeping:
     def test_p2_unipotent_conjugacy_invariant_payload_for_W_block(self) -> None:
         F = canonical_W_block_p2(5)
         F2, _S = random_symplectic_conjugate_p2(F, seed=4, steps=20)
-        _, _, info1 = atomic_block_decompose(F, 2, mode="certified")
-        _, _, info2 = atomic_block_decompose(F2, 2, mode="certified")
+        _, _, info1 = atomic_block_decompose(F, 2)
+        _, _, info2 = atomic_block_decompose(F2, 2)
         p1 = _extract_p2_unipotent_payload(info1)
         p2 = _extract_p2_unipotent_payload(info2)
         assert p1["kernel_profile"] == p2["kernel_profile"]
@@ -103,7 +103,7 @@ class TestP2UnipotentBookkeeping:
     def test_direct_sum_W_block_fixtures_are_symplectic_and_decompose(self, lengths) -> None:
         F = direct_sum_unipotent_p2_blocks([("W", L, 0) for L in lengths])
         assert is_symplectic(F, 2)
-        Sigma, B, info = atomic_block_decompose(F, 2, mode="certified")
+        Sigma, B, info = atomic_block_decompose(F, 2)
         verify_global_basis(F, B, Sigma, 2)
         payload = _extract_p2_unipotent_payload(info)
         assert payload["kernel_profile"] == payload["kernel_profile_blocks"]
@@ -124,7 +124,7 @@ class TestP2UnipotentBookkeeping:
         F = _as_matrix(canonical_unipotent_p2_block(kind, length, beta=beta))
         assert is_symplectic(F, 2)
 
-        Sigma, B, info = atomic_block_decompose(F, 2, mode="certified")
+        Sigma, B, info = atomic_block_decompose(F, 2)
         verify_global_basis(F, B, Sigma, 2)
 
         payload = _extract_p2_unipotent_payload(info)
@@ -147,7 +147,7 @@ class TestP2UnipotentBookkeeping:
         )
         assert is_symplectic(F, 2)
 
-        Sigma, B, info = atomic_block_decompose(F, 2, mode="certified")
+        Sigma, B, info = atomic_block_decompose(F, 2)
         verify_global_basis(F, B, Sigma, 2)
 
         payload = _extract_p2_unipotent_payload(info)
@@ -170,7 +170,7 @@ class TestP2UnipotentBookkeeping:
         F = _symplectic_shear_upper(A)
         assert is_symplectic(F, 2)
 
-        Sigma, B, info = atomic_block_decompose(F, 2, mode="certified")
+        Sigma, B, info = atomic_block_decompose(F, 2)
         verify_global_basis(F, B, Sigma, 2)
 
         payload = _extract_p2_unipotent_payload(info)

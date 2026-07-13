@@ -124,13 +124,28 @@ def _assert_sigma_block_diagonal(Sigma: np.ndarray, half_dims: list[int], p: int
             )
 
 
+def _attained_cost(info: dict) -> int:
+    return int(info.get("Q_att", info.get("attained_qudit_cost", info["qudit_cost"])))
+
+
+def _assert_cost_semantics(info: dict) -> None:
+    assert _attained_cost(info) == int(info["qudit_cost"])
+    assert _attained_cost(info) == max(int(h) for h in info["atomic_half_dims"])
+    if info.get("minimal_cost_certified", False):
+        assert info.get("Q_opt") == _attained_cost(info)
+        assert info.get("optimal_qudit_cost") == _attained_cost(info)
+    else:
+        assert info.get("Q_opt") is None
+        assert info.get("optimal_qudit_cost") is None
+
+
 def _assert_basic_certified_decomposition(F: np.ndarray, Sigma: np.ndarray, B: np.ndarray, info: dict, p: int) -> None:
     """Common global decomposition checks."""
     verify_global_basis(F, B, Sigma, p)
     assert is_symplectic(B, p)
     assert is_symplectic(Sigma, p)
     assert info["certified"] is True
-    assert info["Q_opt"] == max(int(h) for h in info["atomic_half_dims"])
+    _assert_cost_semantics(info)
     assert sum(int(h) for h in info["atomic_half_dims"]) == F.shape[0] // 2
     _assert_sigma_block_diagonal(Sigma, [int(h) for h in info["atomic_half_dims"]], p)
 
@@ -149,14 +164,14 @@ class TestAtomicDecompositionCertificateCoverage:
         F2 = mod_p(inv_mod_mat(S, p) @ F @ S, p)
         assert is_symplectic(F2, p)
 
-        Sigma1, B1, info1 = atomic_block_decompose(F, p, mode="certified")
-        Sigma2, B2, info2 = atomic_block_decompose(F2, p, mode="certified")
+        Sigma1, B1, info1 = atomic_block_decompose(F, p)
+        Sigma2, B2, info2 = atomic_block_decompose(F2, p)
 
         _assert_basic_certified_decomposition(F, Sigma1, B1, info1, p)
         _assert_basic_certified_decomposition(F2, Sigma2, B2, info2, p)
 
         assert sorted(int(x) for x in info1["atomic_half_dims"]) == sorted(int(x) for x in info2["atomic_half_dims"])
-        assert int(info1["Q_opt"]) == int(info2["Q_opt"])
+        assert _attained_cost(info1) == _attained_cost(info2)
         assert bool(info1["minimal_cost_certified"]) == bool(info2["minimal_cost_certified"])
 
     def test_p2_mixed_chapter5_direct_sum_conjugated_certifies(self) -> None:
@@ -185,7 +200,7 @@ class TestAtomicDecompositionCertificateCoverage:
         Fh = mod_p(inv_mod_mat(S, p) @ F @ S, p)
         assert is_symplectic(Fh, p)
 
-        Sigma, B, info = atomic_block_decompose(Fh, p, mode="certified")
+        Sigma, B, info = atomic_block_decompose(Fh, p)
         _assert_basic_certified_decomposition(Fh, Sigma, B, info, p)
 
         assert info["minimal_cost_certified"] is True
@@ -197,6 +212,7 @@ class TestAtomicDecompositionCertificateCoverage:
         #   W_beta(5)  -> 5
         #   V_beta(2)  -> 1
         assert sorted(int(x) for x in info["atomic_half_dims"]) == sorted([3, 2, 5, 1])
+        assert info["minimal_cost_certified"] is True
         assert int(info["Q_opt"]) == 5
 
         payload = _extract_p2_payload(info)
@@ -214,10 +230,10 @@ class TestAtomicDecompositionCertificateCoverage:
         F_row = F_col.T
 
         Sigma_col, B_col, info_col = atomic_block_decompose(
-            F_col, p, mode="certified", convention="column"
+            F_col, p, convention="column"
         )
         Sigma_row, B_row, info_row = atomic_block_decompose(
-            F_row, p, mode="certified", convention="row"
+            F_row, p, convention="row"
         )
 
         _assert_basic_certified_decomposition(F_col, Sigma_col, B_col, info_col, p)
@@ -225,7 +241,7 @@ class TestAtomicDecompositionCertificateCoverage:
         # Row convention returns row-convention objects.  The most robust API-level
         # check here is invariant equality rather than reusing the column verifier.
         assert sorted(int(x) for x in info_col["atomic_half_dims"]) == sorted(int(x) for x in info_row["atomic_half_dims"])
-        assert int(info_col["Q_opt"]) == int(info_row["Q_opt"])
+        assert _attained_cost(info_col) == _attained_cost(info_row)
         assert bool(info_col["minimal_cost_certified"]) == bool(info_row["minimal_cost_certified"])
         assert rank_mod(B_row, p) == 2 * n
         assert Sigma_row.shape == (2 * n, 2 * n)
@@ -250,7 +266,7 @@ class TestAtomicDecompositionCertificateCoverage:
         Fh = mod_p(inv_mod_mat(S, p) @ F @ S, p)
         assert is_symplectic(Fh, p)
 
-        Sigma, B, info = atomic_block_decompose(Fh, p, mode="certified")
+        Sigma, B, info = atomic_block_decompose(Fh, p)
         _assert_basic_certified_decomposition(Fh, Sigma, B, info, p)
 
         payload = _extract_p2_payload(info)
@@ -292,25 +308,27 @@ class TestAtomicDecompositionCertificateCoverage:
         rng = np.random.default_rng(seed)
         F = _rand_symplectic(rng, n, p, steps=35)
 
-        Sigma, B, info = atomic_block_decompose(F, p, mode="certified")
+        Sigma, B, info = atomic_block_decompose(F, p)
         _assert_basic_certified_decomposition(F, Sigma, B, info, p)
 
-        assert int(info["Q_opt"]) == max(int(h) for h in info["atomic_half_dims"])
+        assert _attained_cost(info) == max(int(h) for h in info["atomic_half_dims"])
 
         if info["minimal_cost_certified"]:
             cert = info["cost_certificate"]
-            assert cert["attained"] is True
-            assert int(cert["lower_bound"]) == int(info["Q_opt"])
+            assert int(cert["attained"]) == _attained_cost(info)
+            assert int(cert.get("qudit_cost", _attained_cost(info))) == _attained_cost(info)
+            assert int(cert["lower_bound"]) == _attained_cost(info)
             assert cert["certified_minimal"] is True
 
     @pytest.mark.parametrize("p,n", [(2, 1), (2, 4), (3, 3), (5, 3)])
     def test_identity_decomposes_into_single_qudit_blocks(self, p: int, n: int) -> None:
         F = np.eye(2 * n, dtype=np.int64)
 
-        Sigma, B, info = atomic_block_decompose(F, p, mode="certified")
+        Sigma, B, info = atomic_block_decompose(F, p)
         _assert_basic_certified_decomposition(F, Sigma, B, info, p)
 
         assert sorted(int(x) for x in info["atomic_half_dims"]) == [1] * n
+        assert info["minimal_cost_certified"] is True
         assert int(info["Q_opt"]) == 1
         assert info["minimal_cost_certified"] is True
 
@@ -327,5 +345,5 @@ class TestAtomicDecompositionCertificateCoverage:
         rng = np.random.default_rng(seed)
         F = _rand_symplectic(rng, n, p, steps=steps)
 
-        Sigma, B, info = atomic_block_decompose(F, p, mode="certified")
+        Sigma, B, info = atomic_block_decompose(F, p)
         _assert_basic_certified_decomposition(F, Sigma, B, info, p)
