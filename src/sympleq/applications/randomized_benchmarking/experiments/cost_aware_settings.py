@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import partial
 
-from numpy.random import Generator as RNGGenerator
+import numpy as np
+from numpy.random import Generator as RNGGenerator, default_rng
 
 from sympleq.applications.randomized_benchmarking.backends.base import (
     MeasurementOutcomes,
@@ -24,6 +25,8 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     pytket_bare_simulation_cost,
 )
 from sympleq.applications.randomized_benchmarking.experiments.cost_aware_surface_method import (
+    BASE_1Q_PAULI_ERROR,
+    BASE_2Q_PAULI_ERROR,
     CostAwareSurfaceSettings,
     EXPERIMENTS_DIR,
 )
@@ -250,7 +253,7 @@ PROJECT_NAME = "fidelity-benchmark"
 
 Q_VALUES = tuple(range(27, 57, 1))
 N_QUBITS = round(sum(Q_VALUES) / len(Q_VALUES))
-N_GATES_BOUNDS = (10, 3000)
+N_GATES_BOUNDS = (10, 4000)
 RATIO_BOUNDS = (0.1, 0.9)
 
 HQC_BUDGET = 500.0
@@ -262,19 +265,55 @@ SINGLE_BATCH_GATE_BUDGET = 4200
 EMULATOR_MAX_BATCH_COST = 12.0
 
 
-RNG_SEEDS = [2026]
+RNG_SEEDS = [20261]
 
 ACQUISITION_Q_RESOLUTION = 30
 ACQUISITION_RATIO_POINTS = 15
 MAX_QUBIT_WINDOW = 5
 MIN_DISTINCT_Q_COVERAGE = 30
-
-GRID_RESOLUTION = (15, 15, 9, 9, 1, 7, 1)
+# Tuple order:
+#   (L1, L2, m1, m2, nu1, nu2, V)
+# where L1/L2 are the base one-/two-qubit rates, m1/m2 are their linear
+# Q-slopes, nu1/nu2 are their quadratic Q-curvatures, and V is visibility.
+# GRID_RESOLUTION = (11, 11, 7, 7, 1, 1, 1)  
+# BOUNDARY_FIT_RESOLUTION = (13, 13, 7, 7, 1, 1, 1)
+GRID_RESOLUTION = (15, 15, 9, 9, 1, 9, 1)  
 BOUNDARY_FIT_RESOLUTION = (17, 17, 9, 9, 1, 9, 1)
 CONTINUOUS_REFIT = True
 
+# Prior centre for the one- and two-qubit Pauli error guesses. The surface
+# method converts these to the initial per-gate rate guesses used by the grid.
+INITIAL_ONE_Q_PAULI_ERROR = BASE_1Q_PAULI_ERROR
+INITIAL_TWO_Q_PAULI_ERROR = BASE_2Q_PAULI_ERROR
+INITIAL_ERROR_RELATIVE_UNCERTAINTY = 0.30
+INITIAL_ONE_Q_ERROR_RELATIVE_UNCERTAINTY = None  # overrides INITIAL_ERROR_RELATIVE_UNCERTAINTY if necessary
+INITIAL_TWO_Q_ERROR_RELATIVE_UNCERTAINTY = None
+
+# Visibility/amplitude nuisance parameter. Leave VISIBILITY_BOUNDS as None for
+# the historical physical behaviour: if the V axis is freed, V is log-grid
+# sampled and clipped to 0 < V <= 1. For the diagnostic transient-absorption
+# test, set e.g. VISIBILITY_BOUNDS = (0.95, 1.05) and make the final entry of
+# GRID_RESOLUTION / BOUNDARY_FIT_RESOLUTION greater than 1.
+INITIAL_VISIBILITY = 1.0
+VISIBILITY_LOG_STD = 0.20
+VISIBILITY_BOUNDS = None  # (0.95, 1.05)  # e.g. (0.95, 1.05)
+
+# Optional randomisation of the initial prior centre. When enabled, each
+# rng_seed gets a deterministic additive Gaussian perturbation around the base
+# values above:
+#
+#     e_i = e_i_base + Normal(0, relative_width_i * e_i_base).
+#
+# The realised values are clipped positive, saved in checkpoints, and used by
+# replay.
+RANDOMIZE_INITIAL_RATE_GUESSES = True
+INITIAL_ONE_Q_RATE_RANDOM_RELATIVE_STD = 0.3
+INITIAL_TWO_Q_RATE_RANDOM_RELATIVE_STD = 0.3
+INITIAL_RATE_RANDOM_SEED_OFFSET = 1729
+
 PLOT = False
 SURFACE_PLOT_SHOW = True
+SURFACE_PLOT_LINDBLAD = True
 LIVE_SURFACE_PLOT = True
 LIVE_SURFACE_PLOT_SHOW = True
 LIVE_VOLUME_PLOT = True
@@ -289,10 +328,12 @@ USE_SCRAMBLER = True
 VERBOSE = True
 SAVE_REAL_CHECKPOINTS = True
 
-GP_GRID_SURFACE_PATH = None #(
-#    EXPERIMENTS_DIR.parent / "rmb_data" / "FLE_20260702_063751_gp_grid_3d.npz"
-#)
-GP_GRID_SURFACE_LABEL = None # "Rick/Shreya Grid"
+GP_GRID_SURFACE_PATH = (
+    EXPERIMENTS_DIR.parent
+    / "rmb_data"
+    / "measurement_015_globalsur_20260710_105239_496166_gp_grid_3d.npz"
+)
+GP_GRID_SURFACE_LABEL = "measurement 015 GlobalSUR grid"
 
 _GATE_LIMITED_QUANTINUUM_BACKENDS = {
     "emulator": "H2-Emulator",
@@ -347,8 +388,17 @@ def control_panel_settings_kwargs() -> dict:
         grid_resolution=GRID_RESOLUTION,
         boundary_fit_resolution=BOUNDARY_FIT_RESOLUTION,
         continuous_refit=CONTINUOUS_REFIT,
+        initial_one_q_pauli_error=INITIAL_ONE_Q_PAULI_ERROR,
+        initial_two_q_pauli_error=INITIAL_TWO_Q_PAULI_ERROR,
+        initial_error_relative_uncertainty=INITIAL_ERROR_RELATIVE_UNCERTAINTY,
+        initial_one_q_error_relative_uncertainty=INITIAL_ONE_Q_ERROR_RELATIVE_UNCERTAINTY,
+        initial_two_q_error_relative_uncertainty=INITIAL_TWO_Q_ERROR_RELATIVE_UNCERTAINTY,
+        initial_visibility=INITIAL_VISIBILITY,
+        visibility_log_std=VISIBILITY_LOG_STD,
+        visibility_bounds=VISIBILITY_BOUNDS,
         plot=PLOT,
         surface_plot_show=SURFACE_PLOT_SHOW,
+        surface_plot_analytic=SURFACE_PLOT_LINDBLAD,
         surface_plot_n_gates_bounds=N_GATES_BOUNDS,
         live_surface_plot=LIVE_SURFACE_PLOT,
         live_surface_plot_show=LIVE_SURFACE_PLOT_SHOW,
@@ -367,3 +417,57 @@ def control_panel_settings_kwargs() -> dict:
         save_real_checkpoints=SAVE_REAL_CHECKPOINTS,
         save_gp_prediction_grid=False,
     )
+
+
+def with_randomized_initial_rate_guesses(kwargs: dict, rng_seed: int | None) -> dict:
+    """Apply deterministic per-seed randomisation to initial rate guesses.
+
+    The randomisation is additive Gaussian in the Pauli-error guesses:
+
+        e_i = e_i_base + Normal(0, relative_width_i * e_i_base).
+
+    ``rng_seed`` plus ``INITIAL_RATE_RANDOM_SEED_OFFSET`` defines the draw, so
+    rerunning the same seed gives the same prior centre. The realised positive
+    values, relative deltas, and equivalent log multipliers are carried in the
+    settings and written to checkpoints.
+    """
+    updated = dict(kwargs)
+    base_one = float(updated["initial_one_q_pauli_error"])
+    base_two = float(updated["initial_two_q_pauli_error"])
+    random_seed = (
+        None
+        if rng_seed is None
+        else int(rng_seed) + int(INITIAL_RATE_RANDOM_SEED_OFFSET)
+    )
+    one_log = 0.0
+    two_log = 0.0
+    one_delta = 0.0
+    two_delta = 0.0
+    if RANDOMIZE_INITIAL_RATE_GUESSES:
+        rng = default_rng(random_seed)
+        one_delta = float(rng.normal(0.0, float(INITIAL_ONE_Q_RATE_RANDOM_RELATIVE_STD)))
+        two_delta = float(rng.normal(0.0, float(INITIAL_TWO_Q_RATE_RANDOM_RELATIVE_STD)))
+        one_error = max(base_one * (1.0 + one_delta), 1e-12)
+        two_error = max(base_two * (1.0 + two_delta), 1e-12)
+        one_log = float(np.log(one_error / base_one))
+        two_log = float(np.log(two_error / base_two))
+        updated["initial_one_q_pauli_error"] = one_error
+        updated["initial_two_q_pauli_error"] = two_error
+
+    updated["initial_rate_randomization_enabled"] = bool(
+        RANDOMIZE_INITIAL_RATE_GUESSES
+    )
+    updated["initial_rate_random_seed"] = random_seed
+    updated["initial_one_q_pauli_error_base"] = base_one
+    updated["initial_two_q_pauli_error_base"] = base_two
+    updated["initial_one_q_random_log_multiplier"] = one_log
+    updated["initial_two_q_random_log_multiplier"] = two_log
+    updated["initial_one_q_random_relative_std"] = float(
+        INITIAL_ONE_Q_RATE_RANDOM_RELATIVE_STD
+    )
+    updated["initial_two_q_random_relative_std"] = float(
+        INITIAL_TWO_Q_RATE_RANDOM_RELATIVE_STD
+    )
+    updated["initial_one_q_random_relative_delta"] = one_delta
+    updated["initial_two_q_random_relative_delta"] = two_delta
+    return updated

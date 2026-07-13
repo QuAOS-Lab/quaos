@@ -103,6 +103,7 @@ elif MODEL == "COST_AWARE":
         CostAwareSettings as SettingsClass,
         RNG_SEEDS,
         control_panel_settings_kwargs as settings_kwargs,
+        with_randomized_initial_rate_guesses,
     )
     from cost_aware_surface_design import run_with_design_plots
 
@@ -426,6 +427,39 @@ def print_run_handles(
         print(f"  acquisition_ratio_points             = {settings.acquisition_ratio_points}")
         print(f"  grid_resolution                      = {settings.grid_resolution}")
         print(f"  boundary_fit_resolution              = {settings.boundary_fit_resolution}")
+
+        print("[prior]")
+        print(f"  initial_one_q_pauli_error            = {settings.initial_one_q_pauli_error:.6g}")
+        print(f"  initial_two_q_pauli_error            = {settings.initial_two_q_pauli_error:.6g}")
+        one_q_prefactor = (
+            settings.initial_one_q_pauli_error
+            / settings.initial_one_q_pauli_error_base
+            if settings.initial_one_q_pauli_error_base
+            else float("nan")
+        )
+        two_q_prefactor = (
+            settings.initial_two_q_pauli_error
+            / settings.initial_two_q_pauli_error_base
+            if settings.initial_two_q_pauli_error_base
+            else float("nan")
+        )
+        print(
+            "  initial_rate_random_prefactors       = "
+            f"({one_q_prefactor:.6g}, {two_q_prefactor:.6g})"
+        )
+        print(f"  initial_error_relative_uncertainty   = {settings.initial_error_relative_uncertainty}")
+        if settings.initial_rate_randomization_enabled:
+            print(f"  initial_rate_random_seed             = {settings.initial_rate_random_seed}")
+            print(
+                "  initial_rate_relative_stds           = "
+                f"({settings.initial_one_q_random_relative_std:.4g}, "
+                f"{settings.initial_two_q_random_relative_std:.4g})"
+            )
+            print(
+                "  initial_rate_relative_deltas         = "
+                f"({settings.initial_one_q_random_relative_delta:+.4g}, "
+                f"{settings.initial_two_q_random_relative_delta:+.4g})"
+            )
 
         backend_factory_name = getattr(
             settings.backend_factory,
@@ -767,6 +801,7 @@ def main(model, SettingsClass, settings_kwargs) -> None:
         for run_index, rng_seed in enumerate(RNG_SEEDS, start=1):
             seed_kwargs = dict(kwargs)
             seed_kwargs["rng_seed"] = rng_seed
+            seed_kwargs = with_randomized_initial_rate_guesses(seed_kwargs, rng_seed)
             if seed_kwargs.get("save_path") is None:
                 seed_kwargs["save_path"] = restartable_cost_aware_save_path(seed=rng_seed)
             print(

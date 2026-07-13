@@ -26,6 +26,8 @@ from sympleq.applications.randomized_benchmarking.experiments.cost_aware_surface
     EXPERIMENTS_DIR,
     CostAwareSurfaceSettings,
     _LN2,
+    _I_L1,
+    _I_L2,
     _analytic_lindblad_gates,
     _asymptote,
     _measured_arrays,
@@ -37,7 +39,7 @@ from sympleq.applications.randomized_benchmarking.experiments.cost_aware_surface
     run_with_budget,
 )
 
-LiveVolumePoint = tuple[int, float, float, float, float, float]
+LiveVolumePoint = tuple[float, ...]
 
 
 def __getattr__(name: str):
@@ -59,6 +61,10 @@ def _record_live_volume_point(
     lower_volume: float,
     upper_volume: float,
     secondary_reference_volume: float | None = None,
+    fitted_l1_rate: float | None = None,
+    fitted_l2_rate: float | None = None,
+    fitted_l1_rate_std: float | None = None,
+    fitted_l2_rate_std: float | None = None,
 ) -> None:
     point = (
         int(iteration),
@@ -68,6 +74,14 @@ def _record_live_volume_point(
         float(upper_volume),
         float(secondary_reference_volume)
         if secondary_reference_volume is not None
+        else float("nan"),
+        float(fitted_l1_rate) if fitted_l1_rate is not None else float("nan"),
+        float(fitted_l2_rate) if fitted_l2_rate is not None else float("nan"),
+        float(fitted_l1_rate_std)
+        if fitted_l1_rate_std is not None
+        else float("nan"),
+        float(fitted_l2_rate_std)
+        if fitted_l2_rate_std is not None
         else float("nan"),
     )
     for i, existing in enumerate(history):
@@ -106,6 +120,14 @@ def _record_volume_point_from_posterior(
         if secondary is not None and np.isfinite(float(secondary))
         else None
     )
+    fitted_l1_rate = float(np.sum(weights * params[:, _I_L1]))
+    fitted_l2_rate = float(np.sum(weights * params[:, _I_L2]))
+    fitted_l1_rate_std = float(
+        np.sqrt(np.sum(weights * (params[:, _I_L1] - fitted_l1_rate) ** 2))
+    )
+    fitted_l2_rate_std = float(
+        np.sqrt(np.sum(weights * (params[:, _I_L2] - fitted_l2_rate) ** 2))
+    )
     _record_live_volume_point(
         history,
         iteration,
@@ -114,6 +136,10 @@ def _record_volume_point_from_posterior(
         float(scores["surface_volume_lower_1sigma"]),
         float(scores["surface_volume_upper_1sigma"]),
         secondary_volume,
+        fitted_l1_rate,
+        fitted_l2_rate,
+        fitted_l1_rate_std,
+        fitted_l2_rate_std,
     )
     return secondary_volume
 
@@ -132,7 +158,7 @@ def _restore_volume_history_from_meta(settings: CostAwareSurfaceSettings) -> lis
         return []
 
     history = []
-    if int(meta.get("live_volume_history_version", 0) or 0) >= 2:
+    if int(meta.get("live_volume_history_version", 0) or 0) >= 4:
         for row in meta.get("live_volume_history", []):
             try:
                 history.append(tuple(row))
@@ -151,6 +177,10 @@ def _restore_volume_history_from_meta(settings: CostAwareSurfaceSettings) -> lis
                     float(row[3]),
                     float(row[4]),
                     float(row[5]) if len(row) > 5 else float("nan"),
+                    float(row[6]) if len(row) > 6 else float("nan"),
+                    float(row[7]) if len(row) > 7 else float("nan"),
+                    float(row[8]) if len(row) > 8 else float("nan"),
+                    float(row[9]) if len(row) > 9 else float("nan"),
                 )
             )
         return restored
@@ -188,6 +218,7 @@ def _rebuild_volume_history_from_batches(
             secondary_reference_gates = (
                 _analytic_lindblad_gates
                 if settings.gp_grid_surface_path is not None
+                and getattr(settings, "surface_plot_analytic", True)
                 else None
             )
             _record_volume_point_from_posterior(
@@ -214,7 +245,7 @@ def _save_volume_history_to_meta(
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         if not _method._checkpoint_q_values_match(meta, settings):
             return
-        meta["live_volume_history_version"] = 2
+        meta["live_volume_history_version"] = 4
         meta["live_volume_history"] = [list(point) for point in volume_history]
         _method._write_json_atomic(meta_path, meta)
     except Exception:

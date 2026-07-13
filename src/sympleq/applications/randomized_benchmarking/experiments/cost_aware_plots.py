@@ -15,7 +15,13 @@ from sympleq.applications.randomized_benchmarking.experiments.scores import (
     integrate_trapezoid,
 )
 from sympleq.applications.randomized_benchmarking.experiments.cost_aware_surface_method import (
+    BASE_1Q_PAULI_ERROR,
+    BASE_2Q_PAULI_ERROR,
     _checkpoint_meta_path,
+)
+from sympleq.applications.randomized_benchmarking.experiments.plots import (
+    REFERENCE_OFFSET,
+    REFERENCE_SLOPE,
 )
 
 
@@ -52,6 +58,52 @@ def _analytic_success_side_log_volume(settings) -> float:
     if getattr(settings, "plot_raw_fidelity_boundary", False):
         # Match the fitted/volume curves, which are the raw survival p=0.5 depth.
         boundary = boundary * raw_fidelity_gate_factor(settings, qq, 1.0)
+    n_lo, n_hi = settings.n_gates_bounds
+    return _success_side_log_volume(boundary, ratios, qubits, n_lo, n_hi)
+
+
+def _initial_rate_estimates(settings) -> tuple[float, float]:
+    one_scale = (
+        float(getattr(settings, "initial_one_q_pauli_error", BASE_1Q_PAULI_ERROR))
+        / BASE_1Q_PAULI_ERROR
+    )
+    two_scale = (
+        float(getattr(settings, "initial_two_q_pauli_error", BASE_2Q_PAULI_ERROR))
+        / BASE_2Q_PAULI_ERROR
+    )
+    l1 = REFERENCE_OFFSET * one_scale
+    l2 = l1 + REFERENCE_SLOPE * two_scale
+    return float(l1), float(l2)
+
+
+def _lindblad_reference_rate_estimates(settings) -> tuple[float, float]:
+    one_q_error = float(
+        getattr(settings, "initial_one_q_pauli_error_base", BASE_1Q_PAULI_ERROR)
+    )
+    two_q_error = float(
+        getattr(settings, "initial_two_q_pauli_error_base", BASE_2Q_PAULI_ERROR)
+    )
+    one_scale = one_q_error / BASE_1Q_PAULI_ERROR
+    two_scale = two_q_error / BASE_2Q_PAULI_ERROR
+    l1 = REFERENCE_OFFSET * one_scale
+    l2 = l1 + REFERENCE_SLOPE * two_scale
+    return float(l1), float(l2)
+
+
+def _initial_success_side_log_volume(settings, l1: float, l2: float) -> float:
+    r_lo, r_hi = settings.ratio_bounds
+    ratios = np.linspace(r_lo, r_hi, max(settings.score_ratio_points, 2))
+    qubits = np.asarray(settings.q_values, dtype=float)
+    rr, qq = np.meshgrid(ratios, qubits)
+    denominator = (1.0 - rr) * float(l1) + rr * float(l2)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        boundary = np.where(denominator > 0.0, np.log(2.0) / denominator, np.nan)
+    if getattr(settings, "plot_raw_fidelity_boundary", False):
+        boundary = boundary * raw_fidelity_gate_factor(
+            settings,
+            qq,
+            float(getattr(settings, "initial_visibility", 1.0)),
+        )
     n_lo, n_hi = settings.n_gates_bounds
     return _success_side_log_volume(boundary, ratios, qubits, n_lo, n_hi)
 
@@ -329,10 +381,41 @@ def plot_live_volume_history(
         [row[5] if len(row) > 5 else np.nan for row in history],
         dtype=float,
     )
+    l1_rate = np.asarray(
+        [row[6] if len(row) > 6 else np.nan for row in history],
+        dtype=float,
+    )
+    l2_rate = np.asarray(
+        [row[7] if len(row) > 7 else np.nan for row in history],
+        dtype=float,
+    )
+    l1_rate_std = np.asarray(
+        [row[8] if len(row) > 8 else np.nan for row in history],
+        dtype=float,
+    )
+    l2_rate_std = np.asarray(
+        [row[9] if len(row) > 9 else np.nan for row in history],
+        dtype=float,
+    )
     ref = float(reference[-1])
 
-    fig = plt.figure(num=figure_name, figsize=(8.5, 5.2), clear=True)
-    ax = fig.add_subplot(111)
+    has_rates = np.any(np.isfinite(l1_rate)) or np.any(np.isfinite(l2_rate))
+    if has_rates:
+        fig, axes = plt.subplots(
+            3,
+            1,
+            num=figure_name,
+            figsize=(9.0, 9.0),
+            clear=True,
+            sharex=True,
+            gridspec_kw={"height_ratios": [1.4, 1.0, 1.0]},
+        )
+        ax, ax_l1, ax_l2 = axes
+    else:
+        fig = plt.figure(num=figure_name, figsize=(8.5, 5.2), clear=True)
+        ax = fig.add_subplot(111)
+        ax_l1 = ax_l2 = None
+
     has_band = np.isfinite(lower) & np.isfinite(upper)
     if np.any(has_band):
         yerr = np.vstack((
@@ -372,11 +455,97 @@ def plot_live_volume_history(
             linewidth=1.4,
             label="analytic Lindblad reference",
         )
+    prior_l1, prior_l2 = _initial_rate_estimates(settings)
+    prior_volume = _initial_success_side_log_volume(settings, prior_l1, prior_l2)
+    if np.isfinite(prior_volume):
+        ax.scatter(
+            [0],
+            [prior_volume],
+            marker="x",
+            s=85,
+            color="black",
+            linewidths=2.0,
+            label="initial estimate",
+            zorder=5,
+        )
     ax.set_xlabel("iteration")
     ax.set_ylabel(r"success-side volume in $(\log_{10} n, r, Q)$")
     ax.set_title(r"Fidelity-0.5 success-side log-volume")
     ax.grid(alpha=0.25)
     ax.legend(loc="best")
+
+    if has_rates and ax_l1 is not None and ax_l2 is not None:
+        lindblad_l1, lindblad_l2 = _lindblad_reference_rate_estimates(settings)
+        if np.any(np.isfinite(l1_rate)):
+            l1_err = np.where(np.isfinite(l1_rate_std), l1_rate_std, np.nan)
+            ax_l1.errorbar(
+                iterations,
+                l1_rate,
+                yerr=l1_err,
+                marker="o",
+                linewidth=1.6,
+                elinewidth=1.0,
+                capsize=3,
+                color="tab:blue",
+                label=r"posterior mean $L_1(Q_{\rm ref}) \pm 1\sigma$",
+            )
+        ax_l1.scatter(
+            [0],
+            [prior_l1],
+            marker="x",
+            s=70,
+            color="tab:blue",
+            linewidths=2.0,
+            label="initial estimate",
+            zorder=5,
+        )
+        ax_l1.axhline(
+            lindblad_l1,
+            color="black",
+            linestyle="--",
+            linewidth=1.4,
+            alpha=0.75,
+            label="Lindblad reference",
+        )
+        ax_l1.set_ylabel(r"$L_1(Q_{\rm ref})$")
+        ax_l1.grid(alpha=0.25)
+        ax_l1.legend(loc="best")
+
+        if np.any(np.isfinite(l2_rate)):
+            l2_err = np.where(np.isfinite(l2_rate_std), l2_rate_std, np.nan)
+            ax_l2.errorbar(
+                iterations,
+                l2_rate,
+                yerr=l2_err,
+                marker="o",
+                linewidth=1.6,
+                elinewidth=1.0,
+                capsize=3,
+                color="tab:green",
+                label=r"posterior mean $L_2(Q_{\rm ref}) \pm 1\sigma$",
+            )
+        ax_l2.scatter(
+            [0],
+            [prior_l2],
+            marker="x",
+            s=70,
+            color="tab:green",
+            linewidths=2.0,
+            label="initial estimate",
+            zorder=5,
+        )
+        ax_l2.axhline(
+            lindblad_l2,
+            color="black",
+            linestyle="--",
+            linewidth=1.4,
+            alpha=0.75,
+            label="Lindblad reference",
+        )
+        ax_l2.set_xlabel("iteration")
+        ax_l2.set_ylabel(r"$L_2(Q_{\rm ref})$")
+        ax_l2.grid(alpha=0.25)
+        ax_l2.legend(loc="best")
 
     # Secondary x-axis: cumulative cost (HQC) at each iteration if checkpoint
     # metadata is available. This adds a twin x-axis at the top with cost

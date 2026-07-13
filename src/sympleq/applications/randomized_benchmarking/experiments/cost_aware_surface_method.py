@@ -397,24 +397,40 @@ class CostAwareSurfaceSettings(CrossingSettings):
     initial_error_relative_uncertainty: float = 0.30
     initial_one_q_error_relative_uncertainty: float | None = None
     initial_two_q_error_relative_uncertainty: float | None = None
-    # Visibility V in [0, 1] is the global SPAM amplitude of the RB exponential
-    # link  p = V*(1-B)*2^{-n D} + B.  V = 1 is the no-SPAM / ideal-simulator
-    # case (and is pinned by default via grid_resolution[6] = 1); free it (set
-    # grid_resolution[6] > 1) to fit SPAM on hardware.
+    # Metadata for runs where the initial Pauli-error guesses were drawn from a
+    # random distribution before settings construction. These fields do not
+    # affect the model directly; the model uses the realised values above.
+    initial_rate_randomization_enabled: bool = False
+    initial_rate_random_seed: int | None = None
+    initial_one_q_pauli_error_base: float = BASE_1Q_PAULI_ERROR
+    initial_two_q_pauli_error_base: float = BASE_2Q_PAULI_ERROR
+    initial_one_q_random_log_multiplier: float = 0.0
+    initial_two_q_random_log_multiplier: float = 0.0
+    initial_one_q_random_relative_std: float = 0.0
+    initial_two_q_random_relative_std: float = 0.0
+    initial_one_q_random_relative_delta: float = 0.0
+    initial_two_q_random_relative_delta: float = 0.0
+    # Visibility V is the global amplitude of the RB exponential link
+    # p = V*(1-B)*2^{-n D} + B. V = 1 is the no-SPAM / ideal-simulator case
+    # (and is pinned by default via grid_resolution[6] = 1). By default
+    # visibility_bounds=None preserves the historical physical clipping
+    # 0 < V <= 1. For diagnostic nuisance-amplitude fits, set explicit bounds
+    # such as (0.95, 1.05) and free the V axis.
     initial_visibility: float = 1.0
     visibility_log_std: float = 0.20
+    visibility_bounds: tuple[float, float] | None = None
     # Asymptote B(Q) of the survival curve.  "depolarizing" -> B = 2^{-Q} (the
     # physically correct value for raw register-survival RB); "zero" -> B = 0
     # (use only if the stored fidelity is already asymptote-subtracted); a float
     # overrides with a constant.  See the deep-probe diagnostic to verify.
     asymptote_model: str | float = "depolarizing"
     # Width of the rate Q-slope prior as a fraction of the rate over the Q span.
-    q_slope_prior_fraction: float = 0.30
+    q_slope_prior_fraction: float = 0.05
     # Width of the rate Q-curvature (quadratic) prior, as a fraction of the rate
     # over the squared half-span.  Only active when the nu axes are unpinned
     # (grid_resolution entries 4, 5 > 1); held in reserve for hardware whose
     # Q-dependence may be nonlinear.
-    q_curve_prior_fraction: float = 0.30
+    q_curve_prior_fraction: float = 0.05
     # Optional Q-dependence of the direct ExponentialBackend truth rates.  These
     # are natural-log rate slopes dL_i/dQ, not posterior-prior widths.
     exponential_one_q_q_slope: float = 0.0
@@ -733,6 +749,7 @@ def _prior_moments(
     n1_std = settings.q_curve_prior_fraction * lam1_prior / (q_half * q_half)
     n2_std = settings.q_curve_prior_fraction * lam2_prior / (q_half * q_half)
 
+    v_lo, v_hi = _visibility_clip_bounds(settings)
     centre = np.array(
         [
             np.log(max(lam1_prior, 1e-12)),
@@ -741,7 +758,7 @@ def _prior_moments(
             0.0,
             0.0,
             0.0,
-            np.log(min(max(settings.initial_visibility, 1e-6), 1.0)),
+            np.log(min(max(settings.initial_visibility, v_lo), v_hi)),
         ],
         dtype=float,
     )
@@ -760,12 +777,25 @@ def _prior_moments(
     return centre, std
 
 
-def _params_from_t(t: np.ndarray) -> np.ndarray:
+def _visibility_clip_bounds(settings: CostAwareSurfaceSettings) -> tuple[float, float]:
+    if settings.visibility_bounds is None:
+        return 1e-6, 1.0
+    lo, hi = (float(x) for x in settings.visibility_bounds)
+    if not (np.isfinite(lo) and np.isfinite(hi) and 0.0 < lo <= hi):
+        raise ValueError(
+            "visibility_bounds must be None or a finite positive (min, max) tuple "
+            f"with min <= max; got {settings.visibility_bounds!r}."
+        )
+    return lo, hi
+
+
+def _params_from_t(t: np.ndarray, settings: CostAwareSurfaceSettings) -> np.ndarray:
     """Map transformed coordinates to natural parameters (L10, L20, m1, m2, V).
 
     The two rate intercepts and the visibility are exp of their coordinates
-    (positive); the Q-slopes m are linear; V is clipped to (0, 1] so the RB link
-    stays a valid probability.
+    (positive); the Q-slopes m are linear. V is clipped to the configured
+    visibility bounds, preserving the historical (1e-6, 1.0) bounds unless
+    ``settings.visibility_bounds`` is explicitly set.
     """
     params = np.empty_like(t)
     params[:, _I_L1] = np.exp(t[:, _I_L1])
@@ -774,7 +804,8 @@ def _params_from_t(t: np.ndarray) -> np.ndarray:
     params[:, _I_M2] = t[:, _I_M2]
     params[:, _I_N1] = t[:, _I_N1]
     params[:, _I_N2] = t[:, _I_N2]
-    params[:, _I_V] = np.clip(np.exp(t[:, _I_V]), 1e-6, 1.0)
+    v_lo, v_hi = _visibility_clip_bounds(settings)
+    params[:, _I_V] = np.clip(np.exp(t[:, _I_V]), v_lo, v_hi)
     return params
 
 
@@ -792,23 +823,26 @@ def _build_grid(
     """
     prior_centre, prior_std = _prior_moments(settings)
     res = settings.grid_resolution if resolution is None else resolution
-    axes = [
-        (
-            np.array([centre_grid[d]])
-            if n <= 1
-            else np.linspace(
-                centre_grid[d] - halfwidth_grid[d],
-                centre_grid[d] + halfwidth_grid[d],
-                n,
+    axes = []
+    for d, n in enumerate(res):
+        if n <= 1:
+            axes.append(np.array([centre_grid[d]]))
+        elif d == _I_V and settings.visibility_bounds is not None:
+            v_lo, v_hi = _visibility_clip_bounds(settings)
+            axes.append(np.linspace(np.log(v_lo), np.log(v_hi), n))
+        else:
+            axes.append(
+                np.linspace(
+                    centre_grid[d] - halfwidth_grid[d],
+                    centre_grid[d] + halfwidth_grid[d],
+                    n,
+                )
             )
-        )
-        for d, n in enumerate(res)
-    ]
     mesh = np.meshgrid(*axes, indexing="ij")
     t = np.stack([m.ravel() for m in mesh], axis=1)
     z = (t - prior_centre) / prior_std
     log_prior = -0.5 * np.sum(z * z, axis=1)
-    params = _params_from_t(t)
+    params = _params_from_t(t, settings)
     return params, log_prior, t
 
 
@@ -1821,7 +1855,7 @@ def _continuous_map_fit(
 
     def neg_log_post(z_free: np.ndarray) -> float:
         t = t_from_z(z_free)
-        p = _params_from_t(t[None, :])[0]
+        p = _params_from_t(t[None, :], settings)[0]
         # Admissibility over the scored rectangle (bilinear -> corners suffice).
         cd = _denominator(p, corners[:, 0], corners[:, 1], settings)
         if not np.all(cd > settings.denom_floor):
@@ -1862,7 +1896,7 @@ def _report_continuous_fit(
     result: object,
 ) -> None:
     """Print the continuous MAP parameters, its goodness-of-fit, and grid deltas."""
-    params_hat = _params_from_t(np.asarray(t_hat, dtype=float)[None, :])
+    params_hat = _params_from_t(np.asarray(t_hat, dtype=float)[None, :], settings)
     a = params_hat[0]
     diag = _residual_diagnostics(data, params_hat, np.array([1.0]), settings)
     k = _effective_free_params(settings)
@@ -2122,6 +2156,56 @@ def _save_measurement_checkpoint(
                 "grid_resolution": list(getattr(settings, "grid_resolution", [])),
                 "boundary_fit_resolution": list(getattr(settings, "boundary_fit_resolution", [])),
                 "max_cost_per_run": float(getattr(settings, "max_cost_per_run", -1.0)),
+                "initial_one_q_pauli_error": float(settings.initial_one_q_pauli_error),
+                "initial_two_q_pauli_error": float(settings.initial_two_q_pauli_error),
+                "initial_error_relative_uncertainty": float(
+                    settings.initial_error_relative_uncertainty
+                ),
+                "initial_one_q_error_relative_uncertainty": (
+                    None
+                    if settings.initial_one_q_error_relative_uncertainty is None
+                    else float(settings.initial_one_q_error_relative_uncertainty)
+                ),
+                "initial_two_q_error_relative_uncertainty": (
+                    None
+                    if settings.initial_two_q_error_relative_uncertainty is None
+                    else float(settings.initial_two_q_error_relative_uncertainty)
+                ),
+                "initial_visibility": float(settings.initial_visibility),
+                "visibility_log_std": float(settings.visibility_log_std),
+                "visibility_bounds": (
+                    None
+                    if settings.visibility_bounds is None
+                    else [float(x) for x in settings.visibility_bounds]
+                ),
+                "initial_rate_randomization_enabled": bool(
+                    settings.initial_rate_randomization_enabled
+                ),
+                "initial_rate_random_seed": settings.initial_rate_random_seed,
+                "initial_one_q_pauli_error_base": float(
+                    settings.initial_one_q_pauli_error_base
+                ),
+                "initial_two_q_pauli_error_base": float(
+                    settings.initial_two_q_pauli_error_base
+                ),
+                "initial_one_q_random_log_multiplier": float(
+                    settings.initial_one_q_random_log_multiplier
+                ),
+                "initial_two_q_random_log_multiplier": float(
+                    settings.initial_two_q_random_log_multiplier
+                ),
+                "initial_one_q_random_relative_std": float(
+                    settings.initial_one_q_random_relative_std
+                ),
+                "initial_two_q_random_relative_std": float(
+                    settings.initial_two_q_random_relative_std
+                ),
+                "initial_one_q_random_relative_delta": float(
+                    settings.initial_one_q_random_relative_delta
+                ),
+                "initial_two_q_random_relative_delta": float(
+                    settings.initial_two_q_random_relative_delta
+                ),
             },
             "hqc_budget": settings.hqc_budget,
             "spent_hqc": budget.spent_hqc,
