@@ -35,7 +35,13 @@ from sympleq.applications.randomized_benchmarking.experiments.cost_aware_surface
 
 
 DEFAULT_SEED = 2026
-DEFAULT_ROOT = Path("Personal") / "CostAware"
+GENERATED_PERSONAL_ROOT = (
+    Path("scripts")
+    / "personal"
+    / "randomized_benchmarking_personal"
+    / "Personal"
+)
+DEFAULT_ROOT = GENERATED_PERSONAL_ROOT / "CostAware"
 
 # --------------------------------------------------------------------------- #
 # User controls
@@ -48,7 +54,7 @@ USE_COMMAND_LINE_ARGUMENTS = False
 run_number_to_load = 1
 
 # Known run presets. Add future runs here once they exist. ``checkpoint=None``
-# means "find the newest matching checkpoint under Personal/CostAware/seed_*".
+# means "find the newest matching checkpoint under DEFAULT_ROOT/seed_*".
 RUNS_TO_LOAD = {
     1: {
         "seed": 2026,

@@ -512,7 +512,10 @@ if __name__ == "__main__":
         surface_plot_show=True,
         surface_plot_n_gates_bounds=(100, 3000),
         gp_grid_surface_path=(
-            Path("Personal")
+            Path("scripts")
+            / "personal"
+            / "randomized_benchmarking_personal"
+            / "Personal"
             / "CostAware"
             / "reference_grids"
             / "FLE_20260702_063751_gp_grid_3d.npz"

@@ -221,7 +221,13 @@ def make_config_q(
 # Settings
 # --------------------------------------------------------------------------- #
 EXPERIMENTS_DIR = Path(__file__).resolve().parent
-PERSONAL_COST_AWARE_DIR = Path("Personal") / "CostAware"
+GENERATED_PERSONAL_ROOT = (
+    Path("scripts")
+    / "personal"
+    / "randomized_benchmarking_personal"
+    / "Personal"
+)
+PERSONAL_COST_AWARE_DIR = GENERATED_PERSONAL_ROOT / "CostAware"
 DEFAULT_ARTIFACT_DIR = PERSONAL_COST_AWARE_DIR / "artifacts" / "figs"
 DEFAULT_SURFACE_PLOT_PATH = DEFAULT_ARTIFACT_DIR / "boundary_surface_3d.png"
 DEFAULT_LIVE_SURFACE_PLOT_PATH = (
@@ -288,7 +294,7 @@ def _resolve_personal_run_artifact_path(
     default_path: Path,
     save_path: str | Path | None,
 ) -> str | Path | None:
-    """Place default generated artifacts next to the run data under Personal."""
+    """Place default generated artifacts next to ignored generated run data."""
     if path is None or save_path is None:
         return path
     path_type = Path if isinstance(path, Path) else str

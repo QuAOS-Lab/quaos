@@ -49,6 +49,14 @@ from sympleq.integrations.quantinuum.stitching import (
 from sympleq.integrations.quantinuum.utils import fetch_recent_execute_jobs
 
 
+GENERATED_PERSONAL_ROOT = (
+    Path("scripts")
+    / "personal"
+    / "randomized_benchmarking_personal"
+    / "Personal"
+)
+
+
 def _data_path_from_checkpoint(checkpoint_path: Path) -> Path:
     name = checkpoint_path.name
     if not name.endswith("_checkpoint.json"):
@@ -468,7 +476,12 @@ def main() -> None:
     parser.add_argument(
         "--checkpoint",
         type=Path,
-        default=Path("Personal/CostAware/seed_2026/CostAware_restartable_checkpoint.json"),
+        default=(
+            GENERATED_PERSONAL_ROOT
+            / "CostAware"
+            / "seed_2026"
+            / "CostAware_restartable_checkpoint.json"
+        ),
         help="COST_AWARE checkpoint metadata with reason='before_backend'.",
     )
     parser.add_argument(

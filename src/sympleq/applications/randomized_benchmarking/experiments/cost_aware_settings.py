@@ -330,7 +330,10 @@ VERBOSE = True
 SAVE_REAL_CHECKPOINTS = True
 
 GP_GRID_SURFACE_PATH = (
-    Path("Personal")
+    Path("scripts")
+    / "personal"
+    / "randomized_benchmarking_personal"
+    / "Personal"
     / "CostAware"
     / "reference_grids"
     / "measurement_015_globalsur_20260710_105239_496166_gp_grid_3d.npz"

@@ -10,7 +10,7 @@ Should define a settings class as FLE_settings and definition as FLE_3d_fix_qubi
 
 The GP grid saving is not implemented for Cost_Aware
 The save_real_checkpoint saves only the real RMB data in a json file and not the GP grid for Cost_Aware
-Saves in "Path("Personal") / model_folder / seed_folder / f"FLE_{timestamp}"
+Saves generated data under scripts/personal/randomized_benchmarking_personal/Personal.
 
 run_FLE runs only FLE; the storing of configs and data/grid is done through this after each *real* measurement
 
@@ -46,6 +46,12 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
 
 _SUPPORTED_MODELS = ("FLE", "COST_AWARE")
 _DEFAULT_MODEL = "COST_AWARE"
+GENERATED_PERSONAL_ROOT = (
+    Path("scripts")
+    / "personal"
+    / "randomized_benchmarking_personal"
+    / "Personal"
+)
 
 
 def _resolve_model(argv: list[str]) -> str:
@@ -113,13 +119,13 @@ else:
 
 # Storing
 def timestamped_personal_save_path(seed: int | None = None) -> Path:
-    """Timestamped run folder and final JSON path under ``Personal``."""
+    """Timestamped generated run folder and final JSON path."""
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     seed_folder = "seed_unseeded" if seed is None else f"seed_{seed}"
     model_folder = "CostAware" if MODEL == "COST_AWARE" else "FLE"
     prefix = "CostAware" if MODEL == "COST_AWARE" else "FLE"
-    run_folder = Path("Personal") / model_folder / seed_folder / f"{prefix}_{timestamp}"
+    run_folder = GENERATED_PERSONAL_ROOT / model_folder / seed_folder / f"{prefix}_{timestamp}"
 
     return run_folder / f"{prefix}_{timestamp}.json"
 
@@ -127,7 +133,7 @@ def timestamped_personal_save_path(seed: int | None = None) -> Path:
 def restartable_cost_aware_save_path(seed: int | None = None) -> Path:
     seed_folder = "seed_unseeded" if seed is None else f"seed_{seed}"
     return (
-        Path("Personal")
+        GENERATED_PERSONAL_ROOT
         / "CostAware"
         / seed_folder
         / "CostAware_restartable.json"
