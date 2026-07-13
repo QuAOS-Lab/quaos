@@ -7,6 +7,8 @@ around that method.
 from __future__ import annotations
 
 import json
+from pathlib import Path
+
 import numpy as np
 
 from sympleq.applications.randomized_benchmarking.RMB import RMB
@@ -510,8 +512,9 @@ if __name__ == "__main__":
         surface_plot_show=True,
         surface_plot_n_gates_bounds=(100, 3000),
         gp_grid_surface_path=(
-            EXPERIMENTS_DIR.parent
-            / "rmb_data"
+            Path("Personal")
+            / "CostAware"
+            / "reference_grids"
             / "FLE_20260702_063751_gp_grid_3d.npz"
         ),
         gp_grid_surface_label="Rick/Shreya Grid",

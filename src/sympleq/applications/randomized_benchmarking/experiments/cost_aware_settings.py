@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import partial
+from pathlib import Path
 
 import numpy as np
 from numpy.random import Generator as RNGGenerator, default_rng
@@ -329,8 +330,9 @@ VERBOSE = True
 SAVE_REAL_CHECKPOINTS = True
 
 GP_GRID_SURFACE_PATH = (
-    EXPERIMENTS_DIR.parent
-    / "rmb_data"
+    Path("Personal")
+    / "CostAware"
+    / "reference_grids"
     / "measurement_015_globalsur_20260710_105239_496166_gp_grid_3d.npz"
 )
 GP_GRID_SURFACE_LABEL = "measurement 015 GlobalSUR grid"

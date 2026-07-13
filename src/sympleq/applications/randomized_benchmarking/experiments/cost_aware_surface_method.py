@@ -221,19 +221,28 @@ def make_config_q(
 # Settings
 # --------------------------------------------------------------------------- #
 EXPERIMENTS_DIR = Path(__file__).resolve().parent
-DEFAULT_SURFACE_PLOT_PATH = EXPERIMENTS_DIR / "figs" / "boundary_surface_3d.png"
+PERSONAL_COST_AWARE_DIR = Path("Personal") / "CostAware"
+DEFAULT_ARTIFACT_DIR = PERSONAL_COST_AWARE_DIR / "artifacts" / "figs"
+DEFAULT_SURFACE_PLOT_PATH = DEFAULT_ARTIFACT_DIR / "boundary_surface_3d.png"
 DEFAULT_LIVE_SURFACE_PLOT_PATH = (
-    EXPERIMENTS_DIR / "figs" / "boundary_surface_3d_live.png"
+    DEFAULT_ARTIFACT_DIR / "boundary_surface_3d_live.png"
 )
 DEFAULT_LIVE_VOLUME_PLOT_PATH = (
-    EXPERIMENTS_DIR / "figs" / "boundary_volume_live.png"
+    DEFAULT_ARTIFACT_DIR / "boundary_volume_live.png"
 )
 DEFAULT_UNCERTAINTY_PLOT_PATH = (
-    EXPERIMENTS_DIR / "figs" / "boundary_surface_3d_uncertainty.png"
+    DEFAULT_ARTIFACT_DIR / "boundary_surface_3d_uncertainty.png"
 )
 DEFAULT_GRID_VS_CONTINUOUS_PLOT_PATH = (
-    EXPERIMENTS_DIR / "figs" / "boundary_surface_3d_grid_vs_continuous.png"
+    DEFAULT_ARTIFACT_DIR / "boundary_surface_3d_grid_vs_continuous.png"
 )
+_DEFAULT_PLOT_ATTRS = {
+    "surface_plot_path": DEFAULT_SURFACE_PLOT_PATH,
+    "live_surface_plot_path": DEFAULT_LIVE_SURFACE_PLOT_PATH,
+    "live_volume_plot_path": DEFAULT_LIVE_VOLUME_PLOT_PATH,
+    "surface_uncertainty_plot_path": DEFAULT_UNCERTAINTY_PLOT_PATH,
+    "grid_vs_continuous_plot_path": DEFAULT_GRID_VS_CONTINUOUS_PLOT_PATH,
+}
 
 
 def _with_run_suffix(
@@ -273,6 +282,24 @@ def _q_values_suffix(q_values: tuple[int, ...]) -> str:
     return "q" + "-".join(str(q) for q in qs)
 
 
+def _resolve_personal_run_artifact_path(
+    path: str | Path | None,
+    *,
+    default_path: Path,
+    save_path: str | Path | None,
+) -> str | Path | None:
+    """Place default generated artifacts next to the run data under Personal."""
+    if path is None or save_path is None:
+        return path
+    path_type = Path if isinstance(path, Path) else str
+    p = Path(path)
+    if p != default_path:
+        return path
+    save_base = resolve_data_path(save_path)
+    new_path = save_base.parent / "figs" / default_path.name
+    return new_path if path_type is Path else str(new_path)
+
+
 @dataclass(frozen=True)
 class CostAwareSurfaceSettings(CrossingSettings):
     """Settings for cost-aware global surface design.
@@ -289,7 +316,9 @@ class CostAwareSurfaceSettings(CrossingSettings):
 
     hqc_budget: float = 1500.0
     rng_seed: int | None = 0
-    save_path: str | Path | None = "physics_informed_cost_aware_surface_design.json"
+    save_path: str | Path | None = (
+        PERSONAL_COST_AWARE_DIR / "physics_informed_cost_aware_surface_design.json"
+    )
     # Save an RMB-format measurement JSON after every submitted batch and resume
     # from it on restart.  A small sibling checkpoint file stores budget state;
     # the main JSON remains the same measurement-outcome format as FLE_*.json.
@@ -445,6 +474,16 @@ class CostAwareSurfaceSettings(CrossingSettings):
             object.__setattr__(self, "surface_uncertainty_plot", True)
         quantinuum_models = {"emulator", "H2-1", "H2-2", "H2-1E", "H2-2E"}
         if self.backend_model in {"sympleq", "exponential", *quantinuum_models}:
+            for attr, default_path in _DEFAULT_PLOT_ATTRS.items():
+                object.__setattr__(
+                    self,
+                    attr,
+                    _resolve_personal_run_artifact_path(
+                        getattr(self, attr),
+                        default_path=default_path,
+                        save_path=self.save_path,
+                    ),
+                )
             for attr in (
                 "save_path",
                 "surface_plot_path",
