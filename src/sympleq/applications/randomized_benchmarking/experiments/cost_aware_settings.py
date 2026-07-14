@@ -249,7 +249,7 @@ class CostAwareSettings(CostAwareSurfaceSettings):
 # CONTROL PANEL
 # =============================================================================
 
-BACKEND = "H2-1"  # "sympleq"  # , "emulator", "H2-1", "H2-2", "H2-1E", or "H2-2E"
+BACKEND = "H2-2"  # "sympleq"  # , "emulator", "H2-1", "H2-2", "H2-1E", or "H2-2E"
 PROJECT_NAME = "fidelity-benchmark"
 
 Q_VALUES = tuple(range(27, 57, 1))
