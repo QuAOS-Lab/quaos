@@ -211,8 +211,8 @@ def _build_prepass_context(
             meta=ctx_meta,
         )
 
-        # Phase 2: compute the invariant-derived (search-independent) cost lower
-        # bound now, before any extraction, and stash it on the context meta.
+        # Compute the invariant-derived (search-independent) cost lower bound
+        # before any extraction, and stash it on the context meta.
         profile = compute_sector_profile(F, ctx, p)
         ctx_meta["lengths_present"] = profile.get("lengths_present", [])
         ctx_meta["p2_diag_flags"] = profile.get("p2_diag_flags", {})
@@ -221,8 +221,8 @@ def _build_prepass_context(
 
         sector_contexts.append(ctx)
 
-    # Phase 2: prefer the exact invariant bound (max over sectors, Lemma 3.2)
-    # over the loose minpoly floor, when every sector produced a certified bound.
+    # Prefer the exact invariant bound (max over sectors, Lemma 3.2) over the
+    # loose minpoly floor, when every sector produced a certified bound.
     exact_lbs = [c.meta.get("cost_lower_bound") for c in sector_contexts]
     if exact_lbs and all(isinstance(v, int) for v in exact_lbs):
         Lmin_exact = max(1, min(int(max(exact_lbs)), int(n)))
@@ -377,8 +377,8 @@ def primary_components_crt(F: np.ndarray, p: int) -> Dict:
         Lmin_star=Lmin_star,
     )
 
-    # Phase 2: the prepass context recomputes an exact Lmin from invariant
-    # sector bounds; surface it (falling back to the minpoly floor).
+    # The prepass context recomputes an exact Lmin from invariant sector bounds;
+    # surface it, falling back to the minpoly floor.
     Lmin_exact = int(prepass_context.meta.get("Lmin_star", Lmin_star))
 
     return {

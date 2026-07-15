@@ -1,43 +1,27 @@
 # sympleq/core/symmetries/atomic_decomposition.py
 from __future__ import annotations
 
-import numpy as np
-from typing import Any, Dict, List, Tuple, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from .atomic_decomposition_helpers.rcf_prepass import rcf_prepass, _is_x_pm_1
-from .modular_helpers import (
-    mod_p,
-    omega_matrix,
-    inv_mod_mat,
-    is_symplectic,
+import numpy as np
+
+from .atomic_decomposition_helpers.atomic_certification import attach_cost_certificate
+from .atomic_decomposition_helpers.atomic_completion import (
+    complete_global_basis_from_blocks,
+    compute_sigma,
+    convert_column_result_to_row,
 )
-from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_types import (
-    AtomicBlock,
-    AtomicInvariant,
-    SectorContext,
-    SectorCostCertificate,
-    ExtractionObstruction,
-    SearchBudgetExceeded,
+from .atomic_decomposition_helpers.atomic_sector_dispatch import (
+    build_sector,
+    classify_extraction_error,
+    sector_contexts_from_meta,
+    sector_debug,
+    sector_fallback_block,
 )
-from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_linear import (
-    split_uv,
-    is_nondegenerate,
-    darboux_basis_from_span,
-    symplectic_completion_from_block,
-)
-from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_paired import atomic_blocks_in_paired_sector
-from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_self import atomic_blocks_in_self_sector_nonunipotent
-from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_self_p2_unitary import (
-    atomic_blocks_in_self_sector_p2_nonunipotent_unitary,
-)
-from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_unipotent_p2 import (
-    atomic_blocks_in_unipotent_self_sector_p2)
-from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_linear import restrict_operator
-from sympleq.core.symmetries.atomic_decomposition_helpers.module_invariants import q_of_F_restricted
-from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_verify import (
-    verify_atomic_decomposition,
-    verify_cost_certificate,
-)
+from .atomic_decomposition_helpers.atomic_types import AtomicBlock, AtomicInvariant
+from .atomic_decomposition_helpers.atomic_verify import verify_atomic_decomposition
+from .atomic_decomposition_helpers.rcf_prepass import rcf_prepass
+from .modular_helpers import is_symplectic, mod_p
 
 Convention = Literal["column", "row"]
 
@@ -53,553 +37,6 @@ class CertificationError(RuntimeError):
         self.info: Dict[str, Any] = info or {}
 
 
-def _classify_extraction_error(e: BaseException) -> str:
-    """Tag a sector failure as a search-budget limit, a mathematical
-    obstruction, or something else, for CertificationError.info diagnostics."""
-    if isinstance(e, SearchBudgetExceeded):
-        return "budget"
-    if isinstance(e, ExtractionObstruction):
-        return "obstruction"
-    return "other"
-
-
-def _concat_blocks_to_partial_basis(blocks: List[AtomicBlock], n2: int, p: int) -> np.ndarray:
-    """
-    Build a *partial* symplectic frame T = [U_all | V_all] (2n x 2k) from block bases.
-    Does NOT require spanning the full space.
-    """
-    if not blocks:
-        return np.zeros((n2, 0), dtype=np.int64)
-
-    U_list: list[np.ndarray] = []
-    V_list: list[np.ndarray] = []
-    for b in blocks:
-        U_blk, V_blk = split_uv(b.T_blk)
-        U_list.append(U_blk)
-        V_list.append(V_blk)
-
-    T = np.concatenate(U_list + V_list, axis=1)
-    return mod_p(T, p)
-
-
-def _verify_full_symplectic_basis(B: np.ndarray, p: int) -> None:
-    """Raise if B is not a full symplectic basis."""
-    if B.ndim != 2 or B.shape[0] != B.shape[1]:
-        raise RuntimeError(f"Global basis must be square, got shape {B.shape}.")
-    n2 = B.shape[0]
-    if n2 % 2 != 0:
-        raise RuntimeError(f"Global basis must have even dimension, got {n2}.")
-    n = n2 // 2
-    Omega = omega_matrix(n, p)
-    G = mod_p(B.T @ Omega @ B, p)
-    if not np.array_equal(G % p, Omega % p):
-        raise RuntimeError("Global basis B is not symplectic (B^T Omega B != Omega).")
-
-
-def _compute_sigma(F: np.ndarray, B: np.ndarray, p: int) -> np.ndarray:
-    """Sigma = B^{-1} F B (mod p)."""
-    return mod_p(inv_mod_mat(B, p) @ F @ B, p)
-
-
-def _convert_column_result_to_row(Sigma_col: np.ndarray, B_col: np.ndarray, info: Dict[str, Any], p: int) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
-    """Convert an internally column-action result back to row/right-action convention."""
-    Sigma_row = mod_p(Sigma_col.T, p)
-    B_row = mod_p(B_col.T, p)
-    info = dict(info)
-    info["input_convention"] = "row"
-    info["internal_convention"] = "column"
-    info["basis_convention"] = "row"
-    info["convention_note"] = (
-        "Internal computation used F_col = F_row.T. Returned B has row-basis convention, "
-        "so Sigma = B F_row B^{-1} = Sigma_col.T."
-    )
-    return Sigma_row, B_row, info
-
-
-def _build_sector_gap_report(invariants: List[AtomicInvariant]) -> Dict[str, Any]:
-    """
-    Summarise sector-local certification gaps.
-
-    A gap means the sector builder returned a verified block decomposition whose
-    attained sector cost is larger than the invariant lower bound attached by
-    the prepass.  This is the most useful diagnostic when a random instance is
-    valid but not certified minimal: it identifies which sector type and chain
-    profile prevented the certificate from closing.
-    """
-    sectors: List[Dict[str, Any]] = []
-    gaps: List[Dict[str, Any]] = []
-    incomplete: List[Dict[str, Any]] = []
-    inconsistent: List[Dict[str, Any]] = []
-
-    for idx, inv in enumerate(invariants):
-        data = inv.data if isinstance(getattr(inv, "data", None), dict) else {}
-        cert = data.get("cost_certificate") if isinstance(data.get("cost_certificate"), dict) else {}
-        lb = cert.get("lower_bound")
-        sc = cert.get("sector_cost", cert.get("qudit_cost"))
-        try:
-            lb_int = None if lb is None else int(lb)
-        except Exception:
-            lb_int = None
-        try:
-            sc_int = None if sc is None else int(sc)
-        except Exception:
-            sc_int = None
-        complete = bool(cert.get("complete", cert.get("certified", False)))
-        attained = bool(cert.get("attained", data.get("status") == "OK"))
-        entry: Dict[str, Any] = {
-            "sector_index": int(idx),
-            "sector_key": tuple(inv.sector_key),
-            "sector_type": inv.sector_type,
-            "poly_key": tuple(inv.poly_key),
-            "deg": data.get("deg"),
-            "exponent": data.get("exponent"),
-            "status": data.get("status"),
-            "sector_cost": sc_int,
-            "lower_bound": lb_int,
-            "complete": complete,
-            "attained": attained,
-            "note": cert.get("note", cert.get("reason", data.get("note", ""))),
-        }
-        # Attach compact sector-specific breadcrumbs when available.
-        for key in (
-            "length_summary",
-            "length_multiplicities",
-            "pairing_rank",
-            "blocks",
-            "p2_unipotent",
-            "p2_self_reciprocal_nonunipotent",
-            "minimality_guard",
-        ):
-            if key in data:
-                entry[key] = data[key]
-        sectors.append(entry)
-
-        if not complete or not attained or lb_int is None or sc_int is None:
-            incomplete.append(entry)
-        elif sc_int > lb_int:
-            gaps.append(entry)
-        elif sc_int < lb_int:
-            # This would mean the lower bound is stronger than the constructed
-            # verified sector, so either the prepass bound or the sector cost
-            # bookkeeping is inconsistent.  Surface it separately.
-            inconsistent.append(entry)
-
-    return {
-        "n_sectors": int(len(sectors)),
-        "n_gaps": int(len(gaps)),
-        "n_incomplete": int(len(incomplete)),
-        "n_inconsistent": int(len(inconsistent)),
-        "gaps": gaps,
-        "incomplete": incomplete,
-        "inconsistent": inconsistent,
-        "sectors": sectors,
-    }
-
-def _attach_cost_certificate(info: Dict[str, Any], blocks: List[AtomicBlock], invariants: List[AtomicInvariant], *, completed: bool, p: int) -> None:
-    """
-    Attach conservative global cost/minimality fields in-place.
-
-    ``qudit_cost`` / ``Q_att`` is always the attained cost of the returned
-    block frame.  ``Q_opt`` is populated only when the invariant lower bound
-    certifies that this attained cost is optimal; otherwise it is ``None``.
-    This prevents uncertified best-effort or merely atomic decompositions from
-    being consumed downstream as proven optima.
-    """
-    cert = verify_cost_certificate(blocks, invariants, p, completed=completed)
-    q_att = int(cert["qudit_cost"])
-    is_minimal = bool(cert["certified_minimal"])
-
-    # Canonical public fields.
-    info["qudit_cost"] = q_att                 # retained public name: attained cost
-    info["Q_att"] = q_att                      # explicit alias for plots/tables
-    info["attained_qudit_cost"] = q_att
-    info["certified_lower_bound"] = cert["lower_bound"]
-    info["certified_minimal"] = is_minimal
-    info["cost_certificate"] = cert
-
-    # Optimal cost fields are meaningful only after certification.
-    info["Q_opt"] = q_att if is_minimal else None
-    info["optimal_qudit_cost"] = q_att if is_minimal else None
-
-    # Deprecated aliases of the two canonical fields above; retained as shims
-    # for older notebooks/callers, but they no longer imply that Q_opt exists.
-    info["certified_minimal_qudit_cost"] = is_minimal
-    info["minimal_cost_certified"] = is_minimal
-
-    gap_report = _build_sector_gap_report(invariants)
-    info["sector_gap_report"] = gap_report
-    if gap_report["n_gaps"]:
-        info.setdefault("warnings", []).append(
-            "Minimality certificate gap: at least one sector attained a larger cost than its invariant lower bound."
-        )
-    if gap_report["n_inconsistent"]:
-        info.setdefault("warnings", []).append(
-            "Cost certificate inconsistency: at least one sector attained less than its invariant lower bound."
-        )
-
-
-def _sector_contexts_from_meta(meta: Dict[str, Any]) -> List[SectorContext]:
-    """
-    Return typed sector contexts from rcf_prepass.
-
-    New prepass code returns ``sector_contexts`` directly.  The small legacy
-    fallback below keeps older cached/notebook prepass dictionaries usable, but
-    production code should rely on the typed contexts.
-    """
-    ctxs = meta.get("sector_contexts")
-    if ctxs is None:
-        prepass_context = meta.get("prepass_context")
-        ctxs = getattr(prepass_context, "sectors", None)
-    if ctxs is not None:
-        return list(ctxs)
-
-    legacy_sectors = meta.get("sectors")
-    primaries = meta.get("primaries")
-    if legacy_sectors is None or primaries is None:
-        raise RuntimeError("rcf_prepass did not return sector contexts or legacy sector data.")
-
-    out: List[SectorContext] = []
-    for index, sec in enumerate(legacy_sectors):
-        key = tuple(sec["key"])
-        sector_type = "paired" if sec.get("type") == "paired" else "self"
-        out.append(
-            SectorContext(
-                sector_key=key,
-                sector_type=sector_type,
-                poly_key=key,
-                sector_key_star=tuple(sec["key_star"]) if sec.get("key_star") is not None else None,
-                p=int(meta["p"]),
-                deg_q=int(sec.get("deg", primaries.get(key, {}).get("deg", 0))),
-                max_exp=int(sec.get("exponent", primaries.get(key, {}).get("exponent", 0))),
-                T_sec=sec.get("W_basis"),
-                meta={
-                    "index": int(index),
-                    "legacy_sec": sec,
-                    "W_basis": sec.get("W_basis"),
-                    "primaries": primaries,
-                    "Lmin_star": meta.get("Lmin_star", 1),
-                    "coordinate_note": "legacy context constructed in atomic_decomposition.py",
-                },
-            )
-        )
-    return out
-
-
-def _ctx_meta(ctx: SectorContext) -> Dict[str, Any]:
-    return ctx.meta if isinstance(ctx.meta, dict) else {}
-
-
-def _sector_debug(ctx: SectorContext, *, sector_index: int | None = None) -> Dict[str, Any]:
-    meta = _ctx_meta(ctx)
-    legacy = meta.get("legacy_sec", {}) if isinstance(meta.get("legacy_sec", {}), dict) else {}
-    return {
-        "sector_index": int(sector_index if sector_index is not None else meta.get("index", -1)),
-        "sector_type": ctx.sector_type,
-        "key": ctx.sector_key,
-        "key_star": ctx.sector_key_star,
-        "deg": int(ctx.deg_q),
-        "exponent": int(ctx.max_exp),
-        "dim2": int(ctx.T_sec.shape[1]) if isinstance(ctx.T_sec, np.ndarray) else legacy.get("dim2"),
-        "sec_note": legacy.get("note", ""),
-        "coordinate_note": meta.get("coordinate_note", ""),
-    }
-
-
-def _sector_span_basis(ctx: SectorContext, p: int) -> np.ndarray:
-    """Return an ambient basis for the full sector span."""
-    meta = _ctx_meta(ctx)
-    W = meta.get("W_basis")
-    if W is None:
-        legacy = meta.get("legacy_sec", {})
-        if isinstance(legacy, dict):
-            W = legacy.get("W_basis")
-    if W is None:
-        W = ctx.T_sec
-    if W is None:
-        raise RuntimeError(f"Sector {ctx.sector_key} has no ambient sector basis in context.")
-    return mod_p(np.asarray(W, dtype=np.int64), p)
-
-
-def _sector_fallback_block(
-    *,
-    F: np.ndarray,
-    p: int,
-    ctx: SectorContext,
-    reason: str,
-) -> Tuple[List[AtomicBlock], AtomicInvariant]:
-    """
-    Best-effort fallback: produce a single block spanning the whole sector subspace.
-
-    Fallbacks are intentionally kept in this global best-effort wrapper, rather
-    than hidden inside sector builders.  Certified mode never calls this routine.
-    """
-    W = _sector_span_basis(ctx, p)
-    n2 = F.shape[0]
-    Omega_amb = omega_matrix(n2 // 2, p)
-
-    if W.size == 0 or W.shape[1] == 0:
-        inv = AtomicInvariant(
-            sector_key=ctx.sector_key,
-            sector_type=ctx.sector_type,
-            poly_key=ctx.poly_key,
-            data={"status": "DEGRADED", "note": "empty sector basis", "reason": reason},
-        )
-        return [], inv
-
-    if W.shape[1] % 2 != 0:
-        # Best-effort must always return. An odd-dimensional sector span cannot
-        # carry a symplectic form, so we cannot build a Darboux block here; emit
-        # an empty DEGRADED block list and let global completion absorb the span.
-        inv = AtomicInvariant(
-            sector_key=ctx.sector_key,
-            sector_type=ctx.sector_type,
-            poly_key=ctx.poly_key,
-            data={
-                "status": "DEGRADED",
-                "note": f"sector has odd dimension {W.shape[1]}; deferred to global completion",
-                "reason": reason,
-            },
-        )
-        return [], inv
-
-    if not is_nondegenerate(Omega_amb, W, p):
-        # Likewise, a degenerate sector span has no Darboux basis; defer to the
-        # global symplectic completion rather than raising out of the loop.
-        inv = AtomicInvariant(
-            sector_key=ctx.sector_key,
-            sector_type=ctx.sector_type,
-            poly_key=ctx.poly_key,
-            data={
-                "status": "DEGRADED",
-                "note": "sector span is degenerate; deferred to global completion",
-                "reason": reason,
-            },
-        )
-        return [], inv
-
-    T_blk = darboux_basis_from_span(Omega_amb, W, p)
-
-    inv = AtomicInvariant(
-        sector_key=ctx.sector_key,
-        sector_type=ctx.sector_type,
-        poly_key=ctx.poly_key,
-        data={
-            "status": "DEGRADED",
-            "note": "sector fallback block (not certified)",
-            "reason": reason,
-        },
-    )
-
-    block = AtomicBlock(
-        T_blk=mod_p(T_blk, p),
-        half_dim=int(T_blk.shape[1] // 2),
-        sector_key=ctx.sector_key,
-        inv=inv,
-    )
-    return [block], inv
-
-
-def _require_primaries(ctx: SectorContext) -> Dict[Tuple[int, ...], Dict[str, Any]]:
-    primaries = _ctx_meta(ctx).get("primaries")
-    if not isinstance(primaries, dict):
-        raise RuntimeError(f"Sector {ctx.sector_key} context is missing primary data.")
-    return primaries
-
-
-def _build_sector_raw(
-    F: np.ndarray,
-    p: int,
-    ctx: SectorContext,
-) -> Tuple[List[AtomicBlock], AtomicInvariant]:
-    """
-    Build one sector from a typed SectorContext.
-
-    Sector builders are always called with their internal fallbacks disabled; a
-    sector that cannot be built deterministically raises, and the single
-    decomposition route absorbs it via a degraded fallback plus global
-    completion (marking the result uncertified).
-    """
-    if int(ctx.p) != int(p):
-        raise ValueError(f"Sector context has p={ctx.p}, but decomposition requested p={p}.")
-
-    prim = _require_primaries(ctx)
-
-    if ctx.sector_type == "paired":
-        if ctx.sector_key_star is None:
-            raise RuntimeError(f"Paired sector {ctx.sector_key} is missing reciprocal partner key.")
-        blocks, inv = atomic_blocks_in_paired_sector(
-            F,
-            p,
-            ctx.sector_key,
-            ctx.sector_key_star,
-            prim,
-        )
-        return blocks, inv
-
-    # self sector
-    sector_key = ctx.sector_key
-    info = prim[sector_key]
-    q = info["poly"]
-
-    if p == 2 and _is_x_pm_1(q, p):
-        blocks, inv = atomic_blocks_in_unipotent_self_sector_p2(F, sector_key, prim)
-        return blocks, inv
-
-    # Prefer precomputed sector coordinates from the context.  Recompute only if
-    # the context was produced by an older prepass or coordinate construction failed.
-    T_sec = ctx.T_sec
-    F_sec = ctx.F_sec
-    Omega_sec = ctx.Omega_sec
-    N_sec = ctx.N_sec
-
-    if T_sec is None or F_sec is None or Omega_sec is None or N_sec is None:
-        W = _sector_span_basis(ctx, p)
-        Omega_amb = omega_matrix(F.shape[0] // 2, p)
-        T_sec = darboux_basis_from_span(Omega_amb, W, p)
-        F_sec = restrict_operator(F, T_sec, p)
-        Omega_sec = omega_matrix(T_sec.shape[1] // 2, p)
-        N_sec = q_of_F_restricted(F_sec, q, p)
-
-    if p == 2 and int(ctx.deg_q) > 1:
-        blocks, inv = atomic_blocks_in_self_sector_p2_nonunipotent_unitary(
-            F_sec=F_sec,
-            T_sec=T_sec,
-            Omega=Omega_sec,
-            N=N_sec,
-            deg_q=int(ctx.deg_q),
-            max_exp=int(ctx.max_exp),
-            p=p,
-            sector_key=sector_key,
-            poly_key=ctx.poly_key,
-        )
-        return blocks, inv
-
-    blocks, inv = atomic_blocks_in_self_sector_nonunipotent(
-        F_sec=F_sec,
-        T_sec=T_sec,
-        Omega=Omega_sec,
-        N=N_sec,
-        deg_q=int(ctx.deg_q),
-        max_exp=int(ctx.max_exp),
-        p=p,
-        sector_key=sector_key,
-        poly_key=ctx.poly_key,
-    )
-    return blocks, inv
-
-
-def _inject_invariant_lower_bound(
-    inv: AtomicInvariant, ctx: SectorContext, blocks: List[AtomicBlock]
-) -> None:
-    """
-    Phase 2: overwrite the sector cost certificate's ``lower_bound`` with the
-    invariant-derived value computed in the prepass (``ctx.meta``), replacing the
-    old circular ``lower_bound = attained``.  ``attained`` becomes the verified
-    constructed sector cost; ``certified_minimal_sector`` records whether the two
-    agree.  Done in this single dispatch wrapper so all four builders are covered.
-    """
-    if not isinstance(getattr(inv, "data", None), dict):
-        return
-    meta = ctx.meta or {}
-    lb = meta.get("cost_lower_bound")
-    bound_complete = bool(meta.get("cost_lower_bound_complete", False))
-    sector_cost = max((int(b.half_dim) for b in blocks), default=0)
-    status_ok = (inv.data.get("status", "OK") == "OK")
-
-    legacy_cc = dict(inv.data.get("cost_certificate") or {})
-    legacy_cc["lengths_present"] = list(meta.get("lengths_present", []))
-    note = legacy_cc.get("note") or ""
-    note = (note + " | " if note else "") + "lower_bound from invariants (Phase 2)"
-
-    lower_bound_complete = bool(bound_complete and lb is not None and status_ok)
-    sector_cert = SectorCostCertificate(
-        sector_cost=int(sector_cost),
-        lower_bound=None if lb is None else int(lb),
-        lower_bound_complete=lower_bound_complete,
-        extraction_attained=bool(status_ok),
-        certified_minimal_sector=bool(lower_bound_complete and lb is not None and sector_cost == int(lb)),
-        note=note,
-        extra={
-            k: v
-            for k, v in legacy_cc.items()
-            if k
-            not in {
-                "sector_cost",
-                "lower_bound",
-                "lower_bound_complete",
-                "attained",
-                "extraction_attained",
-                "complete",
-                "certified",
-                "certified_minimal_sector",
-                "note",
-            }
-        },
-    )
-    inv.data["sector_cost_certificate"] = sector_cert
-    inv.data["cost_certificate"] = sector_cert.as_dict()
-
-
-def _build_sector(
-    F: np.ndarray,
-    p: int,
-    ctx: SectorContext,
-) -> Tuple[List[AtomicBlock], AtomicInvariant]:
-    """Dispatch to the sector builders, then attach the invariant-derived
-    (search-independent) cost lower bound to the returned certificate."""
-    blocks, inv = _build_sector_raw(F, p, ctx)
-    try:
-        _inject_invariant_lower_bound(inv, ctx, blocks)
-    except Exception:
-        # Bound injection must never break extraction; leave the builder's cert.
-        pass
-    return blocks, inv
-
-
-
-def _complete_global_basis_from_blocks(
-    *,
-    F: np.ndarray,
-    p: int,
-    blocks: List[AtomicBlock],
-) -> Tuple[np.ndarray, bool]:
-    """
-    Return a full symplectic basis B, and a boolean `completed` indicating whether we
-    had to perform a completion step beyond concatenating block bases.
-    """
-    n2 = F.shape[0]
-    n = n2 // 2
-    Omega = omega_matrix(n, p)
-
-    T = _concat_blocks_to_partial_basis(blocks, n2, p)  # 2n × 2k
-    if T.size == 0:
-        # No blocks at all: fall back to identity (valid symplectic basis).
-        B = np.eye(n2, dtype=np.int64)
-        _verify_full_symplectic_basis(B, p)
-        return mod_p(B, p), True
-
-    # Ensure the frame is actually symplectic on its span:
-    # i.e. T^T Omega T == Omega_k. If not, that's a bug upstream (block builder)
-    k2 = T.shape[1]
-    if k2 % 2 != 0:
-        raise RuntimeError(f"Partial basis has odd number of columns {k2}, cannot be a symplectic frame.")
-    k = k2 // 2
-    Omega_k = omega_matrix(k, p)
-    G = mod_p(T.T @ Omega @ T, p)
-    if not np.array_equal(G % p, Omega_k % p):
-        raise RuntimeError("Partial basis T is not a Darboux frame: T^T Omega T != Omega_k. Upstream block bug?")
-
-    if k2 == n2:
-        B = T
-        _verify_full_symplectic_basis(B, p)
-        return mod_p(B, p), False
-
-    # Complete the symplectic frame to a full symplectic basis.
-    B = symplectic_completion_from_block(T, p)
-    _verify_full_symplectic_basis(B, p)
-    return mod_p(B, p), True
-
-
 def atomic_block_decompose(
     F: np.ndarray,
     p: int,
@@ -612,21 +49,21 @@ def atomic_block_decompose(
     Decompose a symplectic ``F`` into atomic invariant symplectic blocks.
 
     Strict by default: sector extraction failures raise ``CertificationError``
-    instead of being hidden behind a global completion.  Set
+    instead of being hidden behind a global completion. Set
     ``allow_degraded=True`` to recover the previous best-effort behaviour, which
     always tries to return ``(Sigma, B, info)`` with ``B`` symplectic and reports
-    certification in the output flags.  The legacy ``mode`` keyword is accepted
+    certification in the output flags. The legacy ``mode`` keyword is accepted
     as a compatibility alias: ``mode="certified"`` is strict, while
     ``mode="best_effort"``/``"degraded"`` permits degraded fallbacks.
 
       * ``info["certified"]`` -- True iff the returned basis is exactly the
         concatenated atomic block frame (no global completion was needed), every
         sector was built by an implemented family (no degraded fallback), and the
-        independent verification passed.  A valid-but-not-atomic result (e.g. one
+        independent verification passed. A valid-but-not-atomic result (e.g. one
         relying on global completion) has this False.
       * ``info["cost_certificate"]["certified_minimal"]`` (mirrored at
         ``info["certified_minimal"]``) -- True iff the attained qudit cost equals
-        the invariant-derived lower bound.  This minimality proof is computed from
+        the invariant-derived lower bound. This minimality proof is computed from
         conjugacy invariants in the prepass, independent of the construction.
 
     Callers that want a hard failure on anything less than a certified minimal
@@ -648,8 +85,7 @@ def atomic_block_decompose(
     F = np.asarray(F, dtype=int)
     if F.ndim != 2 or F.shape[0] != F.shape[1]:
         raise ValueError(f"F must be a 2D square matrix, got shape {getattr(F, 'shape', None)}.")
-    n2 = F.shape[0]
-    if n2 % 2 != 0:
+    if F.shape[0] % 2 != 0:
         raise ValueError(f"F must be (2n)x(2n), got shape {F.shape}.")
     F = mod_p(F, p)
 
@@ -657,13 +93,13 @@ def atomic_block_decompose(
         Sigma_col, B_col, info = atomic_block_decompose(
             F.T, p, convention="column", allow_degraded=allow_degraded
         )
-        return _convert_column_result_to_row(Sigma_col, B_col, info, p)
+        return convert_column_result_to_row(Sigma_col, B_col, info, p)
 
     if not is_symplectic(F, p):
         raise ValueError("Input F is not symplectic in column-action convention.")
 
     meta = rcf_prepass(F, p)
-    sector_contexts = _sector_contexts_from_meta(meta)
+    sector_contexts = sector_contexts_from_meta(meta)
 
     blocks: List[AtomicBlock] = []
     sector_invariants: List[AtomicInvariant] = []
@@ -671,27 +107,26 @@ def atomic_block_decompose(
 
     for i, ctx in enumerate(sector_contexts):
         try:
-            b, inv = _build_sector(F, p, ctx)
-            blocks += b
+            sector_blocks, inv = build_sector(F, p, ctx)
+            blocks += sector_blocks
             sector_invariants.append(inv)
         except Exception as e:
             reason = f"{type(e).__name__}: {e}"
-            dbg = _sector_debug(ctx, sector_index=i)
+            dbg = sector_debug(ctx, sector_index=i)
             dbg["error"] = reason
-            dbg["error_kind"] = _classify_extraction_error(e)
+            dbg["error_kind"] = classify_extraction_error(e)
             errors.append(dbg)
             if not allow_degraded:
                 raise CertificationError(
                     "Sector extraction failed in strict atomic decomposition mode.",
                     info={"errors": errors, "failures": errors, "failed_sector": dbg},
                 ) from e
-            # Degraded fallback: keep going and let global completion absorb the
-            # span. This can never certify atomicity/minimality.
+
             try:
-                b_fb, inv_fb = _sector_fallback_block(F=F, p=p, ctx=ctx, reason=reason)
+                fallback_blocks, inv_fb = sector_fallback_block(F=F, p=p, ctx=ctx, reason=reason)
             except Exception as e2:
                 dbg["fallback_error"] = f"{type(e2).__name__}: {e2}"
-                b_fb, inv_fb = [], AtomicInvariant(
+                fallback_blocks, inv_fb = [], AtomicInvariant(
                     sector_key=ctx.sector_key,
                     sector_type=ctx.sector_type,
                     poly_key=ctx.poly_key,
@@ -701,13 +136,11 @@ def atomic_block_decompose(
                         "reason": reason,
                     },
                 )
-            blocks += b_fb
+            blocks += fallback_blocks
             sector_invariants.append(inv_fb)
 
-    # Assemble a full symplectic basis. Completion is a no-op when the atomic
-    # blocks already span (the certified case); otherwise it absorbs the rest.
-    B, completed = _complete_global_basis_from_blocks(F=F, p=p, blocks=blocks)
-    Sigma = _compute_sigma(F, B, p)
+    B, completed = complete_global_basis_from_blocks(F=F, p=p, blocks=blocks)
+    Sigma = compute_sigma(F, B, p)
 
     try:
         verification = verify_atomic_decomposition(
@@ -751,10 +184,8 @@ def atomic_block_decompose(
     if errors:
         info["errors"] = errors
 
-    # Minimality lives entirely in the (invariant-derived) cost certificate.
-    _attach_cost_certificate(info, blocks, sector_invariants, completed=bool(completed), p=p)
+    attach_cost_certificate(info, blocks, sector_invariants, completed=bool(completed), p=p)
     return Sigma, B, info
-
 
 
 def atomic_block_decompose_best_effort(
@@ -766,7 +197,7 @@ def atomic_block_decompose_best_effort(
     """
     Backwards-compatible best-effort wrapper.
 
-    This permits degraded sector fallbacks and global symplectic completion.  It
+    This permits degraded sector fallbacks and global symplectic completion. It
     is useful for diagnostics/notebooks, but results should be treated as
     uncertified unless ``info["certified"]`` and ``info["certified_minimal"]``
     are both true.
@@ -786,7 +217,7 @@ def decompose_or_raise(
 
     Raises :class:`CertificationError` unless the result is a certified atomic
     decomposition (``info["certified"]``) and, when ``require_minimal`` (default),
-    also certified minimal (``info["certified_minimal"]``).  Library code should
+    also certified minimal (``info["certified_minimal"]``). Library code should
     prefer :func:`atomic_block_decompose` and read the flags directly.
     """
     Sigma, B, info = atomic_block_decompose(F, p, convention=convention, allow_degraded=False)

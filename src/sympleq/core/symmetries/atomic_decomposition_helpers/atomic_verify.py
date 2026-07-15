@@ -1,13 +1,14 @@
 # sympleq/core/symmetries/atomic_decomposition_helpers/atomic_verify.py
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Sequence
 
 import numpy as np
 
 from ..modular_helpers import mod_p, omega_matrix, inv_mod_mat, rank_mod
-from .atomic_types import AtomicBlock, AtomicInvariant, SectorCostCertificate
+from .atomic_certification import verify_cost_certificate
 from .atomic_linear import split_uv
+from .atomic_types import AtomicBlock, AtomicInvariant
 
 
 def _as_int_list(xs: Iterable[int]) -> List[int]:
@@ -174,87 +175,6 @@ def verify_sigma_block_diagonal(Sigma: np.ndarray, blocks: Sequence[AtomicBlock]
             raise RuntimeError(f"Sigma is not block diagonal with respect to atomic block {bi}.")
 
     return {"block_diagonal": True, "block_dims": [int(2 * b.half_dim) for b in blocks]}
-
-
-def verify_cost_certificate(
-    blocks: Sequence[AtomicBlock],
-    invariants: Sequence[AtomicInvariant],
-    p: int,
-    *,
-    completed: bool = False,
-) -> Dict[str, Any]:
-    """
-    Conservative global minimal-cost certificate aggregation.
-
-    A global minimality claim is made only if every sector invariant carries an
-    explicit complete cost certificate with a finite lower_bound and attained=True.
-    """
-    qudit_cost = max((int(b.half_dim) for b in blocks), default=0)
-    sector_certificates: List[Dict[str, Any]] = []
-    lower_bounds: List[int] = []
-    missing: List[Dict[str, Any]] = []
-    incomplete: List[Dict[str, Any]] = []
-
-    for inv in invariants:
-        data = inv.data if isinstance(inv.data, dict) else {}
-        cert_obj = data.get("sector_cost_certificate")
-        cert = cert_obj.as_dict() if isinstance(cert_obj, SectorCostCertificate) else data.get("cost_certificate")
-        label = {
-            "sector_key": tuple(inv.sector_key),
-            "sector_type": inv.sector_type,
-            "poly_key": tuple(inv.poly_key),
-        }
-        if data.get("status") != "OK":
-            item = {**label, "reason": f"status={data.get('status')}"}
-            incomplete.append(item)
-            sector_certificates.append({**label, "complete": False, "attained": False, "lower_bound": None})
-            continue
-        if not isinstance(cert, dict):
-            item = {**label, "reason": "missing sector cost_certificate"}
-            missing.append(item)
-            sector_certificates.append({**label, "complete": False, "attained": False, "lower_bound": None})
-            continue
-
-        lb = cert.get("lower_bound")
-        attained = bool(cert.get("extraction_attained", cert.get("attained", False)))
-        complete = bool(cert.get("complete", False))
-        try:
-            lb_int: Optional[int] = None if lb is None else int(lb)
-        except Exception:
-            lb_int = None
-
-        item = {
-            **label,
-            "lower_bound": lb_int,
-            "attained": attained,
-            "complete": complete,
-            "sector_cost": cert.get("sector_cost"),
-            "note": cert.get("note", ""),
-        }
-        sector_certificates.append(item)
-
-        if not complete or not attained or lb_int is None:
-            incomplete.append({**label, "reason": "incomplete/ unattained/ missing lower_bound"})
-        else:
-            lower_bounds.append(lb_int)
-
-    all_complete = (not completed) and (len(missing) == 0) and (len(incomplete) == 0)
-    global_lower_bound = max(lower_bounds) if all_complete and lower_bounds else (0 if all_complete else None)
-    certified_minimal = bool(all_complete and global_lower_bound == qudit_cost)
-
-    return {
-        "qudit_cost": int(qudit_cost),
-        "lower_bound": None if global_lower_bound is None else int(global_lower_bound),
-        # The attained cost is the verified max_i k_i over constructed blocks
-        # (= qudit_cost), no longer hardcoded True.
-        "attained": int(qudit_cost),
-        "complete": bool(all_complete),
-        "certified_minimal": bool(certified_minimal),
-        "completed_global_basis": bool(completed),
-        "sector_certificates": sector_certificates,
-        "missing": missing,
-        "incomplete": incomplete,
-    }
 
 
 def verify_atomic_decomposition(

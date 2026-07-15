@@ -192,6 +192,142 @@ class GFpExtension:
         return self.from_coeff_vector(c)
 
 
+class GF2Extension:
+    """
+    Packed GF(2)[x]/(q) arithmetic for high-degree binary extension fields.
+
+    Generic :class:`GFpExtension` represents elements as coefficient tuples,
+    which is useful for arbitrary p but too slow for the large p=2
+    self-reciprocal sectors that appear in random symplectic decompositions.
+    This class provides the arithmetic needed by the p=2 Hermitian sector while
+    representing elements by Python integers whose binary expansion stores the
+    power-basis coefficients.
+    """
+
+    def __init__(self, modulus_coeffs: Sequence[int]):
+        q = [int(c) & 1 for c in modulus_coeffs]
+        while len(q) > 1 and q[-1] == 0:
+            q.pop()
+        if len(q) < 3 or q[-1] != 1:
+            raise ValueError(
+                f"Expected a monic irreducible polynomial of degree >1 over GF(2), got {modulus_coeffs!r}"
+            )
+        self.modulus_coeffs = tuple(q)
+        self.d = len(q) - 1
+        self.mask = (1 << self.d) - 1
+
+        self._q_low = 0
+        for i, c in enumerate(q[:-1]):
+            if c & 1:
+                self._q_low |= 1 << i
+
+        self.alpha = 2 if self.d > 1 else 1
+        self._trace_matrix_inv: np.ndarray | None = None
+
+    def add(self, a: int, b: int) -> int:
+        return (int(a) ^ int(b)) & self.mask
+
+    sub = add
+
+    def reduce(self, x: int) -> int:
+        x = int(x)
+        while x.bit_length() > self.d:
+            k = x.bit_length() - 1
+            shift = k - self.d
+            x ^= 1 << k
+            x ^= self._q_low << shift
+        return x & self.mask
+
+    def mul(self, a: int, b: int) -> int:
+        a = int(a) & self.mask
+        b = int(b) & self.mask
+        out = 0
+        aa = a
+        bb = b
+        while bb:
+            if bb & 1:
+                out ^= aa
+            aa <<= 1
+            bb >>= 1
+        return self.reduce(out)
+
+    def pow(self, a: int, e: int) -> int:
+        a = int(a) & self.mask
+        e = int(e)
+        out = 1
+        base = a
+        while e > 0:
+            if e & 1:
+                out = self.mul(out, base)
+            base = self.mul(base, base)
+            e >>= 1
+        return out
+
+    def inv(self, a: int) -> int:
+        a = int(a) & self.mask
+        if a == 0:
+            raise ZeroDivisionError("inverse of zero in GF(2^d)")
+        return self.pow(a, (1 << self.d) - 2)
+
+    def div(self, a: int, b: int) -> int:
+        return self.mul(a, self.inv(b))
+
+    def conj(self, a: int) -> int:
+        """
+        The reciprocal involution alpha -> alpha^{-1}; for self-reciprocal
+        irreducibles over GF(2), this is Frobenius 2^(d/2).
+        """
+        if self.d % 2 != 0:
+            raise ValueError("self-reciprocal non-linear irreducibles over GF(2) should have even degree")
+        return self.pow(a, 1 << (self.d // 2))
+
+    def trace_to_F2(self, a: int) -> int:
+        a = int(a) & self.mask
+        acc = 0
+        x = a
+        for _ in range(self.d):
+            acc ^= x
+            x = self.mul(x, x)
+        return acc & 1
+
+    def coeff_vector(self, a: int) -> np.ndarray:
+        return np.array([(int(a) >> i) & 1 for i in range(self.d)], dtype=np.int64).reshape(self.d, 1)
+
+    def from_coeff_vector(self, c: np.ndarray) -> int:
+        cc = np.asarray(c, dtype=np.int64).reshape(-1) % 2
+        if cc.size != self.d:
+            raise ValueError(f"expected coefficient vector of length {self.d}, got {cc.size}")
+        out = 0
+        for i, bit in enumerate(cc):
+            if int(bit) & 1:
+                out |= 1 << i
+        return out & self.mask
+
+    def trace_pairing_inverse(self) -> np.ndarray:
+        """
+        Inverse of M_{a,k} = Tr(alpha^a alpha^k), 0<=a,k<d.
+        It maps trace coordinates to power-basis coefficients.
+        """
+        if self._trace_matrix_inv is not None:
+            return self._trace_matrix_inv
+        M = np.zeros((self.d, self.d), dtype=np.int64)
+        powers = [1]
+        for _ in range(1, 2 * self.d):
+            powers.append(self.mul(powers[-1], self.alpha))
+        for a in range(self.d):
+            for k in range(self.d):
+                M[a, k] = self.trace_to_F2(powers[a + k])
+        if rank_mod(M, 2) != self.d:
+            raise RuntimeError("trace pairing matrix is singular; polynomial may not define a field")
+        self._trace_matrix_inv = inv_mod_mat(M, 2)
+        return self._trace_matrix_inv
+
+    def from_trace_values(self, values: Sequence[int]) -> int:
+        b = np.asarray(values, dtype=np.int64).reshape(self.d, 1) % 2
+        c = mod_p(self.trace_pairing_inverse() @ b, 2)
+        return self.from_coeff_vector(c)
+
+
 @dataclass(slots=True)
 class TopQuotientEBasis:
     L: int

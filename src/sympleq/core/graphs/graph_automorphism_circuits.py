@@ -5,6 +5,8 @@ from dataclasses import dataclass
 import numpy as np
 import galois
 
+from sympleq.core.finite_field_solvers import gf2_inv
+
 
 @dataclass(frozen=True, slots=True)
 class FundamentalRelation:
@@ -27,32 +29,6 @@ class FundamentalRelation:
     @property
     def size(self) -> int:
         return len(self.indices)
-
-
-def _gf2_inv(A: np.ndarray) -> np.ndarray:
-    """Invert a square binary matrix over GF(2)."""
-    A = (np.asarray(A, dtype=np.uint8) & 1).copy()
-    n, m = A.shape
-    if n != m:
-        raise np.linalg.LinAlgError("matrix must be square")
-
-    aug = np.concatenate([A, np.eye(n, dtype=np.uint8)], axis=1)
-    row = 0
-    for col in range(n):
-        piv = -1
-        for r in range(row, n):
-            if aug[r, col] & 1:
-                piv = r
-                break
-        if piv < 0:
-            raise np.linalg.LinAlgError("matrix is singular over GF(2)")
-        if piv != row:
-            aug[[row, piv]] = aug[[piv, row]]
-        for r in range(n):
-            if r != row and (aug[r, col] & 1):
-                aug[r, :] ^= aug[row, :]
-        row += 1
-    return aug[:, n:] & 1
 
 
 def extract_fundamental_relations_from_matroid(
@@ -101,7 +77,7 @@ def extract_fundamental_relations_from_matroid(
 
     C = G_int[:, basis_cols] % p
     if p == 2:
-        C_inv = _gf2_inv(C)
+        C_inv = gf2_inv(C)
         X = (C_inv @ (G_int & 1)) & 1
     else:
         GF = galois.GF(p)

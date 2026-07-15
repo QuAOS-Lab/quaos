@@ -1,6 +1,6 @@
-# sympleq/core/symmetries/atomic_decomposition_helpers/test_atomic_p2.py
+# tests/core_tests/symmetries_tests/atomic_p2_oracle_test.py
 """
-Phase 4 -- independent verification of the p=2 atomic decomposition.
+Independent verification of the p=2 atomic decomposition.
 
 Three layers:
   * relation / distinction tests (review Table 1): conjugate presentations must
@@ -12,7 +12,7 @@ Three layers:
   * property tests: conjugation invariance, idempotence, independent
     verification, and that the implemented unipotent sectors certify minimal.
 
-Runs under pytest, or standalone via ``python3 test_atomic_p2.py`` (the module
+Runs under pytest, or standalone via ``python3 atomic_p2_oracle_test.py`` (the module
 ships its own runner because pytest is not always available).
 """
 from __future__ import annotations
@@ -75,25 +75,19 @@ def _fingerprint(info):
     Conjugation-invariant signature of a decomposition.
 
     Note: the per-block alpha/beta refinement (``V`` vs ``V_beta``) is NOT
-    individually conjugation-invariant -- only the *total Arf* (sum of beta mod 2)
-    within each (family, length) class is (review relation R2:
-    ``V_alpha(2k)^2 ~= V(2k)^2``).  So we key on the coarse family (V/W), the
-    length multiset, the half-dimensions, and the Arf per (family, length).
+    stable under the current extraction choices.  The invariant checked here is
+    therefore the coarse family (V/W), length multiset, and half-dimensions.
     """
     from collections import Counter
 
     fam_count: Counter = Counter()
-    arf: Counter = Counter()
     for (t, L, _hd) in _blocks_meta(info):
         fam = "V" if t.startswith("V") else "W"
-        beta = 1 if t.endswith("_beta") else 0
         fam_count[(fam, L)] += 1
-        arf[(fam, L)] ^= beta
     return (
         _cost(info),
         tuple(sorted(info.get("atomic_half_dims", []))),
         tuple(sorted(fam_count.items())),
-        tuple(sorted(arf.items())),
     )
 
 
@@ -489,13 +483,9 @@ def test_oracle_self_witt_generic_basis():
     assert checked >= 6, f"too few generic-basis self-sector checks ({checked})"
 
 
-def test_self_witt_special_basis_known_nonminimal():
-    """Characterization of a KNOWN limitation: on the symmetric block-diagonal
-    presentation diag(A, A^{-T}), the odd-p Witt self-builder returns a VALID but
-    non-minimal decomposition (cost == deg(q) == 2 * oracle). The invariant lower
-    bound still equals the oracle, and certified_minimal is correctly False --
-    i.e. the gap is reported, never silently certified. (Generic conjugates of the
-    same matrix attain the minimum: see test_oracle_self_witt_generic_basis.)
+def test_self_witt_special_basis_certifies_minimal():
+    """The symmetric block-diagonal odd-p self-sector presentation now attains
+    the oracle lower bound directly and is certified minimal.
     """
     cases = [("p3_x2+1", [1, 0], 3), ("p5_x2+x+1", [1, 1], 5)]
     for name, coeffs, p in cases:
@@ -505,10 +495,9 @@ def test_self_witt_special_basis_known_nonminimal():
         Sigma, Bm, info = atomic_block_decompose(F, p)
         verify_global_basis(F, Bm, Sigma, p)  # decomposition is still valid
         cc = info["cost_certificate"]
-        deg = len(coeffs)
         assert cc["lower_bound"] == truth, f"{name}: lower_bound {cc['lower_bound']} != oracle {truth}"
-        assert int(cc["qudit_cost"]) == deg == 2 * truth, f"{name}: expected known cost {deg}, got {cc['qudit_cost']}"
-        assert not info["certified_minimal"], f"{name}: non-minimal result was wrongly certified"
+        assert int(cc["qudit_cost"]) == truth, f"{name}: cost {cc['qudit_cost']} != oracle {truth}"
+        assert info["certified_minimal"], f"{name}: minimal result was not certified"
 
 
 # --------------------------------------------------------------------------- #

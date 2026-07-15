@@ -2,10 +2,9 @@
 """
 Invariant-derived (search-independent) cost lower bounds.
 
-This is the Phase-2 ``decoupled cost certificate``: the minimal achievable
-half-dimension of a sector is computed from conjugacy invariants alone
-(Theorems 3.3 and 4.13 of the review notes), *before* any block extraction, so
-that ``certified_minimal`` becomes the genuine statement
+The minimal achievable half-dimension of a sector is computed from conjugacy
+invariants alone (Theorems 3.3 and 4.13 of the review notes), *before* any
+block extraction, so that ``certified_minimal`` becomes the genuine statement
 
     lower_bound (from invariants)  ==  attained (verified construction)
 

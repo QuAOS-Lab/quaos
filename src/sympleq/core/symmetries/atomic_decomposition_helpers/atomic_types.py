@@ -13,8 +13,8 @@ SectorType = Literal["paired", "self"]
 class CostCertificate(TypedDict, total=False):
     """Canonical (typed) shape of the global cost certificate.
 
-    Phase 2 makes ``lower_bound`` an invariant-derived quantity, independent of
-    the constructed decomposition, so ``certified_minimal`` (``lower_bound ==
+    ``lower_bound`` is an invariant-derived quantity, independent of the
+    constructed decomposition, so ``certified_minimal`` (``lower_bound ==
     attained``) is a genuine theorem rather than true-by-construction.
     """
     qudit_cost: int            # attained max half-dim over blocks

@@ -612,7 +612,7 @@ def _p2_extract_blocks(F_sec, N, Omega, T_sec, m, max_exp0, deg_q, key, p):
 
     def try_invariant_candidates(A_top: np.ndarray, L: int) -> bool:
         """
-        Type-by-invariant extraction (Phase 3 / sec. 4.9, Step 3).
+        Type-by-invariant extraction (sec. 4.9, Step 3).
 
         Dispatch is *mandatory* on the top form b_L:
           * even L, b_L non-alternating (diag != 0): extract V-blocks only, by
@@ -766,7 +766,7 @@ def _p2_build_certificate(blocks_meta, kernel_profile, kernel_profile_blocks,
     Assemble the sector invariant payload (beta/Arf counts per length, the
     implemented-family classification, and the sector cost certificate). The
     final ``lower_bound`` is overwritten downstream with the invariant-derived
-    bound (Thm. 4.13) in _build_sector (Phase 2).
+    bound (Thm. 4.13) by the sector dispatch layer.
     """
     beta_counts_by_L: Dict[int, Dict[str, int]] = {}
     for bm in blocks_meta:
