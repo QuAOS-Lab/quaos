@@ -108,24 +108,24 @@ def _assert_cost_semantics(info: dict) -> None:
 
 def _sector_signature(meta: dict) -> list[tuple]:
     sig = []
-    for sec in meta.get("sectors", []):
-        if sec["type"] == "paired":
-            sig.append(("paired", tuple(sec["key"]), tuple(sec["key_star"]), sec.get("deg"), sec.get("exponent")))
+    for ctx in meta.get("sector_contexts", []):
+        if ctx.sector_type == "paired":
+            sig.append(("paired", tuple(ctx.sector_key), tuple(ctx.sector_key_star), ctx.deg_q, ctx.max_exp))
         else:
-            sig.append(("self", tuple(sec["key"]), sec.get("deg"), sec.get("exponent"), sec.get("floor_certified")))
+            ctx_meta = ctx.meta or {}
+            sig.append(("self", tuple(ctx.sector_key), ctx.deg_q, ctx.max_exp, ctx_meta.get("floor_certified")))
     return sorted(sig, key=str)
 
 
-class TestRCFPrepassCompatibility:
-    def test_rcf_prepass_returns_legacy_and_context_fields(self) -> None:
+class TestRCFPrepass:
+    def test_rcf_prepass_returns_context_fields(self) -> None:
         p, n = 5, 2
         F = _symplectic_scale(np.diag([2, 3]).astype(np.int64), p)
         meta = rcf_prepass(F, p)
         assert "primaries" in meta
-        assert "sectors" in meta
         assert "sector_contexts" in meta
         assert "prepass_context" in meta
-        assert len(meta["sector_contexts"]) == len(meta["sectors"])
+        assert "sectors" not in meta
         ctx = meta["sector_contexts"][0]
         assert ctx.p == p
         assert ctx.T_sec is not None
@@ -136,9 +136,9 @@ class TestRCFPrepassCompatibility:
         A = np.diag([2, 3]).astype(np.int64)
         F = _symplectic_scale(A, p)
         meta = rcf_prepass(F, p)
-        secs = meta["sectors"]
-        assert len(secs) == 1
-        assert secs[0]["type"] == "paired"
+        ctxs = meta["sector_contexts"]
+        assert len(ctxs) == 1
+        assert ctxs[0].sector_type == "paired"
         k2 = tuple(poly_monic(np.array([p - 2, 1], dtype=np.int64), p).tolist())
         k3 = tuple(poly_monic(np.array([p - 3, 1], dtype=np.int64), p).tolist())
         assert k2 in meta["primaries"] and k3 in meta["primaries"]
@@ -148,10 +148,10 @@ class TestRCFPrepassCompatibility:
         p, n = 2, 3
         F = np.eye(2 * n, dtype=np.int64)
         meta = rcf_prepass(F, p)
-        assert len(meta["sectors"]) == 1
-        sec = meta["sectors"][0]
-        assert sec["type"] == "self"
-        assert sec["floor_certified"] is False
+        assert len(meta["sector_contexts"]) == 1
+        ctx = meta["sector_contexts"][0]
+        assert ctx.sector_type == "self"
+        assert ctx.meta["floor_certified"] is False
         assert meta["Lmin_star"] == 1
 
     def test_rcf_prepass_is_conjugacy_invariant_at_sector_signature_level(self) -> None:

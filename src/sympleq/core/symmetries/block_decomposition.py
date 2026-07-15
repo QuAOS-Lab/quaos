@@ -33,15 +33,7 @@ def block_decompose_certified(
     qudit cost to be certified minimal; set ``require_minimal=False`` to accept
     certified atomic decompositions whose minimality is not certified.
     """
-    min_block_size = kwargs.pop("min_block_size", None)
-    Sigma, B, info = decompose_or_raise(F, p, require_minimal=require_minimal, **kwargs)
-    if min_block_size is not None:
-        info = dict(info)
-        info["requested_min_block_size"] = int(min_block_size)
-        info.setdefault("warnings", []).append(
-            "min_block_size is a legacy compatibility option and is not used by the atomic decomposer."
-        )
-    return Sigma, B, info
+    return decompose_or_raise(F, p, require_minimal=require_minimal, **kwargs)
 
 
 def block_decompose_optimal(F: np.ndarray, p: int, **kwargs):
@@ -54,15 +46,7 @@ def block_decompose_optimal(F: np.ndarray, p: int, **kwargs):
     """
     if "require_minimal" in kwargs:
         raise TypeError("block_decompose_optimal always requires certified minimality; use block_decompose_certified for require_minimal=False.")
-    min_block_size = kwargs.pop("min_block_size", None)
-    Sigma, B, info = decompose_or_raise(F, p, require_minimal=True, **kwargs)
-    if min_block_size is not None:
-        info = dict(info)
-        info["requested_min_block_size"] = int(min_block_size)
-        info.setdefault("warnings", []).append(
-            "min_block_size is a legacy compatibility option and is not used by the atomic decomposer."
-        )
-    return Sigma, B, info
+    return decompose_or_raise(F, p, require_minimal=True, **kwargs)
 
 
 def _mode_graph_from_S(S: np.ndarray, p: int) -> list[list[int]]:

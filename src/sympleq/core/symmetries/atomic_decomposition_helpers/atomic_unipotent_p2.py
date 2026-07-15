@@ -19,7 +19,7 @@ from .module_invariants import (
     cyclic_submodule_basis,
     q_of_F_restricted,
 )
-from .atomic_krylov import _select_module_generators_from_top_space
+from .atomic_krylov import select_module_generators_from_top_quotient
 from .atomic_filtration import build_nilpotent_filtration
 
 
@@ -33,19 +33,6 @@ def _scalar_mod2(x) -> int:
     if arr.size != 1:
         raise ValueError(f"Expected scalar-like array, got shape={arr.shape}")
     return int(arr.reshape(-1)[0])
-
-
-
-def jordan_chain_tops_nilpotent_in_span(
-    N: np.ndarray, space_basis: np.ndarray, max_exp: int, p: int
-) -> Dict[int, np.ndarray]:
-    """
-    Restricted length-top quotient representatives, now backed by the shared
-    NilpotentFiltration cache.  Kept under the old name for compatibility with
-    existing callers/tests.
-    """
-    return build_nilpotent_filtration(N, space_basis, max_exp, p).tops
-
 
 # ---------------------------------------------------------------------------
 # p=2 top bilinear/quadratic data
@@ -509,7 +496,7 @@ def _p2_full_sector_invariants(N, Omega, F_sec, deg_q, max_exp0, m, p):
     (Lemma 4.5) and feed the cost certificate.
     """
     # Full-sector invariant summary.
-    tops_full = jordan_chain_tops_nilpotent_in_span(N, np.eye(2 * m, dtype=np.int64), max_exp0, p)
+    tops_full = build_nilpotent_filtration(N, np.eye(2 * m, dtype=np.int64), max_exp0, p).tops
     kernel_profile = [
         int((2 * m) - rank_mod(mat_pow_mod(N, k, p), p))
         for k in range(1, int(max_exp0) + 1)
@@ -522,7 +509,15 @@ def _p2_full_sector_invariants(N, Omega, F_sec, deg_q, max_exp0, m, p):
         invL = _p2_length_form_invariants(Araw, Omega, N, int(L))
         length_invariants[int(L)] = invL
         try:
-            A_gen = _select_module_generators_from_top_space(F_sec, N, Araw, deg_q, int(L), p)
+            A_gen = select_module_generators_from_top_quotient(
+                F_sec,
+                N,
+                Araw,
+                deg_q,
+                int(L),
+                p,
+                denom=None,
+            )
             gen_dim = int(A_gen.shape[1])
         except RuntimeError:
             gen_dim = -1
@@ -695,7 +690,7 @@ def _p2_extract_blocks(F_sec, N, Omega, T_sec, m, max_exp0, deg_q, key, p):
         if iteration > 2 * m + 5:
             raise SearchBudgetExceeded("Unipotent p=2 self sector: extraction exceeded iteration guard.")
 
-        tops = jordan_chain_tops_nilpotent_in_span(N, space_basis, max_exp0, p)
+        tops = build_nilpotent_filtration(N, space_basis, max_exp0, p).tops
         if not tops:
             raise RuntimeError(
                 "Unipotent p=2 self sector: remaining invariant subspace has no nilpotent top spaces."

@@ -170,7 +170,7 @@ def run_example():
     H = ising_chain_hamiltonian(N, J, h, periodic=True)
 
     F = heuristic_clifford_symmetry(N)
-    S, T = block_decompose_optimal(F.symplectic, 2)
+    S, T, _info = block_decompose_optimal(F.symplectic, 2)
 
     h_S, h_T = clifford_phase_decomposition(F.symplectic, F.phase_vector, S, T, int(H.lcm))
     S_gate = Gate('S', F.qudit_indices, S, F.dimensions, h_S)

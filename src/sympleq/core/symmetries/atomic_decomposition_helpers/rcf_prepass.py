@@ -8,30 +8,10 @@ from sympleq.core.symmetries.polynomials_fp import (
     poly_monic, poly_pow, poly_divmod, extended_euclidean, poly_is_zero, poly_reciprocal, poly_mul, poly_eval_matrix
 )
 from sympleq.core.symmetries.minpoly import minimal_polynomial, factor_poly_over_fp
-
-# These imports deliberately sit behind a fallback so the file works both in the
-# installed package layout and when these helper files are copied into a flat
-# scratch directory for review.
-try:  # package layout: symmetries/atomic_decomposition_helpers/*.py
-    from .atomic_types import PrepassContext, SectorContext
-    from .atomic_linear import darboux_basis_from_span, restrict_operator, symplectic_left_inverse
-    from .module_invariants import q_of_F_restricted
-    from .cost_bounds import is_x_pm_1 as _is_x_pm_1, compute_sector_profile
-except ImportError:  # legacy/local layout used by some development notebooks
-    from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_types import (
-        PrepassContext,
-        SectorContext,
-    )
-    from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_linear import (
-        darboux_basis_from_span,
-        restrict_operator,
-        symplectic_left_inverse,
-    )
-    from sympleq.core.symmetries.atomic_decomposition_helpers.module_invariants import q_of_F_restricted
-    from sympleq.core.symmetries.atomic_decomposition_helpers.cost_bounds import (
-        is_x_pm_1 as _is_x_pm_1,
-        compute_sector_profile,
-    )
+from .atomic_types import PrepassContext, SectorContext
+from .atomic_linear import darboux_basis_from_span, restrict_operator, symplectic_left_inverse
+from .module_invariants import q_of_F_restricted
+from .cost_bounds import is_x_pm_1 as _is_x_pm_1, compute_sector_profile
 
 
 def _half_dim_floor_from_minpoly_factor(q: np.ndarray, e: int, p: int) -> int:
@@ -71,12 +51,6 @@ def _compute_Lmin(sectors: list[dict], n: int) -> int:
     L = max(int(sec.get("half_dim_floor", 1)) for sec in sectors)
     # Always at least 1 (identity cost convention), at most n.
     return max(1, min(int(L), int(n)))
-
-
-def _is_x_pm_1_local_DEPRECATED(q: np.ndarray, p: int) -> bool:
-    # Retained only as documentation; the canonical predicate is imported as
-    # ``_is_x_pm_1`` from cost_bounds above (single shared implementation).
-    return _is_x_pm_1(q, p)
 
 
 def _normalize_factorization_output(factors, p: int) -> List[Tuple[np.ndarray, int]]:
@@ -140,7 +114,7 @@ def _safe_sector_coordinates(
         Omega_sec = mod_p(T_sec.T @ Omega @ T_sec, p)
         F_sec = restrict_operator(F, T_sec, p)
         return T_sec, T_sec_leftinv, Omega_sec, F_sec, ""
-    except Exception as exc:  # keep legacy prepass behaviour, but make diagnostics explicit
+    except Exception as exc:
         Omega_sec = mod_p(W.T @ Omega @ W, p)
         note = f"failed to construct Darboux sector coordinates: {type(exc).__name__}: {exc}"
         return W, None, Omega_sec, None, note
@@ -157,13 +131,7 @@ def _build_prepass_context(
     factors: List[Tuple[np.ndarray, int]],
     Lmin_star: int,
 ) -> PrepassContext:
-    """
-    Convert the legacy dict prepass output into typed sector contexts.
-
-    The legacy dicts are retained in each context's meta field so older sector
-    builders can be adapted incrementally.  New code should consume the
-    SectorContext rather than taking separate ``sec`` and ``primaries`` objects.
-    """
+    """Build typed sector contexts from primary-sector records."""
     Omega = omega_matrix(n, p)
     sector_contexts: list[SectorContext] = []
 
@@ -183,10 +151,14 @@ def _build_prepass_context(
 
         ctx_meta: Dict[str, object] = {
             "index": int(index),
-            "legacy_sec": sec,
             "W_basis": W,
             "primaries": primaries,
             "primary_info": primaries.get(key),
+            "dim2": int(W.shape[1]),
+            "half_dim": int(W.shape[1] // 2),
+            "half_dim_floor": int(sec.get("half_dim_floor", 1)),
+            "floor_certified": bool(sec.get("floor_certified", True)),
+            "sector_note": str(sec.get("note", "")),
             "mF": mF,
             "factors": factors,
             "Lmin_star": int(Lmin_star),
@@ -239,7 +211,6 @@ def _build_prepass_context(
             "factors": factors,
             "Lmin_star": int(Lmin_exact),
             "Lmin_star_minpoly_floor": int(Lmin_star),
-            "legacy_sectors": sectors,
             "primaries": primaries,
         },
     )
@@ -386,7 +357,6 @@ def primary_components_crt(F: np.ndarray, p: int) -> Dict:
         "n": int(n),
         "mF": mF,
         "primaries": primaries,
-        "sectors": sectors,                    # legacy API
         "sector_contexts": prepass_context.sectors,
         "prepass_context": prepass_context,
         "factors": factors,
@@ -404,7 +374,7 @@ if __name__ == "__main__":
     p = 2
     F = np.eye(6, dtype=np.int64)
     meta = rcf_prepass(F, p)
-    assert len(meta["sectors"]) == 1
-    W = meta["sectors"][0]["W_basis"]
+    assert len(meta["sector_contexts"]) == 1
+    W = meta["sector_contexts"][0].meta["W_basis"]
     assert W.shape[0] == 6
     print("rcf_prepass.py tests passed")

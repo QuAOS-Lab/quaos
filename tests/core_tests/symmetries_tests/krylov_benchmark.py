@@ -81,7 +81,7 @@ def test_benchmark_symmetry_krylov_full(benchmark, N: int):
 
     # Symmetry construction (same as in your tests/examples)
     F = heuristic_clifford_symmetry(N)
-    S_symp, T_symp = block_decompose_optimal(F.symplectic, 2)
+    S_symp, T_symp, _info = block_decompose_optimal(F.symplectic, 2)
     h_S, h_T = clifford_phase_decomposition(
         F.symplectic, F.phase_vector, S_symp, T_symp, int(H.lcm)
     )
@@ -120,7 +120,7 @@ def test_benchmark_symmetry_krylov_reduced(benchmark, N: int):
     times = np.linspace(0.0, 2.0, 101)
 
     F = heuristic_clifford_symmetry(N)
-    S_symp, T_symp = block_decompose_optimal(F.symplectic, 2)
+    S_symp, T_symp, _info = block_decompose_optimal(F.symplectic, 2)
     h_S, h_T = clifford_phase_decomposition(
         F.symplectic, F.phase_vector, S_symp, T_symp, int(H.lcm)
     )

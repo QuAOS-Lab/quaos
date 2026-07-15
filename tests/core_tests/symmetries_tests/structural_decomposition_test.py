@@ -144,7 +144,7 @@ def _assert_certified_structural_decomposition(F: np.ndarray, Sigma: np.ndarray,
 
 
 def _certified_decompose(F: np.ndarray, p: int):
-    Sigma, B, info = atomic_block_decompose(F, p, mode="certified")
+    Sigma, B, info = atomic_block_decompose(F, p)
     _assert_certified_structural_decomposition(F, Sigma, B, info, p)
     return Sigma, B, info
 
@@ -156,15 +156,15 @@ def _sector_signature_from_prepass(F: np.ndarray, p: int) -> tuple:
     """
     meta = rcf_prepass(F, p)
     sig = []
-    for sec in meta.get("sectors", []):
+    for ctx in meta.get("sector_contexts", []):
         sig.append(
             (
-                str(sec.get("type")),
-                tuple(sec.get("key")),
-                tuple(sec.get("key_star")) if sec.get("key_star") is not None else None,
-                int(sec.get("deg", sec.get("degree", 0))),
-                int(sec.get("exponent", 0)),
-                int(sec.get("dim2", sec.get("dim", 0))),
+                str(ctx.sector_type),
+                tuple(ctx.sector_key),
+                tuple(ctx.sector_key_star) if ctx.sector_key_star is not None else None,
+                int(ctx.deg_q),
+                int(ctx.max_exp),
+                int(ctx.meta.get("dim2", ctx.T_sec.shape[1] if ctx.T_sec is not None else 0)),
             )
         )
     return tuple(sorted(sig, key=repr))
@@ -376,8 +376,8 @@ class TestStructuralDecomposition:
         F_row = F_col.T
 
         try:
-            _Sigma_col, _B_col, info_col = atomic_block_decompose(F_col, p, mode="certified", convention="column")
-            _Sigma_row, B_row, info_row = atomic_block_decompose(F_row, p, mode="certified", convention="row")
+            _Sigma_col, _B_col, info_col = atomic_block_decompose(F_col, p, convention="column")
+            _Sigma_row, B_row, info_row = atomic_block_decompose(F_row, p, convention="row")
         except CertificationError as exc:
             assert "failures" in exc.info
             assert exc.info["failures"], pprint.pformat(exc.info)
@@ -415,8 +415,8 @@ class TestStructuralDecomposition:
         F = _direct_sum_grouped_blocks([F_p2, F_h], p)
         meta = rcf_prepass(F, p)
 
-        assert sum(int(sec.get("dim2", sec.get("dim", 0))) for sec in meta["sectors"]) == F.shape[0]
-        assert len(meta["sectors"]) >= 1
+        assert sum(int(ctx.meta.get("dim2", 0)) for ctx in meta["sector_contexts"]) == F.shape[0]
+        assert len(meta["sector_contexts"]) >= 1
 
         _certified_decompose(F, p)
 
@@ -426,10 +426,9 @@ class TestStructuralDecomposition:
         assert not is_symplectic(F, 2)
 
         with pytest.raises(ValueError, match="not symplectic"):
-            atomic_block_decompose(F, 2, mode="certified")
+            atomic_block_decompose(F, 2)
 
     def test_invalid_dimension_rejected(self) -> None:
         F = np.eye(3, dtype=np.int64)
         with pytest.raises(ValueError):
-            atomic_block_decompose(F, 2, mode="certified")
-
+            atomic_block_decompose(F, 2)

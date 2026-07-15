@@ -32,13 +32,7 @@ def classify_extraction_error(e: BaseException) -> str:
 
 
 def sector_contexts_from_meta(meta: Dict[str, Any]) -> List[SectorContext]:
-    """
-    Return typed sector contexts from rcf_prepass.
-
-    New prepass code returns ``sector_contexts`` directly. The legacy fallback
-    keeps older cached/notebook prepass dictionaries usable, but production code
-    should rely on the typed contexts.
-    """
+    """Return typed sector contexts from rcf_prepass."""
     ctxs = meta.get("sector_contexts")
     if ctxs is None:
         prepass_context = meta.get("prepass_context")
@@ -46,36 +40,7 @@ def sector_contexts_from_meta(meta: Dict[str, Any]) -> List[SectorContext]:
     if ctxs is not None:
         return list(ctxs)
 
-    legacy_sectors = meta.get("sectors")
-    primaries = meta.get("primaries")
-    if legacy_sectors is None or primaries is None:
-        raise RuntimeError("rcf_prepass did not return sector contexts or legacy sector data.")
-
-    out: List[SectorContext] = []
-    for index, sec in enumerate(legacy_sectors):
-        key = tuple(sec["key"])
-        sector_type = "paired" if sec.get("type") == "paired" else "self"
-        out.append(
-            SectorContext(
-                sector_key=key,
-                sector_type=sector_type,
-                poly_key=key,
-                sector_key_star=tuple(sec["key_star"]) if sec.get("key_star") is not None else None,
-                p=int(meta["p"]),
-                deg_q=int(sec.get("deg", primaries.get(key, {}).get("deg", 0))),
-                max_exp=int(sec.get("exponent", primaries.get(key, {}).get("exponent", 0))),
-                T_sec=sec.get("W_basis"),
-                meta={
-                    "index": int(index),
-                    "legacy_sec": sec,
-                    "W_basis": sec.get("W_basis"),
-                    "primaries": primaries,
-                    "Lmin_star": meta.get("Lmin_star", 1),
-                    "coordinate_note": "legacy context constructed in atomic_sector_dispatch.py",
-                },
-            )
-        )
-    return out
+    raise RuntimeError("rcf_prepass did not return typed sector contexts.")
 
 
 def ctx_meta(ctx: SectorContext) -> Dict[str, Any]:
@@ -84,7 +49,6 @@ def ctx_meta(ctx: SectorContext) -> Dict[str, Any]:
 
 def sector_debug(ctx: SectorContext, *, sector_index: int | None = None) -> Dict[str, Any]:
     meta = ctx_meta(ctx)
-    legacy = meta.get("legacy_sec", {}) if isinstance(meta.get("legacy_sec", {}), dict) else {}
     return {
         "sector_index": int(sector_index if sector_index is not None else meta.get("index", -1)),
         "sector_type": ctx.sector_type,
@@ -92,8 +56,8 @@ def sector_debug(ctx: SectorContext, *, sector_index: int | None = None) -> Dict
         "key_star": ctx.sector_key_star,
         "deg": int(ctx.deg_q),
         "exponent": int(ctx.max_exp),
-        "dim2": int(ctx.T_sec.shape[1]) if isinstance(ctx.T_sec, np.ndarray) else legacy.get("dim2"),
-        "sec_note": legacy.get("note", ""),
+        "dim2": int(ctx.T_sec.shape[1]) if isinstance(ctx.T_sec, np.ndarray) else meta.get("dim2"),
+        "sec_note": meta.get("sector_note", ""),
         "coordinate_note": meta.get("coordinate_note", ""),
     }
 
@@ -102,10 +66,6 @@ def sector_span_basis(ctx: SectorContext, p: int) -> np.ndarray:
     """Return an ambient basis for the full sector span."""
     meta = ctx_meta(ctx)
     W = meta.get("W_basis")
-    if W is None:
-        legacy = meta.get("legacy_sec", {})
-        if isinstance(legacy, dict):
-            W = legacy.get("W_basis")
     if W is None:
         W = ctx.T_sec
     if W is None:

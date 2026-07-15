@@ -43,7 +43,6 @@ def atomic_block_decompose(
     *,
     convention: Convention = "column",
     allow_degraded: bool = False,
-    mode: str | None = None,
 ) -> Tuple[np.ndarray, np.ndarray, Dict]:
     """
     Decompose a symplectic ``F`` into atomic invariant symplectic blocks.
@@ -52,9 +51,7 @@ def atomic_block_decompose(
     instead of being hidden behind a global completion. Set
     ``allow_degraded=True`` to recover the previous best-effort behaviour, which
     always tries to return ``(Sigma, B, info)`` with ``B`` symplectic and reports
-    certification in the output flags. The legacy ``mode`` keyword is accepted
-    as a compatibility alias: ``mode="certified"`` is strict, while
-    ``mode="best_effort"``/``"degraded"`` permits degraded fallbacks.
+    certification in the output flags.
 
       * ``info["certified"]`` -- True iff the returned basis is exactly the
         concatenated atomic block frame (no global completion was needed), every
@@ -69,16 +66,6 @@ def atomic_block_decompose(
     Callers that want a hard failure on anything less than a certified minimal
     decomposition should use :func:`decompose_or_raise`.
     """
-    if mode is not None:
-        if mode == "certified":
-            allow_degraded = False
-        elif mode in {"best_effort", "degraded"}:
-            allow_degraded = True
-        else:
-            raise ValueError(
-                f"Unknown mode={mode!r}. Expected 'certified', 'best_effort', or 'degraded'."
-            )
-
     if convention not in ("column", "row"):
         raise ValueError(f"Unknown convention={convention!r}. Expected 'column' or 'row'.")
 
@@ -186,25 +173,6 @@ def atomic_block_decompose(
 
     attach_cost_certificate(info, blocks, sector_invariants, completed=bool(completed), p=p)
     return Sigma, B, info
-
-
-def atomic_block_decompose_best_effort(
-    F: np.ndarray,
-    p: int,
-    *,
-    convention: Convention = "column",
-) -> Tuple[np.ndarray, np.ndarray, Dict]:
-    """
-    Backwards-compatible best-effort wrapper.
-
-    This permits degraded sector fallbacks and global symplectic completion. It
-    is useful for diagnostics/notebooks, but results should be treated as
-    uncertified unless ``info["certified"]`` and ``info["certified_minimal"]``
-    are both true.
-    """
-    return atomic_block_decompose(F, p, convention=convention, allow_degraded=True)
-
-
 def decompose_or_raise(
     F: np.ndarray,
     p: int,

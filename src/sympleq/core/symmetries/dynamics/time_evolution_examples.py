@@ -255,7 +255,7 @@ def run_joint_eigen_dynamics_example():
 
     # 2) Find heuristic Clifford symmetry F and its block decomposition S, T
     F = heuristic_clifford_symmetry(N)  # some Gate-like object with symplectic + phase
-    S_symp, T_symp = block_decompose_optimal(F.symplectic, 2)
+    S_symp, T_symp, _info = block_decompose_optimal(F.symplectic, 2)
 
     # Phases for S and T
     h_S, h_T = clifford_phase_decomposition(
@@ -326,7 +326,7 @@ def run_krylov_symmetry_example():
 
         # --- 2) Symmetry via heuristic Clifford F, block decompose into S, T ---
         F = heuristic_clifford_symmetry(N)
-        S_symp, T_symp = block_decompose_optimal(F.symplectic, 2)
+        S_symp, T_symp, _info = block_decompose_optimal(F.symplectic, 2)
 
         # --- 3) Build Clifford gates S and T with correct phases ---
         h_S, h_T = clifford_phase_decomposition(
@@ -450,7 +450,7 @@ def symmetry_aware_testing():
 
         # --- 2) Symmetry via heuristic Clifford F, block decompose into S, T ---
         F = heuristic_clifford_symmetry(N)
-        S_symp, T_symp = block_decompose_optimal(F.symplectic, 2)
+        S_symp, T_symp, _info = block_decompose_optimal(F.symplectic, 2)
 
         # --- 3) Build Clifford gates S and T with correct phases ---
         h_S, h_T = clifford_phase_decomposition(

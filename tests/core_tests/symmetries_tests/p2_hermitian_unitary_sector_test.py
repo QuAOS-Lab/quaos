@@ -48,7 +48,7 @@ def test_p2_x2_x_1_single_sector_certifies() -> None:
     F = symplectic_scale(A, p)
     assert is_symplectic(F, p)
 
-    Sigma, B, info = atomic_block_decompose(F, p, mode="certified")
+    Sigma, B, info = atomic_block_decompose(F, p)
     verify_global_basis(F, B, Sigma, p)
 
     assert info["certified"] is True
@@ -69,7 +69,7 @@ def test_p2_x2_x_1_repeated_conjugated_certifies() -> None:
     Fh = mod_p(inv_mod_mat(S, p) @ F @ S, p)
     assert is_symplectic(Fh, p)
 
-    Sigma, B, info = atomic_block_decompose(Fh, p, mode="certified")
+    Sigma, B, info = atomic_block_decompose(Fh, p)
     verify_global_basis(Fh, B, Sigma, p)
 
     assert info["certified"] is True

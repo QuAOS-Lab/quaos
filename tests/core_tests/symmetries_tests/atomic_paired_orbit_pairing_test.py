@@ -30,7 +30,7 @@ def test_linear_paired_sector_uses_orbit_pairing_matrix() -> None:
     F = _symplectic_scale(2 * np.eye(n, dtype=np.int64), p)
     assert is_symplectic(F, p)
 
-    Sigma, B, info = atomic_block_decompose(F, p, mode="certified")
+    Sigma, B, info = atomic_block_decompose(F, p)
     verify_global_basis(F, B, Sigma, p)
 
     assert info["certified"] is True
@@ -54,7 +54,7 @@ def test_nonlinear_degree_two_paired_sector_uses_expanded_orbit_matrix() -> None
     F = _symplectic_scale(A, p)
     assert is_symplectic(F, p)
 
-    Sigma, B, info = atomic_block_decompose(F, p, mode="certified")
+    Sigma, B, info = atomic_block_decompose(F, p)
     verify_global_basis(F, B, Sigma, p)
 
     assert info["certified"] is True

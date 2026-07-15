@@ -184,24 +184,3 @@ def select_module_generators_from_top_quotient(
     if not tq.e_basis_reps:
         return np.zeros((Fp.shape[0], 0), dtype=np.int64)
     return np.concatenate(tq.e_basis_reps, axis=1)
-
-
-def _select_module_generators_from_top_space(
-    Fp: np.ndarray,
-    Np: np.ndarray,
-    top_candidates: np.ndarray,
-    deg_q: int,
-    L: int,
-    p: int,
-) -> np.ndarray:
-    """
-    Backwards-compatible wrapper for callers that only have top representatives.
-
-    New code should prefer :func:`select_module_generators_from_top_quotient` and
-    pass the quotient denominator K_{L-1}+N K_{L+1}.  With no denominator this
-    still performs orbit-rank selection over the supplied representative space,
-    and therefore no longer overcounts the deg_q-dimensional base-field orbit.
-    """
-    return select_module_generators_from_top_quotient(
-        Fp, Np, top_candidates, int(deg_q), int(L), int(p), denom=None
-    )

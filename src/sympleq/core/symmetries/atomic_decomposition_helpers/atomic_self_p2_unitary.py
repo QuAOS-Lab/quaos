@@ -498,8 +498,6 @@ def atomic_blocks_in_self_sector_p2_nonunipotent_unitary(
     p: int,
     sector_key: Tuple[int, ...],
     poly_key: Tuple[int, ...],
-    *,
-    max_top_dim: int = 4096,  # retained for API compatibility; no exponential search is used.
 ) -> tuple[List[AtomicBlock], AtomicInvariant]:
     """
     Certified extractor for p=2, q=q*, deg(q)>1, q != x+1 self sectors.
@@ -556,7 +554,6 @@ def atomic_blocks_in_self_sector_p2_nonunipotent_unitary(
         "checks_passed": [],
         "top_forms": [],
         "blocks": [],
-        "max_top_dim_parameter_ignored": int(max_top_dim),
     }
 
     # Normalize sector form to the standard symplectic matrix if necessary.
