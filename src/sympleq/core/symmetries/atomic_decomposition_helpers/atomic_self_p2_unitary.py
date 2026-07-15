@@ -346,7 +346,7 @@ def _hermitian_top_matrix(
     base-field verification of lifted blocks remains the final certificate.
     """
     m = len(e_reps)
-    H = np.zeros((m, m), dtype=np.int64)
+    H = np.empty((m, m), dtype=object)
     Npow = _mat_pow_mod(N, int(L) - 1, p)
     F_pows = [np.eye(F.shape[0], dtype=np.int64)]
     for _ in range(1, field.d):
@@ -403,7 +403,7 @@ def _hermitian_decompose(field: GF2Extension, H: np.ndarray) -> Tuple[List[Tuple
       - ("line", u, None) for anisotropic/self-dual lines;
       - ("pair", u, v) for hyperbolic pairs.
     """
-    H = np.asarray(H, dtype=np.int64)
+    H = np.asarray(H, dtype=object)
     if H.ndim != 2 or H.shape[0] != H.shape[1]:
         raise ValueError(f"H must be square, got {H.shape}")
     m = H.shape[0]

@@ -118,6 +118,85 @@ def _convert_column_result_to_row(Sigma_col: np.ndarray, B_col: np.ndarray, info
     return Sigma_row, B_row, info
 
 
+def _build_sector_gap_report(invariants: List[AtomicInvariant]) -> Dict[str, Any]:
+    """
+    Summarise sector-local certification gaps.
+
+    A gap means the sector builder returned a verified block decomposition whose
+    attained sector cost is larger than the invariant lower bound attached by
+    the prepass.  This is the most useful diagnostic when a random instance is
+    valid but not certified minimal: it identifies which sector type and chain
+    profile prevented the certificate from closing.
+    """
+    sectors: List[Dict[str, Any]] = []
+    gaps: List[Dict[str, Any]] = []
+    incomplete: List[Dict[str, Any]] = []
+    inconsistent: List[Dict[str, Any]] = []
+
+    for idx, inv in enumerate(invariants):
+        data = inv.data if isinstance(getattr(inv, "data", None), dict) else {}
+        cert = data.get("cost_certificate") if isinstance(data.get("cost_certificate"), dict) else {}
+        lb = cert.get("lower_bound")
+        sc = cert.get("sector_cost", cert.get("qudit_cost"))
+        try:
+            lb_int = None if lb is None else int(lb)
+        except Exception:
+            lb_int = None
+        try:
+            sc_int = None if sc is None else int(sc)
+        except Exception:
+            sc_int = None
+        complete = bool(cert.get("complete", cert.get("certified", False)))
+        attained = bool(cert.get("attained", data.get("status") == "OK"))
+        entry: Dict[str, Any] = {
+            "sector_index": int(idx),
+            "sector_key": tuple(inv.sector_key),
+            "sector_type": inv.sector_type,
+            "poly_key": tuple(inv.poly_key),
+            "deg": data.get("deg"),
+            "exponent": data.get("exponent"),
+            "status": data.get("status"),
+            "sector_cost": sc_int,
+            "lower_bound": lb_int,
+            "complete": complete,
+            "attained": attained,
+            "note": cert.get("note", cert.get("reason", data.get("note", ""))),
+        }
+        # Attach compact sector-specific breadcrumbs when available.
+        for key in (
+            "length_summary",
+            "length_multiplicities",
+            "pairing_rank",
+            "blocks",
+            "p2_unipotent",
+            "p2_self_reciprocal_nonunipotent",
+            "minimality_guard",
+        ):
+            if key in data:
+                entry[key] = data[key]
+        sectors.append(entry)
+
+        if not complete or not attained or lb_int is None or sc_int is None:
+            incomplete.append(entry)
+        elif sc_int > lb_int:
+            gaps.append(entry)
+        elif sc_int < lb_int:
+            # This would mean the lower bound is stronger than the constructed
+            # verified sector, so either the prepass bound or the sector cost
+            # bookkeeping is inconsistent.  Surface it separately.
+            inconsistent.append(entry)
+
+    return {
+        "n_sectors": int(len(sectors)),
+        "n_gaps": int(len(gaps)),
+        "n_incomplete": int(len(incomplete)),
+        "n_inconsistent": int(len(inconsistent)),
+        "gaps": gaps,
+        "incomplete": incomplete,
+        "inconsistent": inconsistent,
+        "sectors": sectors,
+    }
+
 def _attach_cost_certificate(info: Dict[str, Any], blocks: List[AtomicBlock], invariants: List[AtomicInvariant], *, completed: bool, p: int) -> None:
     """
     Attach conservative global cost/minimality fields in-place.
@@ -148,6 +227,17 @@ def _attach_cost_certificate(info: Dict[str, Any], blocks: List[AtomicBlock], in
     # for older notebooks/callers, but they no longer imply that Q_opt exists.
     info["certified_minimal_qudit_cost"] = is_minimal
     info["minimal_cost_certified"] = is_minimal
+
+    gap_report = _build_sector_gap_report(invariants)
+    info["sector_gap_report"] = gap_report
+    if gap_report["n_gaps"]:
+        info.setdefault("warnings", []).append(
+            "Minimality certificate gap: at least one sector attained a larger cost than its invariant lower bound."
+        )
+    if gap_report["n_inconsistent"]:
+        info.setdefault("warnings", []).append(
+            "Cost certificate inconsistency: at least one sector attained less than its invariant lower bound."
+        )
 
 
 def _sector_contexts_from_meta(meta: Dict[str, Any]) -> List[SectorContext]:
