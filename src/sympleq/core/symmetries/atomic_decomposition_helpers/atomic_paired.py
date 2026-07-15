@@ -12,6 +12,7 @@ from ..modular_helpers import (
     nullspace_mod,
     inv_mod_scalar,
     mat_pow_mod,
+    solve_linear,
 )
 from .atomic_types import (AtomicBlock, AtomicInvariant,
                            ExtractionObstruction, SearchBudgetExceeded)
@@ -154,6 +155,199 @@ def _select_right_generators_with_full_pairing(
     return W, M
 
 
+
+
+def _ordered_orbit_columns(Fp: np.ndarray, reps: np.ndarray, deg_q: int, p: int) -> np.ndarray:
+    """
+    Return the ordered orbit matrix
+
+        [v_0, F v_0, ..., F^{r-1} v_0 | v_1, ..., F^{r-1} v_1 | ...]
+
+    for chain-head representatives stored as columns of ``reps``.  The order is
+    intentionally not reduced by ``independent_columns`` because callers use the
+    row/column labels (representative index, orbit component) to build dual
+    pairings.
+    """
+    Fp = mod_p(Fp, p)
+    reps = mod_p(reps, p)
+    deg_q = int(deg_q)
+    if reps.shape[1] == 0:
+        return np.zeros((Fp.shape[0], 0), dtype=np.int64)
+
+    F_pows = [np.eye(Fp.shape[0], dtype=np.int64)]
+    for _ in range(1, deg_q):
+        F_pows.append(mod_p(F_pows[-1] @ Fp, p))
+
+    cols: list[np.ndarray] = []
+    for j in range(reps.shape[1]):
+        v = reps[:, j:j + 1]
+        for Ppow in F_pows:
+            cols.append(mod_p(Ppow @ v, p))
+    return mod_p(np.concatenate(cols, axis=1), p)
+
+
+def _orbit_pairing_matrix(
+    *,
+    F_left: np.ndarray,
+    N_left: np.ndarray,
+    F_right: np.ndarray,
+    P: np.ndarray,
+    left_reps: np.ndarray,
+    right_reps: np.ndarray,
+    deg_q: int,
+    L: int,
+    p: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Build the expanded orbit-pairing matrix over GF(p).
+
+    If ``left_reps`` and ``right_reps`` contain m_l and m_r chain-head
+    representatives, this returns
+
+        M[(i,a),(j,b)] = <N^{L-1} F_left^a u_i, F_right^b v_j>
+
+    in the current left/right sector coordinates, together with the ordered left
+    head orbit columns and right head orbit columns.  It is the explicit
+    base-field representation of the full pairing data between the two
+    F-orbits; for deg(q)=1 it reduces to the usual scalar head-tail matrix.
+    """
+    deg_q = int(deg_q)
+    L = int(L)
+    N_pow = _mat_pow_mod(N_left, L - 1, p)
+
+    left_heads = _ordered_orbit_columns(F_left, left_reps, deg_q, p)
+    right_heads = _ordered_orbit_columns(F_right, right_reps, deg_q, p)
+    if left_heads.shape[1] == 0 or right_heads.shape[1] == 0:
+        return (
+            np.zeros((left_heads.shape[1], right_heads.shape[1]), dtype=np.int64),
+            left_heads,
+            right_heads,
+        )
+
+    left_tails = mod_p(N_pow @ left_heads, p)
+    M = mod_p(left_tails.T @ (P @ right_heads), p)
+    return M, left_heads, right_heads
+
+
+def _verified_block_from_orbit_pairing(
+    *,
+    Fq: np.ndarray,
+    Nq: np.ndarray,
+    Fqs: np.ndarray,
+    Nqs: np.ndarray,
+    Vq_r: np.ndarray,
+    Vqs_r: np.ndarray,
+    P: np.ndarray,
+    left_reps: np.ndarray,
+    right_reps: np.ndarray,
+    deg_q: int,
+    L: int,
+    p: int,
+    Omega_amb: np.ndarray,
+    rem: np.ndarray,
+    rem_dim: int,
+) -> tuple[np.ndarray, dict[str, Any]] | tuple[None, dict[str, Any]]:
+    """
+    Construct one paired block using the full expanded orbit-pairing matrix.
+
+    The routine first forms the ordinary GF(p) matrix of pairings between all
+    F-orbit components of the selected length-L heads.  If this matrix is full
+    rank, Gaussian elimination gives dual right-hand orbit combinations.  Each
+    dual combination is then tried as a right chain head and the lifted cyclic
+    block is verified directly in the ambient symplectic space.
+    """
+    M, left_heads, right_heads = _orbit_pairing_matrix(
+        F_left=Fq,
+        N_left=Nq,
+        F_right=Fqs,
+        P=P,
+        left_reps=left_reps,
+        right_reps=right_reps,
+        deg_q=deg_q,
+        L=L,
+        p=p,
+    )
+
+    orbit_dim_left = int(left_heads.shape[1])
+    orbit_dim_right = int(right_heads.shape[1])
+    rM = rank_mod(M, p)
+    diag: dict[str, Any] = {
+        "L": int(L),
+        "deg_q": int(deg_q),
+        "n_left_reps": int(left_reps.shape[1]),
+        "n_right_reps": int(right_reps.shape[1]),
+        "orbit_pairing_shape": (int(M.shape[0]), int(M.shape[1])),
+        "orbit_pairing_rank": int(rM),
+        "orbit_pairing_full_rank": bool(
+            M.shape[0] == M.shape[1] and rM == M.shape[0]
+        ),
+        "orbit_pairing_matrix_constructed": True,
+        "dual_solve_used": False,
+    }
+
+    if orbit_dim_left == 0 or orbit_dim_right == 0:
+        diag["reason"] = "empty orbit basis"
+        return None, diag
+    if orbit_dim_left != orbit_dim_right:
+        diag["reason"] = "left/right orbit dimensions differ"
+        return None, diag
+    if rM != orbit_dim_left:
+        diag["reason"] = "orbit-pairing matrix is rank deficient"
+        return None, diag
+
+    # M is square and invertible.  For a chosen left orbit component e_k, solve
+    # M x = e_k.  The right head z = right_heads @ x has canonical pairings with
+    # the selected left orbit components.  We then verify the cyclic block built
+    # from the corresponding left orbit component and z.
+    for target_row in range(orbit_dim_left):
+        rhs = np.zeros((orbit_dim_left, 1), dtype=np.int64)
+        rhs[target_row, 0] = 1
+        try:
+            coeff = solve_linear(M, rhs, p)
+        except RuntimeError:
+            continue
+
+        v_top = left_heads[:, target_row:target_row + 1]
+        w_top = mod_p(right_heads @ coeff, p)
+        diag["dual_solve_used"] = True
+        diag["chosen_left_orbit_component"] = int(target_row % int(deg_q))
+        diag["chosen_left_representative"] = int(target_row // int(deg_q))
+
+        try:
+            C_left = cyclic_submodule_basis(Fq, Nq, v_top, deg_q, int(L), p)
+            C_right = cyclic_submodule_basis(Fqs, Nqs, w_top, deg_q, int(L), p)
+        except RuntimeError as exc:
+            diag["last_cyclic_error"] = f"{type(exc).__name__}: {exc}"
+            continue
+
+        C_left = independent_columns(mod_p(C_left, p), p)
+        C_right = independent_columns(mod_p(C_right, p), p)
+
+        W_left = mod_p(Vq_r @ C_left, p)
+        W_right = mod_p(Vqs_r @ C_right, p)
+        span = independent_columns(np.concatenate([W_left, W_right], axis=1), p)
+
+        expected_dim = 2 * int(deg_q) * int(L)
+        if span.shape[1] != expected_dim:
+            diag["last_span_error"] = (
+                f"wrong span dimension at L={L}: expected {expected_dim}, got {span.shape[1]}"
+            )
+            continue
+        if not is_nondegenerate(Omega_amb, span, p):
+            diag["last_span_error"] = f"constructed span degenerate at L={L}"
+            continue
+        if rank_mod(np.concatenate([rem, span], axis=1), p) != rem_dim:
+            diag["last_span_error"] = f"constructed span not contained in remaining subspace at L={L}"
+            continue
+
+        diag["verified"] = True
+        diag["block_dim"] = int(span.shape[1])
+        return span, diag
+
+    diag["reason"] = "all dual orbit representatives failed direct block verification"
+    return None, diag
+
+
 def atomic_blocks_in_paired_sector(
     F: np.ndarray,
     p: int,
@@ -277,63 +471,32 @@ def atomic_blocks_in_paired_sector(
                 if A.shape[1] == 0 or pool.shape[1] == 0:
                     continue
 
-                # Pick a single generator pair (v,w) with nonzero E-valued
-                # chain-level top pairing.  Earlier code tested only the scalar
-                # component <N^{L-1}v,w>; for deg(q)>1 that can vanish even when
-                # another F-orbit component of the reciprocal pairing is nonzero.
-                N_pow = _mat_pow_mod(Nq, int(L) - 1, p)
-                Fqs_pows = [np.eye(Fqs.shape[0], dtype=np.int64)]
-                for _a in range(1, deg_q):
-                    Fqs_pows.append(mod_p(Fqs_pows[-1] @ Fqs, p))
+                # Build the full expanded orbit-pairing matrix for the selected
+                # length-L head representatives and solve its dual system over GF(p).
+                # This is the explicit linear-algebraic version of the reciprocal
+                # orbit pairing; the older scalar-component scan is no longer used.
+                span, pair_diag = _verified_block_from_orbit_pairing(
+                    Fq=Fq,
+                    Nq=Nq,
+                    Fqs=Fqs,
+                    Nqs=Nqs,
+                    Vq_r=Vq_r,
+                    Vqs_r=Vqs_r,
+                    P=P,
+                    left_reps=A,
+                    right_reps=pool,
+                    deg_q=deg_q,
+                    L=int(L),
+                    p=p,
+                    Omega_amb=Omega_amb,
+                    rem=rem,
+                    rem_dim=rem_dim,
+                )
+                inv_data["pairing_rank"][int(L)] = int(pair_diag.get("orbit_pairing_rank", 0))
 
-                v_top = None
-                w_top = None
-                s_val = 0
-                a_val = 0
-
-                for ai in range(A.shape[1]):
-                    v_cand = A[:, ai:ai + 1]
-                    Nv = mod_p(N_pow @ v_cand, p)
-                    for j in range(pool.shape[1]):
-                        w_base = pool[:, j:j + 1]
-                        for a_idx, Fpa in enumerate(Fqs_pows):
-                            w_cand = mod_p(Fpa @ w_base, p)
-                            s = int(mod_p(Nv.T @ (P @ w_cand), p).reshape(())) % p
-                            if s != 0:
-                                v_top = v_cand
-                                w_top = w_cand
-                                s_val = s
-                                a_val = a_idx
-                                break
-                        if w_top is not None:
-                            break
-                    if w_top is not None:
-                        break
-
-                if w_top is None or v_top is None:
-                    last_err = f"no generator pair with nonzero E-top pairing at L={L}"
-                    continue
-
-                # Normalize the exposed nonzero component to one.
-                w_top = mod_p(w_top * inv_mod_scalar(s_val, p), p)
-
-                # Build the cyclic submodules and lift to ambient.
-                C_left = cyclic_submodule_basis(Fq, Nq, v_top, deg_q, int(L), p)
-                C_right = cyclic_submodule_basis(Fqs, Nqs, w_top, deg_q, int(L), p)
-                C_left = independent_columns(mod_p(C_left, p), p)
-                C_right = independent_columns(mod_p(C_right, p), p)
-
-                W_left = mod_p(Vq_r @ C_left, p)
-                W_right = mod_p(Vqs_r @ C_right, p)
-                span = independent_columns(np.concatenate([W_left, W_right], axis=1), p)
-
-                if not is_nondegenerate(Omega_amb, span, p):
-                    last_err = f"constructed span degenerate at L={L}"
-                    continue
-
-                # Ensure span is inside rem.
-                if rank_mod(np.concatenate([rem, span], axis=1), p) != rem_dim:
-                    last_err = f"constructed span not contained in remaining subspace at L={L}"
+                if span is None:
+                    last_err = f"orbit-pairing dual solve failed at L={L}: {pair_diag.get('reason', pair_diag)}"
+                    inv_data["progress"].append({"L": int(L), "attempt": "orbit_pairing", **pair_diag})
                     continue
 
                 T_blk = darboux_basis_from_span(Omega_amb, span, p)
@@ -355,15 +518,15 @@ def atomic_blocks_in_paired_sector(
                     raise RuntimeError(
                         f"Paired sector: rank-drop mismatch when removing block (expected {span.shape[1]}, got {drop})."
                     )
-                inv_data["progress"].append(
-                    {
-                        "L": int(L),
-                        "right_F_power_component": int(a_val),
-                        "block_dim": int(span.shape[1]),
-                        "rem_dim_before": int(rem_dim),
-                        "rem_dim_after": int(rem2_dim),
-                    }
-                )
+                progress_entry = {
+                    "L": int(L),
+                    "block_dim": int(span.shape[1]),
+                    "rem_dim_before": int(rem_dim),
+                    "rem_dim_after": int(rem2_dim),
+                    "attempt": "orbit_pairing",
+                }
+                progress_entry.update(pair_diag)
+                inv_data["progress"].append(progress_entry)
 
                 rem = rem2
                 rem_dim = rem2_dim
@@ -394,7 +557,7 @@ def atomic_blocks_in_paired_sector(
             "complete": True,
             "sector_cost": int(sector_cost),
             "note": (
-                "paired sector certified by quotient-level dual-basis construction "
+                "paired sector certified by expanded orbit-pairing matrix dual solve "
                 "and extract/remove orthogonalization"
             ),
         }
