@@ -1,7 +1,7 @@
 # sympleq/core/symmetries/atomic_decomposition_helpers/atomic_verify.py
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import numpy as np
 

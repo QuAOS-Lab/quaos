@@ -5,11 +5,9 @@ from typing import Dict, List, Tuple
 
 from sympleq.core.symmetries.modular_helpers import (
     mod_p,
-    rank_mod,
     nullspace_mod,
     solve_linear_many,
     independent_columns,
-    basis_extend as _basis_extend,
 )
 
 from sympleq.core.symmetries.polynomials_fp import poly_eval_matrix

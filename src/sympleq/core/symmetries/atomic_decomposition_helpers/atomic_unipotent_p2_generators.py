@@ -1,11 +1,11 @@
 # sympleq/core/symmetries/atomic_decomposition_helpers/atomic_unipotent_p2_generators.py
 from __future__ import annotations
 
-from typing import Iterable, List, Sequence, Tuple
+from typing import Sequence, Tuple
 
 import numpy as np
 
-from ..modular_helpers import mod_p, inv_mod_mat, omega_matrix, is_symplectic, rank_mod, nullspace_mod
+from ..modular_helpers import mod_p, inv_mod_mat, is_symplectic, rank_mod, nullspace_mod
 from .atomic_linear import darboux_basis_from_span
 
 

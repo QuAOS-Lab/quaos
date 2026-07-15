@@ -10,7 +10,6 @@ from ..modular_helpers import (
     omega_matrix,
     rank_mod,
     nullspace_mod,
-    inv_mod_scalar,
     mat_pow_mod,
     solve_linear,
 )

@@ -10,7 +10,6 @@ from .modular_helpers import (
     omega_matrix,
     inv_mod_mat,
     is_symplectic,
-    rank_mod,
 )
 from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_types import (
     AtomicBlock,
@@ -37,7 +36,6 @@ from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_linear import r
 from sympleq.core.symmetries.atomic_decomposition_helpers.module_invariants import q_of_F_restricted
 from sympleq.core.symmetries.atomic_decomposition_helpers.atomic_verify import (
     verify_atomic_decomposition,
-    verify_global_basis,
     verify_cost_certificate,
 )
 

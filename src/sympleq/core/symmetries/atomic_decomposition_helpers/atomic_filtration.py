@@ -6,8 +6,8 @@ from typing import Dict
 
 import numpy as np
 
-from ..modular_helpers import mod_p, independent_columns, rank_mod, nullspace_mod, basis_extend as _basis_extend
-from .atomic_linear import mat_pow_mod, kernel_in_span
+from ..modular_helpers import mod_p, independent_columns, basis_extend as _basis_extend
+from .atomic_linear import kernel_in_span
 
 
 @dataclass(frozen=True, slots=True)

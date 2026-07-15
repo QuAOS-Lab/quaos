@@ -1,13 +1,11 @@
 # sympleq/core/symmetries/atomic_decomposition_helpers/atomic_unipotent_p2.py
 from __future__ import annotations
 
-import itertools
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
-from ..modular_helpers import (mod_p, independent_columns, rank_mod, omega_matrix,
-                              basis_extend as _basis_extend)
+from ..modular_helpers import mod_p, independent_columns, rank_mod, omega_matrix
 from .atomic_types import (AtomicBlock, AtomicInvariant,
                            ExtractionObstruction, SearchBudgetExceeded)
 from .atomic_linear import (
@@ -15,7 +13,6 @@ from .atomic_linear import (
     is_nondegenerate,
     darboux_basis_from_span,
     mat_pow_mod,
-    kernel_in_span,
     symplectic_orthogonal_complement_in_span,
 )
 from .module_invariants import (
@@ -901,4 +898,3 @@ def atomic_blocks_in_unipotent_self_sector_p2(
     inv = AtomicInvariant(sector_key=key, sector_type="self", poly_key=key, data=inv_data)
     blocks = [AtomicBlock(b.T_blk, b.half_dim, key, inv) for b in blocks]
     return blocks, inv
-
