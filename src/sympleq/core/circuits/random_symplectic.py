@@ -1,4 +1,5 @@
-"""Implements a random symplectic with the approach from """
+"""Implements a random symplectic with the approach from https://arxiv.org/abs/1406.2170
+as well as a series of random transvections."""
 from __future__ import annotations
 
 import numpy as np
