@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC
 import numpy as np
-from typing import Self, TypeVar, cast
+from typing import Self, overload
 
 from sympleq._typing import IntArrayLike
 from sympleq.core.paulis import PauliObject
@@ -9,13 +9,15 @@ from sympleq.core.paulis._typing import (
     TableauType, TableauLike, PhasesType, DimensionsType, HilbertOperator
 )
 from sympleq.core.circuits.utils import embed_symplectic, embed_unitary, transvection_matrix
-from sympleq.core.circuits.random_symplectic import symplectic_random_transvection
+from sympleq.core.circuits.random_symplectic import (
+    symplectic_random_koenig_smolin_gf2,
+    symplectic_random_transvection,
+)
 from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.circuits.target import get_phase_vector
-
-
-PauliType = TypeVar("PauliType", bound=PauliObject)
+from sympleq.core.paulis.pauli_string import PauliString
+from sympleq.core.paulis.pauli_sum import PauliSum
 
 
 class Gate(ABC):
@@ -82,9 +84,17 @@ class Gate(ABC):
         self._inverse: Self | None = None
 
     @classmethod
-    def from_random(cls, n_qudits: int, dimension: int, num_transvections: int | None = None) -> Gate:
+    def from_random(
+        cls,
+        n_qudits: int,
+        dimension: int,
+        num_transvections: int | None = None,
+        *,
+        sampler: str = "transvection",
+        rng: np.random.Generator | None = None,
+    ) -> Gate:
         """
-        Generate a random Clifford gate by composing random transvections.
+        Generate a random Clifford gate.
 
         Parameters
         ----------
@@ -93,7 +103,15 @@ class Gate(ABC):
         dimension : int
             Local Hilbert space dimension (e.g., 2 for qubits).
         num_transvections : int | None
-            Number of transvections to compose. If None, defaults to 4*n_qudits.
+            Number of transvections to compose for ``sampler="transvection"``.
+            If None, defaults to 4*n_qudits.
+        sampler : str
+            Random symplectic sampler to use. ``"transvection"`` preserves the
+            historical behavior. ``"koenig-smolin"`` uses the Koenig-Smolin
+            uniform index sampler and is available only for qubits
+            (``dimension == 2``).
+        rng : np.random.Generator | None
+            Optional random generator for ``sampler="koenig-smolin"``.
 
         Returns
         -------
@@ -101,7 +119,23 @@ class Gate(ABC):
             A random Clifford gate with the generated symplectic matrix.
         """
 
-        symplectic = symplectic_random_transvection(n_qudits, dimension, num_transvections)
+        sampler_key = str(sampler).strip().lower().replace("_", "-")
+        if sampler_key == "transvection":
+            if rng is not None:
+                raise ValueError("rng is only supported for sampler='koenig-smolin'.")
+            symplectic = symplectic_random_transvection(n_qudits, dimension, num_transvections)
+        elif sampler_key == "koenig-smolin":
+            if dimension != 2:
+                raise ValueError("sampler='koenig-smolin' is only implemented for dimension=2.")
+            if num_transvections is not None:
+                raise ValueError("num_transvections is not used with sampler='koenig-smolin'.")
+            symplectic = symplectic_random_koenig_smolin_gf2(n_qudits, rng=rng)
+        else:
+            raise ValueError(
+                "Unknown random Clifford sampler "
+                f"{sampler!r}. Expected 'transvection' or 'koenig-smolin'."
+            )
+
         # For random gates, we use zero phase vector (phases depend on specific gate sequence)
         phase_vector = get_phase_vector(symplectic, dimension)
 
@@ -218,7 +252,19 @@ class Gate(ABC):
             np.all(self._phase_vector == other._phase_vector) and \
             np.all(self._exceptional_phase_vectors == other._exceptional_phase_vectors)
 
-    def act(self, pauli: PauliType, qudits: int | tuple[int, ...]) -> PauliType:
+    @overload
+    def act(self, pauli: PauliSum, qudits: int | tuple[int, ...]) -> PauliSum:
+        ...
+
+    @overload
+    def act(self, pauli: PauliString, qudits: int | tuple[int, ...]) -> PauliString:
+        ...
+
+    @overload
+    def act(self, pauli: PauliObject, qudits: int | tuple[int, ...]) -> PauliObject:
+        ...
+
+    def act(self, pauli, qudits):
         """
         Apply this gate to a Pauli object at the specified qudit indices.
 
@@ -272,10 +318,10 @@ class Gate(ABC):
 
         new_phases = (pauli.phases + acquired_phases) % (2 * pauli.lcm)
 
-        return cast(PauliType, pauli.__class__(
+        return pauli.__class__(
             tableau=new_tableau, dimensions=pauli.dimensions,
             weights=pauli.weights, phases=new_phases
-        ))
+        )
 
     def act_in_hilbert_space(self, rho: HilbertOperator,
                              qudits: tuple[int, ...], dimensions: DimensionsType) -> HilbertOperator:
@@ -986,7 +1032,19 @@ class PauliGate(Gate):
         z = self.pauli_string.z_exp
         return pauli_unitary_from_tableau(d, x, z, convention="bare")
 
-    def act(self, pauli: PauliType, qudits: int | tuple[int, ...] | None = None) -> PauliType:
+    @overload
+    def act(self, pauli: PauliSum, qudits: int | tuple[int, ...]) -> PauliSum:
+        ...
+
+    @overload
+    def act(self, pauli: PauliString, qudits: int | tuple[int, ...]) -> PauliString:
+        ...
+
+    @overload
+    def act(self, pauli: PauliObject, qudits: int | tuple[int, ...]) -> PauliObject:
+        ...
+
+    def act(self, pauli, qudits):
         """
         Apply this PauliGate to a Pauli object.
 
