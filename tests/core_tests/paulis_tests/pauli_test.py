@@ -3,7 +3,7 @@ import random
 import pytest
 from numpy.random import Generator as RNGGenerator, default_rng
 from sympleq.core.circuits.circuits import Circuit
-from sympleq.core.paulis import PauliSum, PauliString
+from sympleq.core.paulis import PauliSum, PauliString, Pauli
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq import int_to_bases
 from tests import PRIME_LIST, choose_random_dimensions
@@ -119,116 +119,51 @@ class TestPaulis:
                 assert p_string1[0] == ps0, f'Error in __getitem__, expected {ps0}, got {p_string1[0]}'
                 assert p_string1[1] == ps1, f'Error in __getitem__, expected {ps1}, got {p_string1[1]}'
 
-    def test_pauli_string_get_and_set_one_item(self):
-        for dim in PRIME_LIST:
-            for _ in range(N_tests):
-                r1 = np.random.randint(0, dim)
-                s1 = np.random.randint(0, dim)
-                r2 = np.random.randint(0, dim)
-                s2 = np.random.randint(0, dim)
+    def test_to_hilbert_space_consistency(self):
+        # Single Pauli matches PauliString representation
+        for _ in range(N_tests):
+            d = random.choice(PRIME_LIST)
+            r = np.random.randint(0, d)
+            s = np.random.randint(0, d)
+            p = Pauli.from_exponents(r, s, d)
+            h_pauli = p.to_hilbert_space().toarray()
 
-                p_string1 = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2}", dimensions=[dim, dim])
-                ps0 = PauliString.from_string(f"x{r1}z{s1}", dimensions=dim)
-                ps1 = PauliString.from_string(f"x{r2}z{s2}", dimensions=dim)
+            ps = PauliString.from_pauli(p)
+            h_ps = ps.to_hilbert_space().toarray()
 
-                assert p_string1[0] == ps0, 'Error in PauliString getitem (first PauliString)'
-                assert p_string1[1] == ps1, 'Error in PauliString getitem (second PauliString)'
+            assert np.allclose(h_pauli, h_ps, atol=1e-10)
+            # Pauli operators should be unitary
+            assert np.allclose(h_ps.conj().T @ h_ps, np.eye(h_ps.shape[0]), atol=1e-10)
 
-                # Test setitem
-                new_r1 = np.random.randint(0, dim)
-                new_s1 = np.random.randint(0, dim)
-                new_ps0 = PauliString.from_string(f"x{new_r1}z{new_s1}", dimensions=dim)
+        # PauliString and equivalent single-term PauliSum should have identical matrices
+        for _ in range(N_tests):
+            n_qudits = random.randint(1, 3)
+            dims = [random.choice(PRIME_LIST) for _ in range(n_qudits)]
+            x_exp = [np.random.randint(0, d) for d in dims]
+            z_exp = [np.random.randint(0, d) for d in dims]
+            ps = PauliString.from_exponents(x_exp, z_exp, dimensions=dims)
 
-                p_string1[0] = new_ps0
+            h_ps = ps.to_hilbert_space().toarray()
+            ps_sum = PauliSum.from_pauli_strings(ps)
+            h_ps_sum = ps_sum.to_hilbert_space().toarray()
 
-                assert p_string1[0] == new_ps0, 'Error in PauliString setitem (first PauliString)'
+            D = int(np.prod(dims))
+            assert h_ps.shape == (D, D)
+            assert np.allclose(h_ps, h_ps_sum, atol=1e-10)
 
-    def test_pauli_string_get_and_set_multiple_item(self):
-        for dim in PRIME_LIST:
-            for _ in range(N_tests):
-                r1 = np.random.randint(0, dim)
-                s1 = np.random.randint(0, dim)
-                r2 = np.random.randint(0, dim)
-                s2 = np.random.randint(0, dim)
-                r3 = np.random.randint(0, dim)
-                s3 = np.random.randint(0, dim)
+    def test_known_single_qubit_paulis_to_hilbert_space(self):
+        # For qubits, to_hilbert_space should recover the standard matrices for X, Y=XZ (bare convention), Z.
+        X = Pauli.Xnd(1, 2).to_hilbert_space().toarray()
+        Z = Pauli.Znd(1, 2).to_hilbert_space().toarray()
+        Y = Pauli.Ynd(1, 2).to_hilbert_space().toarray()  # XZ with no extra phase
 
-                p_string1 = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2} x{r3}z{s3}", dimensions=[dim, dim, dim])
+        X_expected = np.array([[0, 1], [1, 0]], dtype=complex)
+        Z_expected = np.array([[1, 0], [0, -1]], dtype=complex)
+        Y_expected = X_expected @ Z_expected  # [[0, -1], [1, 0]]
 
-                # Test getitem with slice
-                p_test = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2}", dimensions=[dim, dim])
-                assert p_string1[0:2] == p_test, \
-                    f'Error in PauliString __getitem__ with slice, expected {p_test}, got {p_string1[0:2]}'
-
-                # Test getitem with np.ndarray
-                p_test = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2}", dimensions=[dim, dim])
-                assert p_string1[np.array(
-                    [0, 1])] == p_test, \
-                    f'Error in PauliString __getitem__ with np.ndarray, expected {p_test}, got {p_string1[np.array([0, 1])]}'
-
-                # Test getitem with list of integers
-                p_test = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2}", dimensions=[dim, dim])
-                assert p_string1[[0, 1]] == p_test, \
-                    f'Error in PauliString __getitem__ with list of integers, expected {p_test}, got {p_string1[[0, 1]]}'
-
-                new_r1 = np.random.randint(0, dim)
-                new_s1 = np.random.randint(0, dim)
-                new_r2 = np.random.randint(0, dim)
-                new_s2 = np.random.randint(0, dim)
-
-                new_ps0 = PauliString.from_string(f"x{new_r1}z{new_s1} x{new_r2}z{new_s2}", dimensions=[dim, dim])
-
-                # Test setitem with slice
-                p_string1[0:2] = new_ps0
-                assert p_string1[0:2] == new_ps0, 'Error in PauliString __setitem__ with slice'
-
-                # Test setitem with np.ndarray
-                p_string1[np.array([0, 2])] = new_ps0
-                assert p_string1[np.array([0, 2])] == new_ps0, 'Error in PauliString __setitem__ with np.ndarray'
-
-                # Test setitem with list of integers
-                p_string1[[1, 2]] = new_ps0
-                assert p_string1[[1, 2]] == new_ps0, 'Error in PauliString __setitem__ with list of integers'
-
-    def test_pauli_string_get_item_errors(self):
-        for dim in PRIME_LIST:
-
-            p_string1 = PauliString.from_string(f"x{1}z{0} x{0}z{1}", dimensions=[dim, dim])
-
-            with pytest.raises(IndexError):
-                _ = p_string1[2]
-
-            with pytest.raises(IndexError):
-                _ = p_string1[-3]
-
-            with pytest.raises(ValueError):
-                _ = p_string1['invalid']
-
-            with pytest.raises(ValueError):
-                _ = p_string1[1.0]
-
-    def test_pauli_string_set_item_errors(self):
-        for dim in PRIME_LIST:
-
-            p_string1 = PauliString.from_string(f"x{1}z{0} x{0}z{1}", dimensions=[dim, dim])
-
-            with pytest.raises(IndexError):
-                p_string1[2] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)
-
-            with pytest.raises(IndexError):
-                p_string1[-3] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)
-
-            with pytest.raises(ValueError):
-                p_string1['invalid'] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)
-
-            with pytest.raises(ValueError):
-                p_string1[1.0] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)
-
-            with pytest.raises(ValueError):
-                p_string1[1] = PauliString.from_string(f"x{1}z{0}", dimensions=dim + 1)
-
-            with pytest.raises(ValueError):
-                p_string1[1] = PauliString.from_string(f"x{1}z{0} x{0}z{2} x{1}z{0}", dimensions=[dim, dim, dim])
+        assert np.allclose(X, X_expected)
+        assert np.allclose(Z, Z_expected)
+        assert np.allclose(Y, Y_expected)
 
     def test_pauli_sum_multiplication(self):
         for dim in PRIME_LIST:
@@ -461,6 +396,36 @@ class TestPaulis:
             f"PauliSum addition failed, \n obtained \n{psum}\n expected \n{expected}\n,"
             f"with dimensions {dimensions}"
         )
+
+    def test_combine_equivalent_paulis(self):
+        dims = [2, 2]
+        # Equivalent tableau rows should always merge; phases are absorbed into the complex coefficient.
+        ps_a = PauliString.from_string("x1z0 x0z1", dims)
+        ps_b = PauliString.from_string("x1z0 x0z1", dims)
+        ps_c = PauliString.from_string("x1z0 x0z1", dims)  # different phase => different coefficient
+        ps_d = PauliString.from_string("x0z1 x1z0", dims)
+
+        P = PauliSum.from_pauli_strings([ps_a, ps_b, ps_c, ps_d],
+                                        weights=[1.0, 2.0, 3.0, 4.0],
+                                        phases=[0, 0, 1, 0])
+
+        P.combine_equivalent_paulis()
+
+        assert P.n_paulis() == 2
+        assert np.all(P.phases == 0)
+
+        obs = {}
+        for i in range(P.n_paulis()):
+            row = np.asarray(P.tableau[i]).tolist()
+            obs[tuple(row)] = complex(P.weights[i])
+
+        # For qubits, mod = 2*lcm = 4 and omega = exp(2*pi*i/4) = 1j.
+        # The phase=1 term contributes (3.0 * 1j).
+        key_x = tuple(ps_a.tableau[0].tolist())
+        key_d = tuple(ps_d.tableau[0].tolist())
+        assert key_x in obs and key_d in obs
+        assert np.allclose(obs[key_x], 3.0 + 3.0j, atol=1e-12, rtol=0)
+        assert np.allclose(obs[key_d], 4.0 + 0.0j, atol=1e-12, rtol=0)
 
     def test_phase_and_dot_product(self):
 

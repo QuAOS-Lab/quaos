@@ -266,8 +266,15 @@ def symplectic_reduction_qudit(P) -> tuple[Circuit, list]:
     if len(conditional_qubits) > 0:
         for cq in conditional_qubits:
             C.add_gate(GATES.H, cq)
-        P1 = GATES.H.act(P1, cq)
+            P1 = GATES.H.act(P1, (cq,))
     return C, sorted(pivots, key=lambda x: x[1])
+
+
+def symplectic_pauli_reduction(P) -> tuple[Circuit, list]:
+    """
+    Backward-compatible alias for the qudit symplectic reduction routine.
+    """
+    return symplectic_reduction_qudit(P)
 
 
 def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit) -> tuple[Circuit, list]:
@@ -305,7 +312,7 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit) -> tuple[Circu
     if any(P.x_exp[:, current_qudit]) or any(P.z_exp[:, current_qudit]):
         if not any(P.x_exp[:, current_qudit]):  # If it is z we need to add a Hadamard gate to make it an X
             C.add_gate(GATES.H, current_qudit)
-            P = GATES.H.act(P, current_qudit)
+            P = GATES.H.act(P, (current_qudit,))
 
         current_pauli = min(i for i in range(n_p) if P.x_exp[i, current_qudit])  # first Pauli that has an x-component
         pivots.append((current_pauli, current_qudit, 'X'))
@@ -318,12 +325,12 @@ def symplectic_reduction_iter_qudit_(P, C, pivots, current_qudit) -> tuple[Circu
         pivots.append((current_pauli, current_qudit, 'Z'))
 
         C.add_gate(GATES.H, current_qudit)
-        P = GATES.H.act(P, current_qudit)
+        P = GATES.H.act(P, (current_qudit,))
 
         P, C = cancel_pauli(P, current_qudit, current_pauli, C, n_q_max)
 
         C.add_gate(GATES.H, current_qudit)
-        P = GATES.H.act(P, current_qudit)
+        P = GATES.H.act(P, (current_qudit,))
     return C, pivots
 
 

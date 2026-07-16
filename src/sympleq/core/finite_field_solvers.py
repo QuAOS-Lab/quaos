@@ -12,6 +12,44 @@ def solve_linear_system_over_gf(A: np.ndarray, b: np.ndarray, GF: type | int) ->
     Returns one particular solution with free variables set to zero.
     Raises ValueError if the system is inconsistent.
     """
+    # Fast path for GF(2) using uint8 XOR Gaussian elimination
+    if GF == 2 or GF == galois.GF(2):
+        A2 = (np.asarray(A, dtype=np.uint8) & 1)
+        b2 = (np.asarray(b, dtype=np.uint8).reshape(-1, 1) & 1)
+        m, n = A2.shape
+        if b2.shape[0] != m:
+            raise ValueError(f"Incompatible shapes for A ({A2.shape}) and b ({b2.shape}).")
+
+        R = np.hstack((A2, b2))
+        row = 0
+        pivots: list[tuple[int, int]] = []
+        for col in range(n):
+            if row >= m:
+                break
+            # find pivot
+            nz = np.flatnonzero(R[row:, col])
+            if nz.size == 0:
+                continue
+            piv = row + nz[0]
+            if piv != row:
+                R[[row, piv]] = R[[piv, row]]
+            # eliminate other rows
+            mask = R[:, col].astype(bool)
+            mask[row] = False
+            R[mask] ^= R[row]
+            pivots.append((row, col))
+            row += 1
+
+        # inconsistency check
+        for r in range(m):
+            if not R[r, :n].any() and R[r, n]:
+                raise ValueError("Inconsistent linear system over GF(2).")
+
+        x = np.zeros(n, dtype=np.uint8)
+        for r, c in pivots:
+            x[c] = R[r, n]
+        return x.astype(int)
+
     if isinstance(GF, int):
         GF = galois.GF(GF)
 
@@ -506,6 +544,52 @@ def gf_inv(A, p: int = 2):
                 AI[r, :] = (AI[r, :] - factor * AI[i, :]) % p
 
     return AI[:, n:] % p
+
+
+def gf2_inv(M: np.ndarray) -> np.ndarray:
+    """Invert a square GF(2) matrix using XOR elimination.
+
+    Parameters
+    ----------
+    M : np.ndarray
+        Square matrix with entries in {0,1}. Any integer dtype is accepted.
+
+    Returns
+    -------
+    np.ndarray
+        Inverse matrix over GF(2), dtype=uint8.
+
+    Raises
+    ------
+    np.linalg.LinAlgError
+        If the matrix is not square or is singular over GF(2).
+    """
+    A = np.asarray(M, dtype=np.uint8).copy() & 1
+    if A.ndim != 2 or A.shape[0] != A.shape[1]:
+        raise np.linalg.LinAlgError("GF2 inverse requires square matrix")
+
+    n = A.shape[0]
+    aug = np.hstack((A, np.eye(n, dtype=np.uint8)))
+
+    row = 0
+    for col in range(n):
+        if row >= n:
+            break
+        nz = np.flatnonzero(aug[row:, col])
+        if nz.size == 0:
+            continue
+        piv = row + int(nz[0])
+        if piv != row:
+            aug[[row, piv]] = aug[[piv, row]]
+        mask = aug[:, col].astype(bool)
+        mask[row] = False
+        aug[mask] ^= aug[row]
+        row += 1
+
+    if not np.array_equal(aug[:, :n] & 1, np.eye(n, dtype=np.uint8)):
+        raise np.linalg.LinAlgError("matrix is singular over GF(2)")
+
+    return aug[:, n:] & 1
 
 
 def gf_rref(A, p: int = 2):

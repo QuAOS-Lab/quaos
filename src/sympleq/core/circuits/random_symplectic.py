@@ -36,18 +36,16 @@ def int2bits(i: int, n: int) -> np.ndarray:
 
 # ----------------------------
 # Symplectic arithmetic over GF(2)
-# (interleaved ordering: [x0,z0,x1,z1,...])
+# (grouped ordering: [x0,x1,...,z0,z1,...])
 # ----------------------------
 def inner(v: np.ndarray, w: np.ndarray) -> int:
-    """Symplectic inner product over GF(2) for interleaved ordering.
-       For each pair (x,z): x_i * w_z_i + z_i * w_x_i (== subtraction in GF(2))."""
-    nn = v.size
-    assert nn == w.size and (nn % 2 == 0)
-    t = 0
-    for i in range(0, nn, 2):
-        t ^= (int(v[i]) & int(w[i + 1]))
-        t ^= (int(v[i + 1]) & int(w[i]))
-    return t & 1
+    """Symplectic inner product over GF(2) in grouped ordering."""
+    n2 = v.size
+    assert n2 == w.size and (n2 % 2 == 0)
+    n = n2 // 2
+    x_dot_zw = int(np.dot(v[:n].astype(np.int64), w[n:].astype(np.int64)))
+    z_dot_xw = int(np.dot(v[n:].astype(np.int64), w[:n].astype(np.int64)))
+    return (x_dot_zw + z_dot_xw) & 1
 
 
 def transvection(k: np.ndarray, v: np.ndarray) -> np.ndarray:
@@ -61,11 +59,12 @@ def transvection(k: np.ndarray, v: np.ndarray) -> np.ndarray:
 def find_transvection(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     """
     Find up to two transvection vectors h1,h2 (returned shape (2, len(x))) such that
-    y = Z_{h1} Z_{h2} x. Follows the full-case logic (robust) from the paper.
+    y = Z_{h1} Z_{h2} x.
     All arrays dtype=int8.
     """
-    n = x.size
-    out = np.zeros((2, n), dtype=np.int8)
+    n2 = x.size
+    n = n2 // 2
+    out = np.zeros((2, n2), dtype=np.int8)
 
     if np.array_equal(x, y):
         return out
@@ -75,45 +74,48 @@ def find_transvection(x: np.ndarray, y: np.ndarray) -> np.ndarray:
         return out
 
     # Try to find a single-block index i where both x and y have non-zero 2-block
-    z = np.zeros(n, dtype=np.int8)
-    for b in range(0, n // 2):
-        ii = 2 * b
-        xsum = (int(x[ii]) + int(x[ii + 1]))
-        ysum = (int(y[ii]) + int(y[ii + 1]))
+    z = np.zeros(n2, dtype=np.int8)
+    for q in range(n):
+        xi = q
+        zi = q + n
+        xsum = int(x[xi]) + int(x[zi])
+        ysum = int(y[xi]) + int(y[zi])
         if xsum != 0 and ysum != 0:
             # set z_block = x_block + y_block mod 2
-            z[ii] = (x[ii] + y[ii]) & 1
-            z[ii + 1] = (x[ii + 1] + y[ii + 1]) & 1
+            z[xi] = (x[xi] + y[xi]) & 1
+            z[zi] = (x[zi] + y[zi]) & 1
             # if z_block == 00, fix it as in the paper
-            if (z[ii] + z[ii + 1]) == 0:
-                z[ii + 1] = 1
-                if x[ii] != x[ii + 1]:
-                    z[ii] = 1
+            if (z[xi] + z[zi]) == 0:
+                z[zi] = 1
+                if x[xi] != x[zi]:
+                    z[xi] = 1
             out[0] = (x + z) & 1
             out[1] = (y + z) & 1
             return out
 
     # Otherwise find two blocks: one where x != 00 and y == 00, and one where x == 00 and y != 00
     # find block where x != 00 and y == 00
-    for b in range(0, n // 2):
-        ii = 2 * b
-        if ((x[ii] + x[ii + 1]) != 0) and ((y[ii] + y[ii + 1]) == 0):
-            if x[ii] == x[ii + 1]:
-                z[ii + 1] = 1
+    for q in range(n):
+        xi = q
+        zi = q + n
+        if ((x[xi] + x[zi]) != 0) and ((y[xi] + y[zi]) == 0):
+            if x[xi] == x[zi]:
+                z[zi] = 1
             else:
-                z[ii + 1] = x[ii]
-                z[ii] = x[ii + 1]
+                z[zi] = x[xi]
+                z[xi] = x[zi]
             break
 
     # find block where x == 00 and y != 00
-    for b in range(0, n // 2):
-        ii = 2 * b
-        if ((x[ii] + x[ii + 1]) == 0) and ((y[ii] + y[ii + 1]) != 0):
-            if y[ii] == y[ii + 1]:
-                z[ii + 1] = 1
+    for q in range(n):
+        xi = q
+        zi = q + n
+        if ((x[xi] + x[zi]) == 0) and ((y[xi] + y[zi]) != 0):
+            if y[xi] == y[zi]:
+                z[zi] = 1
             else:
-                z[ii + 1] = y[ii]
-                z[ii] = y[ii + 1]
+                z[zi] = y[xi]
+                z[xi] = y[zi]
             break
 
     out[0] = (x + z) & 1
@@ -124,7 +126,7 @@ def find_transvection(x: np.ndarray, y: np.ndarray) -> np.ndarray:
 def symplectic_gf2_interleaved(index: int, n: int) -> TableauType:
     """
     Deterministic canonical enumeration of Sp(2n,2) per Koenig/Smolin appendix.
-    Returns 2n x 2n numpy array dtype=int8 in INTERLEAVED ordering [x0,z0,x1,z1,...].
+    Returns 2n x 2n numpy array dtype=int8 in grouped ordering [x0,x1,...,z0,z1,...].
     index must be 0 <= index < symplectic_group_size(n,2).
     """
     if n <= 0:
@@ -158,9 +160,10 @@ def symplectic_gf2_interleaved(index: int, n: int) -> TableauType:
 
         # Step 5: construct e' (bits[0] used for step 6 later; bits[1:] fill higher coords)
         e_prime = e1.copy()
-        # fill coordinates j = 2..nn_local-1 with bits[1..] (paper's indexing; using LSB-first)
-        for j in range(2, nn_local):
-            e_prime[j] = bits[j - 1]
+        # In grouped ordering, x0 is at 0 and z0 is at n_local; exclude both.
+        free_coords = [idx for idx in range(nn_local) if idx not in (0, n_local)]
+        for bit_idx, coord in enumerate(free_coords, start=1):
+            e_prime[coord] = bits[bit_idx]
 
         # Step 6: h0 = T(e')
         h0 = transvection(T[0], e_prime)
@@ -170,15 +173,13 @@ def symplectic_gf2_interleaved(index: int, n: int) -> TableauType:
             h0 = (h0 + f1) & 1
 
         # Step 7: recursive call for remaining block
-        id2 = np.zeros((2, 2), dtype=np.int8)
-        id2[0, 0] = 1
-        id2[1, 1] = 1
-
         if n_local > 1:
             g_small = _symplectic_recursive(i_new, n_local - 1)
-            g = direct_sum(id2, g_small)
+            g = np.eye(nn_local, dtype=np.int8)
+            rest = list(range(1, n_local)) + list(range(n_local + 1, nn_local))
+            g[np.ix_(rest, rest)] = g_small
         else:
-            g = id2.copy()
+            g = np.eye(nn_local, dtype=np.int8)
 
         # Apply transvections (left multiplication) by transforming columns
         for col_idx in range(nn_local):
@@ -200,56 +201,50 @@ def symplectic_gf2(index: int, n: int) -> TableauType:
 
 def interleaved_to_grouped(F_inter: np.ndarray) -> np.ndarray:
     """
-    Convert interleaved [x0,z0,x1,z1,...] => grouped [x0,x1,...,z0,z1,...]
-    by similarity transform F_group = S^T F_inter S (implemented by selecting rows/cols
-    with the inverse permutation).
+    Backward-compatible no-op for grouped-order matrices.
+
+    This module now uses grouped ordering everywhere:
+    [x0,x1,...,z0,z1,...].
     """
-    n2 = F_inter.shape[0]
-    assert n2 % 2 == 0
-    n = n2 // 2
-
-    # interleaved -> grouped mapping
-    i2g = [i // 2 + (i % 2) * n for i in range(n2)]
-    # invert
-    perm_inv = [0] * n2
-    for i, g in enumerate(i2g):
-        perm_inv[g] = i
-
-    # similarity: S^T @ F @ S  <=> select rows perm_inv, cols perm_inv
-    return F_inter[np.ix_(perm_inv, perm_inv)].astype(np.int8)
+    if F_inter.ndim != 2 or F_inter.shape[0] != F_inter.shape[1]:
+        raise ValueError("Input must be a square matrix.")
+    if F_inter.shape[0] % 2 != 0:
+        raise ValueError("Matrix size must be even (2n x 2n).")
+    return np.asarray(F_inter, dtype=np.int8)
 
 
 def is_symplectic_interleaved(F: np.ndarray) -> bool:
-    """Check symplectic in interleaved ordering (Ω = diag(J,J,...), J=[[0,1],[1,0]])."""
+    """Check symplectic in grouped ordering (legacy function name)."""
     nn = F.shape[0]
     assert nn % 2 == 0
-    Omega = np.zeros((nn, nn), dtype=np.int8)
-    for i in range(nn // 2):
-        ii = 2 * i
-        Omega[ii, ii + 1] = 1
-        Omega[ii + 1, ii] = 1
+    n = nn // 2
+    I = np.eye(n, dtype=np.int8)
+    Z = np.zeros((n, n), dtype=np.int8)
+    Omega = np.block([[Z, I], [I, Z]])
     lhs = (F.T @ Omega @ F) & 1
     return np.array_equal(lhs, Omega)
 
 
-def _isotropic_vector(n, d):
+def random_isotropic_vector(n, d, rng=None):
     """
     Sample an isotropic vector v = (a|b) in Z_d^{2n}.
     For d=2 (qubits), every vector is isotropic.
     For prime d, ensures <v,v> = 0 mod d.
     """
+    if rng is None:
+        rng = np.random.default_rng()
     if d == 2:
         # Any vector works
-        return np.random.randint(0, 2, size=(2 * n,), dtype=int)
+        return rng.integers(0, 2, size=(2 * n,), dtype=int)
 
     # d prime
     while True:
-        a = np.random.randint(0, d, size=(n,), dtype=int)
+        a = rng.integers(0, d, size=(n,), dtype=int)
         if np.all(a == 0):
             continue  # avoid trivial a
         # Find random b orthogonal to a
         while True:
-            b = np.random.randint(0, d, size=(n,), dtype=int)
+            b = rng.integers(0, d, size=(n,), dtype=int)
             if (a @ b) % d == 0:
                 return np.concatenate([a, b])
 
@@ -263,8 +258,12 @@ def _vector_to_transvection(v, J, d):
     return (np.identity(len(v), dtype=int) + (J @ v) @ v.T) % d
 
 
-def symplectic_random_transvection(n_qudits: int, dimension: int = 2,
-                                   num_transvections: int | None = None) -> TableauType:
+def symplectic_random_transvection(
+    n_qudits: int,
+    dimension: int = 2,
+    num_transvections: int | None = None,
+    rng: np.random.Generator | None = None,
+) -> TableauType:
     """
     Return a random 2n x 2n symplectic matrix over Z_d by composing
     num_transvections random transvections.
@@ -277,12 +276,18 @@ def symplectic_random_transvection(n_qudits: int, dimension: int = 2,
         Dimension of each qudit (>=2).
     num_transvections : int or None
         Number of transvections to compose. If None, defaults to 2 * (2n).
+    rng : np.random.Generator or None
+        Optional random generator. If None, a default generator is created.
 
     Returns
     -------
     M : (2n x 2n) integer matrix
         Random symplectic matrix over Z_d.
     """
+
+    if rng is None:
+        rng = np.random.default_rng()
+
     Id_n = np.identity(n_qudits, dtype=int)
     Zero_n = np.zeros((n_qudits, n_qudits), dtype=int)
     J = np.block([[Zero_n, Id_n], [-Id_n, Zero_n]]) % dimension
@@ -292,10 +297,13 @@ def symplectic_random_transvection(n_qudits: int, dimension: int = 2,
 
     if num_transvections is None:
         num_transvections = 2 * dim
-
     for _ in range(num_transvections):
-        v = _isotropic_vector(n_qudits, dimension)
+        v = random_isotropic_vector(n_qudits, dimension, rng=rng)
         Mv = _vector_to_transvection(v, J, dimension)
         M = (M @ Mv) % dimension
 
     return M
+
+
+def random_symplectic(n_qubits: int, dimension: int = 2, num_transvections: int | None = None) -> np.ndarray:
+    return symplectic_random_transvection(n_qubits, dimension, num_transvections)
