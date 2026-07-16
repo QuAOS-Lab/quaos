@@ -261,6 +261,16 @@ class TestGates():
                         F = symplectic_random_transvection(n, dimension=d)
                     assert is_symplectic(F, d), f"Failed symplectic check: n={n}, test {i}"
 
+    def test_random_transvection_sampler_repeatable_with_rng(self):
+        rng1 = np.random.default_rng(321)
+        rng2 = np.random.default_rng(321)
+
+        F1 = symplectic_random_transvection(3, dimension=5, num_transvections=12, rng=rng1)
+        F2 = symplectic_random_transvection(3, dimension=5, num_transvections=12, rng=rng2)
+
+        assert is_symplectic(F1, 5)
+        assert np.array_equal(F1, F2)
+
     def test_koenig_smolin_gf2_n1_enumerates_whole_group(self):
         elements = []
         for index in range(symplectic_group_size(1, 2)):
@@ -350,8 +360,15 @@ class TestGates():
             Gate.from_random(2, 2, 10, sampler="koenig-smolin")
         with pytest.raises(ValueError, match="Unknown random Clifford sampler"):
             Gate.from_random(2, 2, sampler="unknown")
-        with pytest.raises(ValueError, match="rng is only supported"):
-            Gate.from_random(2, 2, rng=np.random.default_rng(0))
+
+    def test_gate_from_random_transvection_repeatable_with_rng(self):
+        rng1 = np.random.default_rng(123)
+        rng2 = np.random.default_rng(123)
+
+        gate1 = Gate.from_random(3, 2, sampler="transvection", rng=rng1)
+        gate2 = Gate.from_random(3, 2, sampler="transvection", rng=rng2)
+
+        assert np.array_equal(gate1.symplectic, gate2.symplectic)
 
     def test_gate_from_random_transvection_still_accepts_positional_depth(self):
         gate = Gate.from_random(2, 2, 10)

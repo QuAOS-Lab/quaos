@@ -111,7 +111,7 @@ class Gate(ABC):
             uniform index sampler and is available only for qubits
             (``dimension == 2``).
         rng : np.random.Generator | None
-            Optional random generator for ``sampler="koenig-smolin"``.
+            Optional random generator for the selected sampler.
 
         Returns
         -------
@@ -121,9 +121,12 @@ class Gate(ABC):
 
         sampler_key = str(sampler).strip().lower().replace("_", "-")
         if sampler_key == "transvection":
-            if rng is not None:
-                raise ValueError("rng is only supported for sampler='koenig-smolin'.")
-            symplectic = symplectic_random_transvection(n_qudits, dimension, num_transvections)
+            symplectic = symplectic_random_transvection(
+                n_qudits,
+                dimension,
+                num_transvections,
+                rng=rng,
+            )
         elif sampler_key == "koenig-smolin":
             if dimension != 2:
                 raise ValueError("sampler='koenig-smolin' is only implemented for dimension=2.")
