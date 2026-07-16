@@ -298,6 +298,35 @@ class TestGates():
                 f"Random gate not symplectic for n={n}, d={d}"
             )
 
+    @pytest.mark.parametrize("n", [1, 2, 3])
+    def test_gate_from_random_koenig_smolin_symplecticity(self, n: int):
+        gate = Gate.from_random(
+            n,
+            2,
+            sampler="koenig-smolin",
+            rng=np.random.default_rng(100 + n),
+        )
+        assert is_symplectic(gate.symplectic, 2)
+
+    def test_gate_from_random_koenig_smolin_repeatable_with_rng(self):
+        rng1 = np.random.default_rng(123)
+        rng2 = np.random.default_rng(123)
+
+        gate1 = Gate.from_random(3, 2, sampler="koenig-smolin", rng=rng1)
+        gate2 = Gate.from_random(3, 2, sampler="koenig-smolin", rng=rng2)
+
+        assert np.array_equal(gate1.symplectic, gate2.symplectic)
+
+    def test_gate_from_random_koenig_smolin_rejects_invalid_options(self):
+        with pytest.raises(ValueError, match="only implemented for dimension=2"):
+            Gate.from_random(2, 3, sampler="koenig-smolin")
+        with pytest.raises(ValueError, match="num_transvections is not used"):
+            Gate.from_random(2, 2, 10, sampler="koenig-smolin")
+        with pytest.raises(ValueError, match="Unknown random Clifford sampler"):
+            Gate.from_random(2, 2, sampler="unknown")
+        with pytest.raises(ValueError, match="rng is only supported"):
+            Gate.from_random(2, 2, rng=np.random.default_rng(0))
+
     @pytest.mark.parametrize("d", [2, 3, 5])
     @pytest.mark.parametrize("n", [2, 3])
     def test_gate_from_random_action(self, d: int, n: int):
