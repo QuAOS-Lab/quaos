@@ -34,6 +34,7 @@ from sympleq.applications.randomized_benchmarking.experiments.cost_aware_plots i
     _initial_rate_estimates,
     _initial_success_side_log_volume,
     _lindblad_reference_rate_estimates,
+    plot_live_volume_history,
 )
 from sympleq.applications.randomized_benchmarking.experiments.cost_aware_surface_method import (
     _I_L1,
@@ -73,7 +74,7 @@ USE_COMMAND_LINE_ARGUMENTS = False
 # ``run_numbers_to_load`` controls comparison replay. Use a single entry for
 # the old one-run behaviour, or e.g. (1, 2) to compare runs side by side.
 run_number_to_load = 2
-run_numbers_to_load = (1, 2)
+run_numbers_to_load = (1, 2, 3)
 
 # Known run presets. Add future runs here once they exist. ``checkpoint=None``
 # means "find the newest matching checkpoint under DEFAULT_ROOT/seed_*".
@@ -83,7 +84,7 @@ RUNS_TO_LOAD = {
         "checkpoint": None,
         "allow_any_backend": False,
         "filename_contains": "",
-        "backend_contains": "H2-",
+        "backend_contains": "H2-1",
         "match_number": 1,
     },
     2: {
@@ -91,7 +92,15 @@ RUNS_TO_LOAD = {
         "checkpoint": None,
         "allow_any_backend": False,
         "filename_contains": "",
-        "backend_contains": "H2-",
+        "backend_contains": "H2-1",
+        "match_number": 1,
+    },
+    3: {
+        "seed": 20262,
+        "checkpoint": None,
+        "allow_any_backend": False,
+        "filename_contains": "",
+        "backend_contains": "H2-2",
         "match_number": 1,
     },
 }
@@ -110,12 +119,16 @@ MAX_ITERATION = None
 PAUSE_SECONDS = 0.1
 NO_SURFACE_PLOT = False
 NO_VOLUME_PLOT = False
+# Reuse checkpointed live_volume_history when the saved fit-grid settings match
+# this replay. This avoids recomputing the expensive volume integral for runs
+# that have already been plotted with the same grid settings.
+USE_CACHED_VOLUME_HISTORY = True
 # Tuple order:
 #   (L1, L2, m1, m2, nu1, nu2, V)
 # where L1/L2 are the base one-/two-qubit rates, m1/m2 are their linear
 # Q-slopes, nu1/nu2 are their quadratic Q-curvatures, and V is visibility.
-GRID_RESOLUTION_OVERRIDE = (15, 15, 9, 9, 1, 7, 1)
-BOUNDARY_FIT_RESOLUTION_OVERRIDE = (17, 17, 9, 9, 1, 11, 1)
+GRID_RESOLUTION_OVERRIDE = (15, 15, 9, 9, 1, 9, 1)
+BOUNDARY_FIT_RESOLUTION_OVERRIDE = (17, 17, 9, 9, 1, 9, 1)
 SURFACE_PNG = None
 VOLUME_PNG = None
 
@@ -144,6 +157,7 @@ class ReplayState:
     budget: Budget
     batch_history: list[dict]
     volume_history: list[tuple]
+    cached_volume_by_iteration: dict[int, tuple] | None = None
     total_shots: int = 0
     replayed_batches: int = 0
 
@@ -311,6 +325,112 @@ def _settings_from_args(args: argparse.Namespace, meta: dict) -> CostAwareSettin
     return settings
 
 
+def _settings_tuple(meta: dict, key: str) -> tuple[int, ...] | None:
+    settings = meta.get("settings")
+    if not isinstance(settings, dict):
+        return None
+    value = settings.get(key)
+    if value is None:
+        return None
+    try:
+        return tuple(int(part) for part in value)
+    except TypeError:
+        return None
+
+
+def _cached_volume_history_compatible(
+    meta: dict,
+    settings: CostAwareSettings,
+) -> tuple[bool, str]:
+    if int(meta.get("live_volume_history_version", 0) or 0) < 4:
+        return False, "missing live_volume_history version 4"
+    if not isinstance(meta.get("live_volume_history"), list):
+        return False, "missing live_volume_history"
+
+    saved_grid = _settings_tuple(meta, "grid_resolution")
+    saved_boundary = _settings_tuple(meta, "boundary_fit_resolution")
+    current_grid = tuple(int(part) for part in settings.grid_resolution)
+    current_boundary = tuple(int(part) for part in settings.boundary_fit_resolution)
+    if saved_grid != current_grid:
+        return (
+            False,
+            f"grid_resolution changed: saved={saved_grid}, current={current_grid}",
+        )
+    if saved_boundary != current_boundary:
+        return (
+            False,
+            "boundary_fit_resolution changed: "
+            f"saved={saved_boundary}, current={current_boundary}",
+        )
+
+    saved_gp = None
+    saved_settings = meta.get("settings")
+    if isinstance(saved_settings, dict):
+        saved_gp = saved_settings.get("gp_grid_surface_path")
+    current_gp = (
+        None
+        if settings.gp_grid_surface_path is None
+        else str(settings.gp_grid_surface_path)
+    )
+    if saved_gp is not None and str(saved_gp) != current_gp:
+        return (
+            False,
+            f"gp_grid_surface_path changed: saved={saved_gp}, current={current_gp}",
+        )
+
+    return True, "compatible"
+
+
+def _load_cached_volume_history(
+    meta: dict,
+    settings: CostAwareSettings,
+    *,
+    max_iteration: int | None = None,
+) -> list[tuple] | None:
+    if not USE_CACHED_VOLUME_HISTORY:
+        return None
+    compatible, reason = _cached_volume_history_compatible(meta, settings)
+    if not compatible:
+        print(f"  cached volume history ignored: {reason}")
+        return None
+
+    history: list[tuple] = []
+    for row in meta.get("live_volume_history", []):
+        if not isinstance(row, (list, tuple)) or len(row) < 5:
+            continue
+        try:
+            point = tuple(float(value) for value in row)
+        except (TypeError, ValueError):
+            continue
+        iteration = int(point[0])
+        if max_iteration is not None and iteration > int(max_iteration):
+            continue
+        history.append(point)
+    history.sort(key=lambda point: point[0])
+    print(f"  cached volume history loaded: {len(history)} point(s)")
+    return history
+
+
+def _record_cached_volume_point(
+    history: list[tuple],
+    cached_by_iteration: dict[int, tuple] | None,
+    iteration: int,
+) -> bool:
+    if not cached_by_iteration:
+        return False
+    point = cached_by_iteration.get(int(iteration))
+    if point is None:
+        return False
+    for i, existing in enumerate(history):
+        if int(existing[0]) == int(iteration):
+            history[i] = point
+            break
+    else:
+        history.append(point)
+    history.sort(key=lambda row: row[0])
+    return True
+
+
 def _add_request_measurements(rmb, request_record: dict) -> int:
     config_record = request_record.get("config")
     if not isinstance(config_record, dict):
@@ -356,6 +476,7 @@ def _make_replay_state(
 ) -> ReplayState:
     meta = _load_json(checkpoint_path)
     _, rmb, budget = start_run(settings)
+    cached_history = _load_cached_volume_history(meta, settings)
     state = ReplayState(
         run_number=run_number,
         label=_run_label(run_number, checkpoint_path, meta),
@@ -365,6 +486,11 @@ def _make_replay_state(
         budget=budget,
         batch_history=_sorted_batch_history(meta, checkpoint_path),
         volume_history=[],
+        cached_volume_by_iteration=(
+            None
+            if cached_history is None
+            else {int(row[0]): tuple(row) for row in cached_history}
+        ),
     )
     print(f"Replaying {checkpoint_path}")
     print(f"  label: {state.label}")
@@ -387,8 +513,13 @@ def _apply_replay_batch(state: ReplayState, batch: dict) -> int:
     state.budget.spend_batch(cost, requested_shots)
 
     iteration = int(batch.get("iteration", state.replayed_batches))
+    used_cached_volume = _record_cached_volume_point(
+        state.volume_history,
+        state.cached_volume_by_iteration,
+        iteration,
+    )
     params, weights = _stateless_posterior(state.rmb._data, state.settings)
-    if params is not None and weights is not None:
+    if not used_cached_volume and params is not None and weights is not None:
         secondary_reference_gates = (
             _analytic_lindblad_gates
             if state.settings.gp_grid_surface_path is not None
@@ -407,6 +538,7 @@ def _apply_replay_batch(state: ReplayState, batch: dict) -> int:
         f"{state.label} iteration {iteration}: added {added} shot outcomes, "
         f"configs={_measured_config_count(state.rmb._data)}, "
         f"spent={state.budget.spent_hqc:.3f} HQC"
+        f"{' (cached volume)' if used_cached_volume else ''}"
     )
     return added
 
@@ -515,6 +647,16 @@ def replay_collect_fit(
     """Replay a run into memory and return final surface/volume summaries."""
     meta = _load_json(checkpoint_path)
     batch_history = _sorted_batch_history(meta, checkpoint_path)
+    cached_history = _load_cached_volume_history(
+        meta,
+        settings,
+        max_iteration=max_iteration,
+    )
+    cached_by_iteration = (
+        None
+        if cached_history is None
+        else {int(row[0]): tuple(row) for row in cached_history}
+    )
 
     _, rmb, budget = start_run(settings)
     volume_history: list[tuple] = []
@@ -542,8 +684,13 @@ def replay_collect_fit(
         requested_shots = int(batch.get("requested_shots", added))
         budget.spend_batch(cost, requested_shots)
 
+        used_cached_volume = _record_cached_volume_point(
+            volume_history,
+            cached_by_iteration,
+            iteration,
+        )
         params, weights = _stateless_posterior(rmb._data, settings)
-        if params is not None and weights is not None:
+        if not used_cached_volume and params is not None and weights is not None:
             secondary_reference_gates = (
                 _analytic_lindblad_gates
                 if settings.gp_grid_surface_path is not None
@@ -562,6 +709,7 @@ def replay_collect_fit(
             f"iteration {iteration}: added {added} shot outcomes, "
             f"configs={_measured_config_count(rmb._data)}, "
             f"spent={budget.spent_hqc:.3f} HQC"
+            f"{' (cached volume)' if used_cached_volume else ''}"
         )
 
     params, weights = _stateless_posterior(rmb._data, settings)
@@ -600,6 +748,16 @@ def replay_live_fit(
     batch_history = list(meta.get("batch_history", []))
     if not batch_history:
         raise RuntimeError(f"No batch_history in {checkpoint_path}")
+    cached_history = _load_cached_volume_history(
+        meta,
+        settings,
+        max_iteration=max_iteration,
+    )
+    cached_by_iteration = (
+        None
+        if cached_history is None
+        else {int(row[0]): tuple(row) for row in cached_history}
+    )
 
     _, rmb, budget = start_run(settings)
     volume_history = []
@@ -632,13 +790,43 @@ def replay_live_fit(
             f"configs={_measured_config_count(rmb._data)}, "
             f"spent={budget.spent_hqc:.3f} HQC"
         )
+        used_cached_volume = _record_cached_volume_point(
+            volume_history,
+            cached_by_iteration,
+            iteration,
+        )
+        callback_settings = (
+            replace(settings, live_volume_plot=False)
+            if used_cached_volume
+            else settings
+        )
         _maybe_update_live_plots(
             rmb,
-            settings,
+            callback_settings,
             budget,
             iteration,
             volume_history,
         )
+        if (
+            used_cached_volume
+            and settings.live_volume_plot
+            and iteration % max(1, settings.live_volume_plot_every) == 0
+        ):
+            png = plot_live_volume_history(
+                volume_history,
+                settings,
+                png_path=settings.live_volume_plot_path,
+                show=settings.live_volume_plot_show,
+                show_block=False,
+                show_pause=settings.live_volume_plot_pause,
+                close=not settings.live_volume_plot_show,
+                figure_name="cost-aware replay live volume",
+            )
+            if png is not None:
+                print(
+                    f"cached live volume plot -> {png} "
+                    f"(spent {budget.spent_hqc:.1f} / {settings.hqc_budget:.1f} HQC)"
+                )
 
     print(
         f"Done: replayed {replayed_batches} batch(es), "
