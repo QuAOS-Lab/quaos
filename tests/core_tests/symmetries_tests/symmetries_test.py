@@ -286,3 +286,26 @@ class TestSymmetryFinder:
                 assert S.act(T.inverse().act(H, all_indices), all_indices).is_close(T.inverse().act(H, all_indices),
                                                                                     literal=False)
                 assert qudit_cost(S, p) <= qc
+
+    def test_random_pauli_symmetry(self):
+        n_tests = 10
+        n_qudits = rng.integers(5, 20)
+        n_paulis = rng.integers(5 * n_qudits, 10 * n_qudits ** 2)
+
+        for _ in range(n_tests):
+            n_redundant = np.random.randint(0, n_qudits - 3)
+            n_conditional = np.random.randint(0, n_qudits - n_redundant - 1)
+            ham = random_pauli_symmetry_hamiltonian(n_qudits, n_paulis, n_redundant=n_redundant,
+                                                    n_conditional=n_conditional)
+            conditional_hamiltonian = pauli_reduce(ham)
+            h_reduced = conditional_hamiltonian.original_hamiltonian
+
+            h_reduced, conditioned_hams, reducing_circuit, eigenvalues = pauli_reduce(ham)
+            assert h_reduced.n_qudits() == n_qudits - n_redundant
+            num_only_z_columns = 0
+            for i in range(h_reduced.n_qudits()):
+                if not any(h_reduced.x_exp[:, i]):
+                    num_only_z_columns += 1
+            assert num_only_z_columns == n_conditional
+            conditioned_hams = [c for c in conditional_hamiltonian]
+            assert len(conditioned_hams) == 2**n_conditional

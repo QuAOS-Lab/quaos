@@ -16,8 +16,9 @@ class TestConditionalHamiltonianFinder:
     def generate_symmetry(self, n_qudits, n_paulis):
         P_sym = random_gate_symmetric_hamiltonian(GATES.H, dimension=2, qudit_indices=tuple([0]),
                                                   n_paulis=n_paulis, n_qudits=n_qudits)
-        h_red, conditioned_hamiltonians, C_F, all_phases = pauli_reduce(P_sym)
-        F, Sy, T = min_qudit_clifford_symmetry(h_red)
+        conditional_hamiltonian = pauli_reduce(P_sym)
+        h_red = conditional_hamiltonian.original_hamiltonian
+        F, Sy, T = min_qudit_clifford_symmetry(P_sym)
         C_F = gate_to_circuit(F, dimensions=[2 for i in range(n_qudits)])
         symmetrised = T.inverse().act(h_red, tuple(np.arange(n_qudits)))
         assert C_F.act(h_red).is_close(h_red, literal=False)
