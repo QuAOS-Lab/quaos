@@ -9,7 +9,10 @@ from sympleq.core.paulis._typing import (
     TableauType, TableauLike, PhasesType, DimensionsType, HilbertOperator
 )
 from sympleq.core.circuits.utils import embed_symplectic, embed_unitary, transvection_matrix
-from sympleq.core.circuits.random_symplectic import symplectic_random_transvection
+from sympleq.core.circuits.random_symplectic import (
+    symplectic_random_koenig_smolin_gf2,
+    symplectic_random_transvection,
+)
 from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.circuits.target import get_phase_vector
@@ -81,9 +84,17 @@ class Gate(ABC):
         self._inverse: Self | None = None
 
     @classmethod
-    def from_random(cls, n_qudits: int, dimension: int, num_transvections: int | None = None) -> Gate:
+    def from_random(
+        cls,
+        n_qudits: int,
+        dimension: int,
+        num_transvections: int | None = None,
+        *,
+        sampler: str = "transvection",
+        rng: np.random.Generator | None = None,
+    ) -> Gate:
         """
-        Generate a random Clifford gate by composing random transvections.
+        Generate a random Clifford gate.
 
         Parameters
         ----------
@@ -92,7 +103,15 @@ class Gate(ABC):
         dimension : int
             Local Hilbert space dimension (e.g., 2 for qubits).
         num_transvections : int | None
-            Number of transvections to compose. If None, defaults to 4*n_qudits.
+            Number of transvections to compose for ``sampler="transvection"``.
+            If None, defaults to 4*n_qudits.
+        sampler : str
+            Random symplectic sampler to use. ``"transvection"`` preserves the
+            historical behavior. ``"koenig-smolin"`` uses the Koenig-Smolin
+            uniform index sampler and is available only for qubits
+            (``dimension == 2``).
+        rng : np.random.Generator | None
+            Optional random generator for ``sampler="koenig-smolin"``.
 
         Returns
         -------
@@ -100,7 +119,23 @@ class Gate(ABC):
             A random Clifford gate with the generated symplectic matrix.
         """
 
-        symplectic = symplectic_random_transvection(n_qudits, dimension, num_transvections)
+        sampler_key = str(sampler).strip().lower().replace("_", "-")
+        if sampler_key == "transvection":
+            if rng is not None:
+                raise ValueError("rng is only supported for sampler='koenig-smolin'.")
+            symplectic = symplectic_random_transvection(n_qudits, dimension, num_transvections)
+        elif sampler_key == "koenig-smolin":
+            if dimension != 2:
+                raise ValueError("sampler='koenig-smolin' is only implemented for dimension=2.")
+            if num_transvections is not None:
+                raise ValueError("num_transvections is not used with sampler='koenig-smolin'.")
+            symplectic = symplectic_random_koenig_smolin_gf2(n_qudits, rng=rng)
+        else:
+            raise ValueError(
+                "Unknown random Clifford sampler "
+                f"{sampler!r}. Expected 'transvection' or 'koenig-smolin'."
+            )
+
         # For random gates, we use zero phase vector (phases depend on specific gate sequence)
         phase_vector = get_phase_vector(symplectic, dimension)
 
