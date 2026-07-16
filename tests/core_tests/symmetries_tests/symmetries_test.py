@@ -300,7 +300,6 @@ class TestSymmetryFinder:
             conditional_hamiltonian = pauli_reduce(ham)
             h_reduced = conditional_hamiltonian.original_hamiltonian
 
-            h_reduced, conditioned_hams, reducing_circuit, eigenvalues = pauli_reduce(ham)
             assert h_reduced.n_qudits() == n_qudits - n_redundant
             num_only_z_columns = 0
             for i in range(h_reduced.n_qudits()):
