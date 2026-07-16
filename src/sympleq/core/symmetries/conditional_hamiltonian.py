@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.sparse as sp
 from sympleq.core.paulis import PauliSum, PauliString
 from sympleq.core.circuits import Circuit, SWAP
 from sympleq.utils import int_to_bases, bases_to_int, multi_kron
@@ -218,6 +219,16 @@ class ConditionalHamiltonian:
         self.block_variables['degeneracy_dimensions'] = {}
         self.block_variables['conditional_dimensions'] = []
         self.P_qudit_dict = {}
+        self._block_qudits_to_delete = [
+            np.array(
+                [q for q in range(self.ordered_symmetrised_hamiltonian.n_qudits()) if q not in block],
+                dtype=int,
+            )
+            for block in self.blocks
+        ]
+        self._ordered_single_terms_cache = None
+        self._term_block_selections_cache = None
+        self._term_block_selection_keys_cache = None
 
         for block_index, block in enumerate(self.blocks):
             # block parameters
@@ -271,9 +282,9 @@ class ConditionalHamiltonian:
             self.block_variables['degeneracy_dimensions'][block_index] = d_dimension
             self.block_variables['conditional_dimensions'].append(len(d_dimension))
 
-        # In the Kronecker eigenbasis U = kron(U_block_0, ..., U_block_n), sector subspaces
-        # are generally interleaved. Precompute index maps from sector-order <-> kron-order.
-        self._initialize_sector_index_maps()
+        self._sector_basis_indices = None
+        self._sector_permutation = None
+        self._inverse_sector_permutation = None
 
     def _coerce_gate_and_circuit(self, operator: Gate | Circuit) -> tuple[Gate, Circuit]:
         if isinstance(operator, Circuit):
@@ -324,6 +335,8 @@ class ConditionalHamiltonian:
         self._inverse_sector_permutation = np.argsort(sector_permutation).astype(int)
 
     def sector_basis_indices(self) -> list[np.ndarray]:
+        if self._sector_basis_indices is None:
+            self._initialize_sector_index_maps()
         return [np.asarray(idx, dtype=int).copy() for idx in self._sector_basis_indices]
 
     def embedded_block_circuit(self, blocks, block_list, block_variables):
@@ -384,24 +397,56 @@ class ConditionalHamiltonian:
     def _selection_block_data(
         self,
         selection_key: tuple[int, ...],
-    ) -> list[tuple[int, list[np.ndarray], np.ndarray, np.ndarray]]:
-        block_data: list[tuple[int, list[np.ndarray], np.ndarray, np.ndarray]] = []
+    ) -> list[tuple[int, list[np.ndarray], tuple[int, int]]]:
+        block_data: list[tuple[int, list[np.ndarray], tuple[int, int]]] = []
         for block, selected_eigenvalue in enumerate(selection_key):
-            relevant_qudits = self.blocks[block]
             relevant_indices = np.array(self.block_variables['degeneracies'][block][selected_eigenvalue])
             eigenvectors = [self.block_variables['eigenvectors'][block][:, r] for r in relevant_indices]
             block_data.append(
                 (
                     int(self.block_variables['degeneracy_dimensions'][block][selected_eigenvalue]),
                     eigenvectors,
-                    np.column_stack(eigenvectors).astype(complex),
-                    np.array(
-                        [q for q in range(self.ordered_symmetrised_hamiltonian.n_qudits()) if q not in relevant_qudits],
-                        dtype=int,
-                    ),
+                    (int(block), int(selected_eigenvalue)),
                 )
             )
         return block_data
+
+    def _pauli_string_cache_key(self, pauli_string: PauliString) -> tuple[tuple[int, ...], tuple[int, ...]]:
+        return (
+            tuple(int(x) for x in np.asarray(pauli_string.tableau, dtype=int).reshape(-1)),
+            tuple(int(x) for x in np.asarray(pauli_string.dimensions, dtype=int).reshape(-1)),
+        )
+
+    def _ordered_single_terms(self) -> list[PauliString]:
+        if self._ordered_single_terms_cache is None:
+            ordered_single_terms: list[PauliString] = []
+            for i in range(self.ordered_symmetrised_hamiltonian.n_paulis()):
+                ps = self.ordered_symmetrised_hamiltonian[i].copy()
+                ps.weights = np.array([1])
+                ps.phases = np.array([0])
+                ordered_single_terms.append(ps)
+            self._ordered_single_terms_cache = ordered_single_terms
+        return self._ordered_single_terms_cache
+
+    def _term_block_selections(
+        self,
+    ) -> tuple[list[list[PauliString]], list[list[tuple[tuple[int, ...], tuple[int, ...]]]]]:
+        if self._term_block_selections_cache is None or self._term_block_selection_keys_cache is None:
+            ordered_single_terms = self._ordered_single_terms()
+            term_block_selections: list[list[PauliString]] = []
+            term_block_selection_keys: list[list[tuple[tuple[int, ...], tuple[int, ...]]]] = []
+            for qudits_to_delete in self._block_qudits_to_delete:
+                block_terms: list[PauliString] = []
+                block_keys: list[tuple[tuple[int, ...], tuple[int, ...]]] = []
+                for ps in ordered_single_terms:
+                    ps_selection = ps._delete_qudits(qudits_to_delete)
+                    block_terms.append(ps_selection)
+                    block_keys.append(self._pauli_string_cache_key(ps_selection))
+                term_block_selections.append(block_terms)
+                term_block_selection_keys.append(block_keys)
+            self._term_block_selections_cache = term_block_selections
+            self._term_block_selection_keys_cache = term_block_selection_keys
+        return self._term_block_selections_cache, self._term_block_selection_keys_cache
 
     def select_hamiltonian(self, selection: list[int]) -> PauliSum | complex:
         selection_key = self._selection_key(selection)
@@ -414,40 +459,35 @@ class ConditionalHamiltonian:
 
         output_dimensions, output_is_scalar = self._selection_output_dimensions(selection_key)
         block_data = self._selection_block_data(selection_key)
+        ordered_single_terms = self._ordered_single_terms()
+        term_block_selections, term_block_selection_keys = self._term_block_selections()
 
-        n_p = self.original_hamiltonian.n_paulis()
+        n_p = len(ordered_single_terms)
         decomposed_pauli_strings = []
         scalar_offset = 0.0 + 0.0j
+        ordered_weights = self.ordered_symmetrised_hamiltonian.weights
+        ordered_phases = self.ordered_symmetrised_hamiltonian.phases
+        previous_lcm = self.ordered_symmetrised_hamiltonian.lcm
         for i in range(n_p):
-            # string
-            ps = self.ordered_symmetrised_hamiltonian[i].copy()
-            ps.weights = np.array([1])
-            ps.phases = np.array([0])
             # weight component
-            weight = self.ordered_symmetrised_hamiltonian.weights[i]
+            weight = ordered_weights[i]
             # reconstruct phase component later
-            phase = self.ordered_symmetrised_hamiltonian.phases[i]
-            previous_lcm = self.ordered_symmetrised_hamiltonian.lcm
+            phase = ordered_phases[i]
 
             # pauli strings of symmetry blocks that are later tensored
             conditional_pauli_string_blocks = []
             term_is_zero = False
             # for each symmetry block decompose the pauli string into the eigenbasis
-            for d, eigenvectors, _, qudits_to_delete in block_data:
-                # get the dimension of the degeneracy
-                ps_selection = ps.copy()
-                ps_selection = ps_selection._delete_qudits(qudits_to_delete)
+            for block_idx, (d, eigenvectors, block_cache_key) in enumerate(block_data):
+                ps_selection = term_block_selections[block_idx][i]
+                ps_selection_key = term_block_selection_keys[block_idx][i]
 
-                key = str(np.around(np.array(eigenvectors), 6))
-                if key in self.P_qudit_dict.keys():
-                    if str(ps_selection) in self.P_qudit_dict[key].keys():
-                        P_qudit = self.P_qudit_dict[key][str(ps_selection)]
-                    else:
-                        P_qudit = self.selection_to_qudit(ps_selection, d, eigenvectors)
-                        self.P_qudit_dict[key][str(ps_selection)] = P_qudit
+                block_cache = self.P_qudit_dict.setdefault(block_cache_key, {})
+                if ps_selection_key in block_cache:
+                    P_qudit = block_cache[ps_selection_key]
                 else:
-                    self.P_qudit_dict[key] = {}
-                    self.P_qudit_dict[key][str(ps_selection)] = self.selection_to_qudit(ps_selection, d, eigenvectors)
+                    P_qudit = self.selection_to_qudit(ps_selection, d, eigenvectors)
+                    block_cache[ps_selection_key] = P_qudit
 
                 # selection_to_qudit may legitimately return a scalar (e.g., d==1 or zero block).
                 if np.isscalar(P_qudit):
@@ -465,7 +505,7 @@ class ConditionalHamiltonian:
             if len(conditional_pauli_string_blocks) == 0:
                 scalar_offset += weight * np.exp(phase * 2 * np.pi * 1j / (2 * previous_lcm))
             else:
-                new_ps = conditional_pauli_string_blocks[0]
+                new_ps = conditional_pauli_string_blocks[0].copy()
                 for i in range(1, len(conditional_pauli_string_blocks)):
                     new_ps = new_ps @ conditional_pauli_string_blocks[i]
 
@@ -511,6 +551,8 @@ class ConditionalHamiltonian:
         return U
 
     def reconstruct_full_hamiltonian(self):
+        if self._inverse_sector_permutation is None:
+            self._initialize_sector_index_maps()
         list_of_blocks = []
         for block_hamiltonian in self:
             if isinstance(block_hamiltonian, PauliSum):
@@ -543,6 +585,186 @@ class ConditionalHamiltonian:
             selection = list(int_to_bases(i, self.block_variables['conditional_dimensions']))
             block_hamiltonian = self.select_hamiltonian(selection)
             yield block_hamiltonian
+
+
+class SwapConditionalHamiltonian(ConditionalHamiltonian):
+    def __init__(
+        self,
+        hamiltonian: PauliSum,
+        symmetry: Circuit,
+        transformation_gate: Gate | Circuit,
+        verify: bool = True,
+        degeneracy_tol: float = 1e-8,
+        zero_tol: float = 1e-12,
+    ):
+        if not isinstance(symmetry, Circuit):
+            raise TypeError("SwapConditionalHamiltonian requires a Circuit of SWAP gates.")
+
+        self.original_hamiltonian = hamiltonian
+        self.verify = bool(verify)
+        self.degeneracy_tol = float(degeneracy_tol)
+        self.zero_tol = float(zero_tol)
+        self.input_dimensions = np.asarray(hamiltonian.dimensions, dtype=int)
+        self.symmetry_circuit = symmetry
+        self.symmetry_gate = symmetry.composite_gate()
+        self.transformation_gate, self.transformation_circuit = self._coerce_gate_and_circuit(transformation_gate)
+        self.symmetrised_hamiltonian = self.transformation_circuit.inverse().act(self.original_hamiltonian)
+
+        if self.verify:
+            assert test_symmetry(self.symmetry_circuit, self.symmetrised_hamiltonian)
+
+        source_blocks = self._swap_source_blocks()
+        new_qudit_order = [qudit for block in source_blocks for qudit in block]
+        swap_list = permutation_swaps(new_qudit_order)
+        swap_circuit = Circuit(
+            dimensions=self.input_dimensions,
+            gates=[SWAP() for _ in swap_list],
+            qudit_indices=[(s[0], s[1]) for s in swap_list],
+        )
+        inv_swap_circuit = swap_circuit.inverse()
+        self.ordered_symmetry_circuit = inv_swap_circuit + self.symmetry_circuit + swap_circuit
+        self.ordered_symmetry_gate = self.ordered_symmetry_circuit.composite_gate()
+        self.ordered_T_circuit = inv_swap_circuit + self.transformation_circuit
+        self.ordered_T_gate = self.ordered_T_circuit.composite_gate()
+        self.ordered_symmetrised_hamiltonian = swap_circuit.act(self.symmetrised_hamiltonian)
+
+        if self.verify:
+            assert test_symmetry(self.ordered_symmetry_circuit, self.ordered_symmetrised_hamiltonian)
+
+        self.blocks = []
+        qudit_counter = 0
+        for block in source_blocks:
+            relabelled_block = []
+            for _ in block:
+                relabelled_block.append(qudit_counter)
+                qudit_counter += 1
+            self.blocks.append(relabelled_block)
+
+        self.block_variables = {}
+        self.block_variables['unitaries'] = []
+        self.block_variables['eigenvalues'] = []
+        self.block_variables['eigenvectors'] = []
+        self.block_variables['degeneracies'] = {}
+        self.block_variables['degeneracy_dimensions'] = {}
+        self.block_variables['conditional_dimensions'] = []
+        self.P_qudit_dict = {}
+        self._block_qudits_to_delete = [
+            np.array(
+                [q for q in range(self.ordered_symmetrised_hamiltonian.n_qudits()) if q not in block],
+                dtype=int,
+            )
+            for block in self.blocks
+        ]
+        self._ordered_single_terms_cache = None
+        self._term_block_selections_cache = None
+        self._term_block_selection_keys_cache = None
+
+        for block_index, block in enumerate(self.blocks):
+            block_dimensions = np.asarray(self.ordered_symmetrised_hamiltonian.dimensions[block], dtype=int)
+            if len(block) == 2:
+                eigenvalues, eigenvectors, unitary, degeneracies = self._swap_block_eigendecomposition(
+                    int(block_dimensions[0])
+                )
+            elif len(block) == 1:
+                d = int(block_dimensions[0])
+                eigenvalues = np.ones(d, dtype=complex)
+                eigenvectors = np.eye(d, dtype=complex)
+                unitary = np.eye(d, dtype=complex)
+                degeneracies = [list(range(d))]
+            else:
+                raise ValueError(f"Unexpected SWAP source block size {len(block)}.")
+
+            self.block_variables['unitaries'].append(unitary)
+            self.block_variables['eigenvalues'].append(eigenvalues)
+            self.block_variables['eigenvectors'].append(eigenvectors)
+            self.block_variables['degeneracies'][block_index] = degeneracies
+            self.block_variables['degeneracy_dimensions'][block_index] = [len(g) for g in degeneracies]
+            self.block_variables['conditional_dimensions'].append(len(degeneracies))
+
+        self._sector_basis_indices = None
+        self._sector_permutation = None
+        self._inverse_sector_permutation = None
+
+    def _swap_source_blocks(self) -> list[list[int]]:
+        swap_blocks: list[list[int]] = []
+        occupied: set[int] = set()
+        for gate, qudits in zip(self.symmetry_circuit.gates, self.symmetry_circuit.qudit_indices):
+            if getattr(gate, "name", None) != "SWAP":
+                raise ValueError("SwapConditionalHamiltonian only supports SWAP gates.")
+            if len(qudits) != 2:
+                raise ValueError(f"SWAP gate must have two qudit indices, got {qudits}.")
+            a, b = int(qudits[0]), int(qudits[1])
+            if a == b:
+                raise ValueError("SWAP gate cannot act on the same qudit twice.")
+            if a in occupied or b in occupied:
+                raise ValueError("SwapConditionalHamiltonian requires independent SWAP gates.")
+            if int(self.input_dimensions[a]) != int(self.input_dimensions[b]):
+                raise ValueError("SWAP fast path requires equal dimensions within each pair.")
+            occupied.add(a)
+            occupied.add(b)
+            swap_blocks.append(sorted([a, b]))
+
+        blocks = [list(block) for block in swap_blocks]
+        for idx in range(int(self.original_hamiltonian.n_qudits())):
+            if idx not in occupied:
+                blocks.append([idx])
+        blocks.sort(key=lambda block: block[0])
+        return blocks
+
+    @staticmethod
+    def _swap_block_eigendecomposition(dimension: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[list[int]]]:
+        d = int(dimension)
+        hilbert_dim = d * d
+        columns: list[np.ndarray] = []
+        eigenvalues: list[complex] = []
+
+        for j in range(d):
+            for k in range(j + 1, d):
+                vec = np.zeros(hilbert_dim, dtype=complex)
+                vec[j * d + k] = 1.0 / np.sqrt(2.0)
+                vec[k * d + j] = -1.0 / np.sqrt(2.0)
+                columns.append(vec)
+                eigenvalues.append(-1.0 + 0.0j)
+
+        for j in range(d):
+            vec = np.zeros(hilbert_dim, dtype=complex)
+            vec[j * d + j] = 1.0 + 0.0j
+            columns.append(vec)
+            eigenvalues.append(1.0 + 0.0j)
+
+        for j in range(d):
+            for k in range(j + 1, d):
+                vec = np.zeros(hilbert_dim, dtype=complex)
+                vec[j * d + k] = 1.0 / np.sqrt(2.0)
+                vec[k * d + j] = 1.0 / np.sqrt(2.0)
+                columns.append(vec)
+                eigenvalues.append(1.0 + 0.0j)
+
+        eigenvectors = np.column_stack(columns).astype(complex)
+        eigenvalues_arr = np.asarray(eigenvalues, dtype=complex)
+        unitary = np.zeros((hilbert_dim, hilbert_dim), dtype=complex)
+        for j in range(d):
+            for k in range(d):
+                unitary[k * d + j, j * d + k] = 1.0 + 0.0j
+
+        antisymmetric_dim = d * (d - 1) // 2
+        degeneracies: list[list[int]] = []
+        if antisymmetric_dim > 0:
+            degeneracies.append(list(range(antisymmetric_dim)))
+        degeneracies.append(list(range(antisymmetric_dim, hilbert_dim)))
+        return eigenvalues_arr, eigenvectors, unitary, degeneracies
+
+    def _ensure_sector_index_maps(self) -> None:
+        if self._sector_basis_indices is None:
+            self._initialize_sector_index_maps()
+
+    def sector_basis_indices(self) -> list[np.ndarray]:
+        self._ensure_sector_index_maps()
+        return [np.asarray(idx, dtype=int).copy() for idx in self._sector_basis_indices]
+
+    def reconstruct_full_hamiltonian(self):
+        self._ensure_sector_index_maps()
+        return super().reconstruct_full_hamiltonian()
 
 
 class ConditionalHamiltonian2:
@@ -605,7 +827,12 @@ class ConditionalHamiltonian2:
         self.symmetry_group_vars['eigenvector_order'] = []
 
         self.block_projectors = {}
+        self.block_projector_bases = {}
         self.sector_projectors = {}
+        self._block_qudits_to_delete = []
+        self._ordered_single_terms_cache = None
+        self._term_block_selections_cache = None
+        self._term_block_selection_keys_cache = None
 
         for block_index, block in enumerate(self.symmetry_groups):
 
@@ -635,12 +862,20 @@ class ConditionalHamiltonian2:
             self.symmetry_group_vars['degeneracy_dimensions'][block_index] = d_dimension
             self.symmetry_group_vars['conditional_dimensions'].append(cond_dimension)
 
-            # precompute selection dictionaries for each smaller block
             self._precompute_block_dictionaries(degeneracy_indeces, block_origin, block_index, evec)
 
-        # In the Kronecker eigenbasis U = kron(U_block_0, ..., U_block_n), sector subspaces
-        # are generally interleaved. Precompute index maps from sector-order <-> kron-order.
-        self._initialize_sector_index_maps()
+        self._block_qudits_to_delete = [
+            np.array(
+                [q for q in range(self.ordered_symmetrised_hamiltonian.n_qudits()) if q not in block],
+                dtype=int,
+            )
+            for block in self.symmetry_groups
+        ]
+        self._precompute_actual_block_projectors()
+
+        self._sector_basis_indices = None
+        self._sector_permutation = None
+        self._inverse_sector_permutation = None
 
     def _coerce_gate_and_circuit(self, operator: Gate | Circuit) -> tuple[Gate, Circuit]:
         if isinstance(operator, Circuit):
@@ -798,33 +1033,52 @@ class ConditionalHamiltonian2:
                                     eigenvectors - np.diag(eigenvalues), 10) == 0)
         return eigenvalues, eigenvectors, index_combination_matrix, degeneracy_groups
 
-    def _construct_block_dictionary(self, dimensions: np.ndarray, eigenvectors: np.ndarray):
-        # dictionary that saves all the projector matrices for one set of eigenvectors
-        block_dictionary = {}
-        paulistring_array_dimension = np.concatenate([dimensions, dimensions])
-        n_paulistrings = np.prod(paulistring_array_dimension)
-        for i in range(n_paulistrings):
-            p_i = np.array(int_to_bases(i, paulistring_array_dimension))
-            ps = PauliString.from_tableau(p_i, dimensions=dimensions)
-
-            partial_hamiltonian_matrix = ps.to_hilbert_space()
-
-            G = eigenvectors.conj().T @ partial_hamiltonian_matrix @ eigenvectors
-
-            block_dictionary[str(ps)[:-1]] = G
-        return block_dictionary
-
     def _precompute_block_dictionaries(self, degeneracy_indeces, block_origin, block_index, eigenvectors):
         for i, inds in enumerate(degeneracy_indeces):
-            subspace_group_eigenvectors = eigenvectors[:, inds]
-            self.sector_projectors[str(np.around(subspace_group_eigenvectors, 8))] = {}
+            self.sector_projectors[(int(block_index), int(i))] = {}
             for o, origin in enumerate(block_origin):
                 evs = self.block_vars['eigenvectors'][origin]
                 id_comb_m = self.symmetry_group_vars['eigenvector_order'][block_index]
                 block_eigenvectors = [evs[:, id_comb_m[o, ii]] for ii in inds]
                 V = np.column_stack(block_eigenvectors).astype(complex)
                 dims = self.original_hamiltonian.dimensions[self.blocks[origin]]
-                self.block_projectors[str(np.around(V, 8))] = self._construct_block_dictionary(dims, V)
+                key = (int(block_index), int(i), int(origin))
+                self.block_projectors[key] = {}
+                self.block_projector_bases[key] = (np.asarray(dims, dtype=int), V)
+
+    def _project_local_pauli(self, pauli_string: PauliString, block_projector_key: tuple[int, int, int]) -> np.ndarray:
+        dims, eigenvectors = self.block_projector_bases[block_projector_key]
+        partial_hamiltonian_matrix = pauli_string.to_hilbert_space()
+        if hasattr(partial_hamiltonian_matrix, "toarray"):
+            partial_hamiltonian_matrix = partial_hamiltonian_matrix.toarray()
+        partial_hamiltonian_matrix = np.asarray(partial_hamiltonian_matrix, dtype=complex)
+        return eigenvectors.conj().T @ partial_hamiltonian_matrix @ eigenvectors
+
+    def _split_selection_by_origin(self, selection: PauliString, block: int) -> list[tuple[int, PauliString, str]]:
+        pieces: list[tuple[int, PauliString, str]] = []
+        start = 0
+        for origin in self.block_origins[block]:
+            n_origin_qudits = len(self.blocks[origin])
+            stop = start + n_origin_qudits
+            dims = np.asarray(selection.dimensions[start:stop], dtype=int)
+            x_exp = np.asarray(selection.x_exp[start:stop], dtype=int)
+            z_exp = np.asarray(selection.z_exp[start:stop], dtype=int)
+            local_ps = PauliString.from_exponents(x_exp, z_exp, dims)
+            pieces.append((int(origin), local_ps, str(local_ps).strip()))
+            start = stop
+        return pieces
+
+    def _precompute_actual_block_projectors(self) -> None:
+        term_block_selections, _ = self._term_block_selections()
+        for block in range(len(self.symmetry_groups)):
+            for ps_selection in term_block_selections[block]:
+                local_pieces = self._split_selection_by_origin(ps_selection, block)
+                for selected_eigenvalue in range(int(self.symmetry_group_vars['conditional_dimensions'][block])):
+                    for origin, local_ps, local_key in local_pieces:
+                        projector_key = (int(block), int(selected_eigenvalue), int(origin))
+                        projector_cache = self.block_projectors[projector_key]
+                        if local_key not in projector_cache:
+                            projector_cache[local_key] = self._project_local_pauli(local_ps, projector_key)
 
     def _initialize_sector_index_maps(self) -> None:
         block_hilbert_dimensions = [
@@ -870,6 +1124,8 @@ class ConditionalHamiltonian2:
         self._inverse_sector_permutation = np.argsort(sector_permutation).astype(int)
 
     def sector_basis_indices(self) -> list[np.ndarray]:
+        if self._sector_basis_indices is None:
+            self._initialize_sector_index_maps()
         return [np.asarray(idx, dtype=int).copy() for idx in self._sector_basis_indices]
 
     def embedded_block_circuit(self, blocks, block_list, block_variables):
@@ -885,25 +1141,15 @@ class ConditionalHamiltonian2:
         return embedded_block_circuit
 
     def selection_to_qudit(self, selection: PauliString, qudit_dimension: int,
-                           block: int, relevant_indices: list[int] | np.ndarray):
-        selection_string_list = str(selection).split(' ')
-
-        block_origin = self.block_origins[block]
+                           block: int, selected_eigenvalue: int):
         block_G = []
 
-        for j, origin in enumerate(block_origin):
-            original_block = self.blocks[origin]
-            true_select = ''
-            for q in original_block:
-                true_select += selection_string_list[0]
-                true_select += ' '
-                del selection_string_list[0]
-            true_select = true_select[:-1]
-
-            id_comb_m = self.symmetry_group_vars['eigenvector_order'][block]
-            eigenvectors = [self.block_vars['eigenvectors'][origin][:, id_comb_m[j, v]] for v in relevant_indices]
-            V = np.column_stack(eigenvectors).astype(complex)
-            G = self.block_projectors[str(np.around(np.array(V), 8))][true_select]
+        for origin, local_ps, local_key in self._split_selection_by_origin(selection, block):
+            projector_key = (int(block), int(selected_eigenvalue), int(origin))
+            projector_cache = self.block_projectors[projector_key]
+            if local_key not in projector_cache:
+                projector_cache[local_key] = self._project_local_pauli(local_ps, projector_key)
+            G = projector_cache[local_key]
             block_G.append(G)
 
         G = np.prod(block_G, axis=0)
@@ -917,6 +1163,23 @@ class ConditionalHamiltonian2:
                 return 0.0 + 0.0j
             P_qudit = PauliSum.from_hilbert_space(G, prime_factors(qudit_dimension)[::-1])
             return P_qudit
+
+    def selection_to_matrix(self, selection: PauliString, qudit_dimension: int,
+                            block: int, selected_eigenvalue: int):
+        block_G = []
+        for origin, local_ps, local_key in self._split_selection_by_origin(selection, block):
+            projector_key = (int(block), int(selected_eigenvalue), int(origin))
+            projector_cache = self.block_projectors[projector_key]
+            if local_key not in projector_cache:
+                projector_cache[local_key] = self._project_local_pauli(local_ps, projector_key)
+            block_G.append(projector_cache[local_key])
+
+        G = np.prod(block_G, axis=0)
+        if qudit_dimension == 1:
+            return G[0, 0]
+        if float(np.max(np.abs(G))) < self.zero_tol:
+            return 0.0 + 0.0j
+        return np.asarray(G, dtype=complex)
 
     def _selection_key(self, selection: list[int] | np.ndarray | tuple[int, ...]) -> tuple[int, ...]:
         return tuple(int(x) for x in selection)
@@ -932,17 +1195,53 @@ class ConditionalHamiltonian2:
     def _selection_block_data(self, selection_key: tuple[int, ...]):
         block_data = []
         for block, selected_eigenvalue in enumerate(selection_key):
-            relevant_qudits = self.symmetry_groups[block]
-            relevant_indices = np.array(self.symmetry_group_vars['degeneracies'][block][selected_eigenvalue])
-            eigenvectors = self.symmetry_group_vars['eigenvectors'][block][:, relevant_indices]
-            block_data.append((block, relevant_indices,
-                               int(self.symmetry_group_vars['degeneracy_dimensions'][block][selected_eigenvalue]),
-                               eigenvectors, np.column_stack(eigenvectors).astype(complex),
-                               np.array([q for q in range(self.ordered_symmetrised_hamiltonian.n_qudits())
-                                         if q not in relevant_qudits], dtype=int))
-                              )
+            block_data.append(
+                (
+                    int(block),
+                    int(selected_eigenvalue),
+                    int(self.symmetry_group_vars['degeneracy_dimensions'][block][selected_eigenvalue]),
+                    (int(block), int(selected_eigenvalue)),
+                )
+            )
 
         return block_data
+
+    def _pauli_string_cache_key(self, pauli_string: PauliString) -> tuple[tuple[int, ...], tuple[int, ...]]:
+        return (
+            tuple(int(x) for x in np.asarray(pauli_string.tableau, dtype=int).reshape(-1)),
+            tuple(int(x) for x in np.asarray(pauli_string.dimensions, dtype=int).reshape(-1)),
+        )
+
+    def _ordered_single_terms(self) -> list[PauliString]:
+        if self._ordered_single_terms_cache is None:
+            ordered_single_terms: list[PauliString] = []
+            for i in range(self.ordered_symmetrised_hamiltonian.n_paulis()):
+                ps = self.ordered_symmetrised_hamiltonian[i].copy()
+                ps.weights = np.array([1])
+                ps.phases = np.array([0])
+                ordered_single_terms.append(ps)
+            self._ordered_single_terms_cache = ordered_single_terms
+        return self._ordered_single_terms_cache
+
+    def _term_block_selections(
+        self,
+    ) -> tuple[list[list[PauliString]], list[list[tuple[tuple[int, ...], tuple[int, ...]]]]]:
+        if self._term_block_selections_cache is None or self._term_block_selection_keys_cache is None:
+            ordered_single_terms = self._ordered_single_terms()
+            term_block_selections: list[list[PauliString]] = []
+            term_block_selection_keys: list[list[tuple[tuple[int, ...], tuple[int, ...]]]] = []
+            for qudits_to_delete in self._block_qudits_to_delete:
+                block_terms: list[PauliString] = []
+                block_keys: list[tuple[tuple[int, ...], tuple[int, ...]]] = []
+                for ps in ordered_single_terms:
+                    ps_selection = ps._delete_qudits(qudits_to_delete)
+                    block_terms.append(ps_selection)
+                    block_keys.append(self._pauli_string_cache_key(ps_selection))
+                term_block_selections.append(block_terms)
+                term_block_selection_keys.append(block_keys)
+            self._term_block_selections_cache = term_block_selections
+            self._term_block_selection_keys_cache = term_block_selection_keys
+        return self._term_block_selections_cache, self._term_block_selection_keys_cache
 
     def select_hamiltonian(self, selection: list[int]) -> PauliSum | complex:
         selection_key = self._selection_key(selection)
@@ -955,33 +1254,34 @@ class ConditionalHamiltonian2:
 
         output_dimensions, output_is_scalar = self._selection_output_dimensions(selection_key)
         block_data = self._selection_block_data(selection_key)
+        ordered_single_terms = self._ordered_single_terms()
+        term_block_selections, term_block_selection_keys = self._term_block_selections()
 
-        n_p = self.original_hamiltonian.n_paulis()
+        n_p = len(ordered_single_terms)
         decomposed_pauli_strings = []
         scalar_offset = 0.0 + 0.0j
+        ordered_weights = self.ordered_symmetrised_hamiltonian.weights
+        ordered_phases = self.ordered_symmetrised_hamiltonian.phases
+        previous_lcm = self.ordered_symmetrised_hamiltonian.lcm
         for i in range(n_p):
-            # string
-            ps = self.ordered_symmetrised_hamiltonian[i].copy()
-            ps.weights = np.array([1])
-            ps.phases = np.array([0])
             # weight component
-            weight = self.ordered_symmetrised_hamiltonian.weights[i]
+            weight = ordered_weights[i]
             # reconstruct phase component later
-            phase = self.ordered_symmetrised_hamiltonian.phases[i]
-            previous_lcm = self.ordered_symmetrised_hamiltonian.lcm
+            phase = ordered_phases[i]
 
             # pauli strings of symmetry blocks that are later tensored
             conditional_pauli_string_blocks = []
             term_is_zero = False
             # for each symmetry block decompose the pauli string into the eigenbasis
-            for block, relevant_indices, d, eigenvectors, _, qudits_to_delete in block_data:
-                # get the dimension of the degeneracy
-                ps_selection = ps.copy()
-                ps_selection = ps_selection._delete_qudits(qudits_to_delete)
-                if str(ps_selection) in self.sector_projectors[str(np.around(eigenvectors, 8))].keys():
-                    P_qudit = self.sector_projectors[str(np.around(eigenvectors, 8))][str(ps_selection)]
+            for block_idx, (block, selected_eigenvalue, d, block_cache_key) in enumerate(block_data):
+                ps_selection = term_block_selections[block_idx][i]
+                ps_selection_key = term_block_selection_keys[block_idx][i]
+                block_cache = self.sector_projectors.setdefault(block_cache_key, {})
+                if ps_selection_key in block_cache:
+                    P_qudit = block_cache[ps_selection_key]
                 else:
-                    P_qudit = self.selection_to_qudit(ps_selection, d, block, relevant_indices)
+                    P_qudit = self.selection_to_qudit(ps_selection, d, block, selected_eigenvalue)
+                    block_cache[ps_selection_key] = P_qudit
 
                 # selection_to_qudit may legitimately return a scalar (e.g., d==1 or zero block).
                 if np.isscalar(P_qudit):
@@ -998,7 +1298,7 @@ class ConditionalHamiltonian2:
             if len(conditional_pauli_string_blocks) == 0:
                 scalar_offset += weight * np.exp(phase * 2 * np.pi * 1j / (2 * previous_lcm))
             else:
-                new_ps = conditional_pauli_string_blocks[0]
+                new_ps = conditional_pauli_string_blocks[0].copy()
                 for i in range(1, len(conditional_pauli_string_blocks)):
                     new_ps = new_ps @ conditional_pauli_string_blocks[i]
 
@@ -1031,6 +1331,68 @@ class ConditionalHamiltonian2:
             return _zero_paulisum(output_dimensions)
         return new_P
 
+    def select_hamiltonian_matrix(self, selection: list[int], *, sparse: bool = False):
+        selection_key = self._selection_key(selection)
+        output_dimensions, output_is_scalar = self._selection_output_dimensions(selection_key)
+        block_data = self._selection_block_data(selection_key)
+        ordered_single_terms = self._ordered_single_terms()
+        term_block_selections, _ = self._term_block_selections()
+
+        output_dim = int(np.prod(output_dimensions)) if len(output_dimensions) > 0 else 1
+        H = (
+            sp.csr_matrix((output_dim, output_dim), dtype=complex)
+            if sparse
+            else np.zeros((output_dim, output_dim), dtype=complex)
+        )
+        scalar_offset = 0.0 + 0.0j
+        ordered_weights = self.ordered_symmetrised_hamiltonian.weights
+        ordered_phases = self.ordered_symmetrised_hamiltonian.phases
+        previous_lcm = self.ordered_symmetrised_hamiltonian.lcm
+
+        for term_idx in range(len(ordered_single_terms)):
+            weight = ordered_weights[term_idx]
+            phase = ordered_phases[term_idx]
+            term_blocks = []
+            term_is_zero = False
+
+            for block_idx, (block, selected_eigenvalue, d, _) in enumerate(block_data):
+                ps_selection = term_block_selections[block_idx][term_idx]
+                block_matrix = self.selection_to_matrix(ps_selection, d, block, selected_eigenvalue)
+                if np.isscalar(block_matrix):
+                    block_scalar = complex(block_matrix)
+                    if np.abs(block_scalar) < self.zero_tol:
+                        term_is_zero = True
+                        break
+                    weight *= block_scalar
+                else:
+                    term_blocks.append(block_matrix)
+
+            if term_is_zero:
+                continue
+
+            coeff = weight * np.exp(phase * 2 * np.pi * 1j / (2 * previous_lcm))
+            if len(term_blocks) == 0:
+                scalar_offset += coeff
+                if not output_is_scalar:
+                    identity = sp.eye(output_dim, format="csr", dtype=complex) if sparse else np.eye(output_dim, dtype=complex)
+                    H = H + coeff * identity
+                continue
+
+            if sparse:
+                term_matrix = sp.csr_matrix(term_blocks[0])
+                for block_matrix in term_blocks[1:]:
+                    term_matrix = sp.kron(term_matrix, sp.csr_matrix(block_matrix), format="csr")
+                H = H + coeff * term_matrix
+            else:
+                term_matrix = np.asarray(term_blocks[0], dtype=complex)
+                for block_matrix in term_blocks[1:]:
+                    term_matrix = np.kron(term_matrix, np.asarray(block_matrix, dtype=complex))
+                H = H + coeff * term_matrix
+
+        if output_is_scalar:
+            return scalar_offset
+        return H
+
     def diagonalising_unitary(self, inverse=False):
         U_blocks = []
         for block in range(len(self.symmetry_groups)):
@@ -1044,6 +1406,8 @@ class ConditionalHamiltonian2:
         return U
 
     def reconstruct_full_hamiltonian(self):
+        if self._inverse_sector_permutation is None:
+            self._initialize_sector_index_maps()
         list_of_blocks = []
         for block_hamiltonian in self:
             if isinstance(block_hamiltonian, PauliSum):

@@ -180,27 +180,19 @@ def embed_unitary(U_local: HilbertOperator,
     D_rest = int(np.prod(dims[rest])) if rest else 1
     D_total = int(np.prod(dims))
 
-    ## Build permutation matrix P that reorders tensor factors to [sel..., rest...].
-    # Construct in COO-style triplets and convert once to CSR to avoid expensive
-    # repeated structural updates on CSR.
-    dims_perm = [dims[k] for k in sel + rest]
-    n_states = D_loc_expected * D_rest
-    rows = np.empty(n_states, dtype=int)
-    cols = np.empty(n_states, dtype=int)
-    data = np.ones(n_states, dtype=complex)
+    # Vectorized permutation: decompose all linear indices into multi-indices,
+    # permute the qudit axes, then recompute linear indices
+    all_idx = np.arange(D_total)
+    multi = np.array(np.unravel_index(all_idx, tuple(dims)))  # (N, D_total)
+    dims_perm = tuple(dims[perm_order])
+    new_idx = np.ravel_multi_index(tuple(multi[perm_order]), dims_perm)
 
-    for idx, q in enumerate(np.ndindex(*dims)):
-        q = list(q)
-        old_idx = _multi_index_to_linear(q, dims)
-        q_perm = [q[k] for k in (sel + rest)]
-        new_idx = _multi_index_to_linear(q_perm, dims_perm)
-        rows[idx] = new_idx
-        cols[idx] = old_idx
-    P = sp.csr_matrix((data, (rows, cols)), shape=(n_states, D_total))
+    # Sparse permutation matrix (real-valued, D_total nonzeros): P[new, old] = 1
+    P = sp.csc_matrix((np.ones(D_total), (new_idx, all_idx)), shape=(D_total, D_total))
 
-    # Construct full operator: P^T (U_local ⊗ I_rest) P
-    U_kron = sp.kron(U_local, sp.eye(D_rest))
-    return P.conj().T @ U_kron @ P
+    # P^T @ (U_local ⊗ I_rest) @ P
+    U_kron = sp.kron(U_local, sp.eye(D_rest, format='csr'), format='csr')
+    return P.T @ U_kron @ P
 
 
 def tensor(mm: list[HilbertOperator]) -> HilbertOperator:

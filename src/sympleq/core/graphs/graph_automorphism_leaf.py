@@ -88,6 +88,7 @@ def check_leaf(pi: np.ndarray, ctx: LeafContext) -> Gate | None:
 
     # (2) Linear code  constraint.
     if not check_code_automorphism(ctx.G, ctx.basis_order, ctx.labels, pi, ctx.G_mod2):
+        print('FAILED CODE CHECK')
         return None
 
     # (3) Build the candidate symplectic from the permutation of the (ordered) row-basis.

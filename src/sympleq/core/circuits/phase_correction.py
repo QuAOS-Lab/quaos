@@ -41,7 +41,7 @@ def pauli_phase_correction(H: TableauType, delta_phi_2p: PhasesType, p: int, dim
         symplectic = np.eye(2 * n, dtype=int)
         return Gate("PhaseFix", symplectic, h_vec % modulus)
 
-    # 2) Fallback: Pauli correction requires Δφ even (since phases change in steps of 2)
+    # 2) Fallback: Pauli correction requires delta_phi is even (since phases change in steps of 2)
     if np.any(delta_phi_2p % 2 != 0):
         return None
 

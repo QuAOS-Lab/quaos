@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 import os
 import queue
+import time
 import multiprocessing as mp
 
 import numpy as np
@@ -85,17 +86,19 @@ def clifford_graph_automorphism_search_random_restarts(
     n_restarts: int = 8,
     n_jobs: int | None = None,
     base_seed: int = 0,
-    start_method: str = "fork",  # 'spawn' if on Windows - not yet tested
+    start_method: str = "fork",
     warmup: bool = True,
     # parameters forwarded to prepare/search
     dynamic_refine_every: int = 0,
+    use_code_prefix_check: bool = True,
+    use_code_induced_completion: bool | None = None,
     extra_column_invariants: str = "lc",
     p2_bitset: str | bool = "auto",
     color_mode: str = "wl",
     max_wl_rounds: int = 10,
-    # toggles forwarded to search
-    use_basis_first_ordering: bool = False,
-    use_code_induced_completion: bool = False,
+    circuit_augmented_graph: bool = False,
+    max_nullity_for_circuits: int = 12,
+    max_circuits: int = 5000,
 ) -> list:
     """Parallel random-restart search for a *single* symmetry.
 
@@ -112,6 +115,8 @@ def clifford_graph_automorphism_search_random_restarts(
         raise NotImplementedError("Parallel random restarts currently implemented for k_wanted=1 only.")
 
     n_restarts = int(max(1, n_restarts))
+    if use_code_induced_completion is not None:
+        use_code_prefix_check = bool(use_code_induced_completion)
 
     # Precompute the expensive invariants once.
     prepared = prepare_clifford_ga_search(
@@ -121,6 +126,9 @@ def clifford_graph_automorphism_search_random_restarts(
         p2_bitset=p2_bitset,
         color_mode=color_mode,
         max_wl_rounds=max_wl_rounds,
+        circuit_augmented_graph=bool(circuit_augmented_graph),
+        max_nullity_for_circuits=int(max_nullity_for_circuits),
+        max_circuits=int(max_circuits),
     )
 
     # If only one restart requested, just run once.
@@ -132,8 +140,7 @@ def clifford_graph_automorphism_search_random_restarts(
             shuffle_domain_order=True,
             progress=False,
             dynamic_refine_every=dynamic_refine_every,
-            use_basis_first_ordering=use_basis_first_ordering,
-            use_code_induced_completion=use_code_induced_completion,
+            use_code_prefix_check=use_code_prefix_check,
         )
 
     if n_jobs is None:
@@ -150,8 +157,7 @@ def clifford_graph_automorphism_search_random_restarts(
                 shuffle_domain_order=True,
                 progress=False,
                 dynamic_refine_every=dynamic_refine_every,
-                use_basis_first_ordering=use_basis_first_ordering,
-                use_code_induced_completion=use_code_induced_completion,
+                use_code_prefix_check=use_code_prefix_check,
             )
             if out:
                 return out
@@ -170,8 +176,7 @@ def clifford_graph_automorphism_search_random_restarts(
                 shuffle_domain_order=True,
                 progress=False,
                 dynamic_refine_every=dynamic_refine_every,
-                use_basis_first_ordering=use_basis_first_ordering,
-                use_code_induced_completion=use_code_induced_completion,
+                use_code_prefix_check=use_code_prefix_check,
             )
             if out:
                 return out
@@ -183,21 +188,17 @@ def clifford_graph_automorphism_search_random_restarts(
     # Set globals for forked workers.
     global _PAR_PREPARED, _PAR_KWARGS, _PAR_BASE_SEED
     _PAR_PREPARED = prepared
-    _PAR_KWARGS = dict(
-        dynamic_refine_every=dynamic_refine_every,
-        use_basis_first_ordering=use_basis_first_ordering,
-        use_code_induced_completion=use_code_induced_completion,
-    )
+    _PAR_KWARGS = dict(dynamic_refine_every=dynamic_refine_every, use_code_prefix_check=use_code_prefix_check)
     _PAR_BASE_SEED = int(base_seed)
-    ctx_any = cast(Any, ctx)
-    found_event = ctx_any.Event()
-    task_q = ctx_any.Queue()
-    result_q = ctx_any.Queue(maxsize=1)
+
+    found_event = ctx.Event()
+    task_q = ctx.Queue()
+    result_q = ctx.Queue(maxsize=1)
 
     for r in range(n_restarts):
         task_q.put(r)
 
-    procs = [ctx_any.Process(target=_worker, args=(task_q, result_q, found_event)) for _ in range(n_jobs)]
+    procs = [ctx.Process(target=_worker, args=(task_q, result_q, found_event)) for _ in range(n_jobs)]
     for p in procs:
         p.daemon = True
         p.start()

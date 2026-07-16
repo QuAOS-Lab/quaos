@@ -6,7 +6,8 @@ from sympleq.core.graphs.graph_automorphism_search import clifford_graph_automor
 from sympleq.core.symmetries.block_decomposition import block_decompose_optimal, ordered_block_sizes
 
 
-def min_qudit_clifford_symmetry(pauli_sum: PauliSum, talk: bool = False, progress: bool = False
+def min_qudit_clifford_symmetry(pauli_sum: PauliSum, talk: bool = False, progress: bool = False,
+                                heuristic: bool = False,
                                 ) -> tuple[Gate, Gate, Gate]:
     """
     Find a single Clifford symmetry g of the given PauliSum, and decompose it into blocks with a minimal qudit cost
@@ -18,8 +19,14 @@ def min_qudit_clifford_symmetry(pauli_sum: PauliSum, talk: bool = False, progres
     :rtype: tuple[Gate, Gate, Gate]
     """
 
+    if heuristic:
+        extra_column_invariants = "hist"
+    else:
+        extra_column_invariants = "none"
+
     G = find_clifford_symmetries(pauli_sum, num_symmetries=1,
-                                 dynamic_refine_every=0, progress=progress)
+                                 dynamic_refine_every=0, progress=progress,
+                                 extra_column_invariants=extra_column_invariants)
     if len(G) == 0:
         # save pauli_sum to file for debugging, tableau, weights, phases
         raise RuntimeError("No non-trivial Clifford symmetry found for the given PauliSum.")
@@ -79,6 +86,9 @@ def find_clifford_symmetries(
     p2_bitset: str = "auto",
     color_mode: str = "wl",
     max_wl_rounds: int = 10,
+    circuit_augmented_graph: bool = False,
+    max_nullity_for_circuits: int = 12,
+    max_circuits: int = 5000,
     progress: bool = False,
     progress_every: int = 2048,
 ) -> list[Gate]:
@@ -93,6 +103,9 @@ def find_clifford_symmetries(
         p2_bitset=p2_bitset,
         color_mode=color_mode,
         max_wl_rounds=max_wl_rounds,
+        circuit_augmented_graph=bool(circuit_augmented_graph),
+        max_nullity_for_circuits=int(max_nullity_for_circuits),
+        max_circuits=int(max_circuits),
         dynamic_refine_every=int(dynamic_refine_every),
         progress=progress,
         progress_every=int(progress_every),

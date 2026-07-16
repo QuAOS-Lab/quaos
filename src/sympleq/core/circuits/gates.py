@@ -107,7 +107,7 @@ class Gate(ABC):
         return _GenericGate("random", symplectic, phase_vector)
 
     @classmethod
-    def solve_from_target(cls, input_tableau: TableauLike, target_tableau: TableauLike) -> Gate:
+    def solve_from_target(cls, input_tableau: TableauLike, target_tableau: TableauLike, dimension: int) -> Gate:
         """
         Find a Clifford gate that maps the input Pauli tableau to the target tableau.
 
@@ -121,6 +121,8 @@ class Gate(ABC):
             and n is the number of qudits.
         target_tableau : TableauLike
             Target Pauli tableau of the same shape.
+        dimension : int
+            Local Hilbert space dimension (e.g., 2 for qubits).
 
         Returns
         -------

@@ -1,27 +1,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import math
 from typing import Any, cast
 
 import numpy as np
 import galois
 
+
+from .graph_automorphism_circuits import (
+    extract_circuits_from_nullspace_gf2,
+    augment_S_with_circuits,
+)
+
+
 from sympleq.core.graphs.graph_coloring import _build_base_partition
-from sympleq.core.finite_field_solvers import get_linear_dependencies, _select_row_basis_indices
+from sympleq.core.finite_field_solvers import get_linear_dependencies, _select_row_basis_indices, gf2_inv
 from sympleq.core.paulis import PauliSum
 from sympleq.core.circuits import Gate
 
 from .graph_automorphism_kernels import _ConsistencyChecker
-
-# gf2 inverse may live either in this package (older layout) or in the shared solvers
-try:  # pragma: no cover
-    from sympleq.core.finite_field_solvers import gf2_inv  # type: ignore
-except Exception:  # pragma: no cover
-    from .graph_automorphism_gf2 import gf2_inv  # type: ignore
 from .graph_automorphism_hashing import coeff_ids, choose_base_anchors, compute_anchor_hash
 from .graph_automorphism_leaf import LeafContext, check_leaf
-from .graph_automorphism_code import compute_induced_completion_matrix_gf2
+from .graph_automorphism_code import compute_prefix_UG
 
 
 @dataclass
@@ -43,13 +43,9 @@ class PreparedGASearch:
     base_colors: np.ndarray
     base_classes: dict[int, list[int]]
 
-    # basis columns (code/matroid information set) as indices in [0..n)
+    # code/matroid basis columns (for exact prefix pruning)
     B_cols: np.ndarray
     is_basis: np.ndarray
-
-    # GF(2) column keys for induced-completion pruning (only if p==2)
-    col_keys: list[bytes] | None
-    col_bucket: dict[bytes, list[int]] | None
 
     # fast consistency checker
     consistency: _ConsistencyChecker
@@ -66,6 +62,9 @@ def prepare_clifford_ga_search(
     p2_bitset: str | bool = "auto",
     color_mode: str = "wl",
     max_wl_rounds: int = 10,
+    circuit_augmented_graph: bool = False,
+    max_nullity_for_circuits: int = 12,
+    max_circuits: int = 5000,
 ) -> PreparedGASearch:
     """Precompute all data independent of restart seeds.
 
@@ -102,25 +101,15 @@ def prepare_clifford_ga_search(
     if p == 2:
         G_mod2 = (np.asarray(G, dtype=np.uint8) & 1)
 
-    # Precompute per-column packed keys for GF(2) induced completion
-    col_keys: list[bytes] | None = None
-    col_bucket: dict[bytes, list[int]] | None = None
-    if G_mod2 is not None:
-        # packbits produces a compact representation; bytes are hashable
-        col_keys = [np.packbits(G_mod2[:, j], bitorder="little").tobytes() for j in range(n)]
-        col_bucket = {}
-        for j, k0 in enumerate(col_keys):
-            col_bucket.setdefault(k0, []).append(j)
-
     # ---- extra column invariants for base partition (optional) ----
     col_invariants = None
     if extra_column_invariants != "none":
-        tokens = {t.strip().lower() for t in extra_column_invariants.replace(",", "+").split("+") if t.strip()}
-        tokens.discard("none")
+        toks = {t.strip().lower() for t in extra_column_invariants.replace(",", "+").split("+") if t.strip()}
+        toks.discard("none")
 
         feats: list[np.ndarray] = []
 
-        if "hist" in tokens:
+        if "hist" in toks:
             # Heuristic. Useful for ordering / early pruning but not provably complete.
             inv_hist = np.zeros((n, min(p, 16)), dtype=np.int64)
             if p == 2 and G_mod2 is not None:
@@ -133,7 +122,7 @@ def prepare_clifford_ga_search(
                 inv_hist[j, :min(p, 16)] = cnt[:min(p, 16)]
             feats.append(inv_hist)
 
-        if ("lc" in tokens) or ("loop_coloop" in tokens) or ("loops_coloops" in tokens):
+        if ("lc" in toks) or ("loop_coloop" in toks) or ("loops_coloops" in toks):
             # loop: column is zero
             if p == 2 and G_mod2 is not None:
                 is_loop = np.all(G_mod2 == 0, axis=0)
@@ -160,8 +149,7 @@ def prepare_clifford_ga_search(
                     U = np.linalg.inv(C)
                     X = U @ G
                     X_np = np.asarray(X, dtype=int) % p
-                    basis_row_used = np.any(X_np[:, nonB] != 0, axis=1) if nonB.size else np.zeros(X_np.shape[0],
-                                                                                                   dtype=bool)
+                    basis_row_used = np.any(X_np[:, nonB] != 0, axis=1) if nonB.size else np.zeros(X_np.shape[0], dtype=bool)
 
                 is_coloop[B_cols] = ~basis_row_used
             except Exception:
@@ -171,21 +159,62 @@ def prepare_clifford_ga_search(
             inv_lc = np.stack([is_loop.astype(np.int64), is_coloop.astype(np.int64)], axis=1)
             feats.append(inv_lc)
 
-        unknown = tokens - {"hist", "lc", "loop_coloop", "loops_coloops"}
+        unknown = toks - {"hist", "lc", "loop_coloop", "loops_coloops"}
         if unknown:
             raise ValueError("extra_column_invariants must be 'none', 'hist', 'lc', or 'hist+lc'.")
 
         if feats:
             col_invariants = np.hstack(feats) if len(feats) > 1 else feats[0]
 
-    base_colors, base_classes = _build_base_partition(
-        S_mod,
-        p,
-        coeffs=coeffs if coeffs is not None else None,
+    
+    # ---- optional circuit-augmented graph for WL refinement (p=2 only) ----
+    # This augments the edge-coloured graph with additional "circuit" nodes built from
+    # true circuits (minimal dependence supports) computed from the nullspace of P^T,
+    # where P is the M x 2n Pauli-label matrix (tableau rows reduced mod 2).
+    S_for_wl = S_mod
+    coeffs_for_wl = coeffs
+    p_for_wl = p
+    if circuit_augmented_graph and p == 2:
+        circuits = extract_circuits_from_nullspace_gf2(
+            pauli.tableau,
+            max_nullity=int(max_nullity_for_circuits),
+            max_circuits=int(max_circuits),
+        )
+        if circuits:
+            S_for_wl = augment_S_with_circuits(S_mod, circuits, incidence_label=2)
+            # Extend coefficient labels with a distinct "circuit" label so WL keeps types separate.
+            coeffs_for_wl = np.asarray(coeffs, dtype=object)
+            circuit_coeffs = np.empty(len(circuits), dtype=object)
+            for idx, circuit in enumerate(circuits):
+                circuit_coeffs[idx] = ("circuit", len(circuit))
+            coeffs_for_wl = np.concatenate(
+                [coeffs_for_wl, circuit_coeffs]
+            )
+            if col_invariants is not None:
+                circuit_invariants = np.zeros((len(circuits), col_invariants.shape[1]), dtype=col_invariants.dtype)
+                col_invariants = np.vstack([col_invariants, circuit_invariants])
+            # Edge labels now take values in {0,1,2}, so WL uses p=3.
+            p_for_wl = 3
+
+
+    base_colors_full, base_classes_full = _build_base_partition(
+        S_for_wl,
+        p_for_wl,
+        coeffs=coeffs_for_wl if coeffs_for_wl is not None else None,
         col_invariants=col_invariants if color_mode == "wl" else None,
         max_rounds=max_wl_rounds,
         color_mode=color_mode,
     )
+
+    # If we augmented the WL graph with circuit nodes, restrict the resulting colouring
+    # back to the original Pauli-term vertices [0..n).
+    base_colors = base_colors_full[:n].copy()
+    base_classes = {}
+    for c, cls in base_classes_full.items():
+        cls0 = [i for i in cls if i < n]
+        if cls0:
+            base_classes[int(c)] = cls0
+
 
     use_bitset = (p == 2 and (p2_bitset is True or (p2_bitset == "auto" and n <= 256)))
     consistency = _ConsistencyChecker(S_mod, use_bitset)
@@ -271,8 +300,6 @@ def prepare_clifford_ga_search(
         base_classes=base_classes,
         B_cols=B_cols,
         is_basis=is_basis,
-        col_keys=col_keys,
-        col_bucket=col_bucket,
         consistency=consistency,
         leaf_ctx=leaf_ctx,
     )
@@ -289,14 +316,14 @@ def clifford_ga_search_from_prepared(
     progress_every: int = 2048,
     stop_event: Any | None = None,
     stop_check_every: int = 4096,
-    # --- new toggles ---
-    use_basis_first_ordering: bool = False,
-    use_code_induced_completion: bool = False,
+    use_code_prefix_check: bool = True,
 ) -> list[Gate]:
     """Run the DFS search using a prepared context.
 
     random_seed affects only tie-breaking / candidate ordering.
     """
+    pauli = prepared.pauli
+    p = prepared.p
     n = prepared.n
     S_mod = prepared.S_mod
     coeffs = prepared.coeffs
@@ -306,8 +333,6 @@ def clifford_ga_search_from_prepared(
     B_cols = prepared.B_cols
     is_basis = prepared.is_basis
     k_basis = int(B_cols.size)
-    col_keys = prepared.col_keys
-    col_bucket = prepared.col_bucket
 
     rng = np.random.default_rng(int(random_seed))
 
@@ -334,23 +359,16 @@ def clifford_ga_search_from_prepared(
             key = (int(base_colors[idx]), coeffs[idx])
             rem_counts[key] = rem_counts.get(key, 0) + 1
 
-    # Progress-space size: number of candidate bijections consistent with
-    # the base partition (color/coeff buckets), before consistency pruning.
-    if progress:
-        search_space_total = 1
-        for count in rem_counts.values():
-            search_space_total *= math.factorial(int(count))
-    else:
-        search_space_total = 0
-    search_space_done = 0
-    search_space_here = int(search_space_total)
-
     # state
     phi = -np.ones(n, dtype=np.int64)
     used = np.zeros(n, dtype=bool)
 
     mapped_stack = np.empty(n, dtype=np.int64)
     mapped_len = 0
+
+    # --- exact code-automorphism prefix pruning state ---
+    basis_mapped_count = 0
+    prefix_UG: np.ndarray | galois.FieldArray | None = None
 
     results: list[Gate] = []
     steps = 0
@@ -376,36 +394,7 @@ def clifford_ga_search_from_prepared(
             key = (int(base_colors[y_idx]), coeffs[y_idx])
             rem_counts[key] += 1
 
-    basis_mapped_count = 0
-
-    # If active, code_C is the induced-completion matrix C = G[:, pi(B)] over GF(2).
-    code_C: np.ndarray | None = None
-    code_C_u16: np.ndarray | None = None
-
     def select_next() -> int:
-        """Select next domain vertex.
-
-        If use_basis_first_ordering is enabled, prioritize unmapped basis vertices
-        until the basis is fully mapped.
-        """
-        best_i, best_rem = -1, 10**9
-
-        if use_basis_first_ordering and basis_mapped_count < k_basis:
-            for i in domain_order:
-                if phi[i] >= 0 or (not bool(is_basis[i])):
-                    continue
-                if coeffs is None:
-                    rem = rem_counts[int(base_colors[i])]
-                else:
-                    rem = rem_counts.get((int(base_colors[i]), coeffs[i]), 0)
-                if rem < best_rem:
-                    best_i, best_rem = i, rem
-                    if rem <= 1:
-                        break
-            if best_i >= 0:
-                return best_i
-
-        # fallback: original MRV
         best_i, best_rem = -1, 10**9
         for i in domain_order:
             if phi[i] >= 0:
@@ -420,66 +409,6 @@ def clifford_ga_search_from_prepared(
                     break
         return best_i
 
-    def _code_target_key(i: int) -> bytes:
-        """Compute the target column key for i under induced completion.
-
-        Requires code_C_u16 to be set and prepared.G_mod2 to be available.
-        """
-        assert code_C_u16 is not None
-        assert prepared.G_mod2 is not None
-        col = prepared.G_mod2[:, i].astype(np.uint16, copy=False)
-        t = (code_C_u16 @ col) & 1
-        return np.packbits(t.astype(np.uint8, copy=False), bitorder="little").tobytes()
-
-    def _try_induced_complete() -> Gate | None:
-        """Attempt to complete pi deterministically using g_{pi(i)} = C g_i.
-
-        If every induced target has a unique image (after coefficient filtering) and
-        agrees with current partial assignments, build the full permutation and
-        run the full leaf verification. Returns a Gate if successful.
-
-        If completion is ambiguous (duplicate targets), returns None and the caller
-        should continue with DFS, using code-based candidate restriction.
-        """
-        if not use_code_induced_completion:
-            return None
-        if prepared.G_mod2 is None or col_keys is None or col_bucket is None or code_C_u16 is None:
-            return None
-
-        pi_full = -np.ones(n, dtype=np.int64)
-        used_full = np.zeros(n, dtype=bool)
-
-        # seed with current assignments
-        for t in range(mapped_len):
-            i0 = int(mapped_stack[t])
-            y0 = int(phi[i0])
-            if y0 < 0:
-                continue
-            pi_full[i0] = y0
-            used_full[y0] = True
-
-        # try to fill remaining entries
-        for i0 in range(n):
-            tgt = _code_target_key(i0)
-            # candidates are all columns with matching key
-            cand = list(col_bucket.get(tgt, []))
-            if coeffs is not None:
-                cand = [j for j in cand if coeffs[j] == coeffs[i0]]
-
-            if len(cand) != 1:
-                return None
-            y0 = int(cand[0])
-            if pi_full[i0] >= 0 and pi_full[i0] != y0:
-                return None
-            if pi_full[i0] < 0:
-                if used_full[y0]:
-                    return None
-                pi_full[i0] = y0
-                used_full[y0] = True
-
-        # full candidate permutation constructed; run full verification
-        return check_leaf(pi_full, leaf_ctx)
-
     # optional dynamic refine: update ordering keys by individualizing mapped vertices
     def dynamic_refine() -> tuple[np.ndarray, np.ndarray]:
         nonlocal anchors
@@ -489,9 +418,9 @@ def clifford_ga_search_from_prepared(
         K = 16
         extra = mapped[:K]
         anchors_new = np.unique(np.concatenate([anchors, extra]))
-        A_max = 64
-        if anchors_new.size > A_max:
-            anchors_new = anchors_new[:A_max]
+        Amax = 64
+        if anchors_new.size > Amax:
+            anchors_new = anchors_new[:Amax]
         anchors = anchors_new
         return anchors, compute_anchor_hash(S_mod, anchors, base_colors, coeff_id, seed=int(random_seed))
 
@@ -501,30 +430,23 @@ def clifford_ga_search_from_prepared(
         bi: int
         mapped_len: int
         candidate: list[int]
-        mass_here: int
-        mass_per_candidate: int
         idx: int = 0
         assigned_y: int = -1
-        assigned_mass: int = 0
 
     def _undo_assignment(frame: _DFSFrame) -> None:
-        nonlocal mapped_len, basis_mapped_count, code_C, code_C_u16, search_space_here
+        nonlocal mapped_len, basis_mapped_count, prefix_UG
         y = int(frame.assigned_y)
         if y < 0:
             return
-        _advance_progress_mass(int(frame.assigned_mass))
-        search_space_here = int(frame.mass_here)
         mapped_len -= 1
         phi[frame.i] = -1
         used[y] = False
         _inc_count(y)
         if bool(is_basis[frame.i]):
             basis_mapped_count -= 1
-            # changing basis mapping invalidates induced-completion matrix
-            code_C = None
-            code_C_u16 = None
+            # any change to the mapped basis invalidates the cached transform
+            prefix_UG = None
         frame.assigned_y = -1
-        frame.assigned_mass = 0
 
     def _make_frame() -> _DFSFrame | None:
         nonlocal steps, key_hash
@@ -539,68 +461,38 @@ def clifford_ga_search_from_prepared(
         if i < 0:
             return None
         bi = int(base_colors[i])
-        bucket_key = _bucket_key(i)
         frame_mapped_len = mapped_len
 
         candidate = [y for y in base_classes[bi] if not used[y]]
         if coeffs is not None:
             candidate = [y for y in candidate if coeffs[i] == coeffs[y]]
 
-        r_bucket = int(rem_counts.get(bucket_key, 0))
-        mass_per_candidate = (int(search_space_here) // r_bucket) if r_bucket > 0 else 0
-
-        # If induced completion is active, restrict candidates by code target.
-        candidate_before_code = len(candidate)
-        if use_code_induced_completion and (code_C_u16 is not None) and (col_keys is not None):
-            tgt = _code_target_key(i)
-            candidate = [y for y in candidate if col_keys[y] == tgt]
-            if mass_per_candidate > 0:
-                pruned = candidate_before_code - len(candidate)
-                if pruned > 0:
-                    _advance_progress_mass(int(pruned * mass_per_candidate))
-
         cand = np.array(candidate, dtype=np.int64)
         if cand.size:
             cand = cand[np.argsort(key_hash[cand], kind="mergesort")]
             candidate = cand.tolist()
 
-        return _DFSFrame(
-            i=i,
-            bi=bi,
-            mapped_len=int(frame_mapped_len),
-            candidate=candidate,
-            mass_here=int(search_space_here),
-            mass_per_candidate=int(mass_per_candidate),
-        )
+        return _DFSFrame(i=i, bi=bi, mapped_len=int(frame_mapped_len), candidate=candidate)
 
     # progress bar (optional)
     progress_bar = None
     pending_progress = 0
-    pending_nodes = 0
     leaves_checked = 0
     if progress:
         try:
             from tqdm.auto import tqdm
 
             progress_bar = tqdm(
-                total=max(1, int(search_space_total)),
+                total=None,
                 desc="Clifford automorphism search",
-                unit="branch",
+                unit="node",
                 leave=False,
                 dynamic_ncols=True,
                 mininterval=0.2,
             )
-            progress_bar.set_postfix(found=0, leaves=0, depth=f"0/{n}", refresh=False)
+            progress_bar.set_postfix(found=0, leaves=0, refresh=False)
         except Exception:
             progress_bar = None
-
-    def _advance_progress_mass(mass: int) -> None:
-        nonlocal search_space_done, pending_progress
-        if progress_bar is None or mass <= 0:
-            return
-        new_done = min(search_space_total, search_space_done + int(mass))
-        pending_progress += int(new_done - search_space_done)
-        search_space_done = new_done
 
     stack: list[_DFSFrame] = []
     loop_iters = 0
@@ -618,21 +510,11 @@ def clifford_ga_search_from_prepared(
                     pass
 
             if progress_bar is not None:
-                pending_nodes += 1
+                pending_progress += 1
                 if pending_progress >= progress_every:
-                    remaining = int(progress_bar.total) - int(progress_bar.n)
-                    delta = int(min(max(remaining, 0), pending_progress))
-                    if delta > 0:
-                        progress_bar.update(delta)
+                    progress_bar.update(pending_progress)
                     pending_progress = 0
-                if pending_nodes >= progress_every:
-                    pending_nodes = 0
-                    progress_bar.set_postfix(
-                        found=len(results),
-                        leaves=leaves_checked,
-                        depth=f"{mapped_len}/{n}",
-                        refresh=False,
-                    )
+                    progress_bar.set_postfix(found=len(results), leaves=leaves_checked, refresh=False)
 
             if len(results) >= k_wanted:
                 break
@@ -669,84 +551,73 @@ def clifford_ga_search_from_prepared(
                 if used[y]:
                     continue
                 if not consistency(phi, mapped_stack, frame.mapped_len, frame.i, y):
-                    _advance_progress_mass(int(frame.mass_per_candidate))
                     continue
 
-                # If induced completion is active, reject y that violates the induced target.
-                if use_code_induced_completion and (code_C_u16 is not None) and (col_keys is not None):
-                    if col_keys[y] != _code_target_key(frame.i):
-                        _advance_progress_mass(int(frame.mass_per_candidate))
-                        continue
-
+                # --- tentative assignment ---
                 phi[frame.i] = y
                 used[y] = True
                 _dec_count(y)
-                frame.assigned_y = y
-                frame.assigned_mass = int(frame.mass_per_candidate)
-                search_space_here = int(frame.mass_per_candidate)
 
-                # update basis bookkeeping and maybe activate induced completion
-                if bool(is_basis[frame.i]):
+                was_basis = bool(is_basis[frame.i])
+                if was_basis:
                     basis_mapped_count += 1
-                    # basis mapping changed => reset induced completion until re-activated
-                    code_C = None
-                    code_C_u16 = None
 
-                # activate induced completion once basis is fully mapped
-                if (
-                    use_code_induced_completion and
-                    code_C is None and
-                    prepared.G_mod2 is not None and
-                    basis_mapped_count == k_basis
-                ):
-                    C = compute_induced_completion_matrix_gf2(prepared.G_mod2, B_cols, phi)
-                    if C is None:
-                        # invalid basis image
-                        phi[frame.i] = -1
-                        used[y] = False
-                        _inc_count(y)
-                        _advance_progress_mass(int(frame.mass_per_candidate))
-                        frame.assigned_y = -1
-                        frame.assigned_mass = 0
-                        search_space_here = int(frame.mass_here)
-                        if bool(is_basis[frame.i]):
-                            basis_mapped_count -= 1
-                        continue
-                    code_C = C
-                    code_C_u16 = code_C.astype(np.uint16, copy=False)
+                ok = True
+                prefix_became_active = False
 
-                    # Check already mapped columns are consistent with the induced rule.
-                    if col_keys is not None:
-                        ok = True
-                        for t in range(frame.mapped_len):
-                            j = int(mapped_stack[t])
-                            yj = int(phi[j])
-                            if yj < 0:
-                                continue
-                            if col_keys[yj] != _code_target_key(j):
-                                ok = False
-                                break
-                        if not ok:
-                            # rollback
-                            code_C = None
-                            code_C_u16 = None
-                            phi[frame.i] = -1
-                            used[y] = False
-                            _inc_count(y)
-                            _advance_progress_mass(int(frame.mass_per_candidate))
-                            frame.assigned_y = -1
-                            frame.assigned_mass = 0
-                            search_space_here = int(frame.mass_here)
-                            if bool(is_basis[frame.i]):
-                                basis_mapped_count -= 1
-                            continue
+                if prefix_UG is not None:
+                    # basis already fixed: check the single new column constraint
+                    if prepared.G_mod2 is not None:
+                        assert isinstance(prefix_UG, np.ndarray)
+                        ok = np.array_equal(prefix_UG[:, y], prepared.G_mod2[:, frame.i])
+                    else:
+                        assert not isinstance(prefix_UG, np.ndarray)
+                        ok = np.array_equal(prefix_UG[:, y], prepared.G[:, frame.i])
+                else:
+                    # basis not fixed; if it becomes fixed now, compute U G and validate prefix
+                    if basis_mapped_count == k_basis:
+                        tmp = compute_prefix_UG(G=prepared.G, G_mod2=prepared.G_mod2, B_cols=B_cols, pi=phi)
+                        if tmp is None:
+                            ok = False
+                        else:
+                            prefix_UG = tmp
+                            prefix_became_active = True
 
-                    # Try deterministic completion; if it succeeds, we are done.
-                    gate = _try_induced_complete()
-                    if gate is not None:
-                        results.append(gate)
-                        assigned = True
-                        break
+                            # validate all previously mapped columns against prefix_UG
+                            if prepared.G_mod2 is not None:
+                                assert isinstance(prefix_UG, np.ndarray)
+                                for t in range(mapped_len):
+                                    j = int(mapped_stack[t])
+                                    yj = int(phi[j])
+                                    if not np.array_equal(prefix_UG[:, yj], prepared.G_mod2[:, j]):
+                                        ok = False
+                                        break
+                                if ok:
+                                    ok = np.array_equal(prefix_UG[:, y], prepared.G_mod2[:, frame.i])
+                            else:
+                                assert not isinstance(prefix_UG, np.ndarray)
+                                for t in range(mapped_len):
+                                    j = int(mapped_stack[t])
+                                    yj = int(phi[j])
+                                    if not np.array_equal(prefix_UG[:, yj], prepared.G[:, j]):
+                                        ok = False
+                                        break
+                                if ok:
+                                    ok = np.array_equal(prefix_UG[:, y], prepared.G[:, frame.i])
+
+                if not ok:
+                    # rollback tentative assignment
+                    phi[frame.i] = -1
+                    used[y] = False
+                    _inc_count(y)
+                    if was_basis:
+                        basis_mapped_count -= 1
+                    if prefix_became_active:
+                        prefix_UG = None
+                    continue
+
+                # --- commit assignment ---
+                frame.assigned_y = y
                 mapped_stack[mapped_len] = frame.i
                 mapped_len += 1
                 assigned = True
@@ -763,16 +634,8 @@ def clifford_ga_search_from_prepared(
     finally:
         if progress_bar is not None:
             if pending_progress:
-                remaining = int(progress_bar.total) - int(progress_bar.n)
-                delta = int(min(max(remaining, 0), pending_progress))
-                if delta > 0:
-                    progress_bar.update(delta)
-            progress_bar.set_postfix(
-                found=len(results),
-                leaves=leaves_checked,
-                depth=f"{mapped_len}/{n}",
-                refresh=False,
-            )
+                progress_bar.update(pending_progress)
+            progress_bar.set_postfix(found=len(results), leaves=leaves_checked, refresh=False)
             progress_bar.close()
 
     return results[:k_wanted]
@@ -786,16 +649,17 @@ def clifford_graph_automorphism_search(
     p2_bitset: str | bool = "auto",
     color_mode: str = "wl",
     max_wl_rounds: int = 10,
+    circuit_augmented_graph: bool = False,
+    max_nullity_for_circuits: int = 12,
+    max_circuits: int = 5000,
     progress: bool = False,
     progress_every: int = 2048,
     # --- new for random restarts / parallel ---
     random_seed: int = 0,
-    shuffle_domain_order: bool = False,
+    shuffle_domain_order: bool = True,
     stop_event: Any | None = None,
     stop_check_every: int = 4096,
-    # --- toggles ---
-    use_basis_first_ordering: bool = False,
-    use_code_induced_completion: bool = False,
+    use_code_induced_completion: bool | None = None,
 ) -> list[Gate]:
     """Convenience wrapper: prepares and runs a single search."""
     prepared = prepare_clifford_ga_search(
@@ -805,6 +669,9 @@ def clifford_graph_automorphism_search(
         p2_bitset=p2_bitset,
         color_mode=color_mode,
         max_wl_rounds=max_wl_rounds,
+        circuit_augmented_graph=bool(circuit_augmented_graph),
+        max_nullity_for_circuits=int(max_nullity_for_circuits),
+        max_circuits=int(max_circuits),
     )
     return clifford_ga_search_from_prepared(
         prepared,
@@ -816,6 +683,4 @@ def clifford_graph_automorphism_search(
         progress_every=progress_every,
         stop_event=stop_event,
         stop_check_every=stop_check_every,
-        use_basis_first_ordering=use_basis_first_ordering,
-        use_code_induced_completion=use_code_induced_completion,
     )

@@ -6,9 +6,10 @@ So far it only works for GF(2), as in the original paper. It could be extended t
 from __future__ import annotations
 
 import numpy as np
+import galois
 from sympleq._typing import IntNDArray
 from sympleq.core.circuits.utils import transvection_matrix, symplectic_product_arrays, symplectic_product_matrix
-from sympleq.core.finite_field_solvers import solve_gf2, solve_linear_system_over_gf
+from sympleq.core.finite_field_solvers import get_linear_dependencies, gf2_inv, solve_gf2, solve_linear_system_over_gf
 from sympleq.core.paulis._typing import TableauType
 
 
@@ -270,11 +271,11 @@ def map_single_pauli_string_to_target(
     p: int = 2,
 ) -> TableauType:
     if p != 2:
-        from sympleq.core.circuits.find_symplectic_qudits import Find_transvection_map_solve_extended
+        from sympleq.core.circuits.find_symplectic_qudits import find_transvection_map_solve_extended
 
         constraints = [] if constraint_paulis is None else list(constraint_paulis)
         sps = [symplectic_product_arrays(t, target_pauli_string_tableau, p) for t in constraints]
-        return Find_transvection_map_solve_extended(
+        return find_transvection_map_solve_extended(
             pauli_string_tableau,
             target_pauli_string_tableau,
             constraints=constraints,
@@ -315,13 +316,17 @@ def map_pauli_sum_to_target_tableau(
     """
     Map a Pauli sum to a target Pauli sum using symplectic transvections.
     """
+    if not check_mappable_via_clifford(pauli_sum_tableau, target_pauli_sum_tableau, p=p):
+        raise Exception(f'SPM not equal. Cannot map\n{pauli_sum_tableau} to\n{target_pauli_sum_tableau}')
+
+    complete_basis_map = _map_complete_basis_to_target(pauli_sum_tableau, target_pauli_sum_tableau, p=p)
+    if complete_basis_map is not None:
+        return complete_basis_map
+
     if p != 2:
         from sympleq.core.circuits.find_symplectic_qudits import map_paulisum_to_target_paulisum
 
         return map_paulisum_to_target_paulisum(pauli_sum_tableau, target_pauli_sum_tableau, p)
-
-    if not check_mappable_via_clifford(pauli_sum_tableau, target_pauli_sum_tableau, p=p):
-        raise Exception(f'SPM not equal. Cannot map\n{pauli_sum_tableau} to\n{target_pauli_sum_tableau}')
 
     m = len(pauli_sum_tableau)
     n = len(pauli_sum_tableau[0]) // 2
@@ -342,5 +347,52 @@ def map_pauli_sum_to_target_tableau(
             assert np.all((mp @ F_map) % p == mp), f"\n{F_map}\n{mp}\n{(mp @ F_map) % p}"
         mapped_paulis.append(target_ps)  # these are now the constraints for the next iteration
         F = (F @ F_map) % p
+
+    return F
+
+
+def _map_complete_basis_to_target(
+    pauli_sum_tableau: TableauType, target_pauli_sum_tableau: TableauType, p: int = 2
+) -> TableauType | None:
+    """
+    Fast full-rank basis map F = P_b^{-1} P'_b.
+
+    The tableaus use row-vector action, so each row p maps as p @ F. When the
+    input rows contain a complete independent basis, the image of that basis
+    determines F uniquely.
+    """
+    input_tab = np.asarray(pauli_sum_tableau, dtype=int) % p
+    output_tab = np.asarray(target_pauli_sum_tableau, dtype=int) % p
+
+    if input_tab.ndim != 2 or output_tab.ndim != 2 or input_tab.shape != output_tab.shape:
+        raise ValueError("Input and target tableaus must be 2-dimensional arrays with matching shape.")
+
+    n_cols = input_tab.shape[1]
+    if n_cols % 2 != 0:
+        raise ValueError("Pauli tableau width must be even.")
+
+    n_basis = n_cols
+    basis_indices, _ = get_linear_dependencies(input_tab, p, compute_dependencies=False)
+    if len(basis_indices) < n_basis:
+        return None
+
+    basis_indices = basis_indices[:n_basis]
+    input_basis = input_tab[basis_indices]
+    output_basis = output_tab[basis_indices]
+
+    try:
+        if p == 2:
+            input_basis_inv = gf2_inv(input_basis)
+            F = (input_basis_inv @ output_basis) & 1
+            F = np.asarray(F, dtype=int)
+        else:
+            GF = galois.GF(int(p))
+            F_gf = np.linalg.inv(GF(input_basis)) @ GF(output_basis)
+            F = np.asarray(F_gf, dtype=int) % p
+    except np.linalg.LinAlgError:
+        return None
+
+    if not np.array_equal((input_tab @ F) % p, output_tab):
+        raise ValueError("Complete-basis map failed to reproduce the target tableau.")
 
     return F

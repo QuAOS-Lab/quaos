@@ -6,20 +6,20 @@ def _zeros_xz(n: int) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _add_pauli_term(
-    terms: dict[tuple[int, tuple[int, ...], tuple[int, ...]], float],
+    terms: dict[tuple[int, tuple[int, ...], tuple[int, ...]], complex],
     x: np.ndarray,
     z: np.ndarray,
     phase: int,
-    coeff: float,
+    coeff: complex,
 ) -> None:
     phase &= 3
     key = (phase, tuple(int(v) for v in x), tuple(int(v) for v in z))
-    terms[key] = terms.get(key, 0.0) + float(coeff)
+    terms[key] = terms.get(key, 0.0) + coeff
 
 
 def _finalize_terms(
     n: int,
-    terms: dict[tuple[int, tuple[int, ...], tuple[int, ...]], float],
+    terms: dict[tuple[int, tuple[int, ...], tuple[int, ...]], complex],
     tol: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     items = []
@@ -34,7 +34,7 @@ def _finalize_terms(
 
     M = len(items)
     tableau = np.zeros((M, 2 * n), dtype=np.uint8)
-    coeffs = np.zeros(M, dtype=float)
+    coeffs = np.zeros(M, dtype=np.result_type(*(c for _, c in items), float) if items else float)
     phases = np.zeros(M, dtype=np.int8)
 
     for i, ((phase, x_t, z_t), c) in enumerate(items):
