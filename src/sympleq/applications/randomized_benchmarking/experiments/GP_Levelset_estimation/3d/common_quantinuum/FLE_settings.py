@@ -108,7 +108,7 @@ QUBIT_BAND_LENGTHS = [4]
 # -------------------------------------------------------------------------
 # Set to None to use the defaults inherited from CrossingSettings.
 
-N_GATES_BOUNDS = (10, 3000)
+N_GATES_BOUNDS = (100, 5000)
 RATIO_BOUNDS = (0.1, 0.9)
 
 # -------------------------------------------------------------------------
@@ -153,7 +153,7 @@ SAVE_REAL_CHECKPOINTS = True
 # -------------------------------------------------------------------------
 
 RECOVERY_MODE = True
-RECOVERY_FOLDER = Path(r"Personal\FLE\H2\qband_4\seed_2026\FLE_20260708_175833")
+RECOVERY_FOLDER = Path(r"Personal\FLE\H2_2\seed_2026\FLE_20260708_113322")
 
 # -------------------------------------------------------------------------
 # GP / AEPSYCH HANDLES

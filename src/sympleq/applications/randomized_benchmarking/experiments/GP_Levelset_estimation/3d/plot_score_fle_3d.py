@@ -32,7 +32,8 @@ SHOW_VOLUME_BACKGROUND = False
 SHOW_MEASURED_POINTS = True
 SHOW_FAILURE_POINTS = True
 SHOW_SUCCESS_POINTS = True
-SHOW_ONE_SIGMA_SURFACES = False
+SHOW_FAKE_ANCHORS = True
+SHOW_ONE_SIGMA_SURFACES = True
 
 # Probability volume settings, only used if SHOW_VOLUME_BACKGROUND = True.
 VOLUME_OPACITY = 0.1
@@ -43,6 +44,7 @@ ISOSURFACE_OPACITY = 0.4
 ISOSURFACE_WIDTH = 1e-3
 
 ONE_SIGMA_SURFACE_OPACITY = 0.28
+FAKE_ANCHOR_SLICES = 5
 
 # -------------------------------------------------------------------------
 # PATH HELPERS
@@ -280,6 +282,53 @@ def load_3d_grid(grid_path: Path) -> dict[str, np.ndarray | float]:
     }
 
 
+def fake_anchor_points_from_grid(
+    gates_grid: np.ndarray,
+    ratio_grid: np.ndarray,
+    qubits_grid: np.ndarray,
+    *,
+    n_qubit_slices: int = FAKE_ANCHOR_SLICES,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Recreate the fake corner anchor coordinates from the plotted grid box."""
+
+    gates_min = float(np.nanmin(gates_grid))
+    gates_max = float(np.nanmax(gates_grid))
+    ratio_min = float(np.nanmin(ratio_grid))
+    ratio_max = float(np.nanmax(ratio_grid))
+    q_min = float(np.nanmin(qubits_grid))
+    q_max = float(np.nanmax(qubits_grid))
+    qubit_slices = np.rint(
+        np.linspace(q_min, q_max, max(1, int(n_qubit_slices)))
+    ).astype(float)
+
+    gates: list[float] = []
+    ratios: list[float] = []
+    qubits: list[float] = []
+    for q_slice in dict.fromkeys(float(q) for q in qubit_slices):
+        gates.extend([gates_min, gates_max])
+        ratios.extend([ratio_min, ratio_max])
+        qubits.extend([q_slice, q_slice])
+
+    return (
+        np.asarray(gates, dtype=float),
+        np.asarray(ratios, dtype=float),
+        np.asarray(qubits, dtype=float),
+    )
+
+
+def hqc_label_from_jsons(json_paths: list[Path]) -> str:
+    """Return the latest HQC spent label from measurement JSON metadata."""
+
+    for json_path in reversed(json_paths):
+        if not json_path.exists():
+            continue
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+        spent = payload.get("experiment", {}).get("spent_hqc")
+        if spent is not None:
+            return f"{float(spent):.6g}"
+    return "unknown"
+
+
 # -------------------------------------------------------------------------
 # MAIN PLOTTER
 # -------------------------------------------------------------------------
@@ -326,6 +375,14 @@ def plot_fle_isosurface_3d(
     latent_mean = loaded["latent_mean"]
     latent_variance = loaded["latent_variance"]
     target = float(loaded["target"])
+    finite_log_gates = np.log10(
+        gates_grid[np.isfinite(gates_grid) & (gates_grid > 0)]
+    )
+    gate_axis_range = [
+        1.7,
+        4.0,
+    ]
+    hqc_label = hqc_label_from_jsons(measured_json_paths)
 
     # Plotly coordinates.
     # Use log10(total gates), because total gates spans decades.
@@ -461,6 +518,28 @@ def plot_fle_isosurface_3d(
     # Measured training points.
     # ------------------------------------------------------------------
 
+    if SHOW_FAKE_ANCHORS:
+        fake_gates, fake_ratios, fake_qubits = fake_anchor_points_from_grid(
+            gates_grid,
+            ratio_grid,
+            qubits_grid,
+        )
+        fig.add_trace(
+            go.Scatter3d(
+                x=fake_ratios,
+                y=fake_qubits,
+                z=np.log10(fake_gates),
+                mode="markers",
+                marker=dict(
+                    size=5,
+                    symbol="square",
+                    color="gray",
+                    line=dict(width=0),
+                ),
+                name="Fake corner anchors",
+            )
+        )
+
     if SHOW_MEASURED_POINTS:
         point_gates, point_ratios, point_qubits, point_outcomes = load_points_from_jsons(
             measured_json_paths
@@ -515,7 +594,7 @@ def plot_fle_isosurface_3d(
 
     fig.update_layout(
         title=(
-            f"3D FLE GP level set | HQC={1323} | "
+            f"3D FLE GP level set | HQC={hqc_label} | "
             f"P(success)={target:g}"
         ),
         scene=dict(
@@ -531,6 +610,7 @@ def plot_fle_isosurface_3d(
             ),
             zaxis=dict(
                 title="log10(total gates)",
+                range=gate_axis_range,
                 backgroundcolor="rgba(245,245,245,0.95)",
                 gridcolor="lightgray",
             ),

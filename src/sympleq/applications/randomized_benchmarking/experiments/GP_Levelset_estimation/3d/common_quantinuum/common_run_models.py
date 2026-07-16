@@ -95,7 +95,7 @@ def timestamped_personal_save_path(seed: int | None = None, qubit_band_length: i
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     seed_folder = "seed_unseeded" if seed is None else f"seed_{seed}"
     band_folder = f"qband_{qubit_band_length}" if qubit_band_length is not None else "qband_unseeded"
-    backend_folder = "H2"
+    backend_folder = "H2_1"
     model_folder = "CostAware" if MODEL == "COST_AWARE" else "FLE"
 
     run_folder = Path("Personal") / model_folder / backend_folder / band_folder / seed_folder / f"FLE_{timestamp}"
@@ -147,6 +147,82 @@ def write_hqc_metadata(
             for config in sent_configs
         ]
     json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _settings_run_folder(settings) -> Path | None:
+    if settings.save_path is not None:
+        return Path(settings.save_path).parent
+    if settings.recovery_folder is not None:
+        return Path(settings.recovery_folder)
+    return None
+
+
+def pending_backend_batch_path(settings) -> Path | None:
+    folder = _settings_run_folder(settings)
+    if folder is None:
+        return None
+    return folder / "pending_backend_batch.json"
+
+
+def write_pending_backend_batch(
+    *,
+    settings,
+    phase: str,
+    step: int,
+    sent_configs,
+    data=None,
+) -> None:
+    """Persist the exact FLE batch before submitting stitched circuits."""
+
+    if not settings.save_real_checkpoints:
+        return
+
+    path = pending_backend_batch_path(settings)
+    if path is None:
+        return
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    requests = []
+    for config in sent_configs:
+        first_shot_index = None
+        if data is not None:
+            estimator = data.get(config) if hasattr(data, "get") else None
+            if estimator is not None and hasattr(estimator, "num_runs"):
+                first_shot_index = int(estimator.num_runs())
+        requests.append(
+            {
+                "config": {
+                    "n_1qb_gates": int(config.n_1qb_gates),
+                    "n_2qb_gates": int(config.n_2qb_gates),
+                    "n_qubits": int(config.n_qubits),
+                    "n_gates": int(config.n_gates),
+                    "ratio_2_qb_gates": float(config.ratio_2_qb_gates),
+                    "random_elimination": float(config.random_elimination),
+                    "use_scrambler": bool(config.use_scrambler),
+                },
+                "requested_shots": 1,
+                "first_shot_index": first_shot_index,
+            }
+        )
+
+    payload = {
+        "reason": "before_backend_submit",
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "model": MODEL,
+        "phase": phase,
+        "step": int(step),
+        "pending_batch": {
+            "requests": requests,
+        },
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    print(f"[saved] pending backend batch: {path}")
+
+
+def clear_pending_backend_batch(settings) -> None:
+    path = pending_backend_batch_path(settings)
+    if path is not None and path.exists():
+        path.unlink()
 
 
 def predict_native_level_set(
@@ -705,6 +781,16 @@ def run_FLE(
                     f"n_qubits={config.n_qubits}"
                 )
 
+        pending_step = checkpoint_step + 1
+        pending_phase = f"sobol_{sobol_submissions + 1:03d}"
+        write_pending_backend_batch(
+            settings=settings,
+            phase=pending_phase,
+            step=pending_step,
+            sent_configs=sobol_batch,
+            data=data,
+        )
+
         measure_batch_and_update_real_strategy(
             phase=f"sobol_{sobol_submissions + 1}",
             selected=sobol_batch,
@@ -733,6 +819,7 @@ def run_FLE(
                              budget=budget,
                              sent_configs=sobol_batch,
                              )
+        clear_pending_backend_batch(settings)
 
     new_sobol_submissions = sobol_submissions - recovered_sobol_count
     if new_sobol_submissions:
@@ -786,6 +873,15 @@ def run_FLE(
         )
         print()
 
+        pending_step = checkpoint_step + 1
+        write_pending_backend_batch(
+            settings=settings,
+            phase="globalsur",
+            step=pending_step,
+            sent_configs=selected,
+            data=data,
+        )
+
         measure_batch_and_update_real_strategy(
             phase="globalsur",
             selected=selected,
@@ -812,6 +908,7 @@ def run_FLE(
             budget=budget,
             sent_configs=selected,
         )
+        clear_pending_backend_batch(settings)
 
     # -------------------------------------------------------------------------
     # 4. Summary and contour extraction

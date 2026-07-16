@@ -27,11 +27,13 @@ GP_GRID_PATH: Path | None = None
 PNG_PATH: Path | None = None
 
 SHOW_MEASURED_POINTS = True
+SHOW_FAKE_ANCHORS = True
 LAST_BACKEND_BATCH_SIZE: int | None = None
 
-ISOSURFACE_ALPHA = 0.1
+ISOSURFACE_ALPHA = 0.4
 SHOW_ONE_SIGMA_SURFACES = True
-ONE_SIGMA_ALPHA = 0.1
+ONE_SIGMA_ALPHA = 0.4
+FAKE_ANCHOR_SLICES = 5
 FIGSIZE = (8.8, 7.0)
 DPI = 220
 
@@ -129,6 +131,40 @@ def interp_axis(axis_values: np.ndarray, indices: np.ndarray) -> np.ndarray:
 
     base = np.arange(len(axis_values), dtype=float)
     return np.interp(indices, base, axis_values)
+
+
+def fake_anchor_points_from_grid(
+    gates_grid: np.ndarray,
+    ratio_grid: np.ndarray,
+    qubits_grid: np.ndarray,
+    *,
+    n_qubit_slices: int = FAKE_ANCHOR_SLICES,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Recreate the fake corner anchor coordinates from the plotted grid box."""
+
+    gates_min = float(np.nanmin(gates_grid))
+    gates_max = float(np.nanmax(gates_grid))
+    ratio_min = float(np.nanmin(ratio_grid))
+    ratio_max = float(np.nanmax(ratio_grid))
+    q_min = float(np.nanmin(qubits_grid))
+    q_max = float(np.nanmax(qubits_grid))
+    qubit_slices = np.rint(
+        np.linspace(q_min, q_max, max(1, int(n_qubit_slices)))
+    ).astype(float)
+
+    gates: list[float] = []
+    ratios: list[float] = []
+    qubits: list[float] = []
+    for q_slice in dict.fromkeys(float(q) for q in qubit_slices):
+        gates.extend([gates_min, gates_max])
+        ratios.extend([ratio_min, ratio_max])
+        qubits.extend([q_slice, q_slice])
+
+    return (
+        np.asarray(gates, dtype=float),
+        np.asarray(ratios, dtype=float),
+        np.asarray(qubits, dtype=float),
+    )
 
 
 def plot_fle_isosurface_3d_matplotlib(
@@ -244,6 +280,25 @@ def plot_fle_isosurface_3d_matplotlib(
             ax.add_collection3d(sigma_mesh)
             sigma_mesh.set_zorder(2)
             ax.plot([], [], [], color=color, linewidth=5, label=label)
+
+    if SHOW_FAKE_ANCHORS:
+        fake_gates, fake_ratios, fake_qubits = fake_anchor_points_from_grid(
+            gates_grid,
+            ratio_grid,
+            qubits_grid,
+        )
+        ax.scatter(
+            np.log10(fake_gates),
+            fake_ratios,
+            fake_qubits,
+            marker="s",
+            color="gray",
+            edgecolors="gray",
+            s=34,
+            depthshade=False,
+            zorder=21,
+            label="Fake corner anchors",
+        )
 
     if SHOW_MEASURED_POINTS:
         point_gates, point_ratios, point_qubits, point_outcomes = load_points(json_path)
