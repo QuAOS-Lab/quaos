@@ -8,6 +8,9 @@ from typing import Any, Callable
 
 import numpy as np
 
+from sympleq.applications.randomized_benchmarking.backends.exponential import (
+    asymptote_value,
+)
 from sympleq.applications.randomized_benchmarking.experiments.plots import (
     analytic_gate_counts,
 )
@@ -17,6 +20,39 @@ from sympleq.applications.randomized_benchmarking.experiments.scores import (
 
 _EPS = 1e-12
 _LN2 = np.log(2.0)
+
+
+def raw_fidelity_gate_factor(
+    settings: Any,
+    qubits: np.ndarray,
+    visibility: float | np.ndarray = 1.0,
+) -> np.ndarray:
+    """Factor g(Q) mapping the renormalised boundary n* onto the raw p=0.5 depth.
+
+    The renormalised boundary n* sits where the *renormalised* fidelity
+    2^{-nD} = 0.5.  The raw survival p = V(1-B)2^{-nD} + B crosses 0.5 at
+    n_raw = n* * g(Q), with
+
+        g(Q) = -log2[ (0.5 - B(Q)) / (V (1 - B(Q))) ],
+
+    where B(Q) is the survival asymptote (``settings.asymptote_model``) and V the
+    visibility.  g depends only on B(Q) and V (not on r); it is >= 1 wherever the
+    crossing exists and -> 1 as B -> 0 (large Q).  Returns nan where no raw p=0.5
+    depth exists (B(Q) >= 0.5, or the un-decayed top V(1-B)+B < 0.5).  This is the
+    single definition shared by the surface method (fitted boundary/volume) and
+    the plot module (analytic reference overlays), so raw-fidelity remaps stay
+    consistent across every figure and score.
+    """
+    v = np.asarray(visibility, dtype=float)
+    q = np.asarray(qubits, dtype=float)
+    model = getattr(settings, "asymptote_model", "depolarizing")
+    unique_q = np.unique(q)
+    b_of_q = {float(x): float(asymptote_value(model, float(x))) for x in unique_q}
+    b = np.vectorize(b_of_q.get, otypes=[float])(q)
+    denom = v * (1.0 - b)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        x = np.where(denom > 0.0, (0.5 - b) / denom, np.nan)
+        return np.where((x > 0.0) & (x < 1.0), -np.log2(x), np.nan)
 
 
 def analytic_lindblad_gates(

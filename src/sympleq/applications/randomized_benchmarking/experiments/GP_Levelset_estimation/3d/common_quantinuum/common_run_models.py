@@ -6,7 +6,7 @@ FLE is implemened.
 For Cost_aware:
 Should define a settings class as FLE_settings and definition as FLE_3d_fix_qubit_band
        use write_hqc_metadata for storing intermediate results in json
-       
+
 
 The GP grid saving is not implemented for Cost_Aware
 The save_real_checkpoint saves only the real RMB data in a json file and not the GP grid for Cost_Aware
@@ -34,7 +34,7 @@ from pathlib import Path
 import numpy as np
 
 
-from sympleq.applications.randomized_benchmarking.RMB import RMB, resolve_data_path
+from sympleq.applications.randomized_benchmarking.RMB import RMB, RMB, resolve_data_path
 from sympleq.applications.randomized_benchmarking.experiments.common import (
     batch_hqc_cost,
     default_backend_factory,
@@ -42,6 +42,7 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     quantinuum_H21E_backend_factory,
     quantinuum_emulator_backend_factory,
     print_experiment_summary,
+    print_progress,
     print_progress,
     start_run,
 )
@@ -56,11 +57,13 @@ if MODEL == "FLE":
         FantasySettings as SettingsClass,
         RNG_SEEDS,
         QUBIT_BAND_LENGTHS,
+        QUBIT_BAND_LENGTHS,
         control_panel_settings_kwargs as settings_kwargs
     )
 
     from FLE_3d_fix_qubit_band import (
         Observation,
+        add_observation_to_strategy,
         add_observation_to_strategy,
         build_strategy,
         choose_gp_device,
@@ -110,6 +113,13 @@ def timestamped_recovery_save_path(recovery_folder: str | Path) -> Path:
     return Path(recovery_folder) / f"FLE_recovery_{timestamp}.json"
 
 
+def timestamped_recovery_save_path(recovery_folder: str | Path) -> Path:
+    """Timestamped final JSON path inside an existing recovery folder."""
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Path(recovery_folder) / f"FLE_recovery_{timestamp}.json"
+
+
 # Bookkeeping_
 def write_hqc_metadata(
     json_path: Path,
@@ -131,6 +141,11 @@ def write_hqc_metadata(
         "repair_stats": repair_stats(),
     }
     if sent_configs is not None:
+        sent_configs = sorted(
+            sent_configs,
+            key=lambda config: config.n_qubits,
+            reverse=True,
+        )
         sent_configs = sorted(
             sent_configs,
             key=lambda config: config.n_qubits,
@@ -528,6 +543,108 @@ def recover_observations_from_json(
     return n_observations
 
 
+def latest_recovery_json(settings) -> Path | None:
+    """Return the latest cumulative RMB JSON checkpoint for recovery."""
+
+    if settings.recovery_folder is not None:
+        folder = Path(settings.recovery_folder)
+    elif settings.save_path is not None:
+        folder = Path(settings.save_path).parent
+    else:
+        return None
+
+    candidates = sorted(folder.glob("measurement_*.json"))
+    if not candidates:
+        candidates = sorted(folder.glob("FLE_*.json"))
+
+    return candidates[-1] if candidates else None
+
+
+def measurement_checkpoint_step(json_path: Path) -> int:
+    """Return the numeric step from a measurement checkpoint filename."""
+
+    match = re.match(r"measurement_(\d+)_", json_path.name)
+    return int(match.group(1)) if match else 0
+
+
+def latest_measurement_checkpoint_step(folder: Path) -> int:
+    """Return the largest measurement checkpoint step already in a folder."""
+
+    return max(
+        (measurement_checkpoint_step(path) for path in folder.glob("measurement_*.json")),
+        default=0,
+    )
+
+
+def recovery_hqc_spent(json_path: Path) -> float | None:
+    """Read spent HQC metadata from a recovery checkpoint if present."""
+
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    experiment = payload.get("experiment", {})
+    spent_hqc = experiment.get("spent_hqc")
+    return None if spent_hqc is None else float(spent_hqc)
+
+
+def recovery_phase(json_path: Path) -> str | None:
+    """Read the checkpoint phase from recovery metadata if present."""
+
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    experiment = payload.get("experiment", {})
+    phase = experiment.get("phase")
+    return None if phase is None else str(phase)
+
+
+def read_recovered_sobol_submissions(json_path: Path, max_sobol_submissions: int) -> int:
+    """Return how many Sobol submissions are already in the recovery checkpoint."""
+
+    phase = recovery_phase(json_path)
+    if phase is None:
+        return 0
+    if phase.lower().startswith("globalsur"):
+        return max_sobol_submissions
+    match = re.fullmatch(r"sobol_(\d+)", phase)
+    if match:
+        return min(int(match.group(1)), max_sobol_submissions)
+    return max_sobol_submissions
+
+
+def recover_observations_from_json(
+    json_path: Path,
+    *,
+    strategy,
+    rmb,
+    observations,
+    results_for_plot,
+    device,
+) -> int:
+    """Load saved RMB data and replay its real observations into AEPsych."""
+
+    recovered_rmb = RMB.load(json_path)
+    rmb._data.update(recovered_rmb._data)
+
+    n_observations = 0
+    for config, estimator in recovered_rmb._data.items():
+        for outcome, count in estimator.counts().items():
+            for _ in range(int(count)):
+                obs = Observation(
+                    x_cpu=point_from_config(config, device=torch.device("cpu")),
+                    y=int(outcome),
+                    source="recovery",
+                )
+                add_observation_to_strategy(strategy, obs, device=device)
+                observations.append(obs)
+                results_for_plot.append(
+                    (
+                        float(config.n_gates),
+                        float(config.ratio_2_qb_gates),
+                        int(outcome),
+                    )
+                )
+                n_observations += 1
+
+    return n_observations
+
+
 def print_run_handles(
     settings: SettingsClass,
     *,
@@ -711,11 +828,62 @@ def run_FLE(
                     "observations; running Sobol."
                 )
 
+    recovered_observations = 0
+    recovered_sobol_count = 0
+    if settings.recovery_mode:
+        recovery_json = latest_recovery_json(settings)
+        if recovery_json is None:
+            print("[recovery] enabled, but no checkpoint JSON found; running Sobol.")
+        else:
+            output_folder = (
+                Path(settings.save_path).parent
+                if settings.save_path is not None
+                else recovery_json.parent
+            )
+            checkpoint_step = latest_measurement_checkpoint_step(output_folder)
+            print(f"[recovery] next measurement step starts after {checkpoint_step}")
+
+            recovered_hqc_spent = recovery_hqc_spent(recovery_json)
+            if recovered_hqc_spent is None:
+                print(f"[recovery] HQC spent unavailable in {recovery_json}")
+            else:
+                budget.spent_hqc = recovered_hqc_spent
+                budget.remaining_hqc = max(0.0, float(settings.hqc_budget) - recovered_hqc_spent)
+                print(f"[recovery] recovered HQC spent = {recovered_hqc_spent:.6g}")
+                print(f"[recovery] remaining HQC budget = {budget.remaining_hqc:.6g}")
+
+            recovered_observations = recover_observations_from_json(
+                recovery_json,
+                strategy=strategy,
+                rmb=rmb,
+                observations=observations,
+                results_for_plot=results_for_plot,
+                device=gp_device,
+            )
+            if recovered_observations:
+                recovered_sobol_count = read_recovered_sobol_submissions(
+                    recovery_json,
+                    settings.initial_sobol_submissions,
+                )
+                print(
+                    f"[recovery] loaded {recovered_observations} observations "
+                    f"from {recovery_json}; recovered "
+                    f"{recovered_sobol_count} Sobol submissions."
+                )
+            else:
+                print(
+                    f"[recovery] found {recovery_json}, but it contained no "
+                    "observations; running Sobol."
+                )
+
     # -------------------------------------------------------------------------
     # 2. Sobol warm-up batch
     # -------------------------------------------------------------------------
 
     exhausted = False
+
+    sobol_candidates = [] if recovered_observations else sobol_initial_candidates(settings)
+    sobol_submissions = 0
 
     max_sobol_submissions = settings.initial_sobol_submissions
     sobol_candidates = sobol_initial_candidates(settings)
@@ -827,8 +995,6 @@ def run_FLE(
             f"sobol: completed {new_sobol_submissions} submissions after recovery, "
             f"{len(sobol_candidates) - len(remaining_sobol_candidates)} configs measured"
         )
-    elif recovered_observations:
-        print_progress(settings, budget, "sobol: skipped after recovery")
     else:
         print_progress(settings, budget, "sobol: no affordable initial batch")
 
@@ -946,8 +1112,8 @@ def run_FLE(
     if settings.save_gp_prediction_grid and base_path is not None:
         save_gp_prediction_grid(
             plot_strategy,
+            settings,
             model=model,
-            settings = settings,
             device=gp_device,
             json_path=base_path,
         )

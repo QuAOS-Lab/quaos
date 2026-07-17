@@ -184,9 +184,9 @@ FORCE_DEFAULT_DEVICE_DURING_AEPSYCH = True
 # BACKEND HANDLE
 # -------------------------------------------------------------------------
 
-# BACKEND_FACTORY = default_backend_factory
+BACKEND_FACTORY = default_backend_factory
 # BACKEND_FACTORY = quantinuum_emulator_backend_factory
-BACKEND_FACTORY = quantinuum_H2_backend_factory
+# BACKEND_FACTORY = quantinuum_H2_backend_factory
 
 # -------------------------------------------------------------------------
 # REPRODUCIBILITY / DEBUG HANDLES

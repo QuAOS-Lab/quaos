@@ -81,6 +81,7 @@ from numpy.random import Generator as RNGGenerator
 
 from sympleq.applications.randomized_benchmarking.RMB import RMB, resolve_data_path
 from sympleq.applications.randomized_benchmarking.backends.base import (
+    MeasurementOutcomes,
     MeasurementRequest,
     RMBBackend,
 )
@@ -98,7 +99,6 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     measured_items,
     print_experiment_summary,
     print_progress,
-    spend_request_batch,
     start_run,
     stitched_batch_hqc,
 )
@@ -109,15 +109,18 @@ from sympleq.applications.randomized_benchmarking.experiments.cost_aware_referen
     gp_grid_surface_gates as _gp_grid_surface_gates,
     gp_grid_surface_label as _gp_grid_surface_label,
     load_gp_grid_surface as _load_gp_grid_surface,
+    raw_fidelity_gate_factor as _raw_fidelity_gate_factor,
 )
 from sympleq.applications.randomized_benchmarking.experiments.plots import (
     REFERENCE_OFFSET,
     REFERENCE_SLOPE,
 )
 from sympleq.applications.randomized_benchmarking.experiments.scores import (
+    axis_spacing,
     surface_boundary_scores_2d,
 )
 from sympleq.core.noise.noise_model import GenericNoise
+from sympleq.integrations.quantinuum.utils import NATIVE_GATES_SET
 
 
 BASE_1Q_PAULI_ERROR = 0.000025
@@ -210,6 +213,7 @@ def make_config_q(
         .with_n_2qb_gates(int(n_2qb_gates))
         .with_random_elimination(settings.random_elimination)
         .with_use_scrambler(settings.use_scrambler)
+        .with_gates_set(tuple(NATIVE_GATES_SET))
     )
 
 
@@ -217,19 +221,34 @@ def make_config_q(
 # Settings
 # --------------------------------------------------------------------------- #
 EXPERIMENTS_DIR = Path(__file__).resolve().parent
-DEFAULT_SURFACE_PLOT_PATH = EXPERIMENTS_DIR / "figs" / "boundary_surface_3d.png"
+GENERATED_PERSONAL_ROOT = (
+    Path("scripts")
+    / "personal"
+    / "randomized_benchmarking_personal"
+    / "Personal"
+)
+PERSONAL_COST_AWARE_DIR = GENERATED_PERSONAL_ROOT / "CostAware"
+DEFAULT_ARTIFACT_DIR = PERSONAL_COST_AWARE_DIR / "artifacts" / "figs"
+DEFAULT_SURFACE_PLOT_PATH = DEFAULT_ARTIFACT_DIR / "boundary_surface_3d.png"
 DEFAULT_LIVE_SURFACE_PLOT_PATH = (
-    EXPERIMENTS_DIR / "figs" / "boundary_surface_3d_live.png"
+    DEFAULT_ARTIFACT_DIR / "boundary_surface_3d_live.png"
 )
 DEFAULT_LIVE_VOLUME_PLOT_PATH = (
-    EXPERIMENTS_DIR / "figs" / "boundary_volume_live.png"
+    DEFAULT_ARTIFACT_DIR / "boundary_volume_live.png"
 )
 DEFAULT_UNCERTAINTY_PLOT_PATH = (
-    EXPERIMENTS_DIR / "figs" / "boundary_surface_3d_uncertainty.png"
+    DEFAULT_ARTIFACT_DIR / "boundary_surface_3d_uncertainty.png"
 )
 DEFAULT_GRID_VS_CONTINUOUS_PLOT_PATH = (
-    EXPERIMENTS_DIR / "figs" / "boundary_surface_3d_grid_vs_continuous.png"
+    DEFAULT_ARTIFACT_DIR / "boundary_surface_3d_grid_vs_continuous.png"
 )
+_DEFAULT_PLOT_ATTRS = {
+    "surface_plot_path": DEFAULT_SURFACE_PLOT_PATH,
+    "live_surface_plot_path": DEFAULT_LIVE_SURFACE_PLOT_PATH,
+    "live_volume_plot_path": DEFAULT_LIVE_VOLUME_PLOT_PATH,
+    "surface_uncertainty_plot_path": DEFAULT_UNCERTAINTY_PLOT_PATH,
+    "grid_vs_continuous_plot_path": DEFAULT_GRID_VS_CONTINUOUS_PLOT_PATH,
+}
 
 
 def _with_run_suffix(
@@ -269,6 +288,24 @@ def _q_values_suffix(q_values: tuple[int, ...]) -> str:
     return "q" + "-".join(str(q) for q in qs)
 
 
+def _resolve_personal_run_artifact_path(
+    path: str | Path | None,
+    *,
+    default_path: Path,
+    save_path: str | Path | None,
+) -> str | Path | None:
+    """Place default generated artifacts next to ignored generated run data."""
+    if path is None or save_path is None:
+        return path
+    path_type = Path if isinstance(path, Path) else str
+    p = Path(path)
+    if p != default_path:
+        return path
+    save_base = resolve_data_path(save_path)
+    new_path = save_base.parent / "figs" / default_path.name
+    return new_path if path_type is Path else str(new_path)
+
+
 @dataclass(frozen=True)
 class CostAwareSurfaceSettings(CrossingSettings):
     """Settings for cost-aware global surface design.
@@ -285,7 +322,9 @@ class CostAwareSurfaceSettings(CrossingSettings):
 
     hqc_budget: float = 1500.0
     rng_seed: int | None = 0
-    save_path: str | Path | None = "physics_informed_cost_aware_surface_design.json"
+    save_path: str | Path | None = (
+        PERSONAL_COST_AWARE_DIR / "physics_informed_cost_aware_surface_design.json"
+    )
     # Save an RMB-format measurement JSON after every submitted batch and resume
     # from it on restart.  A small sibling checkpoint file stores budget state;
     # the main JSON remains the same measurement-outcome format as FLE_*.json.
@@ -327,6 +366,10 @@ class CostAwareSurfaceSettings(CrossingSettings):
     live_volume_plot_every: int = 1
     live_volume_plot_show: bool = False
     live_volume_plot_pause: float = 0.25
+    use_voxel_volume: bool = True
+    voxel_volume_n_gates_grid: int = 80
+    voxel_volume_n_ratio_grid: int = 80
+    voxel_volume_n_qubits_grid: int = 16
     # Static +-1 sigma boundary-uncertainty surface plot (written at run end).
     # Draws the posterior-mean log-boundary surface enveloped by the +-k sigma
     # surfaces of log n*(r,Q), where k = uncertainty_plot_sigma.
@@ -364,8 +407,14 @@ class CostAwareSurfaceSettings(CrossingSettings):
     )
     # Convenience selector for built-in local backends.  Custom code may still
     # pass ``backend_factory`` directly; setting this to "exponential" selects
-    # the exact Bernoulli simulator for the assumed RB exponential link.
+    # the exact Bernoulli simulator for the assumed RB exponential link.  The
+    # "emulator" and "H2" labels are used by common_run_models.py with an
+    # explicitly supplied backend_factory.
     backend_model: str = "sympleq"
+    # Maximum total random-circuit gates in one submitted batch for the
+    # Quantinuum emulator.  Counts requested shots, so two shots of one config
+    # contribute twice that config's gate count.
+    gate_budget: int | None = None
 
     # --- region scored / measured -----------------------------------------
     q_values: tuple[int, ...] = (3, 4, 5, 6, 7, 8)
@@ -377,30 +426,46 @@ class CostAwareSurfaceSettings(CrossingSettings):
     target_log_rms: float = 0.04       # stop when sqrt(mean Var[log n*]) <= this
     max_iterations: int = 400
 
-    # --- prior on the boundary surface -------------------------------------
-    initial_one_q_pauli_error: float = BASE_1Q_PAULI_ERROR # * 0.6
-    initial_two_q_pauli_error: float = BASE_2Q_PAULI_ERROR # * 0.6
+    # --- prior on the boundary surface ------------------------------------
+    initial_one_q_pauli_error: float = BASE_1Q_PAULI_ERROR
+    initial_two_q_pauli_error: float = BASE_2Q_PAULI_ERROR
     initial_error_relative_uncertainty: float = 0.30
     initial_one_q_error_relative_uncertainty: float | None = None
     initial_two_q_error_relative_uncertainty: float | None = None
-    # Visibility V in [0, 1] is the global SPAM amplitude of the RB exponential
-    # link  p = V*(1-B)*2^{-n D} + B.  V = 1 is the no-SPAM / ideal-simulator
-    # case (and is pinned by default via grid_resolution[6] = 1); free it (set
-    # grid_resolution[6] > 1) to fit SPAM on hardware.
+    # Metadata for runs where the initial Pauli-error guesses were drawn from a
+    # random distribution before settings construction. These fields do not
+    # affect the model directly; the model uses the realised values above.
+    initial_rate_randomization_enabled: bool = False
+    initial_rate_random_seed: int | None = None
+    initial_one_q_pauli_error_base: float = BASE_1Q_PAULI_ERROR
+    initial_two_q_pauli_error_base: float = BASE_2Q_PAULI_ERROR
+    initial_one_q_random_log_multiplier: float = 0.0
+    initial_two_q_random_log_multiplier: float = 0.0
+    initial_one_q_random_relative_std: float = 0.0
+    initial_two_q_random_relative_std: float = 0.0
+    initial_one_q_random_relative_delta: float = 0.0
+    initial_two_q_random_relative_delta: float = 0.0
+    # Visibility V is the global amplitude of the RB exponential link
+    # p = V*(1-B)*2^{-n D} + B. V = 1 is the no-SPAM / ideal-simulator case
+    # (and is pinned by default via grid_resolution[6] = 1). By default
+    # visibility_bounds=None preserves the historical physical clipping
+    # 0 < V <= 1. For diagnostic nuisance-amplitude fits, set explicit bounds
+    # such as (0.95, 1.05) and free the V axis.
     initial_visibility: float = 1.0
     visibility_log_std: float = 0.20
+    visibility_bounds: tuple[float, float] | None = None
     # Asymptote B(Q) of the survival curve.  "depolarizing" -> B = 2^{-Q} (the
     # physically correct value for raw register-survival RB); "zero" -> B = 0
     # (use only if the stored fidelity is already asymptote-subtracted); a float
     # overrides with a constant.  See the deep-probe diagnostic to verify.
     asymptote_model: str | float = "depolarizing"
     # Width of the rate Q-slope prior as a fraction of the rate over the Q span.
-    q_slope_prior_fraction: float = 0.30
+    q_slope_prior_fraction: float = 0.05
     # Width of the rate Q-curvature (quadratic) prior, as a fraction of the rate
     # over the squared half-span.  Only active when the nu axes are unpinned
     # (grid_resolution entries 4, 5 > 1); held in reserve for hardware whose
     # Q-dependence may be nonlinear.
-    q_curve_prior_fraction: float = 0.30
+    q_curve_prior_fraction: float = 0.05
     # Optional Q-dependence of the direct ExponentialBackend truth rates.  These
     # are natural-log rate slopes dL_i/dQ, not posterior-prior widths.
     exponential_one_q_q_slope: float = 0.0
@@ -413,7 +478,18 @@ class CostAwareSurfaceSettings(CrossingSettings):
             object.__setattr__(self, "live_volume_plot", True)
         if self.surface_uncertainty_plot_show and not self.surface_uncertainty_plot:
             object.__setattr__(self, "surface_uncertainty_plot", True)
-        if self.backend_model in {"sympleq", "exponential"}:
+        quantinuum_models = {"emulator", "H2-1", "H2-2", "H2-1E", "H2-2E"}
+        if self.backend_model in {"sympleq", "exponential", *quantinuum_models}:
+            for attr, default_path in _DEFAULT_PLOT_ATTRS.items():
+                object.__setattr__(
+                    self,
+                    attr,
+                    _resolve_personal_run_artifact_path(
+                        getattr(self, attr),
+                        default_path=default_path,
+                        save_path=self.save_path,
+                    ),
+                )
             for attr in (
                 "save_path",
                 "surface_plot_path",
@@ -438,8 +514,11 @@ class CostAwareSurfaceSettings(CrossingSettings):
         if self.backend_model == "exponential":
             object.__setattr__(self, "backend_factory", exponential_backend_factory)
             return
+        if self.backend_model in quantinuum_models:
+            return
         raise ValueError(
-            "backend_model must be 'sympleq' or 'exponential' "
+            "backend_model must be 'sympleq', 'exponential', 'emulator', "
+            "'H2-1', 'H2-2', 'H2-1E', or 'H2-2E' "
             f"(got {self.backend_model!r})"
         )
 
@@ -630,6 +709,39 @@ class CostAwareSurfaceSettings(CrossingSettings):
 # --------------------------------------------------------------------------- #
 # Prior, transform, grid
 # --------------------------------------------------------------------------- #
+def _spend_request_batch(
+    backend,
+    rng: RNGGenerator,
+    data: dict[RMBConfig, object],
+    requests: list[MeasurementRequest],
+    seed: int | None = None,
+) -> MeasurementOutcomes:
+    """Record a batch and keep backend-reported cost/submission count."""
+    from sympleq.applications.randomized_benchmarking.experiments.common import (
+        measurement_rng,
+    )
+    from sympleq.core.bayesian_estimation import BayesianEstimator
+
+    requests = [request for request in requests if request.shots > 0]
+    if not requests:
+        return MeasurementOutcomes()
+    offsets = {}
+    for request in requests:
+        estimator = data.setdefault(request.config, BayesianEstimator.default())
+        offsets.setdefault(request.config, estimator.num_runs())
+
+    shot_rng = None
+    if seed is not None:
+        def shot_rng(config: RMBConfig, index: int) -> RNGGenerator:
+            return measurement_rng(seed, config, offsets[config] + index)
+
+    measurement = backend.fidelity_estimation(requests, rng, shot_rng=shot_rng)
+    for config, results in measurement.outcomes.items():
+        for outcome in results:
+            data[config].record(bool(outcome))
+    return measurement
+
+
 def _initial_relative_uncertainties(
     settings: CostAwareSurfaceSettings,
 ) -> tuple[float, float]:
@@ -682,6 +794,7 @@ def _prior_moments(
     n1_std = settings.q_curve_prior_fraction * lam1_prior / (q_half * q_half)
     n2_std = settings.q_curve_prior_fraction * lam2_prior / (q_half * q_half)
 
+    v_lo, v_hi = _visibility_clip_bounds(settings)
     centre = np.array(
         [
             np.log(max(lam1_prior, 1e-12)),
@@ -690,7 +803,7 @@ def _prior_moments(
             0.0,
             0.0,
             0.0,
-            np.log(min(max(settings.initial_visibility, 1e-6), 1.0)),
+            np.log(min(max(settings.initial_visibility, v_lo), v_hi)),
         ],
         dtype=float,
     )
@@ -709,12 +822,25 @@ def _prior_moments(
     return centre, std
 
 
-def _params_from_t(t: np.ndarray) -> np.ndarray:
+def _visibility_clip_bounds(settings: CostAwareSurfaceSettings) -> tuple[float, float]:
+    if settings.visibility_bounds is None:
+        return 1e-6, 1.0
+    lo, hi = (float(x) for x in settings.visibility_bounds)
+    if not (np.isfinite(lo) and np.isfinite(hi) and 0.0 < lo <= hi):
+        raise ValueError(
+            "visibility_bounds must be None or a finite positive (min, max) tuple "
+            f"with min <= max; got {settings.visibility_bounds!r}."
+        )
+    return lo, hi
+
+
+def _params_from_t(t: np.ndarray, settings: CostAwareSurfaceSettings) -> np.ndarray:
     """Map transformed coordinates to natural parameters (L10, L20, m1, m2, V).
 
     The two rate intercepts and the visibility are exp of their coordinates
-    (positive); the Q-slopes m are linear; V is clipped to (0, 1] so the RB link
-    stays a valid probability.
+    (positive); the Q-slopes m are linear. V is clipped to the configured
+    visibility bounds, preserving the historical (1e-6, 1.0) bounds unless
+    ``settings.visibility_bounds`` is explicitly set.
     """
     params = np.empty_like(t)
     params[:, _I_L1] = np.exp(t[:, _I_L1])
@@ -723,7 +849,8 @@ def _params_from_t(t: np.ndarray) -> np.ndarray:
     params[:, _I_M2] = t[:, _I_M2]
     params[:, _I_N1] = t[:, _I_N1]
     params[:, _I_N2] = t[:, _I_N2]
-    params[:, _I_V] = np.clip(np.exp(t[:, _I_V]), 1e-6, 1.0)
+    v_lo, v_hi = _visibility_clip_bounds(settings)
+    params[:, _I_V] = np.clip(np.exp(t[:, _I_V]), v_lo, v_hi)
     return params
 
 
@@ -741,23 +868,26 @@ def _build_grid(
     """
     prior_centre, prior_std = _prior_moments(settings)
     res = settings.grid_resolution if resolution is None else resolution
-    axes = [
-        (
-            np.array([centre_grid[d]])
-            if n <= 1
-            else np.linspace(
-                centre_grid[d] - halfwidth_grid[d],
-                centre_grid[d] + halfwidth_grid[d],
-                n,
+    axes = []
+    for d, n in enumerate(res):
+        if n <= 1:
+            axes.append(np.array([centre_grid[d]]))
+        elif d == _I_V and settings.visibility_bounds is not None:
+            v_lo, v_hi = _visibility_clip_bounds(settings)
+            axes.append(np.linspace(np.log(v_lo), np.log(v_hi), n))
+        else:
+            axes.append(
+                np.linspace(
+                    centre_grid[d] - halfwidth_grid[d],
+                    centre_grid[d] + halfwidth_grid[d],
+                    n,
+                )
             )
-        )
-        for d, n in enumerate(res)
-    ]
     mesh = np.meshgrid(*axes, indexing="ij")
     t = np.stack([m.ravel() for m in mesh], axis=1)
     z = (t - prior_centre) / prior_std
     log_prior = -0.5 * np.sum(z * z, axis=1)
-    params = _params_from_t(t)
+    params = _params_from_t(t, settings)
     return params, log_prior, t
 
 
@@ -1300,6 +1430,39 @@ def _restrict_requests_to_qubit_window(
     ]
 
 
+def _batch_total_gates(requests: list[MeasurementRequest]) -> int:
+    return int(sum(int(request.shots) * int(request.config.n_gates) for request in requests))
+
+
+def _restrict_requests_to_gate_budget(
+    requests: list[MeasurementRequest],
+    settings: CostAwareSurfaceSettings,
+) -> list[MeasurementRequest]:
+    gate_budget = getattr(settings, "gate_budget", None)
+    backend_model = str(getattr(settings, "backend_model", ""))
+    gate_limited_backend = backend_model == "emulator" or backend_model.endswith("E")
+    if (
+        not gate_limited_backend
+        or gate_budget is None
+        or int(gate_budget) <= 0
+    ):
+        return requests
+
+    remaining = int(gate_budget)
+    kept: list[MeasurementRequest] = []
+    for request in requests:
+        gates = int(request.config.n_gates)
+        if gates <= 0:
+            continue
+        shots = min(int(request.shots), remaining // gates)
+        if shots > 0:
+            kept.append(MeasurementRequest(request.config, shots))
+            remaining -= shots * gates
+        if remaining <= 0:
+            break
+    return kept
+
+
 def _assemble_batch(
     params: np.ndarray,
     weights: np.ndarray,
@@ -1343,42 +1506,45 @@ def _assemble_batch(
         return []
 
     width = int(getattr(settings, "max_qubit_window", 0) or 0)
-    if width <= 0:
+    windows = _qubit_windows({c["q"] for c in candidates}, width) if width > 0 else []
+    if width <= 0 or len(windows) <= 1:
+        # No window constraint, or every candidate Q already fits one window:
+        # pack the whole candidate pool.
         requests, _, _ = _pack_candidates(candidates, settings, affordable_cap)
-        return requests
+    else:
+        # Submit the window whose packed batch delivers the most realized value.
+        def _prescore(group: tuple[int, ...]) -> float:
+            gset = set(group)
+            best_per_slice: dict[tuple[float, int], float] = {}
+            for c in candidates:
+                if c["q"] in gset:
+                    s = c["slice"]
+                    if c["value"] > best_per_slice.get(s, 0.0):
+                        best_per_slice[s] = c["value"]
+            return float(sum(best_per_slice.values()))
 
-    windows = _qubit_windows({c["q"] for c in candidates}, width)
-    if len(windows) <= 1:
-        requests, _, _ = _pack_candidates(candidates, settings, affordable_cap)
-        return _restrict_requests_to_qubit_window(requests, settings)
+        windows_ranked = sorted(windows, key=_prescore, reverse=True)
+        shortlist = int(getattr(settings, "qubit_window_shortlist", 0) or 0)
+        if shortlist > 0:
+            windows_ranked = windows_ranked[:shortlist]
 
-    def _prescore(group: tuple[int, ...]) -> float:
-        gset = set(group)
-        best_per_slice: dict[tuple[float, int], float] = {}
-        for c in candidates:
-            if c["q"] in gset:
-                s = c["slice"]
-                if c["value"] > best_per_slice.get(s, 0.0):
-                    best_per_slice[s] = c["value"]
-        return float(sum(best_per_slice.values()))
+        requests = []
+        best_value = -1.0
+        for group in windows_ranked:
+            gset = set(group)
+            group_candidates = [c for c in candidates if c["q"] in gset]
+            packed, value, _ = _pack_candidates(
+                group_candidates, settings, affordable_cap
+            )
+            if packed and value > best_value:
+                best_value = value
+                requests = packed
 
-    windows_ranked = sorted(windows, key=_prescore, reverse=True)
-    shortlist = int(getattr(settings, "qubit_window_shortlist", 0) or 0)
-    if shortlist > 0:
-        windows_ranked = windows_ranked[:shortlist]
-
-    best_requests: list[MeasurementRequest] = []
-    best_value = -1.0
-    for group in windows_ranked:
-        gset = set(group)
-        group_candidates = [c for c in candidates if c["q"] in gset]
-        requests, value, _ = _pack_candidates(
-            group_candidates, settings, affordable_cap
-        )
-        if requests and value > best_value:
-            best_value = value
-            best_requests = requests
-    return _restrict_requests_to_qubit_window(best_requests, settings)
+    # One restriction tail for every path: the window guard is a no-op when the
+    # constraint is off (or the batch already fits one window, which the packer
+    # guarantees), and the gate-budget guard only bites on the emulator backend.
+    requests = _restrict_requests_to_qubit_window(requests, settings)
+    return _restrict_requests_to_gate_budget(requests, settings)
 
 
 # --------------------------------------------------------------------------- #
@@ -1461,11 +1627,36 @@ def _surface_plot_mesh(
     weights: np.ndarray,
     settings: CostAwareSurfaceSettings,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
-    """Posterior-median boundary surface as log10 gates on a plot mesh."""
-    med = np.asarray(
-        [float(_wquantile(params[:, j], weights, 0.5)) for j in range(_N_PARAMS)]
+    """Posterior-mean boundary surface as log10 gates on a plot mesh.
+
+    The live volume plot and the 3-D surface visualization must use the same
+    posterior summary of the boundary.  The old plot mesh used a median
+    parameter vector, which can sit above the posterior mean and produce a
+    misleading surface-volume mismatch.
+    """
+    r_lo, r_hi = settings.ratio_bounds
+    q_lo, q_hi = min(settings.q_values), max(settings.q_values)
+    n_bounds = (
+        settings.n_gates_bounds
+        if settings.surface_plot_n_gates_bounds is None
+        else settings.surface_plot_n_gates_bounds
     )
-    return _boundary_log10_from_param_vector(med, settings)
+    n_lo, n_hi = n_bounds
+    grid_r = np.linspace(r_lo, r_hi, 48)
+    grid_q = np.linspace(q_lo, q_hi, 48)
+    rr, qq = np.meshgrid(grid_r, grid_q)
+    raw = bool(getattr(settings, "plot_raw_fidelity_boundary", False))
+    _, _, geometric_gates = _logn_mean_sigma_mesh(params, weights, settings, rr, qq, raw=raw)
+    if not np.any(np.isfinite(geometric_gates)):
+        return None
+    log10_gates = np.where(
+        np.isfinite(geometric_gates) & (geometric_gates >= n_lo) & (geometric_gates <= n_hi),
+        np.log10(np.where(np.isfinite(geometric_gates) & (geometric_gates > 0.0), geometric_gates, np.nan)),
+        np.nan,
+    )
+    if not np.any(np.isfinite(log10_gates)):
+        return None
+    return rr, qq, log10_gates
 
 
 # --------------------------------------------------------------------------- #
@@ -1512,33 +1703,9 @@ def _boundary_log10_from_param_vector(
     return rr, qq, log10_gates
 
 
-def _raw_fidelity_gate_factor(
-    settings: CostAwareSurfaceSettings,
-    qq: np.ndarray,
-    visibility: float | np.ndarray,
-) -> np.ndarray:
-    """Per-(r,Q) factor g(Q) mapping the renormalised boundary onto raw p=0.5.
-
-    The renormalised boundary n* sits where 2^{-nD} = 0.5.  The raw survival
-    p = V(1-B)2^{-nD} + B crosses 0.5 at n_raw = n* * g(Q), with
-
-        g(Q) = -log2[ (0.5 - B(Q)) / (V (1 - B(Q))) ].
-
-    g depends only on the asymptote B(Q) and visibility V (not on r); it is >= 1
-    wherever the crossing exists and -> 1 as B -> 0 (large Q), so the raw and
-    renormalised boundaries nearly coincide at high Q.  Returns nan where no raw
-    p=0.5 depth exists (B(Q) >= 0.5, or the un-decayed top V(1-B)+B < 0.5), i.e.
-    where 0 < (0.5-B)/(V(1-B)) < 1 fails.
-    """
-    v = np.asarray(visibility, dtype=float)
-    uq = np.unique(qq)
-    b_of_q = {float(q): float(_asymptote(settings, float(q))) for q in uq}
-    b = np.vectorize(b_of_q.get, otypes=[float])(qq)
-    denom = v * (1.0 - b)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        x = np.where(denom > 0.0, (0.5 - b) / denom, np.nan)
-        g = np.where((x > 0.0) & (x < 1.0), -np.log2(x), np.nan)
-    return g
+# _raw_fidelity_gate_factor is imported from cost_aware_references so the surface
+# method (fitted boundary, +-sigma band, volume) and the plot module (analytic
+# reference overlays) share one definition of the renormalised -> raw remap.
 
 
 def _logn_mean_sigma_mesh(
@@ -1588,6 +1755,98 @@ def _logn_mean_sigma_mesh(
         sigma_flat[idx] = float(np.sqrt(max(var, 0.0)))
         gates_flat[idx] = float(np.exp(mean))
     return mean_log, sigma_log, geometric_gates
+
+
+def _voxel_volume_axes(
+    settings: CostAwareSurfaceSettings,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    r_lo, r_hi = settings.ratio_bounds
+    q_lo = float(min(settings.q_values))
+    q_hi = float(max(settings.q_values))
+    n_lo, n_hi = settings.n_gates_bounds
+    gates_axis = np.geomspace(max(1.0, float(n_lo)), float(n_hi), settings.voxel_volume_n_gates_grid)
+    ratio_axis = np.linspace(float(r_lo), float(r_hi), settings.voxel_volume_n_ratio_grid)
+    qubits_axis = np.linspace(q_lo, q_hi, settings.voxel_volume_n_qubits_grid)
+    return gates_axis, ratio_axis, qubits_axis
+
+
+def _success_side_voxel_volume(
+    boundary_gates: np.ndarray,
+    gates_axis: np.ndarray,
+    ratio_axis: np.ndarray,
+    qubits_axis: np.ndarray,
+) -> float:
+    boundary_gates = np.asarray(boundary_gates, dtype=float)
+    if not np.any(np.isfinite(boundary_gates)):
+        return float("nan")
+
+    gates_axis = np.asarray(gates_axis, dtype=float)
+    ratio_axis = np.asarray(ratio_axis, dtype=float)
+    qubits_axis = np.asarray(qubits_axis, dtype=float)
+
+    qubits_grid, ratio_grid, gates_grid = np.meshgrid(
+        qubits_axis,
+        ratio_axis,
+        gates_axis,
+        indexing="ij",
+    )
+    # "Success side" means depths up to the fidelity-0.5 boundary.  Larger
+    # boundaries must therefore increase the volume.
+    mask = np.isfinite(boundary_gates[..., np.newaxis]) & (
+        gates_grid <= boundary_gates[..., np.newaxis]
+    )
+    voxel_volume = (
+        axis_spacing(gates_axis, log=True)
+        * axis_spacing(ratio_axis)
+        * axis_spacing(qubits_axis)
+    )
+    return float(np.sum(mask) * voxel_volume)
+
+
+def _voxel_volume_surface_scores(
+    volume_fit_gates: np.ndarray,
+    volume_sigma_log_gates: np.ndarray,
+    volume_reference_gates: np.ndarray,
+    gates_axis: np.ndarray,
+    ratio_axis: np.ndarray,
+    qubits_axis: np.ndarray,
+) -> dict[str, float]:
+    fit_volume = _success_side_voxel_volume(
+        volume_fit_gates,
+        gates_axis,
+        ratio_axis,
+        qubits_axis,
+    )
+    lower_volume = _success_side_voxel_volume(
+        volume_fit_gates * np.exp(-volume_sigma_log_gates),
+        gates_axis,
+        ratio_axis,
+        qubits_axis,
+    )
+    upper_volume = _success_side_voxel_volume(
+        volume_fit_gates * np.exp(volume_sigma_log_gates),
+        gates_axis,
+        ratio_axis,
+        qubits_axis,
+    )
+    reference_volume = _success_side_voxel_volume(
+        volume_reference_gates,
+        gates_axis,
+        ratio_axis,
+        qubits_axis,
+    )
+    volume_ratio = (
+        float(fit_volume / reference_volume)
+        if np.isfinite(reference_volume) and abs(reference_volume) > _EPS
+        else float("nan")
+    )
+    return {
+        "surface_volume_fit": float(fit_volume),
+        "surface_volume_lower_1sigma": float(lower_volume),
+        "surface_volume_upper_1sigma": float(upper_volume),
+        "surface_volume_reference": float(reference_volume),
+        "surface_volume_ratio": volume_ratio,
+    }
 
 
 def _free_axis_indices(settings: CostAwareSurfaceSettings) -> list[int]:
@@ -1641,7 +1900,7 @@ def _continuous_map_fit(
 
     def neg_log_post(z_free: np.ndarray) -> float:
         t = t_from_z(z_free)
-        p = _params_from_t(t[None, :])[0]
+        p = _params_from_t(t[None, :], settings)[0]
         # Admissibility over the scored rectangle (bilinear -> corners suffice).
         cd = _denominator(p, corners[:, 0], corners[:, 1], settings)
         if not np.all(cd > settings.denom_floor):
@@ -1682,7 +1941,7 @@ def _report_continuous_fit(
     result: object,
 ) -> None:
     """Print the continuous MAP parameters, its goodness-of-fit, and grid deltas."""
-    params_hat = _params_from_t(np.asarray(t_hat, dtype=float)[None, :])
+    params_hat = _params_from_t(np.asarray(t_hat, dtype=float)[None, :], settings)
     a = params_hat[0]
     diag = _residual_diagnostics(data, params_hat, np.array([1.0]), settings)
     k = _effective_free_params(settings)
@@ -1738,6 +1997,7 @@ def _config_from_checkpoint_record(record: dict) -> RMBConfig:
         n_qubits=int(record["n_qubits"]),
         random_elimination=float(record.get("random_elimination", 0.0)),
         use_scrambler=bool(record.get("use_scrambler", True)),
+        gates_set=tuple(NATIVE_GATES_SET),
     )
 
 
@@ -1843,7 +2103,69 @@ def _checkpoint_q_values_match(meta: dict, settings: CostAwareSurfaceSettings) -
         saved_q_values = [int(q) for q in meta["settings"]["q_values"]]
     except (KeyError, TypeError, ValueError):
         return False
-    return saved_q_values == _settings_q_values(settings)
+    if saved_q_values != _settings_q_values(settings):
+        return False
+
+    # Additional settings that must match to consider a checkpoint resumable.
+    # If these are absent from older checkpoints, treat them as non-matching
+    # only when they differ from defaults.
+    try:
+        saved_min_distinct = int(meta["settings"].get("min_distinct_q_coverage", -1))
+    except (TypeError, ValueError):
+        saved_min_distinct = -1
+
+    current_min_distinct = int(getattr(settings, "min_distinct_q_coverage", -1))
+    if saved_min_distinct != -1 and saved_min_distinct != current_min_distinct:
+        return False
+
+    try:
+        saved_acq_q_res = int(meta["settings"].get("acquisition_q_resolution", -1))
+    except (TypeError, ValueError):
+        saved_acq_q_res = -1
+    current_acq_q_res = int(getattr(settings, "acquisition_q_resolution", -1))
+    if saved_acq_q_res != -1 and saved_acq_q_res != current_acq_q_res:
+        return False
+
+    try:
+        saved_acq_ratio_pts = int(meta["settings"].get("acquisition_ratio_points", -1))
+    except (TypeError, ValueError):
+        saved_acq_ratio_pts = -1
+    current_acq_ratio_pts = int(getattr(settings, "acquisition_ratio_points", -1))
+    if saved_acq_ratio_pts != -1 and saved_acq_ratio_pts != current_acq_ratio_pts:
+        return False
+
+    # max_qubit_window must match
+    try:
+        saved_max_qw = int(meta["settings"].get("max_qubit_window", -1))
+    except (TypeError, ValueError):
+        saved_max_qw = -1
+    current_max_qw = int(getattr(settings, "max_qubit_window", -1))
+    if saved_max_qw != -1 and saved_max_qw != current_max_qw:
+        return False
+
+    # max_cost_per_run must match
+    try:
+        saved_max_cost = float(meta["settings"].get("max_cost_per_run", -1.0))
+    except (TypeError, ValueError):
+        saved_max_cost = -1.0
+    current_max_cost = float(getattr(settings, "max_cost_per_run", -1.0))
+    if saved_max_cost != -1.0 and saved_max_cost != current_max_cost:
+        return False
+
+    # grid_resolution and boundary_fit_resolution: compare as lists if present
+    saved_grid = meta["settings"].get("grid_resolution")
+    if saved_grid is not None and saved_grid != []:
+        current_grid = list(getattr(settings, "grid_resolution", []))
+        if saved_grid != current_grid:
+            return False
+
+    saved_boundary = meta["settings"].get("boundary_fit_resolution")
+    if saved_boundary is not None and saved_boundary != []:
+        current_boundary = list(getattr(settings, "boundary_fit_resolution", []))
+        if saved_boundary != current_boundary:
+            return False
+
+    return True
 
 
 def _save_measurement_checkpoint(
@@ -1855,6 +2177,8 @@ def _save_measurement_checkpoint(
     *,
     iteration: int | None = None,
     reason: str = "checkpoint",
+    pending_requests: list[MeasurementRequest] | None = None,
+    first_shot_indices: dict[RMBConfig, int] | None = None,
 ) -> None:
     """Save RMB-format measurements plus resumable batch/plot metadata."""
     if settings.save_path is None or not settings.checkpoint_after_batch:
@@ -1871,6 +2195,62 @@ def _save_measurement_checkpoint(
                 "backend_model": settings.backend_model,
                 "rng_seed": settings.rng_seed,
                 "max_qubit_window": int(settings.max_qubit_window),
+                "min_distinct_q_coverage": int(getattr(settings, "min_distinct_q_coverage", -1)),
+                "acquisition_q_resolution": int(getattr(settings, "acquisition_q_resolution", -1)),
+                "acquisition_ratio_points": int(getattr(settings, "acquisition_ratio_points", -1)),
+                "grid_resolution": list(getattr(settings, "grid_resolution", [])),
+                "boundary_fit_resolution": list(getattr(settings, "boundary_fit_resolution", [])),
+                "max_cost_per_run": float(getattr(settings, "max_cost_per_run", -1.0)),
+                "initial_one_q_pauli_error": float(settings.initial_one_q_pauli_error),
+                "initial_two_q_pauli_error": float(settings.initial_two_q_pauli_error),
+                "initial_error_relative_uncertainty": float(
+                    settings.initial_error_relative_uncertainty
+                ),
+                "initial_one_q_error_relative_uncertainty": (
+                    None
+                    if settings.initial_one_q_error_relative_uncertainty is None
+                    else float(settings.initial_one_q_error_relative_uncertainty)
+                ),
+                "initial_two_q_error_relative_uncertainty": (
+                    None
+                    if settings.initial_two_q_error_relative_uncertainty is None
+                    else float(settings.initial_two_q_error_relative_uncertainty)
+                ),
+                "initial_visibility": float(settings.initial_visibility),
+                "visibility_log_std": float(settings.visibility_log_std),
+                "visibility_bounds": (
+                    None
+                    if settings.visibility_bounds is None
+                    else [float(x) for x in settings.visibility_bounds]
+                ),
+                "initial_rate_randomization_enabled": bool(
+                    settings.initial_rate_randomization_enabled
+                ),
+                "initial_rate_random_seed": settings.initial_rate_random_seed,
+                "initial_one_q_pauli_error_base": float(
+                    settings.initial_one_q_pauli_error_base
+                ),
+                "initial_two_q_pauli_error_base": float(
+                    settings.initial_two_q_pauli_error_base
+                ),
+                "initial_one_q_random_log_multiplier": float(
+                    settings.initial_one_q_random_log_multiplier
+                ),
+                "initial_two_q_random_log_multiplier": float(
+                    settings.initial_two_q_random_log_multiplier
+                ),
+                "initial_one_q_random_relative_std": float(
+                    settings.initial_one_q_random_relative_std
+                ),
+                "initial_two_q_random_relative_std": float(
+                    settings.initial_two_q_random_relative_std
+                ),
+                "initial_one_q_random_relative_delta": float(
+                    settings.initial_one_q_random_relative_delta
+                ),
+                "initial_two_q_random_relative_delta": float(
+                    settings.initial_two_q_random_relative_delta
+                ),
             },
             "hqc_budget": settings.hqc_budget,
             "spent_hqc": budget.spent_hqc,
@@ -1881,6 +2261,24 @@ def _save_measurement_checkpoint(
             "measured_configs": _measured_config_count(rmb._data),
             "batch_history": batch_history,
         }
+        if pending_requests:
+            first_shot_indices = first_shot_indices or {}
+            meta["pending_batch"] = {
+                "iteration": iteration,
+                "requests": [
+                    {
+                        "config": _config_checkpoint_record(request.config),
+                        "requested_shots": int(request.shots),
+                        "first_shot_index": int(
+                            first_shot_indices.get(request.config, 0)
+                        ),
+                    }
+                    for request in pending_requests
+                    if int(request.shots) > 0
+                ],
+            }
+        else:
+            meta.pop("pending_batch", None)
         _write_json_atomic(_checkpoint_meta_path(settings.save_path), meta)
     except Exception as exc:  # noqa: BLE001 - checkpointing should not kill a run
         print_progress(settings, budget, f"checkpoint save skipped: {exc}")
@@ -1964,8 +2362,15 @@ def _resume_measurement_checkpoint(
 def run_with_budget(
     settings: CostAwareSurfaceSettings,
     progress_callback: Callable[..., None] | None = None,
+    on_checkpoint: Callable[[], None] | None = None,
 ) -> tuple[RMB, list[RMBConfig], Budget]:
-    """Run the cost-aware global surface designer."""
+    """Run the cost-aware global surface designer.
+
+    ``on_checkpoint`` (if given) is called immediately after every measurement
+    checkpoint is written, so callers can persist their own sidecar state (e.g.
+    the live-volume history) into the same metadata file without patching the
+    checkpoint routine.
+    """
     rng, rmb, budget = start_run(settings)
     (
         rmb,
@@ -2042,6 +2447,23 @@ def run_with_budget(
             print_progress(settings, budget, "next batch exceeds remaining budget; stopping")
             break
 
+        first_shot_indices = {
+            req.config: data.get(req.config, backend.default_estimator()).num_runs()
+            for req in requests
+        }
+        _save_measurement_checkpoint(
+            rmb,
+            settings,
+            budget,
+            submitted,
+            batch_history,
+            iteration=iteration + 1,
+            reason="before_backend",
+            pending_requests=requests,
+            first_shot_indices=first_shot_indices,
+        )
+        if on_checkpoint is not None:
+            on_checkpoint()
         if progress_callback is not None:
             progress_callback(
                 rmb,
@@ -2050,22 +2472,19 @@ def run_with_budget(
                 iteration + 1,
                 pending_requests=requests,
             )
-        first_shot_indices = {
-            req.config: data.get(req.config, backend.default_estimator()).num_runs()
-            for req in requests
-        }
-        outcomes = spend_request_batch(
+        measurement = _spend_request_batch(
             backend, rng, data, requests, seed=settings.rng_seed
         )
-        budget.spend_batch(cost, sum(req.shots for req in requests))
+        actual_cost = float(measurement.cost) if measurement.cost > 0 else cost
+        budget.spend_batch(actual_cost, sum(req.shots for req in requests))
         submitted.extend(req.config for req in requests)
         batch_history.append(
             _batch_checkpoint_record(
                 batch_number=budget.jobs,
                 iteration=iteration + 1,
-                cost_hqc=cost,
+                cost_hqc=actual_cost,
                 requests=requests,
-                outcomes=outcomes,
+                outcomes=measurement.outcomes,
                 first_shot_indices=first_shot_indices,
             )
         )
@@ -2080,6 +2499,8 @@ def run_with_budget(
             iteration=iteration + 1,
             reason="after_batch",
         )
+        if on_checkpoint is not None:
+            on_checkpoint()
 
         # Re-centre the grid on the running posterior for the next iteration.
         grid_centre, grid_halfwidth = _axis_layout(t, weights, settings, prior_std)
@@ -2125,6 +2546,8 @@ def run_with_budget(
         iteration=budget.jobs,
         reason="final",
     )
+    if on_checkpoint is not None:
+        on_checkpoint()
 
     def save_final_crossings():
         from sympleq.applications.randomized_benchmarking.experiments.common import (
@@ -2220,16 +2643,40 @@ def _surface_s1_s2(
     weights: np.ndarray,
     settings: CostAwareSurfaceSettings,
     reference_gates,
+    secondary_reference_gates=None,
 ) -> dict[str, float | int]:
-    """3-D extension of S1/S2 over the scored (r,Q) surface."""
+    """3-D extension of S1/S2 over the scored (r,Q) surface.
+
+    When ``settings.plot_raw_fidelity_boundary`` is set (the default), every
+    boundary here -- the fitted surface, its +-sigma band, and the reference --
+    is the *raw* survival p=0.5 depth n_raw = n* * g(Q,V), not the renormalised
+    n* = 1/D.  This is what makes the reported volume the volume under the real
+    fidelity curve rather than the renormalised one.  The fitted boundary folds
+    the posterior visibility V per row (via ``_logn_mean_sigma_mesh(raw=True)``);
+    the analytic/calibrated references are renormalised n*, so they are remapped
+    to raw with V=1 (the ideal, no-SPAM curve).  A GP-grid reference is left
+    unchanged because its contour is already a raw p=0.5 crossing (the p=target
+    contour is taken directly on the stored survival probabilities).
+
+    ``secondary_reference_gates`` (optional) is integrated on the *same* fitted
+    meshes and volume axes as the primary reference and returned as
+    ``surface_volume_secondary_reference``.  This lets a caller show a second
+    reference line (e.g. analytic Lindblad alongside a GP-grid primary) without
+    recomputing the expensive fitted posterior mesh.
+    """
+    raw = bool(getattr(settings, "plot_raw_fidelity_boundary", False))
+
+    def _reference_boundary(ref_fn, rr_mesh: np.ndarray, qq_mesh: np.ndarray) -> np.ndarray:
+        ref = ref_fn(rr_mesh, qq_mesh, settings)
+        if not raw or ref_fn is _gp_grid_surface_gates:
+            return ref
+        return ref * _raw_fidelity_gate_factor(settings, qq_mesh, 1.0)
+
     r_lo, r_hi = settings.ratio_bounds
     ratios = np.linspace(r_lo, r_hi, max(settings.score_ratio_points, 2))
     qubits = np.asarray(settings.q_values, dtype=float)
     rr, qq = np.meshgrid(ratios, qubits)
-    reference = reference_gates(rr, qq, settings)
-    reference_log = np.where(reference > 0.0, np.log(reference), np.nan)
-
-    fitted_log, sigma, _ = _logn_mean_sigma_mesh(params, weights, settings, rr, qq)
+    fitted_log, sigma, _ = _logn_mean_sigma_mesh(params, weights, settings, rr, qq, raw=raw)
 
     def _volume_axes() -> tuple[np.ndarray, np.ndarray, float, float]:
         if (
@@ -2250,24 +2697,58 @@ def _surface_s1_s2(
     volume_ratios, volume_qubits, volume_min_gates, volume_max_gates = _volume_axes()
     v_rr, v_qq = np.meshgrid(volume_ratios, volume_qubits)
     _, volume_sigma, volume_fit_gates = _logn_mean_sigma_mesh(
-        params, weights, settings, v_rr, v_qq
+        params, weights, settings, v_rr, v_qq, raw=raw
     )
-    volume_reference_gates = reference_gates(v_rr, v_qq, settings)
-    return surface_boundary_scores_2d(
-        fitted_log_gates=fitted_log,
-        reference_log_gates=reference_log,
-        sigma_log_gates=sigma,
-        ratio_axis=ratios,
-        qubit_axis=qubits,
-        volume_fit_gates=volume_fit_gates,
-        volume_sigma_log_gates=volume_sigma,
-        volume_reference_gates=volume_reference_gates,
-        volume_ratio_axis=volume_ratios,
-        volume_qubit_axis=volume_qubits,
-        min_gates=volume_min_gates,
-        max_gates=volume_max_gates,
-        eps=_EPS,
-    )
+
+    def _scores_for(ref_fn) -> dict[str, float | int]:
+        # Reuses the fitted meshes above; only the reference boundary changes.
+        reference = _reference_boundary(ref_fn, rr, qq)
+        reference_log = np.where(reference > 0.0, np.log(reference), np.nan)
+        volume_reference_gates = _reference_boundary(ref_fn, v_rr, v_qq)
+        scores = surface_boundary_scores_2d(
+            fitted_log_gates=fitted_log,
+            reference_log_gates=reference_log,
+            sigma_log_gates=sigma,
+            ratio_axis=ratios,
+            qubit_axis=qubits,
+            volume_fit_gates=volume_fit_gates,
+            volume_sigma_log_gates=volume_sigma,
+            volume_reference_gates=volume_reference_gates,
+            volume_ratio_axis=volume_ratios,
+            volume_qubit_axis=volume_qubits,
+            min_gates=volume_min_gates,
+            max_gates=volume_max_gates,
+            eps=_EPS,
+        )
+        if settings.use_voxel_volume:
+            gates_axis, voxel_ratio_axis, voxel_qubits_axis = _voxel_volume_axes(settings)
+            vv_rr, vv_qq = np.meshgrid(voxel_ratio_axis, voxel_qubits_axis)
+            _, voxel_sigma, voxel_fit_gates = _logn_mean_sigma_mesh(
+                params, weights, settings, vv_rr, vv_qq, raw=raw
+            )
+            voxel_reference_gates = _reference_boundary(ref_fn, vv_rr, vv_qq)
+            scores.update(
+                _voxel_volume_surface_scores(
+                    volume_fit_gates=voxel_fit_gates,
+                    volume_sigma_log_gates=voxel_sigma,
+                    volume_reference_gates=voxel_reference_gates,
+                    gates_axis=gates_axis,
+                    ratio_axis=voxel_ratio_axis,
+                    qubits_axis=voxel_qubits_axis,
+                )
+            )
+        return scores
+
+    scores = dict(_scores_for(reference_gates))
+    if (
+        secondary_reference_gates is not None
+        and secondary_reference_gates is not reference_gates
+    ):
+        secondary = _scores_for(secondary_reference_gates)
+        scores["surface_volume_secondary_reference"] = float(
+            secondary["surface_volume_reference"]
+        )
+    return scores
 
 
 def run_surface(

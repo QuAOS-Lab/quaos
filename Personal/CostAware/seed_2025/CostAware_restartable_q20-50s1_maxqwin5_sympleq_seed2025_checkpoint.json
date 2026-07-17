@@ -1,0 +1,837 @@
+{
+  "schema_version": 4,
+  "reason": "after_batch",
+  "iteration": 1,
+  "settings": {
+    "q_values": [
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50
+    ],
+    "backend_model": "sympleq",
+    "rng_seed": 2025,
+    "max_qubit_window": 5
+  },
+  "hqc_budget": 500.0,
+  "spent_hqc": 14.777999999999997,
+  "remaining_hqc": 485.222,
+  "jobs": 1,
+  "max_job_circuits": 30,
+  "submitted_configs": 18,
+  "measured_configs": 18,
+  "batch_history": [
+    {
+      "batch": 1,
+      "iteration": 1,
+      "cost_hqc": 14.777999999999997,
+      "requested_shots": 30,
+      "requests": [
+        {
+          "config": {
+            "n_gates": 300,
+            "ratio_2qb_gates": 0.8133333333333334,
+            "n_1qb_gates": 56,
+            "n_2qb_gates": 244,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 170,
+            "ratio_2qb_gates": 0.7176470588235294,
+            "n_1qb_gates": 48,
+            "n_2qb_gates": 122,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 3,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            },
+            {
+              "shot_index": 2,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 220,
+            "ratio_2qb_gates": 0.5454545454545454,
+            "n_1qb_gates": 100,
+            "n_2qb_gates": 120,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 3,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            },
+            {
+              "shot_index": 2,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 212,
+            "ratio_2qb_gates": 0.6320754716981132,
+            "n_1qb_gates": 78,
+            "n_2qb_gates": 134,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 258,
+            "ratio_2qb_gates": 0.4573643410852713,
+            "n_1qb_gates": 140,
+            "n_2qb_gates": 118,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 312,
+            "ratio_2qb_gates": 0.36538461538461536,
+            "n_1qb_gates": 198,
+            "n_2qb_gates": 114,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 394,
+            "ratio_2qb_gates": 0.27918781725888325,
+            "n_1qb_gates": 284,
+            "n_2qb_gates": 110,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 170,
+            "ratio_2qb_gates": 0.7176470588235294,
+            "n_1qb_gates": 48,
+            "n_2qb_gates": 122,
+            "n_qubits": 23,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 218,
+            "ratio_2qb_gates": 0.6330275229357798,
+            "n_1qb_gates": 80,
+            "n_2qb_gates": 138,
+            "n_qubits": 23,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 298,
+            "ratio_2qb_gates": 0.4563758389261745,
+            "n_1qb_gates": 162,
+            "n_2qb_gates": 136,
+            "n_qubits": 23,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 252,
+            "ratio_2qb_gates": 0.5476190476190477,
+            "n_1qb_gates": 114,
+            "n_2qb_gates": 138,
+            "n_qubits": 23,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 2,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            },
+            {
+              "shot_index": 1,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 274,
+            "ratio_2qb_gates": 0.8102189781021898,
+            "n_1qb_gates": 52,
+            "n_2qb_gates": 222,
+            "n_qubits": 23,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 536,
+            "ratio_2qb_gates": 0.19029850746268656,
+            "n_1qb_gates": 434,
+            "n_2qb_gates": 102,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 218,
+            "ratio_2qb_gates": 0.8073394495412844,
+            "n_1qb_gates": 42,
+            "n_2qb_gates": 176,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 312,
+            "ratio_2qb_gates": 0.36538461538461536,
+            "n_1qb_gates": 198,
+            "n_2qb_gates": 114,
+            "n_qubits": 23,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 396,
+            "ratio_2qb_gates": 0.2777777777777778,
+            "n_1qb_gates": 286,
+            "n_2qb_gates": 110,
+            "n_qubits": 23,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": true
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 540,
+            "ratio_2qb_gates": 0.18888888888888888,
+            "n_1qb_gates": 438,
+            "n_2qb_gates": 102,
+            "n_qubits": 23,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        },
+        {
+          "config": {
+            "n_gates": 852,
+            "ratio_2qb_gates": 0.10093896713615023,
+            "n_1qb_gates": 766,
+            "n_2qb_gates": 86,
+            "n_qubits": 20,
+            "random_elimination": 0.1,
+            "use_scrambler": true,
+            "gates_set": [
+              "Id",
+              "H",
+              "H_inv",
+              "S",
+              "S_inv",
+              "V",
+              "V_inv",
+              "X",
+              "X_inv",
+              "Y",
+              "Y_inv",
+              "Z",
+              "Z_inv",
+              "CX",
+              "CX_inv",
+              "SWAP",
+              "CZ",
+              "ZZP",
+              "ZZP_inv"
+            ]
+          },
+          "requested_shots": 1,
+          "first_shot_index": 0,
+          "measurements": [
+            {
+              "shot_index": 0,
+              "outcome": false
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "live_volume_history": [
+    [
+      1,
+      37.618267685277594,
+      38.12723433415198,
+      35.3819831795318,
+      39.8545521910234
+    ]
+  ]
+}
