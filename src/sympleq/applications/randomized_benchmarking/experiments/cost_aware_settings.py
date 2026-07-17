@@ -249,7 +249,7 @@ class CostAwareSettings(CostAwareSurfaceSettings):
 # CONTROL PANEL
 # =============================================================================
 
-BACKEND = "H2-2"  # "sympleq"  # , "emulator", "H2-1", "H2-2", "H2-1E", or "H2-2E"
+BACKEND = "H2-1"  # "sympleq"  # , "emulator", "H2-1", "H2-2", "H2-1E", or "H2-2E"
 PROJECT_NAME = "fidelity-benchmark"
 
 Q_VALUES = tuple(range(27, 57, 1))
@@ -266,7 +266,7 @@ SINGLE_BATCH_GATE_BUDGET = 4200
 EMULATOR_MAX_BATCH_COST = 12.0
 
 
-RNG_SEEDS = [20262]
+RNG_SEEDS = [20267]
 
 ACQUISITION_Q_RESOLUTION = 30
 ACQUISITION_RATIO_POINTS = 15
