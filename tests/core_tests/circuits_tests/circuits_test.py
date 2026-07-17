@@ -4,9 +4,9 @@ import tempfile
 import numpy as np
 import pytest
 from scipy.sparse import issparse
-from sympleq.core.circuits import Circuit, GATES
+from sympleq.core.circuits import Circuit, GATES, PauliGate
 from sympleq.core.noise.noise_model import CompositeNoise, DepolarizingNoise, DephasingNoise, Noiseless, NoiseModel
-from sympleq.core.paulis import PauliSum
+from sympleq.core.paulis import PauliSum, PauliString
 
 
 class TestCircuits():
@@ -60,6 +60,55 @@ class TestCircuits():
 
         # show that the composed gate returns the same thing as the circuit when acting on the pauli sum
         assert output_composite == output_sequential
+
+    def test_local_circuit_keeps_only_local_gates(self):
+        circuit = Circuit.from_tuples(
+            dimensions=[2, 2, 2],
+            data=[
+                (GATES.H, 0),
+                (GATES.CX, 0, 1),
+                (GATES.S, 2),
+                (GATES.CX, 1, 2),
+            ],
+        )
+
+        local = circuit.local_circuit([0, 1])
+
+        assert np.array_equal(local.dimensions, np.array([2, 2]))
+        assert [gate.name for gate in local.gates] == ["H", "CX"]
+        assert [tuple(indices) for indices in local.qudit_indices] == [(0,), (0, 1)]
+
+    def test_local_circuit_restricts_pauli_gates_to_local_support(self):
+        pauli_gate = PauliGate(PauliString.from_string("x1z0 x0z0 x0z0", dimensions=[2, 2, 2]))
+        outside_pauli_gate = PauliGate(PauliString.from_string("x0z0 x0z0 x1z0", dimensions=[2, 2, 2]))
+        circuit = Circuit.from_gates_and_qudits(
+            dimensions=[2, 2, 2],
+            gates=[pauli_gate, outside_pauli_gate],
+            qudit_indices=[(0, 1, 2), (0, 1, 2)],
+        )
+
+        local = circuit.local_circuit([0, 1])
+
+        assert local.n_gates() == 1
+        assert tuple(local.qudit_indices[0]) == (0, 1)
+        assert isinstance(local.gates[0], PauliGate)
+        assert np.array_equal(local.gates[0].pauli_string.x_exp, np.array([1, 0]))
+        assert np.array_equal(local.gates[0].pauli_string.z_exp, np.array([0, 0]))
+        assert np.array_equal(local.gates[0].pauli_string.dimensions, np.array([2, 2]))
+
+        subset_pauli_gate = PauliGate(PauliString.from_string("x1z0 x0z0", dimensions=[2, 2]))
+        subset_circuit = Circuit.from_gates_and_qudits(
+            dimensions=[2, 2, 2],
+            gates=[subset_pauli_gate],
+            qudit_indices=[(1, 2)],
+        )
+
+        subset_local = subset_circuit.local_circuit([1])
+
+        assert subset_local.n_gates() == 1
+        assert tuple(subset_local.qudit_indices[0]) == (0,)
+        assert np.array_equal(subset_local.gates[0].pauli_string.x_exp, np.array([1]))
+        assert np.array_equal(subset_local.gates[0].pauli_string.dimensions, np.array([2]))
 
     def test_random_circuit(self):
         # test that a random circuit can be generated with the correct dimensions on mixed qudits

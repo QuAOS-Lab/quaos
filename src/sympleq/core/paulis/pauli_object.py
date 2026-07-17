@@ -815,6 +815,12 @@ class PauliObject(ABC):
         self._phases = np.zeros(self.n_paulis(), dtype=int)
         self._weights = new_weights
 
+    def round_weights(self, digits: int = 2):
+        """
+        Round the Pauli weights in place.
+        """
+        self._weights = np.round(self.weights, digits)
+
     def to_standard_form(self) -> Self:
         """
         Produce a standardized form of the Pauli object.

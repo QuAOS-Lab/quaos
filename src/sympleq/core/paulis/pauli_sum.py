@@ -3,6 +3,7 @@ from typing import overload, Sequence, TYPE_CHECKING, Union
 import numpy as np
 import math
 import scipy.sparse as sp
+from scipy.sparse import linalg as spla
 import galois
 import warnings
 from pathlib import Path
@@ -11,7 +12,7 @@ from sympleq import complex_phase_value, int_to_bases
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 from .pauli_object import PauliObject
 from .pauli_string import PauliString
-from ._typing import HilbertOperator, ScalarType, TableauType, DimensionsLike, PhasesLike, WeightsLike
+from ._typing import HilbertOperator, ScalarType, TableauType, DimensionsLike, PhasesLike, WeightsLike, IntArrayLike
 from .constants import DEFAULT_QUDIT_DIMENSION
 
 if TYPE_CHECKING:
@@ -1093,23 +1094,15 @@ class PauliSum(PauliObject):
             ps = self.select_pauli_string(pauli_string_index).as_pauli_sum()
             return ps.to_hilbert_space()
 
-        list_of_pauli_matrices = []
+        D = np.prod(self.dimensions)
+        h = sp.csr_matrix((D, D), dtype=np.complex128)
         for i in range(self.n_paulis()):
-            X, Z, dim, phase = int(self.x_exp[i, 0]), int(self.z_exp[i, 0]), self.dimensions[0], self.phases[i]
-            h = self.xz_mat(dim, X, Z)
-
-            for n in range(1, self.n_qudits()):
-                X, Z, dim, phase = int(self.x_exp[i, n]), int(self.z_exp[i, n]), self.dimensions[n], self.phases[i]
-                h_next = self.xz_mat(dim, X, Z)
-                h = sp.csr_matrix(sp.kron(h, h_next, format="csr"))
-
-            e = complex_phase_value(phase, self.lcm) * self.weights[i]
-            list_of_pauli_matrices.append(e * h)
-
-        h = list_of_pauli_matrices[0]
-        for m in list_of_pauli_matrices[1:]:
-            h = h + m
-
+            h_next = string_to_hilbert(self.dimensions, self.x_exp[i, :], self.z_exp[i, :])
+            h_next.data *= complex_phase_value(self.phases[i], self.lcm) * self.weights[i]
+            h += h_next
+        h.data.real[np.abs(h.data.real) < 1e-15] = 0.0
+        h.data.imag[np.abs(h.data.imag) < 1e-15] = 0.0
+        h.eliminate_zeros()
         return h
 
     def acquire_phase(self,
@@ -1151,7 +1144,11 @@ class PauliSum(PauliObject):
             new_phases = (self.phases + np.array(phases)) % (2 * self.lcm)
             self._phases = new_phases
 
-    def ordered_eigenspectrum(self, num_eigens: int | None = None) -> tuple[np.ndarray, np.ndarray]:
+    def ordered_eigenspectrum(
+        self,
+        num_eigens: int | None = None,
+        return_eigenvectors: bool = True,
+    ) -> tuple[np.ndarray, np.ndarray | None]:
         """
         Compute the eigenvalues/eigenvectors of the PauliSum; by default it returns all eigenvectors,
         but it can be restricted to the lowest `num_eigens` eigenvalues/eigenvectors by setting `num_eigens`
@@ -1161,13 +1158,16 @@ class PauliSum(PauliObject):
         ----------
         num_eigens : int | None
             The number of eigenvalues and eigenvectors to return. If None, all are returned.
+        return_eigenvectors : bool
+            Whether to return eigenvectors in addition to eigenvalues.
 
         Returns
         -------
         en : float or numpy.ndarray
             A 1D array of all eigenvalues sorted ascending.
-        gs : numpy.ndarray
-            Eigenvectors sorted to match ``en``.
+        gs : numpy.ndarray | None
+            Eigenvectors sorted to match ``en`` if ``return_eigenvectors`` is True,
+            otherwise None.
         """
 
         if not self.is_hermitian():
@@ -1184,14 +1184,47 @@ class PauliSum(PauliObject):
             num_eigens = matrix_size
 
         # Get eigenvalues and eigenvectors
+        if num_eigens == 1 and matrix_size > 3:
+            if return_eigenvectors:
+                val, vec = spla.eigsh(sparse_matrix, k=1, which="SA")
+            else:
+                val = spla.eigsh(sparse_matrix, k=1, which="SA", return_eigenvectors=False)
+            energy = np.array([float(np.real(val[0]))], dtype=float)
+            assert np.allclose(np.imag(energy), 0.0, rtol=1e-10), \
+                "Energy is not real, but the matrix is Hermitian."
+
+            if not return_eigenvectors:
+                return energy, None
+
+            state = np.asarray(vec[:, 0], dtype=complex)
+            normalized_state = state / np.linalg.norm(state)
+
+            assert np.allclose(np.linalg.norm(normalized_state), 1.0,
+                               rtol=1e-10), "Eigenvector is not normalized."
+
+            return energy, normalized_state.reshape(1, -1)
         if num_eigens >= matrix_size - 2:
             val, vec = np.linalg.eigh(sparse_matrix.toarray())
             val = val[:num_eigens]
-            vec = vec[:, :num_eigens]
+            if return_eigenvectors:
+                vec = vec[:, :num_eigens]
         else:
             weights = np.abs(self.weights)
             total_weights = np.sum(weights)
-            val, vec = sp.linalg.eigsh(sparse_matrix, k=num_eigens, sigma=-1.1 * total_weights)
+            if return_eigenvectors:
+                val, vec = spla.eigsh(sparse_matrix, k=num_eigens, sigma=-1.1 * total_weights)
+            else:
+                val = spla.eigsh(
+                    sparse_matrix, k=num_eigens, sigma=-1.1 * total_weights, return_eigenvectors=False
+                )
+
+        if not return_eigenvectors:
+            tmp_index = np.argsort(val)
+            energies = np.asarray(val[tmp_index], dtype=float)
+            assert np.allclose(np.imag(energies), 0.0, rtol=1e-10), \
+                "Energies are not real, but the matrix is Hermitian."
+            return energies, None
+
         vec = np.transpose(vec)
 
         # Ordering
@@ -1203,7 +1236,7 @@ class PauliSum(PauliObject):
         # Check normalization
         assert np.allclose(np.linalg.norm(normalized_states, axis=1), 1.0,
                            rtol=1e-10), "Eigenvectors are not normalized."
-        # Check eigenvalues are real - Hermitian matrix!
+        # Check eigenvalues are real
         assert np.allclose(np.imag(energies), 0.0, rtol=1e-10), "Energies are not real, but the matrix is Hermitian."
 
         return (energies, normalized_states)
@@ -1431,13 +1464,79 @@ class PauliSum(PauliObject):
         scipy.sparse.csr_matrix
             Generalized Pauli matrix
         """
-        omega = complex_phase_value(2 * 1, d)
-        aa0 = np.array([1 for _ in range(d)])
-        aa1 = np.array([i for i in range(d)])
-        aa2 = np.array([(i - aX) % d for i in range(d)])
-        aa3 = np.array([omega**(i * aZ) for i in range(d)])
-        X = sp.csr_matrix((aa0, (aa1, aa2)))
-        Z = sp.csr_matrix((aa3, (aa1, aa1)))
-        # if (d == 2) and (aX % 2 == 1) and (aZ % 2 == 1):
-        #    return 1j * (X @ Z)
-        return X @ Z
+        n_mod = aX % d
+        m_mod = aZ % d
+
+        indptr = np.arange(d + 1, dtype=np.int64)
+
+        indices = (np.arange(d, dtype=np.int64) - n_mod) % d
+
+        phase = 2.0 * np.pi * m_mod / d
+        angles = indices * phase
+
+        data = np.empty(d, dtype=np.complex128)
+        np.cos(angles, out=data.real)
+        np.sin(angles, out=data.imag)
+        data.real[np.abs(data.real) < 1e-15] = 0.0
+        data.imag[np.abs(data.imag) < 1e-15] = 0.0
+
+        return sp.csr_matrix(
+            (data, indices, indptr),
+            shape=(d, d),
+            dtype=np.complex128,
+            copy=False,
+        )
+
+
+def string_to_hilbert(dimensions: DimensionsLike, x_exp: IntArrayLike, z_exp: IntArrayLike) -> sp.csr_matrix:
+    dimensions = np.asarray(dimensions, dtype=np.int64)
+    x_exp = np.asarray(x_exp, dtype=np.int64)
+    z_exp = np.asarray(z_exp, dtype=np.int64)
+
+    n_qudits = dimensions.size
+    D = np.prod(dimensions)
+
+    n_mod = np.mod(x_exp, dimensions)
+    m_mod = np.mod(z_exp, dimensions)
+
+    indptr = np.arange(D + 1, dtype=np.int64)
+    indices = np.zeros(D, dtype=np.int64)
+
+    rows = np.arange(D, dtype=np.int64)
+
+    phase_angle = np.zeros(D, dtype=np.float64)
+
+    # Reusable work arrays for in-place computations
+    digit = np.empty(D, dtype=np.int64)
+    indices_temp = np.empty(D, dtype=np.int64)
+    phase_temp = np.empty(D, dtype=np.float64)
+
+    for n in range(n_qudits):
+        d = dimensions[n]
+        stride = np.prod(dimensions[n + 1 :])
+
+        np.floor_divide(rows, stride, out=digit)
+        np.mod(digit, d, out=digit)
+
+        np.subtract(digit, n_mod[n], out=digit)
+        np.mod(digit, d, out=digit)
+
+        np.multiply(digit, stride, out=indices_temp)
+        np.add(indices, indices_temp, out=indices)
+
+        coeff = 2.0 * np.pi * m_mod[n] / d
+        np.multiply(digit, coeff, out=phase_temp)
+        np.add(phase_angle, phase_temp, out=phase_angle)
+
+    data = np.empty(D, dtype=np.complex128)
+    np.cos(phase_angle, out=data.real)
+    np.sin(phase_angle, out=data.imag)
+    data.real[np.abs(data.real) < 1e-15] = 0.0
+    data.imag[np.abs(data.imag) < 1e-15] = 0.0
+
+    return sp.csr_matrix(
+        (data, indices, indptr),
+        shape=(D, D),
+        dtype=np.complex128,
+        copy=False,
+    )

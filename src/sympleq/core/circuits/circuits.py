@@ -13,7 +13,7 @@ from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.paulis._typing import TableauType, DimensionsLike, DimensionsType, PhasesType, HilbertOperator
 
 from .utils import embed_unitary
-from .gates import Gate, GATES, _GenericGate
+from .gates import Gate, GATES, _GenericGate, PauliGate
 from .utils import embed_symplectic
 from sympleq.core.paulis import PauliSum, PauliString, PauliObject
 
@@ -828,6 +828,66 @@ class Circuit:
         # TODO If two gates are the inverse of each other and next to each other, remove them both. This happens
         # in a few algorithms
         raise NotImplementedError
+
+    def local_circuit(self, indices: list[int] | np.ndarray) -> 'Circuit':
+        """
+        Returns a Circuit object containing only the gates that act only on the specified qudit indices.
+        """
+        indices = [int(idx) for idx in indices]
+        index_map = {old: new for new, old in enumerate(indices)}
+
+        def _remap_gate(gate: Gate, gate_indices: tuple[int, ...]):
+            if isinstance(gate, PauliGate):
+                ps = gate.pauli_string
+                gate_index_map = {old: pos for pos, old in enumerate(gate_indices)}
+
+                for pos, old_idx in enumerate(gate_indices):
+                    x_nonzero = int(ps.x_exp[pos]) % int(ps.dimensions[pos]) != 0
+                    z_nonzero = int(ps.z_exp[pos]) % int(ps.dimensions[pos]) != 0
+                    if old_idx not in index_map and (x_nonzero or z_nonzero):
+                        return None
+
+                x_local = []
+                z_local = []
+                dims_local = []
+                for old_idx in indices:
+                    pos = gate_index_map.get(old_idx)
+                    if pos is None:
+                        x_local.append(0)
+                        z_local.append(0)
+                        dims_local.append(int(self.dimensions[old_idx]))
+                    else:
+                        x_local.append(int(ps.x_exp[pos]))
+                        z_local.append(int(ps.z_exp[pos]))
+                        dims_local.append(int(ps.dimensions[pos]))
+
+                ps_local = PauliString.from_exponents(x_local, z_local, dims_local)
+                if ps_local.n_identities() == ps_local.n_qudits():
+                    return None
+
+                try:
+                    return (PauliGate(ps_local), tuple(range(len(indices))))
+                except ValueError:
+                    # PauliGate requires at least one non-trivial component; skip if trivial on this subset.
+                    return None
+
+            # Skip gates that touch qudits outside the requested subset
+            if not all(idx in index_map for idx in gate_indices):
+                return None
+
+            # Generic gate: copy and remap indices/dimensions to the local numbering
+            new_indices = tuple(index_map[idx] for idx in gate_indices)
+            return (gate, new_indices)
+
+        local_gates = []
+        local_indices = []
+        for i, gate in enumerate(self.gates):
+            remapped = _remap_gate(gate, self.qudit_indices[i])
+            if remapped is not None:
+                local_gates.append(remapped[0])
+                local_indices.append(remapped[1])
+        local_dimensions = [self.dimensions[i] for i in indices]
+        return Circuit(local_dimensions, local_gates, local_indices)
 
     def gates_layout(self,
                      with_qudit_indices: bool = False,

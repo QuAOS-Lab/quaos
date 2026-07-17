@@ -526,7 +526,7 @@ class PauliString(PauliObject):
         return int(phase % (2 * self.lcm))
 
     # TODO: not sure if here it is best to return a new object or not
-    def _delete_qudits(self, mask: np.ndarray, return_new: bool = True) -> PauliString:
+    def _delete_qudits(self, mask: list[int] | np.ndarray, return_new: bool = True) -> PauliString:
         """
         Delete specified qudits from the PauliString.
         Removes the qudits at the given indices from the internal representations
@@ -536,8 +536,8 @@ class PauliString(PauliObject):
 
         Parameters
         ----------
-        mask : np.ndarray
-            A boolean mask where the value at the indices of the qudits to be deleted is False.
+        mask : list[int] | np.ndarray
+            Indices of the qudits to delete.
         return_new : bool, optional
             If True (default), returns a new PauliString instance with the specified
             qudits removed. If False, modifies the current instance in place and
@@ -549,10 +549,11 @@ class PauliString(PauliObject):
             A new PauliString instance with the specified qudits removed if
             `return_new` is True, otherwise returns self after modification.
         """
-        dimensions = self.dimensions[mask]
-        new_tableau = np.empty(2 * self.n_qudits(), dtype=int)
-        new_tableau[:self.n_qudits()] = self.x_exp[mask]
-        new_tableau[self.n_qudits():] = self.z_exp[mask]
+        remaining_indices = [i for i in range(self.n_qudits()) if i not in mask]
+        dimensions = self.dimensions[remaining_indices]
+        new_tableau = np.empty(2 * len(dimensions), dtype=int)
+        new_tableau[:len(dimensions)] = self.x_exp[remaining_indices]
+        new_tableau[len(dimensions):] = self.z_exp[remaining_indices]
 
         if return_new:
             return PauliString(new_tableau, dimensions)
