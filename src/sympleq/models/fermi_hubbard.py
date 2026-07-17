@@ -113,7 +113,7 @@ def fermi_hubbard_model(x_dimension: int,
                         coulomb: float = 4.0,
                         chemical_potential: float = 0.0,
                         periodic: bool = False,
-                        spinless: bool = False):
+                        spinless: bool = False) -> PauliSum:
 
     tableau, coeffs, _, n_qubits = fermi_hubbard_tableau(Lx=x_dimension,
                                                          Ly=y_dimension,
@@ -125,10 +125,3 @@ def fermi_hubbard_model(x_dimension: int,
 
     P = PauliSum.from_tableau(tableau, weights=coeffs, dimensions=[2] * n_qubits)
     return P
-
-
-if __name__ == "__main__":
-    fh_model = fermi_hubbard_model(x_dimension=4, y_dimension=2)
-    print(fh_model)
-    print(fh_model.n_qudits())
-    print(fh_model.n_paulis())
