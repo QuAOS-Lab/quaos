@@ -3,7 +3,7 @@ from sympleq.core.circuits import Gate
 import numpy as np
 
 
-def ising_chain_hamiltonian(n_spins, J_zz, h_x, periodic=False):
+def ising_chain_hamiltonian(n_spins, J_zz, h_x, periodic=False) -> PauliSum:
     """
     Constructs the Hamiltonian of the 1D Ising model in a transverse field.
 
