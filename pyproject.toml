@@ -44,6 +44,7 @@ experiments = [
     "gpytorch>=1.13.0",
     "pytket-quantinuum>=0.58.0",
 ]
+symmetry-finding = ["igraph>=0.11.0,<2.0.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
