@@ -1,8 +1,7 @@
 # flake8: noqa
 """
-Currently this module implements Lemma 5.1 in https://kups.ub.uni-koeln.de/50465/1/dissertation_heinrich.pdf
-to build the necessary transvection(s) to map one PauliSum in GF(p) to another.
-It also assumes p is prime dimension.
+Build the transvection sequence needed to map one PauliSum in GF(p) to another.
+This currently assumes prime qudit dimension.
 
 Future extensions: input symplectic matrix -> output symplectic matrix.
 """
