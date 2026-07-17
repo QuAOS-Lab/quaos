@@ -19,7 +19,6 @@ export DOC_INDEX=$DOC_ROOT/_build/html/index.html
 export PYTHON_PY_SETUP="./"
 export PERSONAL_FOLDER=scripts/personal
 export DIST_FOLDER=dist/
-export DEV_REQUIREMENTS=scripts/configs/dev_requirements.txt
 
 # Clear notebooks env variables
 export NOTEBOOKS_ROOT_DIR=$PROJECT_ROOT

@@ -10,7 +10,6 @@ env:
   SETUP_PY: ./
   SRC_DIR: ./src/sympleq
   PYTEST_INI: ./scripts/configs/pytest.ini
-  DEV_REQUIREMENTS: ./scripts/configs/dev_requirements.txt
   FLAKE8_CONFIG: ./scripts/configs/setup.cfg
   COVERAGE_REPORT_XML: ./docs/tests_results/coverage_report.xml
   COVERAGE_REPORT_HTML: ./docs/tests_results/coverage_html_report
@@ -32,7 +31,6 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           setup-path: ${{ env.SETUP_PY }}
-          dev-requirements: ${{ env.DEV_REQUIREMENTS }}
           extra-packages: "flake8"
           checkout: "false"
 
@@ -54,8 +52,6 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           setup-path: ${{ env.SETUP_PY }}
-          dev-requirements: ${{ env.DEV_REQUIREMENTS }}
-          extra-packages: "pytest pytest-cov"
           checkout: "false"
 
       - name: Pytest (No Benchmarking)
