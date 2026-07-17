@@ -304,7 +304,8 @@ class TestGates():
         # Map X to Z on a single qubit: [1, 0] -> [0, 1]
         input_tableau = np.array([[1, 0]])
         target_tableau = np.array([[0, 1]])
-        gate = Gate.solve_from_target(input_tableau, target_tableau)
+        dim = 2
+        gate = Gate.solve_from_target(input_tableau, target_tableau, dim)
         result = (input_tableau @ gate.symplectic) % 2
         assert np.array_equal(result, target_tableau), f"Single mapping failed: {result} != {target_tableau}"
 
@@ -318,7 +319,7 @@ class TestGates():
             random_gate = Gate.from_random(n, 2)
             target_tableau = (input_tableau @ random_gate.symplectic) % 2
 
-            gate = Gate.solve_from_target(input_tableau, target_tableau)
+            gate = Gate.solve_from_target(input_tableau, target_tableau, dim)
             result = (input_tableau @ gate.symplectic) % 2
             assert np.array_equal(result, target_tableau), "Multi-Pauli mapping failed"
 

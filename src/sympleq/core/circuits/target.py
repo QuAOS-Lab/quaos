@@ -46,13 +46,7 @@ def find_map_to_target_pauli_sum(input_pauli: PauliSum, target_pauli: PauliSum) 
     input_tableau = input_pauli.tableau  # [:, qudit_indices]
     target_tableau = target_pauli.tableau  # [:, qudit_indices]
 
-    F = map_pauli_sum_to_target_tableau(input_tableau, target_tableau)
-
-    # print('IN FUNCTION')
-    # # print(input_symplectic)
-    # # print()
-    # print(target_symplectic - input_symplectic @ F % 2)
-    # print('----------')
+    F = map_pauli_sum_to_target_tableau(input_tableau, target_tableau, p=int(gate_dimension), method="auto")
 
     h = get_phase_vector(F, gate_dimension)
 

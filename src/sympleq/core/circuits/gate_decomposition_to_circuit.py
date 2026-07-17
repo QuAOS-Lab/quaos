@@ -83,7 +83,26 @@ def _is_invertible_mod(A: np.ndarray, p: int) -> bool:
 # ---------- preconditioner (BFS over Gate objects) ----------
 
 
-def ensure_invertible_A_circuit(F: TableauType, p: int, max_depth: int | None = None) -> Circuit:
+def _current_rss_bytes() -> int | None:
+    """Return current resident memory on Linux, or None when unavailable."""
+    try:
+        with open("/proc/self/status", encoding="utf-8") as status_file:
+            for line in status_file:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        return None
+    return None
+
+
+def ensure_invertible_A_circuit(
+    F: TableauType,
+    p: int,
+    max_depth: int | None = None,
+    *,
+    max_bfs_states: int | None = 1_000_000,
+    max_bfs_rss_bytes: int | None = 60 * 1024**3,
+) -> Circuit:
     """
     Find a Circuit C_pre such that the A-block of (C_pre.full_symplectic(n) @ F) is invertible mod p.
     Returns the Circuit (does NOT modify F).
@@ -95,6 +114,24 @@ def ensure_invertible_A_circuit(F: TableauType, p: int, max_depth: int | None = 
     A, _, _, _ = blocks(F, p)
     if _is_invertible_mod(A, p):
         return Circuit.empty([p] * n)
+
+    # A common singular-A case is fixed by applying H gates, which exchange
+    # X/Z rows on selected qudits.  Try this structured search before the
+    # unrestricted BFS below; it avoids a combinatorial blow-up for dense
+    # Clifford basis transforms.
+    if p == 2 and n <= 20:
+        for mask in range(1, 1 << n):
+            F_new = F.copy()
+            ops: list[GateSpec] = []
+            for q in range(n):
+                if (mask >> q) & 1:
+                    F_new[[q, n + q], :] = F_new[[n + q, q], :]
+                    ops.append((H, q))
+            Anew, _, _, _ = blocks(F_new, p)
+            if _is_invertible_mod(Anew, p):
+                C_pre = Circuit.empty([p] * n)
+                _add_ops_to_circuit(C_pre, ops)
+                return C_pre
 
     if max_depth is None:
         max_depth = max(1, 3 * n)
@@ -120,8 +157,24 @@ def ensure_invertible_A_circuit(F: TableauType, p: int, max_depth: int | None = 
     seen = {tuple(F.flatten())}
     queue: list[tuple[np.ndarray, list[GateSpec]]] = [(F, [])]
     head = 0
+    rss_check_every = 1024
 
     while head < len(queue):
+        if max_bfs_states is not None and len(seen) > max_bfs_states:
+            raise MemoryError(
+                "A-block preconditioner BFS exceeded "
+                f"max_bfs_states={max_bfs_states}. "
+                "Use a structured preconditioner or increase the cap explicitly."
+            )
+        if max_bfs_rss_bytes is not None and head % rss_check_every == 0:
+            rss = _current_rss_bytes()
+            if rss is not None and rss > max_bfs_rss_bytes:
+                raise MemoryError(
+                    "A-block preconditioner BFS exceeded "
+                    f"max_bfs_rss_bytes={max_bfs_rss_bytes} "
+                    f"(current RSS={rss}). "
+                    "Use a structured preconditioner or increase the cap explicitly."
+                )
         F_cur, ops = queue[head]
         head += 1
         if len(ops) >= max_depth:
