@@ -152,7 +152,7 @@ SAVE_REAL_CHECKPOINTS = True
 # RECOVERY HANDLES
 # -------------------------------------------------------------------------
 
-RECOVERY_MODE = True
+RECOVERY_MODE = False
 RECOVERY_FOLDER = Path(r"Personal\FLE\H2_2\seed_2026\FLE_20260708_113322")
 
 # -------------------------------------------------------------------------
@@ -192,7 +192,7 @@ BACKEND_FACTORY = quantinuum_H2_backend_factory
 # REPRODUCIBILITY / DEBUG HANDLES
 # -------------------------------------------------------------------------
 
-RNG_SEEDS = [2026]
+RNG_SEEDS = [2029]
 VERBOSE_FANTASIES = True
 PLOT = True
 
