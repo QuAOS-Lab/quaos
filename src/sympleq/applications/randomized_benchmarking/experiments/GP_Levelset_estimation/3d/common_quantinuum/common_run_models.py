@@ -34,7 +34,7 @@ from pathlib import Path
 import numpy as np
 
 
-from sympleq.applications.randomized_benchmarking.RMB import RMB, RMB, resolve_data_path
+from sympleq.applications.randomized_benchmarking.RMB import RMB, resolve_data_path
 from sympleq.applications.randomized_benchmarking.experiments.common import (
     batch_hqc_cost,
     default_backend_factory,
@@ -42,7 +42,6 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     quantinuum_H21E_backend_factory,
     quantinuum_emulator_backend_factory,
     print_experiment_summary,
-    print_progress,
     print_progress,
     start_run,
 )
@@ -57,13 +56,11 @@ if MODEL == "FLE":
         FantasySettings as SettingsClass,
         RNG_SEEDS,
         QUBIT_BAND_LENGTHS,
-        QUBIT_BAND_LENGTHS,
         control_panel_settings_kwargs as settings_kwargs
     )
 
     from FLE_3d_fix_qubit_band import (
         Observation,
-        add_observation_to_strategy,
         add_observation_to_strategy,
         build_strategy,
         choose_gp_device,
@@ -92,25 +89,31 @@ else:
 
 
 # Storing
-def timestamped_personal_save_path(seed: int | None = None, qubit_band_length: int | None = None) -> Path:
+def backend_folder_from_kwargs(seed_kwargs: dict) -> str:
+    """Return the run-folder backend name from the backend's device_name."""
+
+    settings = SettingsClass(**seed_kwargs)
+    backend_factory = seed_kwargs.get("backend_factory", default_backend_factory)
+    backend = backend_factory(settings, np.random.default_rng(settings.rng_seed))
+    device_name = getattr(backend, "device_name", type(backend).__name__)
+    return str(device_name).replace("-", "_")
+
+
+def timestamped_personal_save_path(
+    seed: int | None = None,
+    qubit_band_length: int | None = None,
+    backend_folder: str = "backend_unknown",
+) -> Path:
     """Timestamped run folder and final JSON path under ``Personal``."""
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     seed_folder = "seed_unseeded" if seed is None else f"seed_{seed}"
     band_folder = f"qband_{qubit_band_length}" if qubit_band_length is not None else "qband_unseeded"
-    backend_folder = "H2_1"
     model_folder = "CostAware" if MODEL == "COST_AWARE" else "FLE"
 
     run_folder = Path("Personal") / model_folder / backend_folder / band_folder / seed_folder / f"FLE_{timestamp}"
 
     return run_folder / f"FLE_{timestamp}.json"
-
-
-def timestamped_recovery_save_path(recovery_folder: str | Path) -> Path:
-    """Timestamped final JSON path inside an existing recovery folder."""
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return Path(recovery_folder) / f"FLE_recovery_{timestamp}.json"
 
 
 def timestamped_recovery_save_path(recovery_folder: str | Path) -> Path:
@@ -141,11 +144,6 @@ def write_hqc_metadata(
         "repair_stats": repair_stats(),
     }
     if sent_configs is not None:
-        sent_configs = sorted(
-            sent_configs,
-            key=lambda config: config.n_qubits,
-            reverse=True,
-        )
         sent_configs = sorted(
             sent_configs,
             key=lambda config: config.n_qubits,
@@ -828,62 +826,11 @@ def run_FLE(
                     "observations; running Sobol."
                 )
 
-    recovered_observations = 0
-    recovered_sobol_count = 0
-    if settings.recovery_mode:
-        recovery_json = latest_recovery_json(settings)
-        if recovery_json is None:
-            print("[recovery] enabled, but no checkpoint JSON found; running Sobol.")
-        else:
-            output_folder = (
-                Path(settings.save_path).parent
-                if settings.save_path is not None
-                else recovery_json.parent
-            )
-            checkpoint_step = latest_measurement_checkpoint_step(output_folder)
-            print(f"[recovery] next measurement step starts after {checkpoint_step}")
-
-            recovered_hqc_spent = recovery_hqc_spent(recovery_json)
-            if recovered_hqc_spent is None:
-                print(f"[recovery] HQC spent unavailable in {recovery_json}")
-            else:
-                budget.spent_hqc = recovered_hqc_spent
-                budget.remaining_hqc = max(0.0, float(settings.hqc_budget) - recovered_hqc_spent)
-                print(f"[recovery] recovered HQC spent = {recovered_hqc_spent:.6g}")
-                print(f"[recovery] remaining HQC budget = {budget.remaining_hqc:.6g}")
-
-            recovered_observations = recover_observations_from_json(
-                recovery_json,
-                strategy=strategy,
-                rmb=rmb,
-                observations=observations,
-                results_for_plot=results_for_plot,
-                device=gp_device,
-            )
-            if recovered_observations:
-                recovered_sobol_count = read_recovered_sobol_submissions(
-                    recovery_json,
-                    settings.initial_sobol_submissions,
-                )
-                print(
-                    f"[recovery] loaded {recovered_observations} observations "
-                    f"from {recovery_json}; recovered "
-                    f"{recovered_sobol_count} Sobol submissions."
-                )
-            else:
-                print(
-                    f"[recovery] found {recovery_json}, but it contained no "
-                    "observations; running Sobol."
-                )
-
     # -------------------------------------------------------------------------
     # 2. Sobol warm-up batch
     # -------------------------------------------------------------------------
 
     exhausted = False
-
-    sobol_candidates = [] if recovered_observations else sobol_initial_candidates(settings)
-    sobol_submissions = 0
 
     max_sobol_submissions = settings.initial_sobol_submissions
     sobol_candidates = sobol_initial_candidates(settings)
@@ -1159,8 +1106,12 @@ def main(model, SettingsClass, settings_kwargs) -> None:
                         seed_kwargs["recovery_folder"]
                     )
                 else:
+                    backend_folder = backend_folder_from_kwargs(seed_kwargs)
                     seed_kwargs["save_path"] = timestamped_personal_save_path(
-                        seed=rng_seed, qubit_band_length=qubit_band_length)
+                        seed=rng_seed,
+                        qubit_band_length=qubit_band_length,
+                        backend_folder=backend_folder,
+                    )
                 print(
                     f"\n[seed run] {run_index}/{len(RNG_SEEDS)} "
                     f"rng_seed={rng_seed} save_path={seed_kwargs['save_path']}\n"
