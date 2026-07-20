@@ -2,8 +2,10 @@ from __future__ import annotations
 import numpy as np
 import galois
 
+from sympleq._typing import IntArrayLike, IntNDArray
 
-def bases_to_int(base, dimensions) -> int:
+
+def bases_to_int(base: IntArrayLike, dimensions: IntArrayLike) -> int:
     """
     Converts a list of integers (base) given the dimensions to an integer. Base can be thought of as a number
     in basis of the dimensions which is converted to a number in base 10.
@@ -38,7 +40,7 @@ def bases_to_int(base, dimensions) -> int:
     return number
 
 
-def int_to_bases(number: int, dimensions: int | list[int] | np.ndarray) -> np.ndarray:
+def int_to_bases(number: int, dimensions: IntArrayLike) -> IntNDArray:
     """
     Converts an integer to a list of integers given the dimensions. The returned list of integers can be thought of
     as a number in basis of the dimensions which is converted from a number in base 10.
@@ -74,7 +76,8 @@ def int_to_bases(number: int, dimensions: int | list[int] | np.ndarray) -> np.nd
     return np.flip(np.array(base, dtype=int))
 
 
-def get_linearly_independent_rows(A: np.ndarray, d: int) -> list[int]:
+# TODO: This function is not used anywhere in the codebase. Remove it in a following PR.
+def get_linearly_independent_rows(A: IntNDArray, d: int) -> list[int]:
     """
     Returns the pivot column indices for the row-reduced form of matrix A over a Galois field.
 
@@ -121,7 +124,7 @@ def complex_phase_value(phase: int, dimension: int) -> complex:
     return np.exp(2 * np.pi * 1j * phase / (2 * dimension))
 
 
-def multi_kron(matrices):
+def multi_kron(matrices: list[np.ndarray]) -> np.ndarray:
     """
     Compute the Kronecker product of multiple matrices.
 
