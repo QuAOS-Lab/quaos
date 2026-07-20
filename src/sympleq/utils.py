@@ -113,15 +113,14 @@ def complex_phase_value(phase: int, dimension: int) -> complex:
     Returns:
         complex: The computed eigenvalue.
     """
-    phase = int(phase) % (2 * int(dimension))
-    dimension = int(dimension)
+    phase = phase % (2 * dimension)
 
     # Avoid roundoff for the common quadrant roots 1, i, -1, -i.
     if (2 * phase) % dimension == 0:
         quadrant = ((2 * phase) // dimension) % 4
         return (1.0 + 0.0j, 0.0 + 1.0j, -1.0 + 0.0j, 0.0 - 1.0j)[quadrant]
-
-    return np.exp(2 * np.pi * 1j * phase / (2 * dimension))
+    else:
+        return np.exp(2 * np.pi * 1j * phase / (2 * dimension))
 
 
 def multi_kron(matrices: list[np.ndarray]) -> np.ndarray:
