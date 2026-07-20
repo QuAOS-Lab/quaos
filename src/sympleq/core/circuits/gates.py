@@ -665,7 +665,7 @@ class _V(Gate):
     """V = √X gate: X -> X, Z -> -Y = -XZ. Has special phase vector for qubits.
 
     V is the X-axis analog of S: V = exp(-iπ/4 X). Together with S and any
-    entangling Clifford, V generates the single-qubit Clifford group, which
+    entangling Clifford, V generates the Clifford group, which
     makes ``{S, V, ZZMax}`` a useful generating set on Quantinuum H2 since
     each element maps 1:1 to a single H2 native gate (Rz(0.5), PhasedX(0.5, 0),
     ZZMax respectively).
@@ -697,6 +697,8 @@ class _V(Gate):
         if dimension is None:
             dimension = DEFAULT_QUDIT_DIMENSION
         if dimension != 2:
+            # FIXME: An easy way to define it for qudit is to apply a Hadamard to the S gate:
+            # H@S@H_inv
             raise NotImplementedError(
                 "V (= √X) is only implemented for qubits (dimension=2)."
             )

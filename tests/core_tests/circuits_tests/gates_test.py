@@ -347,7 +347,7 @@ class TestGates():
         assert np.allclose(U_V @ U_V_inv, np.eye(2)), "V · V_inv != I"
 
     def test_V_squared_is_X_up_to_phase(self):
-        """V² = -i·X (up to global phase)."""
+        """V² = -i·X"""
         U_V = GATES.V.local_unitary(2).toarray()
         X = np.array([[0, 1], [1, 0]], dtype=complex)
         assert np.allclose(U_V @ U_V, -1j * X), "V² != -i·X"

@@ -550,6 +550,7 @@ class GenericNoise(NoiseModel):
     def from_paulis(cls, probabilities: list[float], rng: RNGGenerator | None = None) -> GenericNoise:
         """
         Create a GenericNoise from probabilities using the Pauli gates as default gates set.
+        probabilities[i] refer to Pauli X, Y, and Z for i=1, 2, and 3, respectively
 
         Parameters
         ----------

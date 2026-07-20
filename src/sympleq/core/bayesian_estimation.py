@@ -8,6 +8,8 @@ type EstimatorCallable[T: Hashable] = Callable[[], T | list[T]]
 
 
 class BayesianEstimator:
+    # FIXME: after merging the RMB applications, check if the posteriors are needed
+    # or if we can refactor using priors
     def __init__(self, threshold: float = 10**(-2), min_runs: int = 100, max_runs: int | None = None) -> None:
         """
         Initialize the Bayesian estimator.
