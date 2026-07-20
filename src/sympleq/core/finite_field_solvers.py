@@ -5,8 +5,10 @@ from math import gcd
 import galois
 from collections import defaultdict
 
+from sympleq._typing import IntNDArray
 
-def solve_linear_system_over_gf(A: np.ndarray, b: np.ndarray, GF: type | int) -> np.ndarray:
+
+def solve_linear_system_over_gf(A: IntNDArray, b: IntNDArray, GF: type | int) -> IntNDArray:
     """
     Solve the system A @ x = b over a finite field.
     Returns one particular solution with free variables set to zero.
@@ -108,7 +110,7 @@ def solve_linear_system_over_gf(A: np.ndarray, b: np.ndarray, GF: type | int) ->
     return x.copy()
 
 
-def solve_gf2(A: np.ndarray, b: np.ndarray) -> np.ndarray | None:
+def solve_gf2(A: IntNDArray, b: IntNDArray) -> IntNDArray | None:
     """
     Solve the linear system Ax = b over GF(2) using Gaussian elimination.
 
@@ -155,7 +157,7 @@ def solve_modular_linear_additive(x: int, z: int, d: int) -> int:
     return n
 
 
-def solve_modular_linear_system(B, v):
+def solve_modular_linear_system(B: IntNDArray, v: IntNDArray) -> IntNDArray:
     """
     Solve x @ B = v over GF(p) using row-reduction (RREF)
     """
@@ -166,7 +168,7 @@ def solve_modular_linear_system(B, v):
     return solution
 
 
-def gf_solve(A: np.ndarray, b: np.ndarray, GF: type) -> np.ndarray:
+def gf_solve(A: IntNDArray, b: IntNDArray, GF: type) -> IntNDArray:
     """
     Solve A x = b over GF(p). Returns one particular solution or raises ValueError if inconsistent.
     """
@@ -175,8 +177,8 @@ def gf_solve(A: np.ndarray, b: np.ndarray, GF: type) -> np.ndarray:
 
 
 def get_linear_dependencies(
-    vectors: np.ndarray,
-    p: int | list[int] | np.ndarray,
+    vectors: IntNDArray,
+    p: int | list[int] | IntNDArray,
     compute_dependencies: bool = True,
 ) -> tuple[list[int], dict[int, list[tuple[int, int]]]]:
     """
@@ -293,7 +295,7 @@ def get_linear_dependencies(
 # ----------------------------
 
 def _get_deps_single_prime(
-    V: np.ndarray, p: int, compute_dependencies: bool
+    V: IntNDArray, p: int, compute_dependencies: bool
 ) -> tuple[list[int], dict[int, list[tuple[int, int]]]]:
     """
     Exact pivots + dependencies for a single prime field GF(p).
@@ -343,15 +345,15 @@ class _IncrementalElim:
         self.p = int(mod)
         self.ncols = int(ncols)
 
-        self.piv_col_to_row: dict[int, np.ndarray] = {}
+        self.piv_col_to_row: dict[int, IntNDArray] = {}
         self.piv_col_to_combo: dict[int, dict[int, int]] = {}
         self.pivot_cols: list[int] = []  # keep sorted for deterministic reduction order
 
-    def would_increase_rank(self, row: np.ndarray) -> bool:
+    def would_increase_rank(self, row: IntNDArray) -> bool:
         r = self._reduce_vec_only(row)
         return self._first_nonzero_col(r) is not None
 
-    def add_row(self, row: np.ndarray, row_id: int, track_combo: bool):
+    def add_row(self, row: IntNDArray, row_id: int, track_combo: bool):
         """
         Add `row` to the basis if independent.
 
@@ -448,7 +450,7 @@ class _IncrementalElim:
                     newc = {k: (v % self.p) for k, v in newc.items() if (v % self.p) != 0}
                     self.piv_col_to_combo[pc] = newc
 
-    def solve_in_span(self, row: np.ndarray) -> Optional[dict[int, int]]:
+    def solve_in_span(self, row: IntNDArray) -> Optional[dict[int, int]]:
         """
         If row is in span(basis), return coefficients on pivot-row IDs:
             row = sum combo[row_id] * V[row_id]  (mod p)
@@ -487,7 +489,7 @@ class _IncrementalElim:
             combo = {k: (v % self.p) for k, v in combo.items() if (v % self.p) != 0}
         return combo
 
-    def _reduce_vec_only(self, row: np.ndarray) -> np.ndarray:
+    def _reduce_vec_only(self, row: IntNDArray) -> IntNDArray:
         """Reduce a row using basis rows, without tracking combos."""
         if self.p == 2:
             r = (row & 1).astype(np.uint8, copy=True)
@@ -503,12 +505,12 @@ class _IncrementalElim:
                     r = (r - coeff * self.piv_col_to_row[piv]) % self.p
             return r
 
-    def _first_nonzero_col(self, r: np.ndarray) -> Optional[int]:
+    def _first_nonzero_col(self, r: IntNDArray) -> Optional[int]:
         nz = np.flatnonzero(r) if self.p == 2 else np.flatnonzero(r % self.p)
         return int(nz[0]) if nz.size else None
 
 
-def gf_inv(A, p: int = 2):
+def gf_inv(A: IntNDArray, p: int = 2) -> IntNDArray:
     """
     Compute the inverse of a square matrix over GF(p) for a prime p.
     Defaults to GF(2) for backwards compatibility.
@@ -546,17 +548,17 @@ def gf_inv(A, p: int = 2):
     return AI[:, n:] % p
 
 
-def gf2_inv(M: np.ndarray) -> np.ndarray:
+def gf2_inv(M: IntNDArray) -> IntNDArray:
     """Invert a square GF(2) matrix using XOR elimination.
 
     Parameters
     ----------
-    M : np.ndarray
+    M : IntNDArray
         Square matrix with entries in {0,1}. Any integer dtype is accepted.
 
     Returns
     -------
-    np.ndarray
+    IntNDArray
         Inverse matrix over GF(2), dtype=uint8.
 
     Raises
@@ -592,7 +594,7 @@ def gf2_inv(M: np.ndarray) -> np.ndarray:
     return aug[:, n:] & 1
 
 
-def gf_rref(A, p: int = 2):
+def gf_rref(A: IntNDArray, p: int = 2) -> tuple[IntNDArray, IntNDArray, IntNDArray, int]:
     """
     Compute the reduced row echelon form of a matrix over GF(p) for a prime p.
     Returns the transformed matrix, the left transformation matrix M (row ops),
@@ -652,7 +654,7 @@ def gf_rref(A, p: int = 2):
     return A % p, M % p, N % p, rank
 
 
-def gf_lu(A, p: int = 2):
+def gf_lu(A: IntNDArray, p: int = 2) -> tuple[IntNDArray, IntNDArray, IntNDArray]:
     """
     Perform LU decomposition of a matrix over GF(p) for prime p.
     Returns L, U, P such that P @ A = L @ U with unit diagonal L.
@@ -689,7 +691,7 @@ def gf_lu(A, p: int = 2):
     return L % p, U % p, P
 
 
-def _select_row_basis_indices(A_int: np.ndarray, p: int, max_rows: int) -> np.ndarray:
+def _select_row_basis_indices(A_int: IntNDArray, p: int, max_rows: int) -> IntNDArray:
     """
     Return indices of a greedily chosen row basis of `A_int` over GF(p).
 
@@ -701,7 +703,7 @@ def _select_row_basis_indices(A_int: np.ndarray, p: int, max_rows: int) -> np.nd
 
     Parameters
     ----------
-    A_int : np.ndarray
+    A_int : IntNDArray
         Integer matrix whose rows are candidate equations.
     p : int
         Prime for the finite field GF(p).
@@ -710,7 +712,7 @@ def _select_row_basis_indices(A_int: np.ndarray, p: int, max_rows: int) -> np.nd
 
     Returns
     -------
-    np.ndarray
+    IntNDArray
         1-D array of row indices that are linearly independent over GF(p).
     """
     GF = galois.GF(p)
