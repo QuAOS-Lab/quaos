@@ -199,3 +199,16 @@ class TestGenericNoise:
             [0.5, 0.3, 0.2], [GATES.Id, GATES.X, GATES.Z]
         )
         assert np.isclose(sum(model.kraus_probabilities()), 1.0)
+
+
+class TestNoiseModelToFromDict:
+    """Round-trip every concrete noise model through to_dict / from_dict."""
+
+    @pytest.mark.parametrize("model", NOISE_MODELS)
+    def test_round_trip(self, model: NoiseModel):
+        payload = model.to_dict()
+        rebuilt = NoiseModel.from_dict(payload)
+        assert type(rebuilt) is type(model)
+        assert [g.name for g in rebuilt.kraus_gates()] == [g.name for g in model.kraus_gates()]
+        assert np.allclose(rebuilt.kraus_probabilities(), model.kraus_probabilities())
+        assert rebuilt.n_qudits() == model.n_qudits()

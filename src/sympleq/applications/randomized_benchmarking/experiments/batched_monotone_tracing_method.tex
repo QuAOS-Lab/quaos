@@ -1,0 +1,422 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\title{Batched Monotone Tracing}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Goal}
+
+The batched monotone tracing method estimates the fidelity-$0.5$ contour in the
+two-dimensional randomized benchmarking configuration space
+\[
+    (n, r) =
+    (\texttt{n\_gates}, \texttt{ratio\_2\_qb\_gates}),
+\]
+where $n$ is the circuit gate count and $r$ is the two-qubit gate ratio.
+For each fixed ratio $r$, the method searches for a local bracket
+\[
+    p(n_{\mathrm{lo}}, r) > 0.5,
+    \qquad
+    p(n_{\mathrm{hi}}, r) < 0.5,
+\]
+and records the midpoint as the crossing estimate
+\[
+    n_*(r) \approx
+    2 \operatorname{round}\left(
+        \frac{n_{\mathrm{lo}} + n_{\mathrm{hi}}}{4}
+    \right).
+\]
+
+Unlike a pure bisection method, this implementation probes several candidate
+gate counts in one stitched batch. This is intended to amortize the fixed
+submission cost while keeping each fixed-ratio search local to the currently
+predicted boundary.
+
+\section{Code Organization}
+
+The implementation is split across:
+
+\begin{itemize}[leftmargin=*]
+    \item \texttt{batched\_monotone\_tracing.py}: settings, backend setup,
+    ratio scheduling, run orchestration, saving, plotting, and scoring.
+    \item \texttt{batched\_tracing\_helpers/hints.py}: line, surface, and
+    analytic contour predictions; conversion of predictions into search
+    windows.
+    \item \texttt{batched\_tracing\_helpers/windows.py}: batched probing,
+    posterior confidence tests, bracket extraction, per-ratio budget handling,
+    and the fixed-ratio search routine.
+    \item \texttt{batched\_tracing\_helpers/constraints.py}: monotonicity
+    constraints and local jump guards.
+\end{itemize}
+
+\section{High-Level Algorithm}
+
+Let $B$ be the remaining global HQC budget and let $C$ be the list of accepted
+crossings. The main loop is:
+
+\begin{enumerate}[leftmargin=*]
+    \item Initialize the backend, random number generator, RMB object, data
+    store, and global budget using \texttt{start\_run}.
+    \item Choose one or more ratio sweeps from \texttt{trace\_direction}.
+    The default direction is downward: start at the upper ratio bound and trace
+    toward the lower ratio bound.
+    \item For each ratio $r$ in the sweep, call \texttt{search\_one\_ratio}.
+    \item If a confident local bracket is found, convert it to a midpoint
+    crossing and append it to $C$.
+    \item If no bracket is found, print a failure message and move to the next
+    ratio.
+    \item Stop when the ratio sweep ends or the global budget is exhausted.
+    \item Save crossings, print the experiment summary, optionally print the
+    score, and optionally plot the results.
+\end{enumerate}
+
+\section{Ratio Scheduling}
+
+\subsection{Start Ratio}
+
+The start ratio is set by \texttt{start\_ratio}. If this is \texttt{None}, the
+default is determined from \texttt{trace\_direction}:
+\[
+\begin{cases}
+    r_{\max}, & \texttt{trace\_direction = "down"},\\
+    r_{\min}, & \texttt{trace\_direction = "up"},\\
+    (r_{\min} + r_{\max}) / 2, & \texttt{trace\_direction = "both"}.
+\end{cases}
+\]
+
+\subsection{Fixed and Adaptive Steps}
+
+If \texttt{adaptive\_ratio\_step} is false, ratios are separated by
+\texttt{ratio\_step}. If it is true, the step is adjusted from the remaining
+span and the remaining HQC budget:
+\[
+    \Delta r =
+    \operatorname{clip}
+    \left(
+        \frac{|r_{\mathrm{stop}} - r|}
+             {\max(1, \lfloor B / \texttt{target\_hqc\_per\_ratio}\rfloor)},
+        \texttt{min\_ratio\_step},
+        \texttt{max\_ratio\_step}
+    \right).
+\]
+This makes the sweep spend fewer ratio slices when the budget is already low.
+
+\section{Predictions and Search Windows}
+
+At each ratio, the method chooses a vertical gate-count window $[n_{\min}, n_{\max}]$
+to probe. The prediction logic uses three possible sources.
+
+\subsection{Analytic Prediction}
+
+The analytic Lindblad contour is evaluated through
+\texttt{analytic\_gate\_counts}. This returns a predicted crossing
+\[
+    \hat n_{\mathrm{analytic}}(r).
+\]
+It is used as a cheap prior, especially before enough measurements exist to
+fit a surface.
+
+\subsection{Line-Fit Prediction}
+
+Once at least two accepted crossings exist, the method fits a line in inverse
+gate count:
+\[
+    \frac{1}{n_*(r)} \approx a r + b.
+\]
+The predicted gate count is then
+\[
+    \hat n_{\mathrm{line}}(r) = \frac{1}{a r + b},
+\]
+provided the denominator is positive.
+
+\subsection{Surface Prediction}
+
+If \texttt{use\_surface\_bracket\_hint} is true and at least
+\texttt{surface\_min\_configs} measured configurations exist, the method fits
+the shared monotone fidelity surface using
+\texttt{try\_fit\_monotone\_fidelity\_surface}. It evaluates the fitted
+surface along the vertical slice at fixed ratio $r$ and finds the first sign
+change of
+\[
+    \hat p(n, r) - 0.5.
+\]
+Linear interpolation between adjacent grid points gives
+$\hat n_{\mathrm{surface}}(r)$.
+
+\section{Initial Anchor Search}
+
+The first accepted crossing is treated specially because no previous contour
+points are available.
+
+\begin{enumerate}[leftmargin=*]
+    \item Try to predict the initial crossing using the surface hint.
+    This usually only works if the run starts with existing data.
+    \item If the surface hint is unavailable, use the analytic prediction.
+    \item If neither prediction is available, fall back to a broad low-to-high
+    window
+    \[
+        [n_{\mathrm{low}},\;
+        \texttt{initial\_bracket\_fraction} \cdot n_{\mathrm{max}}].
+    \]
+    \item If a prediction $\hat n$ exists, center a window on it:
+    \[
+        h =
+        \max\left(
+            2,\;
+            \texttt{initial\_prediction\_window\_fraction}\cdot \hat n,\;
+            \frac{\texttt{initial\_prediction\_min\_width}}{2}
+        \right),
+    \]
+    and probe $[\hat n - h, \hat n + h]$, clamped to
+    \texttt{n\_gates\_bounds}.
+    \item Submit \texttt{initial\_batch\_points} candidate gate counts, each
+    with \texttt{initial\_batch\_shots} shots.
+\end{enumerate}
+
+For broad windows, candidate gate counts are spaced geometrically using
+\texttt{low\_to\_high\_growth\_factor}. For prediction-centered windows, they
+are linearly spaced.
+
+\section{Tracing After an Anchor}
+
+Once one or more crossings have been accepted, the method uses the previous
+crossings to form a wider safe bracket and then narrows it to a focused batch
+window.
+
+\subsection{Wide Bracket}
+
+The function \texttt{next\_bracket} first chooses predictions according to
+\texttt{bracket\_hint}, which may be \texttt{"line"}, \texttt{"surface"}, or
+\texttt{"both"}. If predictions are available, their median is used as the
+center. The half-width is
+\[
+    w =
+    \max\left(
+        \texttt{bracket\_half\_width\_fraction}\cdot \hat n,\;
+        \max_i |\hat n - \hat n_i|,\;
+        2
+    \right).
+\]
+The bracket is then enlarged using the most recent crossing. When tracing
+downward in ratio, the high side may expand to
+\[
+    n_{\mathrm{last}} \cdot \texttt{trace\_gate\_growth},
+\]
+and the low side may include
+\[
+    n_{\mathrm{last}} \cdot \texttt{trace\_gate\_shrink}.
+\]
+The analogous inverse scaling is used when tracing upward.
+
+If no prediction is available, the method falls back to a bracket based only on
+the last accepted crossing and \texttt{trace\_gate\_growth} or
+\texttt{trace\_gate\_shrink}.
+
+\subsection{Monotonic Bounds}
+
+The wide bracket is intersected with bounds implied by nearby accepted
+crossings. The assumed contour is monotone: moving to lower two-qubit ratio
+should require the same or more total gates to reach fidelity $0.5$.
+
+Only the nearest accepted crossing above and below the current ratio are used.
+This avoids overconstraining the search with distant noisy anchors. A slack
+band is added:
+\[
+    s =
+    \max(
+        \texttt{monotonic\_min\_slack\_gates},\;
+        \texttt{monotonic\_slack\_fraction}\cdot n_{\mathrm{anchor}}
+    ).
+\]
+
+When tracing downward, an additional growth floor can be imposed from the
+analytic contour:
+\[
+    g =
+    \max\left(
+        \texttt{downward\_growth\_floor\_min\_gates},\;
+        \texttt{downward\_growth\_floor\_fraction}
+        \left[
+            \hat n_{\mathrm{analytic}}(r)
+            -
+            \hat n_{\mathrm{analytic}}(r_{\mathrm{anchor}})
+        \right]
+    \right).
+\]
+This prevents the trace from staying vertically flat for too long when the
+analytic model expects gate count to increase.
+
+After at least \texttt{trace\_gate\_jump\_min\_anchors} accepted crossings,
+local jump guards also limit unusually large jumps. The allowed jump from an
+anchor is scaled by
+\[
+    \min\left(
+        \texttt{trace\_gate\_jump\_step\_scale\_cap},\;
+        \max\left(1,\frac{|r-r_{\mathrm{anchor}}|}{\texttt{ratio\_step}}\right)
+    \right).
+\]
+The growth side is controlled by \texttt{max\_trace\_gate\_growth\_fraction};
+the shrink side is controlled by \texttt{max\_trace\_gate\_shrink\_fraction}.
+
+\subsection{Focused Batch Window}
+
+The function \texttt{trace\_batch\_window} collects all available predictions:
+surface, line, and analytic. It chooses a prediction quantile rather than
+always taking the median:
+\[
+    q =
+    \begin{cases}
+        \texttt{downward\_prediction\_quantile}, & r < r_{\mathrm{last}},\\
+        \texttt{upward\_prediction\_quantile}, & r > r_{\mathrm{last}},\\
+        0.5, & \text{otherwise}.
+    \end{cases}
+\]
+This predicted center is converted into a narrower window:
+\[
+    h =
+    \max\left(
+        2,\;
+        \texttt{trace\_batch\_window\_fraction}\cdot \hat n,\;
+        \frac{\texttt{trace\_batch\_min\_width}}{2}
+    \right).
+\]
+The final probed window is $[\hat n-h,\hat n+h]$ clamped inside both the wide
+bracket and the monotonic bounds.
+
+\section{Batched Probing}
+
+For a chosen ratio and gate-count window, the method creates
+\texttt{MeasurementRequest} objects for a small set of candidate gate counts.
+
+\begin{itemize}[leftmargin=*]
+    \item Initial-anchor windows use \texttt{initial\_batch\_points} and
+    \texttt{initial\_batch\_shots}.
+    \item Trace windows use \texttt{trace\_batch\_points} and
+    \texttt{trace\_batch\_shots}.
+    \item Broad windows use geometric spacing.
+    \item Prediction-centered windows use linear spacing.
+\end{itemize}
+
+Requests are packed into stitched batches subject to
+\texttt{max\_cost\_per\_run}. Before a batch is submitted, its HQC cost is
+checked against both the global budget and the current ratio budget.
+
+\section{Budgeting}
+
+The first anchor search may use the full remaining global budget. After at
+least one crossing has been accepted, each ratio is capped by
+\texttt{max\_hqc\_per\_ratio}, if that parameter is not \texttt{None}. The
+effective spendable amount for a batch is
+\[
+    \min(B_{\mathrm{global}}, B_{\mathrm{ratio}}).
+\]
+
+This keeps later fixed-ratio searches from consuming the entire remaining
+budget when a local window fails to bracket cleanly.
+
+\section{Bracket Acceptance}
+
+After the batch is measured, configurations are scanned in increasing gate
+count. For each measured configuration, the code computes the posterior mean
+and posterior probability that the true fidelity is above $0.5$:
+\[
+    P(p(n,r) > 0.5 \mid \mathrm{data}).
+\]
+
+A point is treated as confidently above the boundary when
+\[
+    P(p(n,r) > 0.5 \mid \mathrm{data})
+    \geq
+    \texttt{decision\_confidence}.
+\]
+A point is treated as confidently below the boundary when
+\[
+    1 -
+    P(p(n,r) > 0.5 \mid \mathrm{data})
+    \geq
+    \texttt{decision\_confidence}.
+\]
+
+The first adjacent transition from a confidently above point to a confidently
+below point is accepted as the local bracket. If no such transition appears,
+the fixed-ratio search returns no crossing and the main loop moves on.
+
+\section{Crossing Validation}
+
+Given an accepted bracket $[n_{\mathrm{lo}}, n_{\mathrm{hi}}]$, the recorded
+crossing is the even midpoint. Before appending it, the method checks the
+monotonicity constraints again. If the midpoint falls outside the allowed
+monotonic bounds, it is rejected and not added to the trace.
+
+\section{Key Parameters}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+Parameter & Default & Role \\
+\midrule
+\texttt{ratio\_step} & 0.1 & Base spacing between ratio slices. \\
+\texttt{trace\_direction} & \texttt{"down"} & Direction of contour tracing. \\
+\texttt{adaptive\_ratio\_step} & \texttt{True} & Enables budget-aware ratio spacing. \\
+\texttt{min\_ratio\_step} & 0.1 & Smallest adaptive ratio step. \\
+\texttt{max\_ratio\_step} & 0.2 & Largest adaptive ratio step. \\
+\texttt{target\_hqc\_per\_ratio} & 35.0 & Expected spend used by adaptive stepping. \\
+\texttt{decision\_confidence} & 0.70 & Posterior confidence threshold for brackets. \\
+\texttt{max\_hqc\_per\_ratio} & 35.0 & Per-ratio cap after first accepted crossing. \\
+\texttt{initial\_batch\_points} & 5 & Number of initial-anchor gate probes. \\
+\texttt{initial\_batch\_shots} & 3 & Shots per initial-anchor probe. \\
+\texttt{trace\_batch\_points} & 5 & Number of tracing gate probes. \\
+\texttt{trace\_batch\_shots} & 3 & Shots per tracing probe. \\
+\texttt{bracket\_hint} & \texttt{"line"} & Prediction sources for wide brackets. \\
+\texttt{use\_surface\_bracket\_hint} & \texttt{True} & Enables fitted-surface predictions. \\
+\texttt{surface\_min\_configs} & 12 & Minimum measured configs before surface fitting. \\
+\texttt{initial\_prediction\_window\_fraction} & 0.35 & Initial window width as fraction of prediction. \\
+\texttt{initial\_prediction\_min\_width} & 80 & Minimum initial prediction window width. \\
+\texttt{trace\_batch\_window\_fraction} & 0.14 & Trace window width as fraction of prediction. \\
+\texttt{trace\_batch\_min\_width} & 40 & Minimum trace prediction window width. \\
+\texttt{downward\_prediction\_quantile} & 0.75 & Prediction quantile when tracing downward. \\
+\texttt{upward\_prediction\_quantile} & 0.25 & Prediction quantile when tracing upward. \\
+\texttt{trace\_gate\_growth} & 2.4 & Wide-bracket growth allowance. \\
+\texttt{trace\_gate\_shrink} & 0.65 & Wide-bracket shrink allowance. \\
+\texttt{enforce\_ratio\_monotonicity} & \texttt{True} & Enables monotonic contour guards. \\
+\texttt{monotonic\_slack\_fraction} & 0.65 & Slack around neighbouring anchors. \\
+\texttt{max\_trace\_gate\_growth\_fraction} & 0.9 & Local growth jump guard. \\
+\texttt{max\_trace\_gate\_shrink\_fraction} & 0.7 & Local shrink jump guard. \\
+\texttt{downward\_growth\_floor\_fraction} & 0.45 & Fraction of analytic downward growth enforced. \\
+\texttt{downward\_growth\_floor\_min\_gates} & 24 & Minimum downward growth floor. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Practical Interpretation}
+
+The method is designed to balance three competing pressures:
+
+\begin{itemize}[leftmargin=*]
+    \item Batching improves HQC efficiency, so the method probes several nearby
+    gate counts at once rather than repeatedly submitting one circuit.
+    \item Prediction-centered windows avoid spending most of the budget far
+    from the boundary.
+    \item Monotonic bounds and jump guards reduce catastrophic excursions, but
+    they must retain enough slack to avoid locking onto a bad early anchor.
+\end{itemize}
+
+The most sensitive parameters are usually the window widths, the posterior
+confidence threshold, the per-ratio budget, and the monotonic growth guards.
+Too narrow a window can miss the contour; too wide a window wastes the benefit
+of batching. Too weak a monotonic guard allows vertical drops or large jumps;
+too strong a guard can reject legitimate contour movement after a noisy anchor.
+
+\end{document}

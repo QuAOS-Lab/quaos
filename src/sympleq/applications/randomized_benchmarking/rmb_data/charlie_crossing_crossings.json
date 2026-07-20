@@ -1,0 +1,48 @@
+{
+  "n_qubits": 5,
+  "spent_hqc": 497.41800000000006,
+  "crossings": [
+    {
+      "n_gates": 3270,
+      "ratio_2qb_gates": 0.0,
+      "n_1qb_gates": 3270,
+      "n_2qb_gates": 0
+    },
+    {
+      "n_gates": 2970,
+      "ratio_2qb_gates": 0.0599,
+      "n_1qb_gates": 2792,
+      "n_2qb_gates": 178
+    },
+    {
+      "n_gates": 2070,
+      "ratio_2qb_gates": 0.1198,
+      "n_1qb_gates": 1822,
+      "n_2qb_gates": 248
+    },
+    {
+      "n_gates": 1470,
+      "ratio_2qb_gates": 0.1796,
+      "n_1qb_gates": 1206,
+      "n_2qb_gates": 264
+    },
+    {
+      "n_gates": 870,
+      "ratio_2qb_gates": 0.2391,
+      "n_1qb_gates": 662,
+      "n_2qb_gates": 208
+    },
+    {
+      "n_gates": 304,
+      "ratio_2qb_gates": 0.2961,
+      "n_1qb_gates": 214,
+      "n_2qb_gates": 90
+    },
+    {
+      "n_gates": 408,
+      "ratio_2qb_gates": 0.3578,
+      "n_1qb_gates": 262,
+      "n_2qb_gates": 146
+    }
+  ]
+}

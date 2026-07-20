@@ -1,0 +1,197 @@
+from __future__ import annotations
+from dataclasses import dataclass, field, replace
+import numpy as np
+from numpy.random import Generator as RNGGenerator, default_rng
+from pytket import OpType
+from pytket.circuit import Circuit as PytketCircuit
+
+from sympleq.core.bayesian_estimation import BayesianEstimator
+from sympleq.core.circuits.circuits import Circuit
+from sympleq.core.circuits.gates import DEFAULT_GATES_SET, GATES, Gate
+from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
+from sympleq.core.paulis.pauli_sum import PauliSum
+
+type RMBData = dict[RMBConfig, BayesianEstimator]
+
+
+@dataclass(frozen=True)  # Frozen to avoid possible mistakes in using references
+class RMBConfig:
+    """
+    Configuration for a randomized benchmarking experiment.
+
+    Frozen dataclass: instances are immutable. Use the ``with_*`` methods
+    to obtain a new configuration with one field changed.
+
+    Parameters
+    ----------
+    n_1qb_gates : int
+        Total number of 1-qubit gates in the random circuit.
+    n_2qb_gates : int
+        Total number of 2-qubits gates in the random circuit.
+    n_qubits : int
+        Number of qudits in the system (must be >= 1).
+    gates_set : tuple[Gate, ...]
+        Gates available to sample from when building the random circuit.
+    random_elimination : float
+        Probability used to randomly replace single-qudit gates with
+        identities in order to make the circuit asymmetric. In ``[0, 1]``.
+    """
+    n_1qb_gates: int = 1
+    n_2qb_gates: int = 0
+    gates_set: tuple[Gate, ...] = tuple(DEFAULT_GATES_SET)
+    n_qubits: int = 1
+    random_elimination: float = 0.0
+    dimensions: np.ndarray = field(init=False, compare=False, hash=False, repr=False)
+    _initial_state: PauliSum = field(init=False, compare=False, hash=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate fields and initialize the derived ``dimensions`` array and ``_initial_state``."""
+        if not 0.0 <= self.random_elimination <= 1.0:
+            raise ValueError(
+                f"Invalid random_elimination, it should be between 0 and 1 (got {self.random_elimination}).")
+        if self.n_qubits < 1:
+            raise ValueError(
+                f"Invalid n_qubits, it should be larger than 0 (got {self.n_qubits}).")
+        object.__setattr__(self, "dimensions",
+                           np.asarray([DEFAULT_QUDIT_DIMENSION] * self.n_qubits, dtype=int))
+
+        state = RMBConfig.initial_state_for_n_qubits(self.n_qubits)
+        object.__setattr__(self, "_initial_state", state)
+
+    @property
+    def n_gates(self) -> int:
+        return self.n_1qb_gates + self.n_2qb_gates
+
+    @property
+    def ratio_2_qb_gates(self) -> float:
+        return self.n_2qb_gates / (self.n_gates)
+
+    @classmethod
+    def initial_state_for_n_qubits(cls, n_qubits: int):
+        pauli_strings = []
+        for p_idx in range(n_qubits):
+            pauli_string = ""
+            for q_idx in range(n_qubits):
+                if p_idx == q_idx:
+                    pauli_string += "x0z1"
+                else:
+                    pauli_string += "x0z0"
+            pauli_strings.append(pauli_string)
+        return PauliSum.from_string(pauli_strings, [DEFAULT_QUDIT_DIMENSION] * n_qubits)
+
+    @classmethod
+    def default(cls) -> RMBConfig:
+        """Return a sensible default configuration for an RMB sweep."""
+        return cls()
+
+    @classmethod
+    def from_pytket_circuit(cls, circuit: PytketCircuit) -> RMBConfig:
+        n_total = circuit.n_gates - circuit.n_gates_of_type(OpType.Measure)
+        if n_total == 0:
+            raise ValueError("Invalid input circuit")
+        return RMBConfig(
+            n_1qb_gates=circuit.n_1qb_gates(),
+            n_2qb_gates=circuit.n_2qb_gates(),
+            n_qubits=circuit.n_qubits,
+        )
+
+    @classmethod
+    def from_sympleq_circuit(cls, circuit: Circuit) -> RMBConfig:
+        return RMBConfig(
+            n_1qb_gates=circuit.n_1qb_gates(),
+            n_2qb_gates=circuit.n_2qb_gates(),
+            n_qubits=circuit.n_qudits(),
+        )
+
+    def with_n_1qb_gates(self, n_gates: int) -> RMBConfig:
+        """Return a copy of this config with ``n_1qb_gates`` replaced."""
+        return replace(self, n_1qb_gates=n_gates)
+
+    def with_n_2qb_gates(self, n_gates: int) -> RMBConfig:
+        """Return a copy of this config with ``n_2qb_gates`` replaced."""
+        return replace(self, n_2qb_gates=n_gates)
+
+    def with_n_qubits(self, n_qubits: int) -> RMBConfig:
+        """Return a copy of this config with ``n_qubits`` replaced."""
+        return replace(self, n_qubits=n_qubits)
+
+    def with_random_elimination(self, random_elimination: float) -> RMBConfig:
+        """Return a copy of this config with ``random_elimination`` replaced."""
+        return replace(self, random_elimination=random_elimination)
+
+    def with_gates_set(self, gates_set: tuple[Gate, ...]) -> RMBConfig:
+        """Return a copy of this config with ``gates_set`` replaced."""
+        return replace(self, gates_set=gates_set)
+
+    def initial_state(self) -> PauliSum:
+        """
+        Return the initial state for the benchmark.
+
+        The state is a Pauli sum whose stabilizers are ``Z`` on each
+        individual qudit (and identity elsewhere), i.e. the all-zeros
+        computational basis state.
+
+        Returns
+        -------
+        PauliSum
+            Initial state encoded as a sum of Pauli strings.
+        """
+        return self._initial_state
+
+    def random_circuit(self, rng: RNGGenerator | None = None) -> Circuit:
+        """
+        Generate a random benchmarking circuit.
+
+        Builds a random circuit of depth ``self.depth`` from
+        ``self.gates_set`` with the configured two-qudit gate ratio,
+        wraps it with a scrambler layer of Pauli gates and its inverse plus
+        the inverse of the random circuit, applies the configured
+        noise models, and finally optionally turns matching single-qudit
+        gates into identities according to ``self.random_elimination``.
+
+        Parameters
+        ----------
+        rng : numpy.random.Generator | None
+            Random number generator. If ``None``, a fresh ``default_rng()``
+            is used.
+
+        Returns
+        -------
+        Circuit
+            The constructed randomized benchmarking circuit.
+        """
+        if rng is None:
+            rng = default_rng()
+
+        target_n_2qb_gates = self.n_2qb_gates // 2
+        _scrambler = Circuit.empty(self.dimensions)
+        scrambling_gates = [GATES.X, GATES.Y, GATES.Z]
+        for q_idx in range(self.n_qubits):
+            gate_idx = rng.integers(0, len(scrambling_gates))
+            gate = scrambling_gates[gate_idx]
+            _scrambler.add_gate(gate, q_idx)
+
+        target_n_1qb_gates = self.n_1qb_gates // 2 - self.n_qubits
+        _circuit = Circuit.from_number_of_gates(target_n_1qb_gates,
+                                                target_n_2qb_gates,
+                                                self.dimensions,
+                                                gates_set=self.gates_set,
+                                                rng=rng)
+
+        circuit = _scrambler + _circuit + _circuit.inverse() + _scrambler.inverse()
+        _initial_state = self.initial_state()
+
+        # Eliminate and insert identity gates from and to the circuit to make it asymmetric.
+        # This step is performed without applying errors.
+        if self.random_elimination > 0.0:
+            pauli = _initial_state
+            for idx, (gate, q_idxs) in enumerate(zip(circuit.gates, circuit.qudit_indices)):
+                if gate.n_qudits > 1:
+                    continue
+                intermediate = gate.act(pauli, q_idxs)
+                if pauli == intermediate:
+                    circuit.gates[idx] = GATES.Id
+
+                pauli = intermediate
+
+        return circuit

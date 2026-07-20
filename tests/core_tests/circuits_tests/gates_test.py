@@ -397,13 +397,70 @@ class TestGates():
     @pytest.mark.parametrize("d", [2, 3, 5])
     @pytest.mark.parametrize("gate", [GATES.H, GATES.H_inv, GATES.S, GATES.S_inv,
                                       GATES.CX, GATES.CX_inv, GATES.SWAP, GATES.CZ,
-                                      GATES.ZZPhase, GATES.ZZPhase_inv])
+                                      GATES.ZZMax, GATES.ZZMax_inv])
     def test_unitary_is_unitary(self, d: int, gate: Gate):
         """Test that all gate unitaries are actually unitary matrices."""
         U = gate.local_unitary(d).toarray()
         Id = np.eye(U.shape[0])
         assert np.allclose(U.conj().T @ U, Id), f"{gate.name}(d={d}) is not unitary"
         assert np.allclose(U @ U.conj().T, Id), f"{gate.name}(d={d}) is not unitary"
+
+    @pytest.mark.parametrize("gate", [GATES.V, GATES.V_inv])
+    def test_V_unitary_is_unitary(self, gate: Gate):
+        """V is qubit-only; verify the local_unitary is unitary for d=2."""
+        U = gate.local_unitary(2).toarray()
+        Id = np.eye(2)
+        assert np.allclose(U.conj().T @ U, Id), f"{gate.name} is not unitary"
+        assert np.allclose(U @ U.conj().T, Id), f"{gate.name} is not unitary"
+
+    def test_V_matches_sqrt_X(self):
+        """V should equal exp(-iπ/4 X) = (1/√2)(I - iX); V_inv = V†."""
+        U_V = GATES.V.local_unitary(2).toarray()
+        expected = np.array([[1, -1j], [-1j, 1]], dtype=complex) / np.sqrt(2)
+        assert np.allclose(U_V, expected), "V does not equal √X"
+
+        U_V_inv = GATES.V_inv.local_unitary(2).toarray()
+        assert np.allclose(U_V @ U_V_inv, np.eye(2)), "V · V_inv != I"
+
+    def test_V_squared_is_X_up_to_phase(self):
+        """V² = -i·X (up to global phase)."""
+        U_V = GATES.V.local_unitary(2).toarray()
+        X = np.array([[0, 1], [1, 0]], dtype=complex)
+        assert np.allclose(U_V @ U_V, -1j * X), "V² != -i·X"
+
+    def test_V_clifford_action_on_paulis(self):
+        """V's symplectic + phase action: X → X (phase 1), Z → XZ (phase ω⁻¹ = -i for d=2)."""
+        # X stays X with phase 0
+        X = PauliString.from_string("x1z0", dimensions=[2])
+        out_X = GATES.V.act(X, 0)
+        assert out_X.has_equal_tableau(X), "V·X·V† should keep tableau as X"
+        assert (out_X.phases % (2 * X.lcm) == 0).all(), "V·X·V† should have phase 0"
+
+        # Z -> XZ with phase -1 (mod 2*lcm = 4 for qubits) i.e. phase factor ω^{-1} = -i
+        Z = PauliString.from_string("x0z1", dimensions=[2])
+        out_Z = GATES.V.act(Z, 0)
+        expected_Z = PauliString.from_string("x1z1", dimensions=[2])
+        assert out_Z.has_equal_tableau(expected_Z), "V·Z·V† should map to XZ"
+        assert (out_Z.phases[0] % (2 * Z.lcm)) == 3, "V·Z·V† phase should be -1 (=3 mod 4)"
+
+        # V_inv flips the sign: Z -> XZ with phase +1
+        out_Z_inv = GATES.V_inv.act(Z, 0)
+        assert out_Z_inv.has_equal_tableau(expected_Z), "V_inv·Z·V_inv† should map to XZ"
+        assert (out_Z_inv.phases[0] % (2 * Z.lcm)) == 1, "V_inv·Z·V_inv† phase should be +1"
+
+    def test_V_inverse_round_trip(self):
+        """V_inv · V applied to any single-qubit Pauli should be the identity."""
+        for s in ["x1z0", "x0z1", "x1z1"]:
+            ps = PauliString.from_string(s, dimensions=[2])
+            roundtrip = GATES.V_inv.act(GATES.V.act(ps, 0), 0)
+            assert roundtrip.has_equal_tableau(ps) and \
+                np.array_equal(roundtrip.phases % (2 * ps.lcm), ps.phases % (2 * ps.lcm)), \
+                f"V_inv·V·{s} != {s}"
+
+    def test_V_qudit_local_unitary_raises(self):
+        """V's local_unitary is only defined for qubits."""
+        with pytest.raises(NotImplementedError):
+            GATES.V.local_unitary(3)
 
     @pytest.mark.parametrize("d", [2, 3, 5])
     def test_unitary_inverse(self, d: int):
@@ -528,16 +585,16 @@ class TestGates():
                 )
 
     @pytest.mark.parametrize("d", [2, 3, 5])
-    def test_ZZPhase_unitary_inverse(self, d: int):
-        """ZZPhase @ ZZPhase_inv should be the identity."""
-        U = GATES.ZZPhase.local_unitary(d).toarray()
-        U_inv = GATES.ZZPhase_inv.local_unitary(d).toarray()
-        assert np.allclose(U @ U_inv, np.eye(d * d)), f"ZZPhase @ ZZPhase_inv != I for d={d}"
-        assert np.allclose(U_inv @ U, np.eye(d * d)), f"ZZPhase_inv @ ZZPhase != I for d={d}"
+    def test_ZZMax_unitary_inverse(self, d: int):
+        """ZZMax @ ZZMax_inv should be the identity."""
+        U = GATES.ZZMax.local_unitary(d).toarray()
+        U_inv = GATES.ZZMax_inv.local_unitary(d).toarray()
+        assert np.allclose(U @ U_inv, np.eye(d * d)), f"ZZMax @ ZZMax_inv != I for d={d}"
+        assert np.allclose(U_inv @ U, np.eye(d * d)), f"ZZMax_inv @ ZZMax != I for d={d}"
 
     @pytest.mark.parametrize("d", [2, 3, 5])
-    @pytest.mark.parametrize("gate", [GATES.ZZPhase, GATES.ZZPhase_inv])
-    def test_ZZPhase_clifford_property(self, d: int, gate: Gate):
+    @pytest.mark.parametrize("gate", [GATES.ZZMax, GATES.ZZMax_inv])
+    def test_ZZMax_clifford_property(self, d: int, gate: Gate):
         """U P U† should equal the symplectically-predicted Pauli up to a global phase."""
         from sympleq.core.circuits.utils import pauli_unitary_qudit
 
@@ -562,23 +619,23 @@ class TestGates():
                 f"{gate.name}(d={d}) Clifford property failed for {(x0, x1, z0, z1)}"
             )
 
-    def test_ZZPhase_act_matches_unitary_qubits(self):
+    def test_ZZMax_act_matches_unitary_qubits(self):
         """For qubits, acting on each single-qudit basis Pauli via .act() should match the
         unitary conjugation including the ±i phase captured in the exceptional_phase_vector."""
         dims = [2, 2]
         # X on qudit 0: expect phase +i  (encoded as phase_vector entry 1 -> phases units of lcm=2)
         input_ps = PauliString.from_string("x1z0 x0z0", dimensions=dims)
-        out = GATES.ZZPhase.act(input_ps, (0, 1))
+        out = GATES.ZZMax.act(input_ps, (0, 1))
         # symplectic image: X0 -> X0 Z0 Z1 with phase +i
         expected_tableau = PauliString.from_string("x1z1 x0z1", dimensions=dims)
-        assert out.has_equal_tableau(expected_tableau), "ZZPhase X0 tableau mismatch"
+        assert out.has_equal_tableau(expected_tableau), "ZZMax X0 tableau mismatch"
 
         # Inverse acts with -i on the same tableau image
-        out_inv = GATES.ZZPhase_inv.act(input_ps, (0, 1))
-        assert out_inv.has_equal_tableau(expected_tableau), "ZZPhase_inv X0 tableau mismatch"
+        out_inv = GATES.ZZMax_inv.act(input_ps, (0, 1))
+        assert out_inv.has_equal_tableau(expected_tableau), "ZZMax_inv X0 tableau mismatch"
         # Phases should differ by a full i^2 = -1 (i.e. by the lcm=2 factor in phase units)
         assert ((out.phases - out_inv.phases) % (2 * input_ps.lcm)).any(), (
-            "ZZPhase and ZZPhase_inv should produce different phases on X0"
+            "ZZMax and ZZMax_inv should produce different phases on X0"
         )
 
     @pytest.mark.parametrize("d", [2, 3, 5])

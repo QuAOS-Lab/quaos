@@ -654,7 +654,7 @@ class _CZ(Gate):
         return self
 
 
-class _ZZPhase(Gate):
+class _ZZMax(Gate):
     """ZZ-Phase gate (native for Quantinuum:
     https://docs.quantinuum.com/systems/trainings/helios/getting_started/parameterized_angle_2_qubit_gates.html).
     The angle is set to pi/4 thus the gate is Clifford."""
@@ -696,6 +696,51 @@ class _ZZPhase(Gate):
             for k in range(d):
                 idx = j * d + k
                 U[idx, idx] = np.exp(sign * 1j * np.pi * (j + k) ** 2 / d)
+        return HilbertOperator(U)
+
+
+class _V(Gate):
+    """V = √X gate: X -> X, Z -> -Y = -XZ. Has special phase vector for qubits.
+
+    V is the X-axis analog of S: V = exp(-iπ/4 X). Together with S and any
+    entangling Clifford, V generates the single-qubit Clifford group, which
+    makes ``{S, V, ZZMax}`` a useful generating set on Quantinuum H2 since
+    each element maps 1:1 to a single H2 native gate (Rz(0.5), PhasedX(0.5, 0),
+    ZZMax respectively).
+    """
+
+    def __init__(self, is_inverse: bool = False):
+        self._is_inverse = is_inverse
+
+        # Symplectic image is the same for V and V^{-1}; the phase vector differs.
+        # X -> X (image (1, 0))
+        # Z -> XZ (image (1, 1)); the sign of the XZ image is what distinguishes V from V^{-1}.
+        symplectic = np.array([
+            [1, 0],   # image of X:  X -> X
+            [1, 1],   # image of Z:  Z -> XZ
+        ], dtype=int).T
+
+        if is_inverse:
+            # V^{-1} Z V = +σ_y = +i · sympleq_Y, so phase[1] = +1 (=ω).
+            exceptional = {2: np.array([0, 1], dtype=int)}
+            name = "V_inv"
+        else:
+            # V Z V^{-1} = -σ_y = -i · sympleq_Y, so phase[1] = -1 (=ω^{-1}).
+            exceptional = {2: np.array([0, -1], dtype=int)}
+            name = "V"
+
+        super().__init__(name, symplectic, exceptional_phase_vectors=exceptional)
+
+    def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
+        if dimension is None:
+            dimension = DEFAULT_QUDIT_DIMENSION
+        if dimension != 2:
+            raise NotImplementedError(
+                "V (= √X) is only implemented for qubits (dimension=2)."
+            )
+        # √X = exp(-iπ/4 X) = (1/√2)(I - iX) = (1/√2)[[1, -i], [-i, 1]]
+        sign = 1j if self._is_inverse else -1j
+        U = np.array([[1, sign], [sign, 1]], dtype=complex) / np.sqrt(2)
         return HilbertOperator(U)
 
 
@@ -867,10 +912,15 @@ class _Gates:
         self._CX._inverse = self._CX_inv
         self._CX_inv._inverse = self._CX
 
-        self._ZZPhase = _ZZPhase(is_inverse=False)
-        self._ZZPhase_inv = _ZZPhase(is_inverse=True)
-        self._ZZPhase._inverse = self._ZZPhase_inv
-        self._ZZPhase_inv._inverse = self._ZZPhase
+        self._ZZMax = _ZZMax(is_inverse=False)
+        self._ZZMax_inv = _ZZMax(is_inverse=True)
+        self._ZZMax._inverse = self._ZZMax_inv
+        self._ZZMax_inv._inverse = self._ZZMax
+
+        self._V = _V(is_inverse=False)
+        self._V_inv = _V(is_inverse=True)
+        self._V._inverse = self._V_inv
+        self._V_inv._inverse = self._V
 
         self._SWAP = _SWAP()
         # SWAP is self-inverse, already handled in the class
@@ -925,12 +975,21 @@ class _Gates:
 
     # Quantinuum-ZZ-Phase with angle pi/4
     @property
-    def ZZPhase(self) -> _ZZPhase:
-        return self._ZZPhase
+    def ZZMax(self) -> _ZZMax:
+        return self._ZZMax
 
     @property
-    def ZZPhase_inv(self) -> _ZZPhase:
-        return self._ZZPhase_inv
+    def ZZMax_inv(self) -> _ZZMax:
+        return self._ZZMax_inv
+
+    # V = √X (Quantinuum H2 native: PhasedX(0.5, 0))
+    @property
+    def V(self) -> _V:
+        return self._V
+
+    @property
+    def V_inv(self) -> _V:
+        return self._V_inv
 
     # SWAP
     @property
@@ -977,6 +1036,21 @@ class _Gates:
 
 # Global singleton instance
 GATES = _Gates()
+
+# All built-in gates (forward and inverse variants).
+DEFAULT_GATES_SET: list[Gate] = [
+    GATES.Id,
+    GATES.H, GATES.H_inv,
+    GATES.S, GATES.S_inv,
+    GATES.V, GATES.V_inv,
+    GATES.X, GATES.X_inv,
+    GATES.Y, GATES.Y_inv,
+    GATES.Z, GATES.Z_inv,
+    GATES.CX, GATES.CX_inv,
+    GATES.SWAP,
+    GATES.CZ,
+    GATES.ZZMax, GATES.ZZMax_inv,
+]
 
 
 class PauliGate(Gate):

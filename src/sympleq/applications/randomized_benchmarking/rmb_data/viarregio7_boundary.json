@@ -1,0 +1,3820 @@
+{
+  "backend": {
+    "type": "sympleq",
+    "noise_model": {
+      "type": "GenericNoise",
+      "probabilities": [
+        0.999775,
+        7.5e-05,
+        7.5e-05,
+        7.5e-05
+      ],
+      "gates": [
+        "Id",
+        "X",
+        "Y",
+        "Z"
+      ]
+    },
+    "two_qubit_noise_model": {
+      "type": "GenericNoise",
+      "probabilities": [
+        0.99883,
+        0.00039,
+        0.00039,
+        0.00039
+      ],
+      "gates": [
+        "Id",
+        "X",
+        "Y",
+        "Z"
+      ]
+    }
+  },
+  "estimator": {
+    "threshold": 0.001,
+    "min_runs": 100,
+    "max_runs": null
+  },
+  "data": [
+    {
+      "n_1qb_gates": 1204,
+      "n_2qb_gates": 48,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          6
+        ],
+        [
+          false,
+          4
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1296,
+      "n_2qb_gates": 52,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          8
+        ],
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1388,
+      "n_2qb_gates": 56,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          9
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1480,
+      "n_2qb_gates": 60,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          8
+        ],
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1572,
+      "n_2qb_gates": 64,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          8
+        ],
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1664,
+      "n_2qb_gates": 68,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1756,
+      "n_2qb_gates": 72,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1848,
+      "n_2qb_gates": 76,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1940,
+      "n_2qb_gates": 80,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 2032,
+      "n_2qb_gates": 84,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 2124,
+      "n_2qb_gates": 88,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 2216,
+      "n_2qb_gates": 92,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 2308,
+      "n_2qb_gates": 96,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 2400,
+      "n_2qb_gates": 100,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 2492,
+      "n_2qb_gates": 104,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 2584,
+      "n_2qb_gates": 108,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 2676,
+      "n_2qb_gates": 112,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1020,
+      "n_2qb_gates": 40,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          20
+        ],
+        [
+          false,
+          8
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1112,
+      "n_2qb_gates": 44,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          5
+        ],
+        [
+          false,
+          5
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 804,
+      "n_2qb_gates": 48,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          10
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 892,
+      "n_2qb_gates": 54,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ],
+        [
+          true,
+          8
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 980,
+      "n_2qb_gates": 60,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          8
+        ],
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1068,
+      "n_2qb_gates": 66,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          7
+        ],
+        [
+          false,
+          3
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1156,
+      "n_2qb_gates": 72,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          7
+        ],
+        [
+          true,
+          7
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1244,
+      "n_2qb_gates": 78,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          6
+        ],
+        [
+          false,
+          4
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1332,
+      "n_2qb_gates": 84,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          5
+        ],
+        [
+          true,
+          5
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 856,
+      "n_2qb_gates": 72,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          5
+        ],
+        [
+          true,
+          5
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 940,
+      "n_2qb_gates": 80,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          3
+        ],
+        [
+          true,
+          7
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1024,
+      "n_2qb_gates": 88,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          8
+        ],
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1108,
+      "n_2qb_gates": 96,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          9
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1192,
+      "n_2qb_gates": 104,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          7
+        ],
+        [
+          false,
+          3
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1276,
+      "n_2qb_gates": 112,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          6
+        ],
+        [
+          false,
+          4
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1360,
+      "n_2qb_gates": 120,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          8
+        ],
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1612,
+      "n_2qb_gates": 144,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          6
+        ],
+        [
+          false,
+          4
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1948,
+      "n_2qb_gates": 176,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          7
+        ],
+        [
+          false,
+          3
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 2452,
+      "n_2qb_gates": 224,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          4
+        ],
+        [
+          false,
+          6
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1696,
+      "n_2qb_gates": 152,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          6
+        ],
+        [
+          false,
+          4
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 2116,
+      "n_2qb_gates": 192,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          6
+        ],
+        [
+          true,
+          4
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 580,
+      "n_2qb_gates": 60,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          9
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 660,
+      "n_2qb_gates": 70,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          3
+        ],
+        [
+          true,
+          7
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 740,
+      "n_2qb_gates": 80,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          9
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 820,
+      "n_2qb_gates": 90,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          3
+        ],
+        [
+          true,
+          7
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 900,
+      "n_2qb_gates": 100,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          7
+        ],
+        [
+          false,
+          3
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 980,
+      "n_2qb_gates": 110,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          9
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1060,
+      "n_2qb_gates": 120,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          11
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1300,
+      "n_2qb_gates": 150,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          4
+        ],
+        [
+          true,
+          8
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1620,
+      "n_2qb_gates": 190,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          6
+        ],
+        [
+          true,
+          4
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1316,
+      "n_2qb_gates": 192,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          6
+        ],
+        [
+          true,
+          8
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1392,
+      "n_2qb_gates": 204,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          6
+        ],
+        [
+          true,
+          4
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1468,
+      "n_2qb_gates": 216,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          6
+        ],
+        [
+          false,
+          4
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1544,
+      "n_2qb_gates": 228,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          5
+        ],
+        [
+          true,
+          5
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1620,
+      "n_2qb_gates": 240,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          3
+        ],
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1696,
+      "n_2qb_gates": 252,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1772,
+      "n_2qb_gates": 264,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1036,
+      "n_2qb_gates": 182,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          6
+        ],
+        [
+          false,
+          4
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1108,
+      "n_2qb_gates": 196,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          3
+        ],
+        [
+          true,
+          4
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1180,
+      "n_2qb_gates": 210,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1252,
+      "n_2qb_gates": 224,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1324,
+      "n_2qb_gates": 238,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1396,
+      "n_2qb_gates": 252,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1468,
+      "n_2qb_gates": 266,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1236,
+      "n_2qb_gates": 332,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1108,
+      "n_2qb_gates": 296,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1360,
+      "n_2qb_gates": 370,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 984,
+      "n_2qb_gates": 258,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1488,
+      "n_2qb_gates": 406,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1252,
+      "n_2qb_gates": 324,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1124,
+      "n_2qb_gates": 288,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1380,
+      "n_2qb_gates": 360,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 996,
+      "n_2qb_gates": 252,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1508,
+      "n_2qb_gates": 396,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1216,
+      "n_2qb_gates": 342,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1092,
+      "n_2qb_gates": 304,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1340,
+      "n_2qb_gates": 380,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 968,
+      "n_2qb_gates": 266,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          1
+        ],
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1464,
+      "n_2qb_gates": 418,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1272,
+      "n_2qb_gates": 314,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1140,
+      "n_2qb_gates": 280,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1400,
+      "n_2qb_gates": 350,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1012,
+      "n_2qb_gates": 244,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1532,
+      "n_2qb_gates": 384,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1200,
+      "n_2qb_gates": 350,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1076,
+      "n_2qb_gates": 312,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1320,
+      "n_2qb_gates": 390,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 956,
+      "n_2qb_gates": 272,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          4
+        ],
+        [
+          false,
+          6
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1444,
+      "n_2qb_gates": 428,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1356,
+      "n_2qb_gates": 322,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          4
+        ],
+        [
+          true,
+          3
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1224,
+      "n_2qb_gates": 288,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          7
+        ],
+        [
+          false,
+          3
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1488,
+      "n_2qb_gates": 356,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1092,
+      "n_2qb_gates": 254,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          8
+        ],
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 1620,
+      "n_2qb_gates": 390,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 296,
+      "n_2qb_gates": 102,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          10
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 348,
+      "n_2qb_gates": 126,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          4
+        ],
+        [
+          true,
+          6
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 352,
+      "n_2qb_gates": 124,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          3
+        ],
+        [
+          true,
+          7
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 300,
+      "n_2qb_gates": 100,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          4
+        ],
+        [
+          true,
+          6
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 400,
+      "n_2qb_gates": 150,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 408,
+      "n_2qb_gates": 146,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 356,
+      "n_2qb_gates": 122,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ],
+        [
+          true,
+          8
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 460,
+      "n_2qb_gates": 170,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 452,
+      "n_2qb_gates": 174,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 464,
+      "n_2qb_gates": 168,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          1
+        ],
+        [
+          false,
+          1
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 412,
+      "n_2qb_gates": 144,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          false,
+          3
+        ],
+        [
+          true,
+          6
+        ]
+      ]
+    },
+    {
+      "n_1qb_gates": 516,
+      "n_2qb_gates": 192,
+      "scrambling_probability": 0.0,
+      "n_qubits": 50,
+      "random_elimination": 0.1,
+      "gates_set": [
+        "Id",
+        "H",
+        "H_inv",
+        "S",
+        "S_inv",
+        "V",
+        "V_inv",
+        "X",
+        "X_inv",
+        "Y",
+        "Y_inv",
+        "Z",
+        "Z_inv",
+        "CX",
+        "CX_inv",
+        "SWAP",
+        "CZ",
+        "ZZP",
+        "ZZP_inv"
+      ],
+      "results": [
+        [
+          true,
+          2
+        ]
+      ]
+    }
+  ]
+}
