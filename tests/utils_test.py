@@ -1,5 +1,5 @@
 import numpy as np
-from numpy.random import Generator as RNGGenerator, default_rng
+from numpy.random import default_rng
 from sympleq import bases_to_int, int_to_bases
 from sympleq.utils import get_linearly_independent_rows
 from tests import choose_random_dimensions

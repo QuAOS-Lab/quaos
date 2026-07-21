@@ -506,7 +506,7 @@ class TestCircuits():
             _ = Circuit.from_gates_and_qudits(dimensions, [GATES.CX, GATES.H, GATES.S], [(0, 1), (2,)])
 
     def test_from_random_gates_set_default(self):
-        """Default gate set is {H, S, CX, SWAP}; no ZZPhase or CZ should appear."""
+        """Default gate set is {H, S, CX, SWAP}; no ZZMax or CZ should appear."""
         rng = np.random.default_rng(0)
         c = Circuit.from_random(50, [2, 2, 2], rng=rng)
         allowed = {GATES.H, GATES.S, GATES.CX, GATES.SWAP}
@@ -515,15 +515,15 @@ class TestCircuits():
 
     def test_from_random_gates_set_restricts_sampling(self):
         """Only the gates in gates_set should appear in the produced circuit."""
-        gates_set = [GATES.S, GATES.ZZPhase]
+        gates_set = [GATES.S, GATES.ZZMax]
         rng = np.random.default_rng(42)
         c = Circuit.from_random(100, [2] * 4, gates_set=gates_set,
                                 two_qudit_gate_ratio=0.5, rng=rng)
         seen = set(c.gates)
-        assert seen.issubset({GATES.S, GATES.ZZPhase})
+        assert seen.issubset({GATES.S, GATES.ZZMax})
         # With 100 gates and 50/50 ratio both should actually appear.
         assert GATES.S in seen
-        assert GATES.ZZPhase in seen
+        assert GATES.ZZMax in seen
 
     def test_from_random_gates_set_only_single_qudit(self):
         """With only single-qudit gates and ratio=0, only single-qudit gates should appear."""
