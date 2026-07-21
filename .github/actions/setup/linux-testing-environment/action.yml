@@ -12,11 +12,6 @@ inputs:
     required: false
     default: "./"
     type: string
-  dev-requirements:
-    description: "Path to development requirements file"
-    required: false
-    default: "./scripts/configs/dev_requirements.txt"
-    type: string
   extra-packages:
     description: "Additional packages to install (space-separated)"
     required: false
@@ -53,13 +48,15 @@ runs:
     - name: Install Python dependencies and project
       id: python-deps
       shell: bash
+      env:
+        SETUP_PATH: ${{ inputs.setup-path }}
+        EXTRA_PACKAGES: ${{ inputs.extra-packages }}
       run: |
         python -m pip install --upgrade pip build setuptools wheel
-        python -m pip install ${{ inputs.setup-path }}
-        python -m pip install -r ${{ inputs.dev-requirements }}
+        python -m pip install "${SETUP_PATH}[development]"
 
-        if [ -n "${{ inputs.extra-packages }}" ]; then
-          python -m pip install ${{ inputs.extra-packages }}
+        if [ -n "${EXTRA_PACKAGES}" ]; then
+          python -m pip install ${EXTRA_PACKAGES}
         fi
 
         echo "Python dependencies installation completed"

@@ -4,13 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 dependencies = [
-    "numpy>=2.1.3,<3.0.0",
+    "numpy>=1.20.0,<3.0.0",
     "numba>=0.61.0",
     "sympy>=1.14.0,<2.0.0",
     "matplotlib>=3.10.0,<4.0.0",
-    "scipy>=1.15.1,<2.0.0",
+    "scipy>=1.14.1,<2.0.0",
     "networkx>=3.4.2,<4.0.0",
     "galois>=0.4.6,<1.0.0",
+    # quantinuum dependencies
+    "pytket>=2.16.0",
+    "qnexus>=0.43.0",
+    "pytket-quantinuum>=0.58.0",
 ]
 name = "sympleq"
 dynamic = ["version"]
@@ -18,10 +22,28 @@ description = "SympleQ"
 readme = "README.md"
 authors = [{ name = "Quaos-Lab", email = "sympleq.org@gmail.com" }]
 license = { text = "MIT" }
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 [project.optional-dependencies]
-quantinuum = ["pytket>=1.0.0", "pytket-quantinuum>=0.58.0", "qnexus>=0.43.0"]
+development = [
+    "uv>=0.5.0",
+    "autopep8==2.2.0",
+    "nbformat==5.10.4",
+    "ipykernel>=6.29.5,<7.0.0",
+    "ipywidgets>=8.1.5,<9.0.0",
+    "pytest==9.0.3",
+    "pytest-benchmark==5.1.0",
+    "pytest-cov==7.0.0",
+    "snakeviz==2.2.2",
+    "tqdm>=4.67.1,<5.0.0",
+    "vulture==2.14",
+]
+experiments = [
+    "torch>=2.0.0",
+    "aepsych>=0.8.0",
+    "botorch>=0.12.0",
+    "gpytorch>=1.13.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

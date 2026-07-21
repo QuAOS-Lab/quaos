@@ -431,9 +431,9 @@ def _cost(shot_count: int, one_qubit: int, two_qubits: int, measurements: int) -
 
 def pytket_simulation_cost(circuit: PytketCircuit, shot_count: int = 1) -> float:
     # Assume that num of measurements is circuit.n_qubits. If we have intermediate measurements this is not true.
-    return _cost(shot_count, circuit.n_1qb_gates(), circuit.n_2qb_gates(), circuit.n_qubits)
+    return _cost(shot_count, circuit.n_1qd_gates(), circuit.n_2qd_gates(), circuit.n_qubits)
 
 
 def pytket_bare_simulation_cost(circuit: PytketCircuit, shot_count: int = 1) -> float:
     # Assume that num of measurements is circuit.n_qubits. If we have intermediate measurements this is not true.
-    return _cost(shot_count, circuit.n_1qb_gates(), circuit.n_2qb_gates(), circuit.n_qubits) - BASE_SIMULATION_COST
+    return _cost(shot_count, circuit.n_1qd_gates(), circuit.n_2qd_gates(), circuit.n_qubits) - BASE_SIMULATION_COST

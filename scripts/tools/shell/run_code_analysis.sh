@@ -15,15 +15,6 @@ fi
 # Activate the virtual environment
 source "$SRC_VENV/bin/activate"
 
-# Check if dev requirements file exists
-if [ ! -f "$DEV_REQUIREMENTS" ]; then
-    echo "$DEV_REQUIREMENTS not found."
-    exit 1
-fi
-
-# Install dependencies
-pip install -r "$DEV_REQUIREMENTS" > /dev/null 2>&1
-
 # Check if accuracy is provided, default to 60
 ACCURACY=${1:-60}
 

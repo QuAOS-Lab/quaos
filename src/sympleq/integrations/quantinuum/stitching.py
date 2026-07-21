@@ -71,7 +71,7 @@ def circuit_stitching(
     # Flatten the CircBoxes into native gates so the stitched circuit is a
     # single genuine circuit. This is what lets gate-count-based cost and
     # QASM-size estimates see the stitched contents - gates inside an
-    # undecomposed CircBox are invisible to n_1qb_gates()/n_2qb_gates(), so
+    # undecomposed CircBox are invisible to n_1qd_gates()/n_2qd_gates(), so
     # without this the running cost never grows as more circuits are stitched.
     DecomposeBoxes().apply(sum_circuit)
 

@@ -247,8 +247,8 @@ class Circuit:
 
     @classmethod
     def from_number_of_gates(cls,
-                             n_1qb_gates: int,
-                             n_2qb_gates: int,
+                             n_1qd_gates: int,
+                             n_2qd_gates: int,
                              dimensions: DimensionsLike,
                              gates_set: tuple[Gate, ...] | list[Gate] | set[Gate] | None = None,
                              rng: RNGGenerator | None = None) -> Circuit:
@@ -257,9 +257,9 @@ class Circuit:
 
         Parameters
         ----------
-        n_1qb_gates : int
+        n_1qd_gates : int
             Number of 1-qubit gates in the circuit.
-        n_2qb_gates : int
+        n_2qd_gates : int
             Number of 2-qubit gates in the circuit.
         dimensions : DimensionsLike
             The dimension of each qudit.
@@ -285,16 +285,16 @@ class Circuit:
         else:
             raise ValueError("Invalid gates_set type.")
 
-        if len(two_qudit_gates) == 0 and n_2qb_gates > 0:
-            raise ValueError("Invalid n_2qb_gates and gates_set.")
+        if len(two_qudit_gates) == 0 and n_2qd_gates > 0:
+            raise ValueError("Invalid n_2qd_gates and gates_set.")
 
-        if n_1qb_gates < 0:
+        if n_1qd_gates < 0:
             raise ValueError(
-                f"Invalid n_1qb_gates, it should be larger than 0 (got {n_1qb_gates}).")
+                f"Invalid n_1qd_gates, it should be larger than 0 (got {n_1qd_gates}).")
 
-        if n_2qb_gates < 0:
+        if n_2qd_gates < 0:
             raise ValueError(
-                f"Invalid n_2qb_gates, it should be larger than 0 (got {n_2qb_gates}).")
+                f"Invalid n_2qd_gates, it should be larger than 0 (got {n_2qd_gates}).")
 
         if rng is None:
             rng = default_rng()
@@ -306,14 +306,14 @@ class Circuit:
         _qudit_indices: list[tuple[int, ...]] = []
 
         # Assign all 1-qubit gates at random
-        min_1qb_gate_per_qudit = n_1qb_gates // n_qudits
+        min_1qb_gate_per_qudit = n_1qd_gates // n_qudits
         for _ in range(min_1qb_gate_per_qudit):
             for q_idx in range(n_qudits):
                 gate = single_qudit_gates[rng.integers(0, len(single_qudit_gates))]
                 _gates.append(gate)
                 _qudit_indices.append((q_idx,))
 
-        extra_1qb_gates = n_1qb_gates - min_1qb_gate_per_qudit * n_qudits
+        extra_1qb_gates = n_1qd_gates - min_1qb_gate_per_qudit * n_qudits
         for _ in range(extra_1qb_gates):
             gate = single_qudit_gates[rng.integers(0, len(single_qudit_gates))]
             q_idx = rng.integers(0, n_qudits)
@@ -321,7 +321,7 @@ class Circuit:
             _qudit_indices.append((q_idx,))
 
         # Assign all 2-qubit gates at random
-        for _ in range(n_2qb_gates):
+        for _ in range(n_2qd_gates):
             gate = two_qudit_gates[rng.integers(0, len(two_qudit_gates))]
             q_idxs = tuple(int(idx) for idx in rng.choice(range(n_qudits), 2, replace=False))
             _gates.append(gate)
@@ -396,7 +396,7 @@ class Circuit:
         n_qudits = len(dimensions)
         num_gates = n_qudits * depth
         # Divide by two since each gate applies to 2 qudits
-        num_two_qudits_gates = int(two_qudit_gate_ratio * num_gates) // 2
+        num_two_qudits_gates = int(two_qudit_gate_ratio * num_gates) // 2 if n_qudits > 1 else 0
 
         # First assign only 1-qudit gates
         layers: list[dict[tuple[int, ...], Gate]] = []
@@ -408,8 +408,7 @@ class Circuit:
                 layer[(q,)] = gate
             layers.append(layer)
 
-        # Distribute num_two_qudits_gates over depth layers randomly,
-        # with max max_two_qudits_gates_per_layer per layer.
+        # Distribute num_two_qudits_gates over depth layers randomly.
         if num_two_qudits_gates > 0 and two_qudit_gates:
             # available_qudits is a list of set_idxs (one per layer). Each element is a list of qudit indices,
             # indicating which qudits can be combined in a 2-qudit gate.
@@ -711,13 +710,13 @@ class Circuit:
         """
         return len(self.gates)
 
-    def n_1qb_gates(self) -> int:
+    def n_1qd_gates(self) -> int:
         """
         Returns the number of 1-qubit gates in the circuit.
         """
         return len([g for g in self.gates if g.n_qudits == 1])
 
-    def n_2qb_gates(self) -> int:
+    def n_2qd_gates(self) -> int:
         """
         Returns the number of 2-qubit gates in the circuit.
         """

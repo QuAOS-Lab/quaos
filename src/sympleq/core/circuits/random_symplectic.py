@@ -1,4 +1,5 @@
-"""Implements a random symplectic with the approach from """
+"""Implements a random symplectic with the approach from https://arxiv.org/abs/1406.2170
+as well as a series of random transvections."""
 from __future__ import annotations
 
 import numpy as np
@@ -198,6 +199,44 @@ def symplectic_gf2(index: int, n: int) -> TableauType:
     return interleaved_to_grouped(symplectic_gf2_interleaved(index, n))
 
 
+def _randbelow_big(bound: int, rng: np.random.Generator) -> int:
+    """Return a uniform integer in ``range(bound)`` without assuming ``bound`` fits in int64."""
+    bound = int(bound)
+    if bound <= 0:
+        raise ValueError("bound must be positive")
+
+    n_bits = bound.bit_length()
+    n_bytes = (n_bits + 7) // 8
+    excess_bits = n_bytes * 8 - n_bits
+
+    while True:
+        candidate = int.from_bytes(rng.bytes(n_bytes), byteorder="big")
+        if excess_bits:
+            candidate >>= excess_bits
+        if candidate < bound:
+            return candidate
+
+
+def symplectic_random_koenig_smolin_gf2(
+    n_qubits: int,
+    rng: np.random.Generator | None = None,
+) -> TableauType:
+    """
+    Return a uniform random element of ``Sp(2n, 2)`` using Koenig-Smolin indexing.
+
+    The returned matrix uses the grouped tableau convention ``[x0, ..., xn, z0, ..., zn]``,
+    matching :func:`symplectic_random_transvection` and the circuit ``Gate`` convention.
+    """
+    n_qubits = int(n_qubits)
+    if n_qubits <= 0:
+        raise ValueError("n_qubits must be >= 1")
+    if rng is None:
+        rng = np.random.default_rng()
+
+    index = _randbelow_big(symplectic_group_size(n_qubits, p=2), rng)
+    return symplectic_gf2(index, n_qubits)
+
+
 def interleaved_to_grouped(F_inter: np.ndarray) -> np.ndarray:
     """
     Convert interleaved [x0,z0,x1,z1,...] => grouped [x0,x1,...,z0,z1,...]
@@ -232,24 +271,26 @@ def is_symplectic_interleaved(F: np.ndarray) -> bool:
     return np.array_equal(lhs, Omega)
 
 
-def _isotropic_vector(n, d):
+def _isotropic_vector(n, d, rng: np.random.Generator | None = None):
     """
     Sample an isotropic vector v = (a|b) in Z_d^{2n}.
     For d=2 (qubits), every vector is isotropic.
     For prime d, ensures <v,v> = 0 mod d.
     """
+    if rng is None:
+        rng = np.random.default_rng()
     if d == 2:
         # Any vector works
-        return np.random.randint(0, 2, size=(2 * n,), dtype=int)
+        return rng.integers(0, 2, size=(2 * n,), dtype=int)
 
     # d prime
     while True:
-        a = np.random.randint(0, d, size=(n,), dtype=int)
+        a = rng.integers(0, d, size=(n,), dtype=int)
         if np.all(a == 0):
             continue  # avoid trivial a
         # Find random b orthogonal to a
         while True:
-            b = np.random.randint(0, d, size=(n,), dtype=int)
+            b = rng.integers(0, d, size=(n,), dtype=int)
             if (a @ b) % d == 0:
                 return np.concatenate([a, b])
 
@@ -263,8 +304,12 @@ def _vector_to_transvection(v, J, d):
     return (np.identity(len(v), dtype=int) + (J @ v) @ v.T) % d
 
 
-def symplectic_random_transvection(n_qudits: int, dimension: int = 2,
-                                   num_transvections: int | None = None) -> TableauType:
+def symplectic_random_transvection(
+    n_qudits: int,
+    dimension: int = 2,
+    num_transvections: int | None = None,
+    rng: np.random.Generator | None = None,
+) -> TableauType:
     """
     Return a random 2n x 2n symplectic matrix over Z_d by composing
     num_transvections random transvections.
@@ -277,12 +322,17 @@ def symplectic_random_transvection(n_qudits: int, dimension: int = 2,
         Dimension of each qudit (>=2).
     num_transvections : int or None
         Number of transvections to compose. If None, defaults to 2 * (2n).
+    rng : np.random.Generator or None
+        Optional random generator. If None, a default generator is created.
 
     Returns
     -------
     M : (2n x 2n) integer matrix
         Random symplectic matrix over Z_d.
     """
+    if rng is None:
+        rng = np.random.default_rng()
+
     Id_n = np.identity(n_qudits, dtype=int)
     Zero_n = np.zeros((n_qudits, n_qudits), dtype=int)
     J = np.block([[Zero_n, Id_n], [-Id_n, Zero_n]]) % dimension
@@ -294,7 +344,7 @@ def symplectic_random_transvection(n_qudits: int, dimension: int = 2,
         num_transvections = 2 * dim
 
     for _ in range(num_transvections):
-        v = _isotropic_vector(n_qudits, dimension)
+        v = _isotropic_vector(n_qudits, dimension, rng=rng)
         Mv = _vector_to_transvection(v, J, dimension)
         M = (M @ Mv) % dimension
 
