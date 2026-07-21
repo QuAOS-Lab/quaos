@@ -272,8 +272,8 @@ class TestRoundtrip:
             original = Circuit.from_tuples([2] * n_qubits, tuples)
 
             tk = to_pytket_circuit(original)
-            assert tk.n_1qd_gates() == original.n_1qd_gates()
-            assert tk.n_2qd_gates() == original.n_2qd_gates()
+            assert tk.n_1qb_gates() == original.n_1qd_gates()
+            assert tk.n_2qb_gates() == original.n_2qd_gates()
 
             restored = from_pytket_circuit(tk)
             assert restored.n_1qd_gates() == original.n_1qd_gates()
