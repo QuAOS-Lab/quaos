@@ -1,4 +1,6 @@
 """Codes for finding target Paulis and gates which map a given Pauli to a target Pauli."""
+# TODO: move all functions that are required for the class method
+#       `input_to_target` to a unique file, that works with mixed dimension.
 from __future__ import annotations
 from sympleq.core.paulis import PauliString, PauliSum
 from sympleq.core.paulis._typing import TableauType, PhasesType

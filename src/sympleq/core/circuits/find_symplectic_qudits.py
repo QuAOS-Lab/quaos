@@ -6,7 +6,14 @@ It also assumes p is prime dimension.
 
 Future extensions: input symplectic matrix -> output symplectic matrix.
 """
-
+# TODO: move all functions that are required for the class method
+#       `input_to_target` to a unique file, that works with mixed dimension.
+# TODO: It seems that the logic can be simplified quite a bit here...
+#       I would use S = input^-1 target (sorry if typos) plus some check before that ensure consistency...
+#       This should be applicable to qudits as well and should be quite efficient?
+#
+#       Then it is only a matter to fix the phase, which should be always
+#       (? please correct me if wrong) doable efficiently...
 import numpy as np
 import galois
 from itertools import islice

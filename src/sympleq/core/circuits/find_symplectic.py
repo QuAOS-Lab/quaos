@@ -3,6 +3,14 @@ This module uses arXiv:1803.06987 to find symplectic solutions.
 
 So far it only works for GF(2), as in the original paper. It could be extended to GF(p).
 """
+# TODO: move all functions that are required for the class method
+#       `input_to_target` to a unique file, that works with mixed dimension.
+# TODO: It seems that the logic can be simplified quite a bit here...
+#       I would use S = input^-1 target (sorry if typos) plus some check before that ensure consistency...
+#       This should be applicable to qudits as well and should be quite efficient?
+#
+#       Then it is only a matter to fix the phase, which should be always
+#       (? please correct me if wrong) doable efficiently...
 from __future__ import annotations
 
 import numpy as np

@@ -144,6 +144,10 @@ class Gate(ABC):
 
         return _GenericGate("random", symplectic, phase_vector)
 
+    # TODO: the following function should work for mixed qudits. the gate method should actually take two PauliSums
+    #       (inclusive of phases) and should return a gate that maps the first to the second. This is the mthod that
+    #       will use the functions in the new file that will contain a polished version of the functions in, e.g.,
+    #       find_symplectic.py
     @classmethod
     def solve_from_target(cls, input_tableau: TableauLike, target_tableau: TableauLike, dimension: int) -> Gate:
         """
