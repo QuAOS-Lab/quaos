@@ -14,7 +14,7 @@ env:
   COVERAGE_REPORT_XML: ./docs/tests_results/coverage_report.xml
   COVERAGE_REPORT_HTML: ./docs/tests_results/coverage_html_report
   COVERAGE_REPORT_JUNIT: ./docs/tests_results/junit.xml
-  PYTHON_VERSION: "3.11"
+  PYTHON_VERSION: "3.12"
 
 jobs:
   linting:
