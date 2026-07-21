@@ -59,14 +59,19 @@ Setup Dev Environment
 
 **Workflow:**
    1. Creates main project virtual environment in `venv/` if it doesn't exist
-   2. Upgrades pip, setuptools, and setuptools-scm
-   3. Installs the project package in editable mode (`pip install -e`)
-   4. Creates unversioned folders (e.g., `scripts/personal/`)
+   2. Upgrades pip and installs ``uv``
+   3. Installs the project package in editable mode with its development
+      dependencies (``uv pip install -e ".[development]"``)
+   4. Optionally installs the ``quantinuum`` and ``RBMalgorithms`` extra
+      dependency groups (prompts for confirmation)
+   5. Creates unversioned folders (e.g., `scripts/personal/`)
+
+All development and optional dependencies are declared in ``pyproject.toml``
+under ``[project.optional-dependencies]`` (groups ``development``,
+``quantinuum``, ``RBMalgorithms``); there is no separate requirements file.
 
 **Environment Variables Used:**
    - ``SRC_VENV``: Path to source virtual environment
-   - ``DEV_REQUIREMENTS``: Path to development requirements file
-   - ``PYTHON_PY_SETUP``: Path to project root for editable install
    - ``PERSONAL_FOLDER``: Path to personal scripts folder
 
 .. important::
@@ -85,12 +90,10 @@ Clear Notebooks Content
 
 **Workflow:**
    1. Activates the project virtual environment
-   2. Installs required dependencies
-   3. Runs the notebook cleaning script on all notebooks in ``NOTEBOOKS_ROOT_DIR``
+   2. Runs the notebook cleaning script on all notebooks in ``NOTEBOOKS_ROOT_DIR``
 
 **Environment Variables Used:**
    - ``SRC_VENV``: Path to source virtual environment
-   - ``DEV_REQUIREMENTS``: Path to development requirements
    - ``CLEAR_NOTEBOOKS_SCRIPT``: Path to Python notebook cleaning script
    - ``NOTEBOOKS_ROOT_DIR``: Root directory containing notebooks to clean
 
@@ -110,10 +113,9 @@ Run Tests With Coverage
 
 **Workflow:**
    1. Activates the project virtual environment
-   2. Installs development requirements
-   3. Runs pytest with coverage enabled
-   4. Generates XML, HTML, and JUnit coverage reports
-   5. Opens HTML coverage report in the default browser
+   2. Runs pytest with coverage enabled
+   3. Generates XML, HTML, and JUnit coverage reports
+   4. Opens HTML coverage report in the default browser
 
 **Command Line Arguments:**
    Accepts optional pytest markers as arguments to filter tests:
@@ -125,7 +127,6 @@ Run Tests With Coverage
 
 **Environment Variables Used:**
    - ``SRC_VENV``: Path to source virtual environment
-   - ``DEV_REQUIREMENTS``: Path to development requirements
    - ``PYTEST_INI``: Path to pytest configuration file
    - ``PRJ_NAME``: Project name for coverage measurement
    - ``COVERAGE_REPORT_XML``: Path for XML coverage report
@@ -166,7 +167,6 @@ Profile Code
 
 **Environment Variables Used:**
    - ``SRC_VENV``: Path to source virtual environment
-   - ``DEV_REQUIREMENTS``: Path to development requirements
    - ``PROFILING_OUTPUT_PATH``: Output directory for profiling results
 
 **Output:** Profiling data in `scripts/personal/profiling/`
@@ -206,8 +206,6 @@ Key Variables
      - Path to main development virtual environment
    * - ``DOC_VENV``
      - Path to documentation virtual environment
-   * - ``DEV_REQUIREMENTS``
-     - Path to development dependencies file
    * - ``DOC_REQUIREMENTS``
      - Path to documentation dependencies file
    * - ``PROFILING_OUTPUT_PATH``

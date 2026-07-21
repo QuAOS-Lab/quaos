@@ -6,6 +6,7 @@ from sympleq.core.circuits.gates import Gate
 from sympleq.core.circuits.utils import is_symplectic
 from sympleq.core.paulis import PauliSum, PauliString
 from sympleq.core.circuits.random_symplectic import (symplectic_gf2, symplectic_group_size,
+                                                     symplectic_random_koenig_smolin_gf2,
                                                      symplectic_random_transvection)
 
 
@@ -260,6 +261,41 @@ class TestGates():
                         F = symplectic_random_transvection(n, dimension=d)
                     assert is_symplectic(F, d), f"Failed symplectic check: n={n}, test {i}"
 
+    def test_random_transvection_sampler_repeatable_with_rng(self):
+        rng1 = np.random.default_rng(321)
+        rng2 = np.random.default_rng(321)
+
+        F1 = symplectic_random_transvection(3, dimension=5, num_transvections=12, rng=rng1)
+        F2 = symplectic_random_transvection(3, dimension=5, num_transvections=12, rng=rng2)
+
+        assert is_symplectic(F1, 5)
+        assert np.array_equal(F1, F2)
+
+    def test_koenig_smolin_gf2_n1_enumerates_whole_group(self):
+        elements = []
+        for index in range(symplectic_group_size(1, 2)):
+            F = symplectic_gf2(index, 1)
+            assert is_symplectic(F, 2)
+            elements.append(tuple(F.ravel().tolist()))
+
+        assert len(elements) == 6
+        assert len(set(elements)) == 6
+
+    @pytest.mark.parametrize("n", [1, 2, 3])
+    def test_koenig_smolin_gf2_random_sampler_is_symplectic_and_repeatable(self, n: int):
+        rng1 = np.random.default_rng(1234 + n)
+        rng2 = np.random.default_rng(1234 + n)
+
+        F1 = symplectic_random_koenig_smolin_gf2(n, rng=rng1)
+        F2 = symplectic_random_koenig_smolin_gf2(n, rng=rng2)
+
+        assert is_symplectic(F1, 2)
+        assert np.array_equal(F1, F2)
+
+    def test_koenig_smolin_gf2_random_sampler_rejects_invalid_n(self):
+        with pytest.raises(ValueError, match="n_qubits must be >= 1"):
+            symplectic_random_koenig_smolin_gf2(0)
+
     def test_gate_from_target(self):
         """Test Gate.solve_from_target finds correct symplectic transformation."""
         from sympleq.core.circuits import Gate
@@ -297,6 +333,46 @@ class TestGates():
             assert is_symplectic(gate.symplectic, d), (
                 f"Random gate not symplectic for n={n}, d={d}"
             )
+
+    @pytest.mark.parametrize("n", [1, 2, 3])
+    def test_gate_from_random_koenig_smolin_symplecticity(self, n: int):
+        gate = Gate.from_random(
+            n,
+            2,
+            sampler="koenig-smolin",
+            rng=np.random.default_rng(100 + n),
+        )
+        assert is_symplectic(gate.symplectic, 2)
+
+    def test_gate_from_random_koenig_smolin_repeatable_with_rng(self):
+        rng1 = np.random.default_rng(123)
+        rng2 = np.random.default_rng(123)
+
+        gate1 = Gate.from_random(3, 2, sampler="koenig-smolin", rng=rng1)
+        gate2 = Gate.from_random(3, 2, sampler="koenig-smolin", rng=rng2)
+
+        assert np.array_equal(gate1.symplectic, gate2.symplectic)
+
+    def test_gate_from_random_koenig_smolin_rejects_invalid_options(self):
+        with pytest.raises(ValueError, match="only implemented for dimension=2"):
+            Gate.from_random(2, 3, sampler="koenig-smolin")
+        with pytest.raises(ValueError, match="num_transvections is not used"):
+            Gate.from_random(2, 2, 10, sampler="koenig-smolin")
+        with pytest.raises(ValueError, match="Unknown random Clifford sampler"):
+            Gate.from_random(2, 2, sampler="unknown")
+
+    def test_gate_from_random_transvection_repeatable_with_rng(self):
+        rng1 = np.random.default_rng(123)
+        rng2 = np.random.default_rng(123)
+
+        gate1 = Gate.from_random(3, 2, sampler="transvection", rng=rng1)
+        gate2 = Gate.from_random(3, 2, sampler="transvection", rng=rng2)
+
+        assert np.array_equal(gate1.symplectic, gate2.symplectic)
+
+    def test_gate_from_random_transvection_still_accepts_positional_depth(self):
+        gate = Gate.from_random(2, 2, 10)
+        assert is_symplectic(gate.symplectic, 2)
 
     @pytest.mark.parametrize("d", [2, 3, 5])
     @pytest.mark.parametrize("n", [2, 3])

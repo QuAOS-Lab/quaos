@@ -11,14 +11,22 @@ cd "$PROJECT_ROOT"
 if [[ ! -d "$SRC_VENV" ]]; then
     echo "Creating virtual environment $SRC_VENV..."
     python -m venv "$SRC_VENV"
-    source "$SRC_VENV/bin/activate"
-    python -m pip install -r "$DEV_REQUIREMENTS"
-    deactivate
 fi
 
 source "$SRC_VENV/bin/activate"
-python -m pip install --upgrade pip setuptools setuptools-scm
-python -m pip install -e "$PYTHON_PY_SETUP"
+
+# Install dependencies
+python -m pip install --upgrade pip
+python -m pip install uv
+uv pip install -e ".[development]"
+
+# Optional package groups
+echo
+read -rp "Install experiments packages? [Y/n]: " yn
+case "$yn" in
+    [Yy]*) uv pip install -e ".[experiments]" ;;
+esac
+
 deactivate
 
 # Generating unversioned folders...

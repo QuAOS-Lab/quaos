@@ -12,13 +12,6 @@ fi
 
 source "$SRC_VENV/bin/activate" > /dev/null 2>&1
 
-if [ ! -f "$DEV_REQUIREMENTS" ]; then
-    echo "$DEV_REQUIREMENTS not found."
-    exit 1
-fi
-
-pip install -r "$DEV_REQUIREMENTS" > /dev/null 2>&1
-
 if [ -z "$1" ]; then
     echo "Missing required argument!"
     echo "Select one from the list below or launch:"

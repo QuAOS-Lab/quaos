@@ -14,13 +14,6 @@ if not exist "%SRC_VENV%" (
 
 call %SRC_VENV%/Scripts/activate >nul 2>&1
 
-if not exist "%DEV_REQUIREMENTS%" (
-    echo %DEV_REQUIREMENTS% not found.
-    exit /b 1
-)
-
-call pip install -r %DEV_REQUIREMENTS% >nul 2>&1
-
 REM Check if accuracy is provided, default to 60
 if "%~1"=="" (
     set ACCURACY=60
