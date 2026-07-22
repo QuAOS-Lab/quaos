@@ -116,6 +116,7 @@
         "orthogonalize",
         "pandas",
         "paulis",
+        "paulisum",
         "plaq",
         "plaquette",
         "plaquettes",

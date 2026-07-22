@@ -9,19 +9,14 @@ Future extensions: input symplectic matrix -> output symplectic matrix.
 
 import numpy as np
 import galois
-from itertools import islice
 from sympleq.core.circuits.utils import transvection_matrix, symplectic_product_arrays
 from sympleq.core.circuits.find_symplectic import check_mappable_via_clifford
-
-
-def modinv(a, p):
-    """Multiplicative inverse of a mod p (works for prime p)."""
-    return pow(int(a), -1, p)
-
+from sympleq.core.finite_field_solvers import solve_linear_system_over_gf
+from sympleq.core.symmetries.modular_helpers import inv_mod_scalar
 
 def solve_gfp(A: np.ndarray, b: np.ndarray, p: int):
     """
-    Solve Ax = b over GF(p) using Gaussian elimination.
+    Solve Ax = b over GF(p).
     Returns one valid solution vector x (length n), or None if no solution exists.
 
     Args:
@@ -32,60 +27,13 @@ def solve_gfp(A: np.ndarray, b: np.ndarray, p: int):
     Returns:
         x : one solution in GF(p)^n as np.ndarray, or None
     """
-    A = A.astype(int) % p
-    b = b.astype(int) % p
-    m, n = A.shape
-
-    # Augmented matrix
-    Ab = np.hstack([A, b.reshape(-1, 1)]) % p
-
-    pivot_row = 0
-    pivot_cols = []
-
-    for col in range(n):
-        # Find pivot
-        pivot = None
-        for row in range(pivot_row, m):
-            if Ab[row, col] != 0:
-                pivot = row
-                break
-        if pivot is None:
-            continue
-
-        # Swap into place
-        if pivot != pivot_row:
-            Ab[[pivot_row, pivot]] = Ab[[pivot, pivot_row]]
-
-        # Normalize pivot row
-        inv = modinv(Ab[pivot_row, col], p)
-        Ab[pivot_row] = (Ab[pivot_row] * inv) % p
-
-        # Eliminate other rows
-        for row in range(m):
-            if row != pivot_row and Ab[row, col] != 0:
-                factor = Ab[row, col]
-                Ab[row] = (Ab[row] - factor * Ab[pivot_row]) % p
-
-        pivot_cols.append(col)
-        pivot_row += 1
-        if pivot_row == m:
-            break
-
-    # Check inconsistency
-    for row in range(pivot_row, m):
-        if np.all(Ab[row, :-1] == 0) and Ab[row, -1] != 0:
-            return None  # no solution
-
-    # Build one solution: set free vars = 0
-    x = np.zeros(n, dtype=int)
-    for i, col in enumerate(pivot_cols):
-        row = i
-        val = Ab[row, -1]
-        for j in range(col + 1, n):
-            val = (val - Ab[row, j] * x[j]) % p
-        x[col] = val % p
-
-    return x
+    A = np.asarray(A, dtype=int) % p
+    b = np.asarray(b, dtype=int) % p
+    try:
+        x = solve_linear_system_over_gf(A, b, p)
+    except ValueError:
+        return None
+    return np.asarray(x, dtype=int).reshape(-1) % p
 
 
 def pair(vec, i, n):
@@ -182,7 +130,7 @@ def build_symplectic_for_transvection(u, v, p):
     # GF = galois.GF(p)
 
     # --- First pass: find non-proportional pair ---
-    for i, (ui, vi) in enumerate(islice(zip(u, v), n)):
+    for i in range(n):
         u_i = pair(u, i, n)
         v_i = pair(v, i, n)
         nz_u, nz_v = np.count_nonzero(u_i), np.count_nonzero(v_i)
@@ -195,7 +143,7 @@ def build_symplectic_for_transvection(u, v, p):
 
     # --- Second pass: proportional pair ---
     if np.all(w == 0):
-        for i, (ui, vi) in enumerate(islice(zip(u, v), n)):
+        for i in range(n):
             u_i = pair(u, i, n)
             v_i = pair(v, i, n)
             nz_u, nz_v = np.count_nonzero(u_i), np.count_nonzero(v_i)
@@ -216,9 +164,9 @@ def build_symplectic_for_transvection(u, v, p):
             if np.count_nonzero(u_i) != 0 and np.count_nonzero(v_i) == 0:
                 w_u = np.zeros(2, dtype=int)
                 if u_i[0] != 0:
-                    w_u[1] = modinv(u_i[0],p)
+                    w_u[1] = inv_mod_scalar(u_i[0],p)
                 else:
-                    w_u[0] = modinv(-u_i[1],p)
+                    w_u[0] = inv_mod_scalar(-u_i[1],p)
                 assert symplectic_product_arrays(u_i, w_u, p) == 1
                 w[i], w[i+n] = w_u[0], w_u[1]
                 break
@@ -230,9 +178,9 @@ def build_symplectic_for_transvection(u, v, p):
             if np.count_nonzero(u_i) == 0 and np.count_nonzero(v_i) != 0:
                 w_v = np.zeros(2, dtype=int)
                 if v_i[0] != 0:
-                    w_v[1] = (-modinv(v_i[0],p)) % p
+                    w_v[1] = (-inv_mod_scalar(v_i[0],p)) % p
                 else:
-                    w_v[0] = modinv(v_i[1],p)
+                    w_v[0] = inv_mod_scalar(v_i[1],p)
                 assert symplectic_product_arrays(w_v, v_i, p) == 1
                 w[i], w[i+n] = w_v[0], w_v[1]
                 break
@@ -261,22 +209,22 @@ def find_transvection_map(input_ps, output_ps, p):
     a = symplectic_product_arrays(input_ps, output_ps,p)
 
     if a != 0:
-        ainv = modinv(a, p)
+        a_inv = inv_mod_scalar(a, p)
         h=(-input_ps + output_ps) % p
-        F_h= transvection_matrix(h, p, multiplier=ainv)
+        F_h= transvection_matrix(h, p, multiplier=a_inv)
         if (input_ps @ F_h % p != output_ps).all():
             raise ValueError("Failed to construct valid transvection for nonzero symplectic product")
 
     elif a == 0:
         w = build_symplectic_for_transvection(input_ps, output_ps, p)
         a_w = symplectic_product_arrays(input_ps, w,p)
-        a_w_inv = modinv(a_w, p)
+        a_w_inv = inv_mod_scalar(a_w, p)
         h = (-input_ps + w) % p
         F_h_1 = transvection_matrix(h, p, multiplier=a_w_inv)
         if (input_ps @ F_h_1 % p != w).all():
             raise ValueError("Failed to construct valid transvection for u->w")
         b_w = symplectic_product_arrays(w, output_ps, p)
-        b_w_inv = modinv(b_w, p)
+        b_w_inv = inv_mod_scalar(b_w, p)
         h = (-w + output_ps) % p
         F_h_2 = transvection_matrix(h, p, multiplier=b_w_inv)
         if (w @ F_h_2 % p != output_ps).all():
@@ -344,22 +292,22 @@ def find_transvection_map_solve(input_ps, output_ps, p):
 
     a=symplectic_product_arrays(input_ps, output_ps,p)
     if a != 0:
-        ainv = modinv(a, p)
+        a_inv = inv_mod_scalar(a, p)
         h=(-input_ps + output_ps) % p
-        F_h= transvection_matrix(h, p, multiplier=ainv)
+        F_h= transvection_matrix(h, p, multiplier=a_inv)
         if (input_ps @ F_h % p != output_ps).all():
             raise ValueError("Failed to construct valid transvection for nonzero symplectic product")
 
     elif a == 0:
         w=intermediate_transvection_solve(input_ps, output_ps, p)
         a_w= symplectic_product_arrays(input_ps, w,p)
-        a_w_inv = modinv(a_w, p)
+        a_w_inv = inv_mod_scalar(a_w, p)
         h=(-input_ps + w) % p
         F_h_1= transvection_matrix(h, p, multiplier=a_w_inv)
         if (input_ps @ F_h_1 % p != w).all():
             raise ValueError("Failed to construct valid transvection for u->w")
         b_w= symplectic_product_arrays(w, output_ps, p)
-        b_w_inv = modinv(b_w, p)
+        b_w_inv = inv_mod_scalar(b_w, p)
         h=(-w + output_ps) % p
         F_h_2= transvection_matrix(h, p, multiplier=b_w_inv)
         if (w @ F_h_2 % p != output_ps).all():
@@ -450,9 +398,9 @@ def find_transvection_map_solve_extended(input_ps, output_ps, constraints=[], sp
 
     a= symplectic_product_arrays(input_ps, output_ps,p)
     if a != 0:
-        ainv = modinv(a, p)
+        a_inv = inv_mod_scalar(a, p)
         h=(-input_ps + output_ps) % p
-        F_h= transvection_matrix(h, p, multiplier=ainv)
+        F_h= transvection_matrix(h, p, multiplier=a_inv)
         if (input_ps @ F_h % p != output_ps).all():
             raise ValueError("Failed to construct valid transvection for nonzero symplectic product")
 
@@ -463,13 +411,13 @@ def find_transvection_map_solve_extended(input_ps, output_ps, constraints=[], sp
         else:
             w=intermediate_transvection_solve_extended(input_ps, output_ps, constraints=constraints, sps=sps, p=p)
             a_w= symplectic_product_arrays(input_ps, w,p)
-            a_w_inv = modinv(a_w, p)
+            a_w_inv = inv_mod_scalar(a_w, p)
             h=(-input_ps + w) % p
             F_h_1= transvection_matrix(h, p, multiplier=a_w_inv)
             if (input_ps @ F_h_1 % p != w).all():
                 raise ValueError("Failed to construct valid transvection for u->w")
             b_w= symplectic_product_arrays(w, output_ps, p)
-            b_w_inv = modinv(b_w, p)
+            b_w_inv = inv_mod_scalar(b_w, p)
             h=(-w + output_ps) % p
             F_h_2= transvection_matrix(h, p, multiplier=b_w_inv)
             if (w @ F_h_2 % p != output_ps).all():
