@@ -1,4 +1,5 @@
-
+# TODO: understand where these functions are used and either build the algebraic module
+#       we need (instead of using galois) or move them where relevant.
 from typing import Optional
 import numpy as np
 from math import gcd
