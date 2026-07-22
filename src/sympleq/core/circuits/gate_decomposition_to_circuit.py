@@ -1,11 +1,11 @@
-# TODO: This is a very nice file, that does something important to us. I think that at this moment:
+# TODO: This is an important file, that should be enhanced for platform-specific compilation.
 #       - clarity and maintenability should be enhanced
 #       - needs to be generalized to different gate_set.
 #         This is important for expressing the circuit with only gates
 #         that are native to the platform we are using (e.g. quantinuum)
 #       - The code should be generalized to qudits
 #
-#       - This could be a nice master project...
+#       - This could be a nice master project.
 from __future__ import annotations
 import numpy as np
 from sympleq.core.circuits import Circuit
