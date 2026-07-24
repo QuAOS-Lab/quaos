@@ -29,22 +29,28 @@ LAST_BACKEND_BATCH_SIZE: int | None = None
 SHOW_VOLUME_BACKGROUND = False
 
 # Turn this off if you only want the GP level-set surface.
-SHOW_MEASURED_POINTS = True
+SHOW_MEASURED_POINTS = False
 SHOW_FAILURE_POINTS = True
 SHOW_SUCCESS_POINTS = True
-SHOW_FAKE_ANCHORS = True
-SHOW_ONE_SIGMA_SURFACES = True
+SHOW_FAKE_ANCHORS = False
+SHOW_ONE_SIGMA_SURFACES = False
+SHOW_TWO_SIGMA_SURFACES = False
 
 # Probability volume settings, only used if SHOW_VOLUME_BACKGROUND = True.
 VOLUME_OPACITY = 0.1
 VOLUME_SURFACE_COUNT = 12
 
 # Main level-set surface.
-ISOSURFACE_OPACITY = 0.4
+ISOSURFACE_OPACITY = 0.6
 ISOSURFACE_WIDTH = 1e-3
 
 ONE_SIGMA_SURFACE_OPACITY = 0.28
+TWO_SIGMA_SURFACE_OPACITY = 0.38
 FAKE_ANCHOR_SLICES = 5
+GATE_AXIS_MIN_LOG10 = 1.5
+GATE_AXIS_MAX_LOG10 = 4.0
+RATIO_AXIS_MIN = 0.1
+RATIO_AXIS_MAX = 0.75
 
 # -------------------------------------------------------------------------
 # PATH HELPERS
@@ -305,9 +311,11 @@ def fake_anchor_points_from_grid(
     ratios: list[float] = []
     qubits: list[float] = []
     for q_slice in dict.fromkeys(float(q) for q in qubit_slices):
-        gates.extend([gates_min, gates_max])
-        ratios.extend([ratio_min, ratio_max])
-        qubits.extend([q_slice, q_slice])
+        for gate in (gates_min, gates_max):
+            for ratio in (ratio_min, ratio_max):
+                gates.append(gate)
+                ratios.append(ratio)
+                qubits.append(q_slice)
 
     return (
         np.asarray(gates, dtype=float),
@@ -379,8 +387,8 @@ def plot_fle_isosurface_3d(
         gates_grid[np.isfinite(gates_grid) & (gates_grid > 0)]
     )
     gate_axis_range = [
-        1.7,
-        4.0,
+        GATE_AXIS_MIN_LOG10,
+        GATE_AXIS_MAX_LOG10,
     ]
     hqc_label = hqc_label_from_jsons(measured_json_paths)
 
@@ -466,26 +474,51 @@ def plot_fle_isosurface_3d(
         )
     )
 
-    if SHOW_ONE_SIGMA_SURFACES:
+    if SHOW_ONE_SIGMA_SURFACES or SHOW_TWO_SIGMA_SURFACES:
         if latent_mean_flat is None or latent_std_flat is None:
             print(
-                "[warning] skipped +/-1 sigma surfaces: "
+                "[warning] skipped sigma surfaces: "
                 "latent_mean/latent_variance not found in grid."
             )
         else:
             latent_target = NormalDist().inv_cdf(target)
-            for label, values, color in [
-                (
-                    "GP latent mean - 1 sigma",
-                    latent_mean_flat - latent_std_flat,
-                    "royalblue",
-                ),
-                (
-                    "GP latent mean + 1 sigma",
-                    latent_mean_flat + latent_std_flat,
-                    "firebrick",
-                ),
-            ]:
+            sigma_surfaces = []
+            if SHOW_ONE_SIGMA_SURFACES:
+                sigma_surfaces.extend(
+                    [
+                        (
+                            "GP latent mean - 1 sigma",
+                            latent_mean_flat - latent_std_flat,
+                            "royalblue",
+                            ONE_SIGMA_SURFACE_OPACITY,
+                        ),
+                        (
+                            "GP latent mean + 1 sigma",
+                            latent_mean_flat + latent_std_flat,
+                            "firebrick",
+                            ONE_SIGMA_SURFACE_OPACITY,
+                        ),
+                    ]
+                )
+            if SHOW_TWO_SIGMA_SURFACES:
+                sigma_surfaces.extend(
+                    [
+                        (
+                            "GP latent mean - 2 sigma",
+                            latent_mean_flat - 2.0 * latent_std_flat,
+                            "lightskyblue",
+                            TWO_SIGMA_SURFACE_OPACITY,
+                        ),
+                        (
+                            "GP latent mean + 2 sigma",
+                            latent_mean_flat + 2.0 * latent_std_flat,
+                            "lightcoral",
+                            TWO_SIGMA_SURFACE_OPACITY,
+                        ),
+                    ]
+                )
+
+            for label, values, color, opacity in sigma_surfaces:
                 if not np.nanmin(values) <= latent_target <= np.nanmax(values):
                     print(f"[warning] skipped {label}: it does not cross the grid")
                     continue
@@ -499,7 +532,7 @@ def plot_fle_isosurface_3d(
                         isomin=latent_target - ISOSURFACE_WIDTH,
                         isomax=latent_target + ISOSURFACE_WIDTH,
                         surface_count=1,
-                        opacity=ONE_SIGMA_SURFACE_OPACITY,
+                        opacity=opacity,
                         colorscale=[
                             [0.0, color],
                             [1.0, color],
@@ -600,6 +633,7 @@ def plot_fle_isosurface_3d(
         scene=dict(
             xaxis=dict(
                 title="Two-qubit gate ratio",
+                range=[RATIO_AXIS_MIN, RATIO_AXIS_MAX],
                 backgroundcolor="rgba(245,245,245,0.95)",
                 gridcolor="lightgray",
             ),

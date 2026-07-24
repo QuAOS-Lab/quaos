@@ -17,11 +17,11 @@ from score3d import axis_spacing, score_grid
 
 ROOT_FOLDER = Path(r"Personal\FLE")
 QBAND_VALUES = range(5)
-SEED_VALUES = range(2026, 2029)
+SEED_VALUES = range(2026, 2030)
 SAVE_FIG_PATH = Path(
     r"Personal\RMB_results_figs\Volume\score_vs_hqc_spent_H2.pdf"
 )
-LABELS: list[str] = ['H2-1-seed-2026', 'H2-1-seed-2027', 'H2-1-seed-2028']
+LABELS: list[str] = ['H2-1-seed-2026', 'H2-1-seed-2027', 'H2-1-seed-2028', 'H2-1-seed-2029']
 
 Curve = tuple[
     np.ndarray,
@@ -363,21 +363,7 @@ def qband_curves(
     if not curves:
         return curves
 
-    max_hqc = max(float(np.max(hqc)) for _, hqc, *_ in curves)
-    min_allowed_hqc = max_hqc - 20.0
-    filtered_curves = []
-    for curve in curves:
-        _, hqc, *_ = curve
-        final_hqc = float(np.max(hqc))
-        if final_hqc < min_allowed_hqc:
-            print(
-                f"[exclude] {qband_folder.name}: seed final_hqc={final_hqc:.6g} "
-                f"is below max_hqc-20={min_allowed_hqc:.6g}",
-                flush=True,
-            )
-            continue
-        filtered_curves.append(curve)
-    return filtered_curves
+    return curves
 
 
 def mean_bands_by_hqc(
@@ -417,8 +403,11 @@ def qband_sobol_done_hqc(
 ) -> float | None:
     sobol_hqc = []
     for seed in SEED_VALUES:
+        seed_folder = qband_folder / f"seed_{seed}"
+        if not seed_folder.exists():
+            continue
         run_folder = latest_seed_run(
-            qband_folder / f"seed_{seed}",
+            seed_folder,
             grid_root=grid_root,
             source_root=source_root,
         )
@@ -553,27 +542,22 @@ def main(paths: list[str | Path] | None = None) -> None:
     qband_folders = sorted(set(qband_folders), key=lambda path: path.name)
     run_folders = sorted(set(run_folders), key=lambda path: str(path))
     plotted = False
-    label_index = 0
 
     for run_folder in run_folders:
-        label = LABELS[label_index] if label_index < len(LABELS) else None
         plotted = plot_run_folder(
             run_folder,
-            label=label,
+            label=None,
             grid_root=grid_root,
             source_root=source_root,
         ) or plotted
-        label_index += 1
 
     for qband_folder in qband_folders:
-        label = LABELS[label_index] if label_index < len(LABELS) else None
         plotted = plot_qband(
             qband_folder,
-            label=label,
+            label=None,
             grid_root=grid_root,
             source_root=source_root,
         ) or plotted
-        label_index += 1
 
     if not plotted:
         return

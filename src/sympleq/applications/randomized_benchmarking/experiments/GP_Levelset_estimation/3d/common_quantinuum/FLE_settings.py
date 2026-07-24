@@ -153,7 +153,8 @@ SAVE_REAL_CHECKPOINTS = True
 # -------------------------------------------------------------------------
 
 RECOVERY_MODE = False
-RECOVERY_FOLDER = Path(r"Personal\FLE\H2_2\seed_2026\FLE_20260708_113322")
+RECOVERY_FOLDER = Path(r"Personal\FLE\H2_2\qband_4\seed_2028\FLE_20260720_145715")
+
 
 # -------------------------------------------------------------------------
 # GP / AEPSYCH HANDLES
@@ -184,9 +185,9 @@ FORCE_DEFAULT_DEVICE_DURING_AEPSYCH = True
 # BACKEND HANDLE
 # -------------------------------------------------------------------------
 
-BACKEND_FACTORY = default_backend_factory
+# BACKEND_FACTORY = default_backend_factory
 # BACKEND_FACTORY = quantinuum_emulator_backend_factory
-# BACKEND_FACTORY = quantinuum_H2_backend_factory
+BACKEND_FACTORY = quantinuum_H2_backend_factory
 
 # -------------------------------------------------------------------------
 # REPRODUCIBILITY / DEBUG HANDLES
