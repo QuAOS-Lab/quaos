@@ -1,16 +1,18 @@
-import sys
 import random
 import numpy as np
-from pytket.circuit import BitRegister, Circuit, CircBox
-from pytket.passes import DecomposeBoxes
-from pytket.qasm.qasm import circuit_to_qasm_str
-from pytket.backends.backendresult import BackendResult
-from pytket.utils.outcomearray import OutcomeArray
+from pytket.circuit import Circuit
 
 
-from sympleq.integrations.quantinuum.stitching import (reset_operations, circuit_stitching, destitch_results)
 from sympleq.applications.randomized_benchmarking.experiments.common import (quantinuum_emulator_backend_factory)
-from sympleq.integrations.quantinuum.workflow import run_circuits_on_device
+
+
+from sympleq.applications.randomized_benchmarking.config import RMBConfig
+from sympleq.integrations.quantinuum.utils import NATIVE_GATES_SET
+from numpy.random import default_rng
+from sympleq.applications.randomized_benchmarking.backends.base import MeasurementRequest
+from sympleq.applications.randomized_benchmarking.experiments.common import (
+    quantinuum_emulator_backend_factory
+)
 
 
 def random_native_deterministic_circuit(
@@ -43,7 +45,6 @@ def random_native_deterministic_circuit(
         c.X(q)
         expected[q] ^= 1
 
-    # Add some diagonal two-qubit gates. These should not change bit outcomes.
     if nq >= 2:
         n_zz = rng.randint(0, nq - 1)
         for _ in range(n_zz):
@@ -56,134 +57,8 @@ def random_native_deterministic_circuit(
     return c, tuple(expected)
 
 
-def one_shot_tuple(result) -> tuple[int, ...]:
-    """
-    Convert a one-shot BackendResult into a plain tuple of bits.
-    """
-    shots = np.asarray(result.get_shots())
-
-    assert shots.shape[0] == 1, f"Expected one shot, got shape {shots.shape}"
-
-    return tuple(int(x) for x in shots[0])
-
-
-def print_first_commands(circ: Circuit, n: int = 20, title: str = "Circuit"):
-    print(f"\n{title}: first {n} commands")
-    for i, cmd in enumerate(circ.get_commands()[:n]):
-        print(f"{i:03d}: {cmd}")
-
-
-# if __name__ == "__main__":
-#     ' Include more than 10 circuits to test lexicographic ordering'
-#     n_circuits = 11
-
-#     circuits_sent = []
-
-#     for i in range(n_circuits):
-#         # Different qubit numbers: 1, 2, ..., 10, repeated.
-#         nq = 1 + (i % 10)
-#         circ, expected = random_native_deterministic_circuit(
-#             nq=nq,
-#             seed=10_000 + i,
-#         )
-
-#         circuits_sent.append((i, circ, expected))
-
-
-#     stitched = circuit_stitching([c[1] for c in circuits_sent])
-
-#     raw_registers = list(stitched.c_registers)
-
-#     raw_names = [r.name for r in raw_registers]
-#     lex_names = [r.name for r in sorted(raw_registers, key=lambda r: r.name)]
-#     num_names = [r.name for r in sorted(raw_registers, key=lambda r: int(r.name.replace("creg_", "")))]
-
-
-#     circuits_with_expected_sorted = sorted(
-#         circuits_sent,
-#         key=lambda item: item[1].n_qubits,
-#         reverse=True,
-#     )
-
-
-#     answer = input(
-#         "\nThis will submit a job to the Quantinuum emulator and may use about "
-#         "10 minutes of emulator time. Continue? [y/N]: "
-#     ).strip().lower()
-
-#     if answer not in {"y", "yes"}:
-#         print("Cancelled before submitting to Quantinuum emulator.")
-#         sys.exit(0)
-
-#     results = run_circuits_on_device(
-#         [stitched],
-#         n_shots=1,
-#         device_name="H2-Emulator",
-#         project_name="Stitching Test",
-#         verbose=True,
-#     )
-
-
-#     stitched_result = results[0]
-
-#     # print(stitched_result)
-
-#     registers = sorted(stitched.c_registers,
-#                        key=lambda register: int(register.name.removeprefix("creg_")))  # Line 117 quantinuum.py
-
-#     destitched = destitch_results(stitched_result, registers)
-
-#     assert len(destitched) == n_circuits, (
-#         f"Expected {n_circuits} destitched results, got {len(destitched)}"
-#     )
-
-#     failures = []
-
-#     for destitched_index, result in enumerate(destitched):
-#         original_index, circ, expected = circuits_with_expected_sorted[destitched_index]
-
-#         actual = one_shot_tuple(result)
-#         print(actual)
-#         print(one_shot_tuple(result))
-
-#         if actual != expected:
-#             failures.append(
-#                 {
-#                     "destitched_index": destitched_index,
-#                     "original_index": original_index,
-#                     "n_qubits": circ.n_qubits,
-#                     "expected": expected,
-#                     "actual": actual,
-#                     "counts": result.get_counts(),
-#                 }
-#             )
-
-#     if failures:
-#         print(f"FAILED: {len(failures)} circuits did not match.")
-
-#         for failure in failures[:10]:
-#             print(failure)
-
-#         raise AssertionError("Destitched results do not match expected circuit outputs.")
-
-#     print(f"PASSED: all {n_circuits} stitched/destitched circuit results matched.")
-
-
-from sympleq.applications.randomized_benchmarking.config import RMBConfig
-from sympleq.integrations.quantinuum.utils import NATIVE_GATES_SET
-from numpy.random import default_rng
-from sympleq.applications.randomized_benchmarking.backends.base import MeasurementRequest
-from sympleq.applications.randomized_benchmarking.backends.quantinuum import QuantinuumBackend
-from sympleq.applications.randomized_benchmarking.experiments.common import (
-    quantinuum_emulator_backend_factory,
-    print_experiment_summary,
-    print_progress,
-    start_run,
-)
-
-
 class DummySettings:
-    max_cost_per_run: float = 25.0
+    max_cost_per_run: float = 0.0
 
 
 def main():
@@ -242,9 +117,6 @@ def main():
             f"outcomes={values}"
         )
 
-    # print(outcomes)
-
-    # print(outcomes)
 
 if __name__== "__main__":
     main()
