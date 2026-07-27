@@ -149,7 +149,8 @@ class Gate(ABC):
     #       will use the functions in the new file that will contain a polished version of the functions in, e.g.,
     #       find_symplectic.py
     @classmethod
-    def solve_from_target(cls, input_tableau: TableauLike, target_tableau: TableauLike, dimension: int) -> Gate:
+    def solve_from_target(cls, input_tableau: TableauLike, target_tableau: TableauLike,
+                          dimension: int = DEFAULT_QUDIT_DIMENSION) -> Gate:
         """
         Find a Clifford gate that maps the input Pauli tableau to the target tableau.
 
