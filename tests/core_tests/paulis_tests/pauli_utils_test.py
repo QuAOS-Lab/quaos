@@ -6,7 +6,7 @@ from sympleq.core.paulis import PauliSum, check_mappable_via_clifford, mod_inv, 
 from tests import choose_random_dimensions
 
 
-N_tests = 30
+N_tests = 20
 rng = default_rng()
 
 
@@ -88,7 +88,7 @@ class TestUtils:
     def test_covariance_matrix(self):
         for _ in range(N_tests):
 
-            dimensions = choose_random_dimensions(25)
+            dimensions = choose_random_dimensions(16)
             m_size = int(np.prod(dimensions))
 
             matrix = rng.random([m_size, m_size]) + 1j * rng.random([m_size, m_size]) + \

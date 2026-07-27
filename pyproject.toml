@@ -14,6 +14,7 @@ dependencies = [
     # quantinuum dependencies
     "pytket>=2.16.0",
     "qnexus>=0.43.0",
+    "pytket-quantinuum>=0.58.0",
 ]
 name = "sympleq"
 dynamic = ["version"]
@@ -21,7 +22,7 @@ description = "SympleQ"
 readme = "README.md"
 authors = [{ name = "Quaos-Lab", email = "sympleq.org@gmail.com" }]
 license = { text = "MIT" }
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 [project.optional-dependencies]
 development = [
@@ -42,7 +43,6 @@ experiments = [
     "aepsych>=0.8.0",
     "botorch>=0.12.0",
     "gpytorch>=1.13.0",
-    "pytket-quantinuum>=0.58.0",
 ]
 
 [tool.setuptools.packages.find]
