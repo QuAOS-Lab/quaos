@@ -66,7 +66,7 @@ def circuit_stitching(
         sum_circuit.add_circbox_regwise(CircBox(s_circuit), qreg, cregs)
         if idx == len(input_circuits) - 1:
             continue
-        sum_circuit.add_circbox(reset_box, s_circuit.qubits)
+        sum_circuit.add_circbox(reset_box, sum_circuit.qubits)
 
     # Flatten the CircBoxes into native gates so the stitched circuit is a
     # single genuine circuit. This is what lets gate-count-based cost and

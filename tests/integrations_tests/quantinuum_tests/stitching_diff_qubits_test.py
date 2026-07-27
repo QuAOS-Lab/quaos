@@ -18,7 +18,6 @@ from pytket.circuit import Circuit
 
 from sympleq.integrations.quantinuum.stitching import circuit_stitching
 
-
 def _deterministic_native_circuit(n_qubits: int, seed: int) -> tuple[Circuit, tuple[int, ...]]:
     """Build a native circuit with a known computational-basis output."""
     circuit = Circuit(n_qubits, n_qubits)
