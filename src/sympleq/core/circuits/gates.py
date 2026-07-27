@@ -584,7 +584,19 @@ class _CX(Gate):
         super().__init__(name, symplectic)
 
     def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
-        """CX acts as |j,k⟩ -> |j, (j+k) mod d⟩ (or |j, (k-j) mod d⟩ for inverse)."""
+        """
+        CX acts as |j,k⟩ -> |j, (j+k) mod d⟩ (or |j, (k-j) mod d⟩ for inverse).
+
+        Parameters
+        ----------
+        dimension : int, optional
+            The local Hilbert space dimension. Defaults to `DEFAULT_QUDIT_DIMENSION`.
+
+        Returns
+        -------
+        HilbertOperator
+            The d^2 x d^2 unitary matrix for the CX gate.
+        """
 
         if dimension is None:
             dimension = DEFAULT_QUDIT_DIMENSION
@@ -617,7 +629,19 @@ class _SWAP(Gate):
         super().__init__("SWAP", symplectic)
 
     def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
-        """SWAP acts as |j,k⟩ -> |k,j⟩."""
+        """
+        SWAP acts as |j,k⟩ -> |k,j⟩.
+
+        Parameters
+        ----------
+        dimension : int, optional
+            The local Hilbert space dimension. Defaults to `DEFAULT_QUDIT_DIMENSION`.
+
+        Returns
+        -------
+        HilbertOperator
+            The d^2 x d^2 unitary matrix for the SWAP gate.
+        """
         if dimension is None:
             dimension = DEFAULT_QUDIT_DIMENSION
         d = dimension
@@ -649,7 +673,19 @@ class _CZ(Gate):
         super().__init__("CZ", symplectic)
 
     def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
-        """CZ adds phase ω^{jk} to |j,k⟩ where ω = exp(2πi/d)."""
+        """
+        CZ adds phase ω^{jk} to |j,k⟩ where ω = exp(2πi/d).
+
+        Parameters
+        ----------
+        dimension : int, optional
+            The local Hilbert space dimension. Defaults to `DEFAULT_QUDIT_DIMENSION`.
+
+        Returns
+        -------
+        HilbertOperator
+            The d^2 x d^2 unitary matrix for the CZ gate.
+        """
         if dimension is None:
             dimension = DEFAULT_QUDIT_DIMENSION
         d = dimension
@@ -697,8 +733,21 @@ class _ZZMax(Gate):
         super().__init__(name, symplectic, exceptional_phase_vectors=exceptional)
 
     def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
-        """Applies phase exp(±iπ(j+k)²/d) to |j,k⟩ (sign flipped for the inverse).
-        For qubits this reproduces ZZPhase(±π/4) = exp(∓iπ/4 Z⊗Z) up to a global phase."""
+        """
+        Applies phase exp(±iπ(j+k)²/d) to |j,k⟩ (sign flipped for the inverse).
+
+        For qubits this reproduces ZZPhase(±π/4) = exp(∓iπ/4 Z⊗Z) up to a global phase.
+
+        Parameters
+        ----------
+        dimension : int, optional
+            The local Hilbert space dimension. Defaults to `DEFAULT_QUDIT_DIMENSION`.
+
+        Returns
+        -------
+        HilbertOperator
+            The d^2 x d^2 unitary matrix for the ZZMax gate.
+        """
         if dimension is None:
             dimension = DEFAULT_QUDIT_DIMENSION
         d = dimension
@@ -1109,6 +1158,16 @@ class PauliGate(Gate):
         Compute the unitary for this PauliGate.
 
         For PauliGate, dimension is optional since it's determined by the stored PauliString.
+
+        Parameters
+        ----------
+        dimension : int, optional
+            Unused; retained for interface compatibility with `Gate.local_unitary`.
+
+        Returns
+        -------
+        HilbertOperator
+            The unitary matrix for this PauliGate.
         """
         from sympleq.core.circuits.utils import pauli_unitary_from_tableau
         # Use the dimension from the PauliString
@@ -1135,6 +1194,19 @@ class PauliGate(Gate):
 
         For PauliGate, qudits defaults to all qudits in order (0, 1, 2, ..., n-1)
         since the gate was constructed for a specific number of qudits.
+
+        Parameters
+        ----------
+        pauli : Pauli | PauliString | PauliSum
+            The Pauli object to transform.
+        qudits : int | tuple[int, ...] | None
+            The qudit index(es) the gate acts on. If None, defaults to all
+            qudits in order.
+
+        Returns
+        -------
+        PauliObject
+            The transformed Pauli object of the same type as the input.
         """
         if qudits is None:
             qudits = tuple(range(self._n_qudits))

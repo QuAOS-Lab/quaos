@@ -82,11 +82,17 @@ def get_linearly_independent_rows(A: IntNDArray, d: int) -> list[int]:
     """
     Returns the pivot column indices for the row-reduced form of matrix A over a Galois field.
 
-    Args:
-        A (galois.FieldArray): Input matrix over GF(p).
+    Parameters
+    ----------
+    A : IntNDArray
+        Input matrix over GF(d).
+    d : int
+        The prime (or prime power) defining the Galois field GF(d).
 
-    Returns:
-        List[int]: List of pivot column indices.
+    Returns
+    -------
+    list of int
+        List of pivot column indices.
     """
 
     GF = galois.GF(d)
@@ -103,16 +109,22 @@ def get_linearly_independent_rows(A: IntNDArray, d: int) -> list[int]:
 def complex_phase_value(phase: int, dimension: int) -> complex:
     """
     Roots of unity (varying `phase`) with respect to (twice a) chosen dimension `dimension`.
-    The "twice" is for taking into account the qubit case (`dimension = 2`), where X*Z = i Y. For details, see:
-    `IEEE International Symposium on Information Theory (ISIT), pp. 791-795. IEEE (2018)
-    <https://doi.org/10.1109/ISIT.2018.8437652>`_
 
-    Args:
-        phase (int): The integer to compute the eigenvalue for.
-        dimension (int): The dimension of the pauli to use.
+    The "twice" is for taking into account the qubit case (`dimension = 2`), where X*Z = i Y.
+    For details, see: `IEEE International Symposium on Information Theory (ISIT), pp. 791-795.
+    IEEE (2018) <https://doi.org/10.1109/ISIT.2018.8437652>`_
 
-    Returns:
-        complex: The computed eigenvalue.
+    Parameters
+    ----------
+    phase : int
+        The integer to compute the eigenvalue for.
+    dimension : int
+        The dimension of the pauli to use.
+
+    Returns
+    -------
+    complex
+        The computed eigenvalue.
     """
     phase = phase % (2 * dimension)
 
@@ -128,16 +140,21 @@ def multi_kron(matrices: Sequence[ComplexNDArray]) -> ComplexNDArray:
     """
     Compute the Kronecker product of multiple matrices.
 
-    Args:
-        matrices (Sequence[ComplexNDArray]): A sequence of complex square matrices to compute
-            the Kronecker product of.
+    Parameters
+    ----------
+    matrices : Sequence[ComplexNDArray]
+        A sequence of complex square matrices to compute the Kronecker product of.
 
-    Returns:
-        ComplexNDArray: The Kronecker product of the input matrices.
+    Returns
+    -------
+    ComplexNDArray
+        The Kronecker product of the input matrices.
 
-    Raises:
-        ValueError: If `matrices` is empty, or if any matrix is not a 2-dimensional
-            square array with a complex dtype.
+    Raises
+    ------
+    ValueError
+        If `matrices` is empty, or if any matrix is not a 2-dimensional square
+        array with a complex dtype.
     """
     if not matrices:
         raise ValueError("At least one matrix must be provided.")
