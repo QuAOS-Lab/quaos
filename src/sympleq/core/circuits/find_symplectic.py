@@ -147,7 +147,7 @@ def solve_general_system(u: IntNDArray, v: IntNDArray, p: int = 2) -> IntNDArray
     Raises:
         Exception: If no solution exists in GF(p).
     """
-    n = len(u) // 2  # kept for shape clarity
+    n = len(u) // 2
 
     # Set up the linear system A @ w = b for:
     # <u,w> = 1, <v,w> = 1 (mod p)
@@ -318,6 +318,13 @@ def map_single_pauli_string_to_target(
         raise Exception(f'sp = {sp}...This should never happen')
 
 
+# TODO: Clean up this function and this whole file. There should not be a need for s tring-typed method input.
+#       We must:
+#        - check at the beginning if the input tableau is mappable to the target tableau
+#          (i.e. symplectic product matrices). If not, raise an error.
+#        - have a function that maps a complete independent basis to the target tableau
+#        - have a function that finds the phase
+#        - work with mixed qudits
 def map_pauli_sum_to_target_tableau(
     pauli_sum_tableau: TableauType,
     target_pauli_sum_tableau: TableauType,
