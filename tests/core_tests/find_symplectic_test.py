@@ -1,9 +1,9 @@
 from sympleq.core.circuits.find_symplectic import (
-    map_single_pauli_string_to_target,
+    map_single_paulistring_to_target,
     find_symplectic_solution,
     find_symplectic_solution_extended,
     solve_gf2,
-    map_pauli_sum_to_target_tableau,
+    map_paulisum_to_target_tableau,
     symplectic_from_pauli_permutation,
 )
 import numpy as np
@@ -86,7 +86,7 @@ class TestSymplecticSolver:
 
             assert np.all(transvection(h, x) == (x @ transvection_matrix(h)) % 2)
 
-    def test_map_single_pauli_string_to_target(self):
+    def test_map_single_paulistring_to_target(self):
         n = 14
         p = 2
         for _ in range(1000):
@@ -97,7 +97,7 @@ class TestSymplecticSolver:
             if np.array_equal(target_ps, np.zeros(2 * n)):
                 target_ps[np.random.randint(2 * n)] = 1  # Ensure non-zero target
 
-            F_map = map_single_pauli_string_to_target(input_ps, target_ps)
+            F_map = map_single_paulistring_to_target(input_ps, target_ps)
             assert np.all((input_ps @ F_map) % p == target_ps), (f"\n{F_map}\n{input_ps}"
                                                                  f"\n{(input_ps @ F_map) % p}\n{target_ps}")
 
@@ -233,7 +233,7 @@ class TestSymplecticSolver:
             if check_pl_sum.n_paulis() != pl_sum.n_paulis():
                 continue  # Skip if not mappable
 
-            F = map_pauli_sum_to_target_tableau(sym_sum, target_sym_sum, method="auto")
+            F = map_paulisum_to_target_tableau(sym_sum, target_sym_sum, method="auto")
 
             # Verify the mapping
             mapped_sym_sum = (sym_sum @ F) % pl_sum.lcm
@@ -255,7 +255,7 @@ class TestSymplecticSolver:
         ])
         target_tab = input_tab @ F_expected % 2
 
-        F = map_pauli_sum_to_target_tableau(input_tab, target_tab, p=2)
+        F = map_paulisum_to_target_tableau(input_tab, target_tab, p=2)
 
         assert np.array_equal(F, F_expected)
         assert np.array_equal((input_tab @ F) % 2, target_tab)
@@ -265,9 +265,9 @@ class TestSymplecticSolver:
         target_tab = input_tab[[1, 0]]
 
         with pytest.raises(ValueError, match="complete independent Pauli basis"):
-            map_pauli_sum_to_target_tableau(input_tab, target_tab, p=2)
+            map_paulisum_to_target_tableau(input_tab, target_tab, p=2)
 
-        F = map_pauli_sum_to_target_tableau(input_tab, target_tab, p=2, method="transvection")
+        F = map_paulisum_to_target_tableau(input_tab, target_tab, p=2, method="transvection")
         assert np.array_equal((input_tab @ F) % 2, target_tab)
 
     def test_map_pauli_sum_to_target_complete_basis_with_dependent_row(self):
@@ -283,7 +283,7 @@ class TestSymplecticSolver:
         ]) % p
         target_tab = input_tab @ F_expected % p
 
-        F = map_pauli_sum_to_target_tableau(input_tab, target_tab, p=p)
+        F = map_paulisum_to_target_tableau(input_tab, target_tab, p=p)
 
         assert np.array_equal(F, F_expected)
         assert np.array_equal((input_tab @ F) % p, target_tab)
@@ -298,7 +298,7 @@ class TestSymplecticSolver:
         ]) % p
         target_tab = input_tab @ F_expected % p
 
-        F = map_pauli_sum_to_target_tableau(input_tab, target_tab, p=p)
+        F = map_paulisum_to_target_tableau(input_tab, target_tab, p=p)
 
         assert np.array_equal(F, F_expected)
         assert np.array_equal((input_tab @ F) % p, target_tab)

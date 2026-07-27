@@ -13,7 +13,7 @@ from sympleq.core.circuits.random_symplectic import (
     symplectic_random_koenig_smolin_gf2,
     symplectic_random_transvection,
 )
-from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
+from sympleq.core.circuits.find_symplectic import map_paulisum_to_target_tableau
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.circuits.target import get_phase_vector
 from sympleq.core.paulis.pauli_string import PauliString
@@ -198,7 +198,7 @@ class Gate(ABC):
 
         n_qudits = input_tableau.shape[1] // 2
 
-        symplectic = map_pauli_sum_to_target_tableau(
+        symplectic = map_paulisum_to_target_tableau(
             input_tableau,
             target_tableau,
             p=int(dimension),

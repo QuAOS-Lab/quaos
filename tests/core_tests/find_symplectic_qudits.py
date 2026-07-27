@@ -4,7 +4,7 @@ from sympleq.core.circuits.utils import symplectic_product_arrays
 from sympleq.core.circuits.find_symplectic_qudits import build_symplectic_for_transvection, \
     check_mappable_via_clifford, intermediate_transvection_solve, find_transvection_map, find_transvection_map_solve, \
     map_paulisum_to_target_paulisum
-from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
+from sympleq.core.circuits.find_symplectic import map_paulisum_to_target_tableau
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 from sympleq.models import random_hamiltonian
 from sympleq.core.circuits import Circuit
@@ -138,5 +138,5 @@ class TestSymplecticSolverQudits:
                 F_total = map_paulisum_to_target_paulisum(input_tab, output_tab, p)
                 assert (input_tab @ F_total % p == output_tab).all(), f'could not map for {input_tab, output_tab}'
 
-                F_public = map_pauli_sum_to_target_tableau(input_tab, output_tab, p, method="transvection")
+                F_public = map_paulisum_to_target_tableau(input_tab, output_tab, p, method="transvection")
                 assert (input_tab @ F_public % p == output_tab).all(), f'could not map for {input_tab, output_tab}'

@@ -260,11 +260,11 @@ def solve_extended_system(u: IntNDArray, v: IntNDArray, t_vectors: list[IntNDArr
     return np.asarray(solution, dtype=int) % p
 
 
-def check_mappable_via_clifford(pauli_sum_tableau: TableauType,
-                                target_pauli_sum_tableau: TableauType,
+def check_mappable_via_clifford(paulisum_tableau: TableauType,
+                                target_paulisum_tableau: TableauType,
                                 p: int = 2) -> bool:
     sym_check = np.all(
-        symplectic_product_matrix(pauli_sum_tableau, p) == symplectic_product_matrix(target_pauli_sum_tableau, p)
+        symplectic_product_matrix(paulisum_tableau, p) == symplectic_product_matrix(target_paulisum_tableau, p)
     )
     if sym_check:
         return True
@@ -272,9 +272,9 @@ def check_mappable_via_clifford(pauli_sum_tableau: TableauType,
     return False
 
 
-def map_single_pauli_string_to_target(
-    pauli_string_tableau: TableauType,
-    target_pauli_string_tableau: TableauType,
+def map_single_paulistring_to_target(
+    paulistring_tableau: TableauType,
+    target_paulistring_tableau: TableauType,
     constraint_paulis: list[TableauType] | None = None,
     p: int = 2,
 ) -> TableauType:
@@ -282,18 +282,18 @@ def map_single_pauli_string_to_target(
         from sympleq.core.circuits.find_symplectic_qudits import find_transvection_map_solve_extended
 
         constraints = [] if constraint_paulis is None else list(constraint_paulis)
-        sps = [symplectic_product_arrays(t, target_pauli_string_tableau, p) for t in constraints]
+        sps = [symplectic_product_arrays(t, target_paulistring_tableau, p) for t in constraints]
         return find_transvection_map_solve_extended(
-            pauli_string_tableau,
-            target_pauli_string_tableau,
+            paulistring_tableau,
+            target_paulistring_tableau,
             constraints=constraints,
             sps=sps,
             p=p,
         )
 
-    sp = symplectic_product_arrays(pauli_string_tableau, target_pauli_string_tableau, p)
+    sp = symplectic_product_arrays(paulistring_tableau, target_paulistring_tableau, p)
     if sp == 1:
-        h = pauli_string_tableau + target_pauli_string_tableau
+        h = paulistring_tableau + target_paulistring_tableau
 
         F_h = transvection_matrix(h, p)
 
@@ -301,13 +301,13 @@ def map_single_pauli_string_to_target(
 
     if sp == 0:
         w = find_symplectic_solution_extended(
-            pauli_string_tableau,
-            target_pauli_string_tableau,
+            paulistring_tableau,
+            target_paulistring_tableau,
             constraint_paulis,
             p=p,
         )
-        h_1 = target_pauli_string_tableau + w
-        h_2 = pauli_string_tableau + w
+        h_1 = target_paulistring_tableau + w
+        h_2 = paulistring_tableau + w
 
         F_h_1 = transvection_matrix(h_1, p)
         F_h_2 = transvection_matrix(h_2, p)
@@ -325,9 +325,9 @@ def map_single_pauli_string_to_target(
 #        - have a function that maps a complete independent basis to the target tableau
 #        - have a function that finds the phase
 #        - work with mixed qudits
-def map_pauli_sum_to_target_tableau(
-    pauli_sum_tableau: TableauType,
-    target_pauli_sum_tableau: TableauType,
+def map_paulisum_to_target_tableau(
+    paulisum_tableau: TableauType,
+    target_paulisum_tableau: TableauType,
     p: int = 2,
     method: str = "inverse",
 ) -> TableauType:
@@ -339,15 +339,15 @@ def map_pauli_sum_to_target_tableau(
     constructive transvection path. ``method="auto"`` keeps the old compatibility
     behavior: try the inverse method first, then fall back to transvections.
     """
-    if not check_mappable_via_clifford(pauli_sum_tableau, target_pauli_sum_tableau, p=p):
-        raise Exception(f'SPM not equal. Cannot map\n{pauli_sum_tableau} to\n{target_pauli_sum_tableau}')
+    if not check_mappable_via_clifford(paulisum_tableau, target_paulisum_tableau, p=p):
+        raise Exception(f'SPM not equal. Cannot map\n{paulisum_tableau} to\n{target_paulisum_tableau}')
 
     method_key = str(method).lower()
     if method_key not in {"inverse", "transvection", "auto"}:
         raise ValueError("method must be one of 'inverse', 'transvection', or 'auto'.")
 
     if method_key in {"inverse", "auto"}:
-        complete_basis_map = _map_complete_basis_to_target(pauli_sum_tableau, target_pauli_sum_tableau, p=p)
+        complete_basis_map = _map_complete_basis_to_target(paulisum_tableau, target_paulisum_tableau, p=p)
         if complete_basis_map is not None:
             return complete_basis_map
         if method_key == "inverse":
@@ -356,36 +356,36 @@ def map_pauli_sum_to_target_tableau(
                 "a complete independent Pauli basis."
             )
 
-    return _map_pauli_sum_to_target_tableau_by_transvections(
-        pauli_sum_tableau,
-        target_pauli_sum_tableau,
+    return _map_paulisum_to_target_tableau_by_transvections(
+        paulisum_tableau,
+        target_paulisum_tableau,
         p=p,
     )
 
 
-def _map_pauli_sum_to_target_tableau_by_transvections(
-    pauli_sum_tableau: TableauType, target_pauli_sum_tableau: TableauType, p: int = 2
+def _map_paulisum_to_target_tableau_by_transvections(
+    paulisum_tableau: TableauType, target_paulisum_tableau: TableauType, p: int = 2
 ) -> TableauType:
     """Map a Pauli tableau to a target tableau using transvections."""
     if p != 2:
         from sympleq.core.circuits.find_symplectic_qudits import map_paulisum_to_target_paulisum
 
-        return map_paulisum_to_target_paulisum(pauli_sum_tableau, target_pauli_sum_tableau, p)
+        return map_paulisum_to_target_paulisum(paulisum_tableau, target_paulisum_tableau, p)
 
-    m = len(pauli_sum_tableau)
-    n = len(pauli_sum_tableau[0]) // 2
+    m = len(paulisum_tableau)
+    n = len(paulisum_tableau[0]) // 2
     mapped_paulis: list[TableauType] = []
     F = np.eye(2 * n, dtype=int)
     for i in range(m):
         # update the starting point to whatever previous solutions mapped it to
-        ps = (pauli_sum_tableau[i] @ F) % p
-        target_ps = target_pauli_sum_tableau[i]
+        ps = (paulisum_tableau[i] @ F) % p
+        target_ps = target_paulisum_tableau[i]
 
         if np.array_equal(ps, target_ps):
             mapped_paulis.append(target_ps)  # these are now the constraints for the next iteration
             continue
 
-        F_map = map_single_pauli_string_to_target(ps, target_ps, mapped_paulis, p=p)
+        F_map = map_single_paulistring_to_target(ps, target_ps, mapped_paulis, p=p)
         assert np.all((ps @ F_map) % p == target_ps), f"\n{F_map}\n{ps}\n{(ps @ F_map) % p}\n{target_ps}"
         for mp in mapped_paulis:
             assert np.all((mp @ F_map) % p == mp), f"\n{F_map}\n{mp}\n{(mp @ F_map) % p}"
@@ -396,7 +396,7 @@ def _map_pauli_sum_to_target_tableau_by_transvections(
 
 
 def symplectic_from_pauli_permutation(
-    pauli_sum_tableau: TableauType,
+    paulisum_tableau: TableauType,
     permutation: TableauType,
     p: int = 2,
     method: str = "inverse",
@@ -409,19 +409,19 @@ def symplectic_from_pauli_permutation(
     This is graph-independent core logic used by higher-level symmetry finders.
     The default method is the inverse-basis lift.
     """
-    tableau = np.asarray(pauli_sum_tableau, dtype=int) % p
+    tableau = np.asarray(paulisum_tableau, dtype=int) % p
     pi = np.asarray(permutation, dtype=np.int64).reshape(-1)
     if tableau.ndim != 2:
-        raise ValueError("pauli_sum_tableau must be a 2D tableau.")
+        raise ValueError("paulisum_tableau must be a 2D tableau.")
     if pi.shape[0] != tableau.shape[0]:
         raise ValueError("permutation length must match the number of tableau rows.")
     if sorted(pi.tolist()) != list(range(tableau.shape[0])):
         raise ValueError("permutation must be a permutation of the tableau row indices.")
-    return map_pauli_sum_to_target_tableau(tableau, tableau[pi], p=p, method=method)
+    return map_paulisum_to_target_tableau(tableau, tableau[pi], p=p, method=method)
 
 
 def _map_complete_basis_to_target(
-    pauli_sum_tableau: TableauType, target_pauli_sum_tableau: TableauType, p: int = 2
+    paulisum_tableau: TableauType, target_paulisum_tableau: TableauType, p: int = 2
 ) -> TableauType | None:
     """
     Fast full-rank basis map F = P_b^{-1} P'_b.
@@ -430,8 +430,8 @@ def _map_complete_basis_to_target(
     input rows contain a complete independent basis, the image of that basis
     determines F uniquely.
     """
-    input_tab = np.asarray(pauli_sum_tableau, dtype=int) % p
-    output_tab = np.asarray(target_pauli_sum_tableau, dtype=int) % p
+    input_tab = np.asarray(paulisum_tableau, dtype=int) % p
+    output_tab = np.asarray(target_paulisum_tableau, dtype=int) % p
 
     if input_tab.ndim != 2 or output_tab.ndim != 2 or input_tab.shape != output_tab.shape:
         raise ValueError("Input and target tableaus must be 2-dimensional arrays with matching shape.")
