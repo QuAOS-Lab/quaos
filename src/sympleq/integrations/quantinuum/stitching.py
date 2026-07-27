@@ -49,7 +49,6 @@ def circuit_stitching(
     input_circuits = sorted(input_circuits, key=lambda c: c.n_qubits, reverse=True)
 
     sum_circuit = Circuit(n_qubits)
-    # reset_box = reset_operations(n_qubits)
 
     creg_index = 0
     for idx in range(len(input_circuits)):
