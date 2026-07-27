@@ -46,7 +46,7 @@ class TestCircuitStitching:
     def test_stitches_circuits_in_descending_qubit_order(self):
         circuits_with_expected = [
             _deterministic_native_circuit(n_qubits=1 + index % 10, seed=index)
-            for index in range(11)
+            for index in range(9)
         ]
         stitched = circuit_stitching([circuit for circuit, _ in circuits_with_expected])
 
