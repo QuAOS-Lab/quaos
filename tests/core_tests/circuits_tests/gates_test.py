@@ -304,43 +304,88 @@ class TestGates():
         # Map X to Z on a single qubit: [1, 0] -> [0, 1]
         input_tableau = np.array([[1, 0]])
         target_tableau = np.array([[0, 1]])
-        gate = Gate.solve_from_target(input_tableau, target_tableau)
+        dim = 2
+        gate = Gate.solve_from_target(input_tableau, target_tableau, dim)
         result = (input_tableau @ gate.symplectic) % 2
         assert np.array_equal(result, target_tableau), f"Single mapping failed: {result} != {target_tableau}"
 
         # Test multiple Pauli string mapping (2 qubits)
         # This requires compatible symplectic product matrices
         for _ in range(10):
-            n = 2
+            n_qudits = np.random.randint(1, 7)
             # Generate random input
-            input_tableau = np.random.randint(0, 2, size=(2, 2 * n))
+            input_tableau = np.random.randint(0, 2, size=(2, 2 * n_qudits))
             # Apply a random symplectic to get a valid target
-            random_gate = Gate.from_random(n, 2)
+            random_gate = Gate.from_random(n_qudits, 2)
             target_tableau = (input_tableau @ random_gate.symplectic) % 2
 
-            gate = Gate.solve_from_target(input_tableau, target_tableau)
+            gate = Gate.solve_from_target(input_tableau, target_tableau, dim)
             result = (input_tableau @ gate.symplectic) % 2
             assert np.array_equal(result, target_tableau), "Multi-Pauli mapping failed"
 
-    @pytest.mark.parametrize("d", [2, 3, 5])
-    @pytest.mark.parametrize("n", [1, 2, 3])
-    def test_gate_from_random_symplecticity(self, d: int, n: int):
+    @pytest.mark.parametrize("dim", [3, 5])
+    def test_gate_from_target_qudit_dimension(self, dim: int):
+        """Test Gate.solve_from_target works for qudit (non-qubit prime) dimensions."""
+
+        for _ in range(10):
+            n_qudits = np.random.randint(1, 7)
+            input_tableau = np.random.randint(0, dim, size=(2, 2 * n_qudits))
+            # Regenerate any all-zero row: it represents the identity Pauli, which has
+            # no well-defined transvection image and is correctly rejected by the solver.
+            while not input_tableau.any(axis=1).all():
+                input_tableau = np.random.randint(0, dim, size=(2, 2 * n_qudits))
+            # Apply a random symplectic to get a valid, guaranteed-reachable target.
+            random_gate = Gate.from_random(n_qudits, dim)
+            target_tableau = (input_tableau @ random_gate.symplectic) % dim
+
+            gate = Gate.solve_from_target(input_tableau, target_tableau, dim)
+            result = (input_tableau @ gate.symplectic) % dim
+            assert np.array_equal(result, target_tableau), f"Qudit mapping failed for dimension={dim}"
+
+    def test_full_symplectic_embeds_and_reduces_mod_dimension(self):
+        """Test Gate.full_symplectic embeds a local symplectic into a larger system and reduces mod dimension."""
+        n_qudits = 3
+        qudits = (1,)
+
+        # dimension=None returns the raw embedding, un-reduced.
+        raw = GATES.H.full_symplectic(qudits, n_qudits)
+        assert raw.shape == (2 * n_qudits, 2 * n_qudits)
+        # Hadamard's local symplectic [[0, -1], [1, 0]] should appear verbatim, including the -1.
+        assert -1 in raw
+
+        # Qudits the gate does not act on must be left as identity.
+        for q in range(n_qudits):
+            if q in qudits:
+                continue
+            idx = [q, q + n_qudits]
+            block = raw[np.ix_(idx, idx)]
+            assert np.array_equal(block, np.eye(2, dtype=int))
+
+        # An explicit dimension reduces the embedded matrix mod that dimension.
+        dimension = 5
+        reduced = GATES.H.full_symplectic(qudits, n_qudits, dimension=dimension)
+        assert np.array_equal(reduced, raw % dimension)
+        assert np.all(reduced >= 0) and np.all(reduced < dimension)
+
+    @pytest.mark.parametrize("dimension", [2, 3, 5])
+    @pytest.mark.parametrize("n_qudits", [1, 2, 3])
+    def test_gate_from_random_symplecticity(self, dimension: int, n_qudits: int):
         """Test that Gate.from_random produces valid symplectic matrices."""
         from sympleq.core.circuits import Gate
 
         for _ in range(5):
-            gate = Gate.from_random(n, d)
-            assert is_symplectic(gate.symplectic, d), (
-                f"Random gate not symplectic for n={n}, d={d}"
+            gate = Gate.from_random(n_qudits, dimension)
+            assert is_symplectic(gate.symplectic, dimension), (
+                f"Random gate not symplectic for n={n_qudits}, d={dimension}"
             )
 
-    @pytest.mark.parametrize("n", [1, 2, 3])
-    def test_gate_from_random_koenig_smolin_symplecticity(self, n: int):
+    @pytest.mark.parametrize("n_qudits", [1, 2, 3])
+    def test_gate_from_random_koenig_smolin_symplecticity(self, n_qudits: int):
         gate = Gate.from_random(
-            n,
+            n_qudits,
             2,
             sampler="koenig-smolin",
-            rng=np.random.default_rng(100 + n),
+            rng=np.random.default_rng(100 + n_qudits),
         )
         assert is_symplectic(gate.symplectic, 2)
 
