@@ -453,7 +453,8 @@ class Gate(ABC):
 
         return _GenericGate(new_name, self._symplectic @ T, self._phase_vector.copy())
 
-    def full_symplectic(self, qudits: tuple[int, ...] | int, n_qudits: int, p: int | None = None) -> TableauType:
+    def full_symplectic(self, qudits: tuple[int, ...] | int, n_qudits: int,
+                        dimension: int | None = None) -> TableauType:
         """
         Get the full 2n x 2n symplectic matrix for a gate acting on specific qudits.
 
@@ -463,21 +464,21 @@ class Gate(ABC):
             The qudit index(es) the gate acts on
         n_qudits : int
             Total number of qudits in the system
-        p : int
+        dimension : int
             The prime dimension for modular arithmetic
 
         Returns
         -------
         TableauLike
-            The full 2n x 2n symplectic matrix mod p
+            The full 2n x 2n symplectic matrix mod dimension
         """
         if isinstance(qudits, int):
             qudits = (qudits,)
-        F, _ = embed_symplectic(self.symplectic, self.phase_vector(p), qudits, n_qudits)
-        if p is None:
-            return F
+        symplectic_matrix, _ = embed_symplectic(self.symplectic, self.phase_vector(dimension), qudits, n_qudits)
+        if dimension is None:
+            return symplectic_matrix
 
-        return F % p
+        return symplectic_matrix % dimension
 
 
 class _GenericGate(Gate):

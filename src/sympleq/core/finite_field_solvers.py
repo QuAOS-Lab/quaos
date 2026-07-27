@@ -9,41 +9,46 @@ from collections import defaultdict
 from sympleq._typing import IntNDArray
 
 
-def solve_linear_system_over_gf(A: IntNDArray, b: IntNDArray, GF: type | int) -> IntNDArray:
+def solve_linear_system_over_gf(coefficient_matrix: IntNDArray, right_hand_side: IntNDArray,
+                                field: type | int) -> IntNDArray:
     """
-    Solve the system A @ x = b over a finite field.
+    Solve the system coefficient_matrix @ solution = right_hand_side over a finite field.
 
     Returns one particular solution with free variables set to zero.
 
     Parameters
     ----------
-    A : IntNDArray
+    coefficient_matrix : IntNDArray
         Coefficient matrix.
-    b : IntNDArray
+    right_hand_side : IntNDArray
         Right-hand side vector.
-    GF : type or int
-        The Galois field to solve over: either a `galois.GF` field class,
-        or an integer prime `p` (uses a GF(2)-specialized fast path when `p == 2`).
+    field : type or int
+        The Galois field to solve over: either a `galois.GF` field class, or an
+        integer prime dimension (uses a GF(2)-specialized fast path when dimension == 2).
 
     Returns
     -------
     IntNDArray
-        One particular solution `x` with free variables set to zero.
+        One particular solution with free variables set to zero.
 
     Raises
     ------
     ValueError
-        If the system is inconsistent, or if `A` and `b` have incompatible shapes.
+        If the system is inconsistent, or if `coefficient_matrix` and `right_hand_side`
+        have incompatible shapes.
     """
     # Fast path for GF(2) using uint8 XOR Gaussian elimination
-    if GF == 2 or GF == galois.GF(2):
-        A2 = (np.asarray(A, dtype=np.uint8) & 1)
-        b2 = (np.asarray(b, dtype=np.uint8).reshape(-1, 1) & 1)
-        m, n = A2.shape
-        if b2.shape[0] != m:
-            raise ValueError(f"Incompatible shapes for A ({A2.shape}) and b ({b2.shape}).")
+    if field == 2 or field == galois.GF(2):
+        coefficient_matrix_gf2 = (np.asarray(coefficient_matrix, dtype=np.uint8) & 1)
+        right_hand_side_gf2 = (np.asarray(right_hand_side, dtype=np.uint8).reshape(-1, 1) & 1)
+        m, n = coefficient_matrix_gf2.shape
+        if right_hand_side_gf2.shape[0] != m:
+            raise ValueError(
+                f"Incompatible shapes for coefficient_matrix ({coefficient_matrix_gf2.shape}) "
+                f"and right_hand_side ({right_hand_side_gf2.shape})."
+            )
 
-        R = np.hstack((A2, b2))
+        R = np.hstack((coefficient_matrix_gf2, right_hand_side_gf2))
         row = 0
         pivots: list[tuple[int, int]] = []
         for col in range(n):
@@ -68,26 +73,27 @@ def solve_linear_system_over_gf(A: IntNDArray, b: IntNDArray, GF: type | int) ->
             if not R[r, :n].any() and R[r, n]:
                 raise ValueError("Inconsistent linear system over GF(2).")
 
-        x = np.zeros(n, dtype=np.uint8)
+        solution = np.zeros(n, dtype=np.uint8)
         for r, c in pivots:
-            x[c] = R[r, n]
-        return x.astype(int)
+            solution[c] = R[r, n]
+        return solution.astype(int)
 
-    if isinstance(GF, int):
-        GF = galois.GF(GF)
+    if isinstance(field, int):
+        field = galois.GF(field)
 
-    A_gf = GF(A)
-    b_gf = GF(b).reshape(-1, 1)
+    coefficient_matrix_gf = field(coefficient_matrix)
+    right_hand_side_gf = field(right_hand_side).reshape(-1, 1)
 
-    if A_gf.ndim != 2:
+    if coefficient_matrix_gf.ndim != 2:
         raise ValueError("Coefficient matrix must be 2-dimensional.")
-    if A_gf.shape[0] != b_gf.shape[0]:
+    if coefficient_matrix_gf.shape[0] != right_hand_side_gf.shape[0]:
         raise ValueError(
-            f"Incompatible shapes for A ({A_gf.shape}) and b ({b_gf.shape})."
+            f"Incompatible shapes for coefficient_matrix ({coefficient_matrix_gf.shape}) "
+            f"and right_hand_side ({right_hand_side_gf.shape})."
         )
 
-    m, n = A_gf.shape
-    augmented = np.hstack((A_gf, b_gf))
+    m, n = coefficient_matrix_gf.shape
+    augmented = np.hstack((coefficient_matrix_gf, right_hand_side_gf))
     R = augmented.copy()
 
     pivot_rows: list[tuple[int, int]] = []
@@ -95,7 +101,7 @@ def solve_linear_system_over_gf(A: IntNDArray, b: IntNDArray, GF: type | int) ->
     for col in range(n):
         pivot = None
         for r in range(row, m):
-            if R[r, col] != GF(0):
+            if R[r, col] != field(0):
                 pivot = r
                 break
         if pivot is None:
@@ -108,7 +114,7 @@ def solve_linear_system_over_gf(A: IntNDArray, b: IntNDArray, GF: type | int) ->
         R[row, :] /= pivot_val
 
         for r in range(m):
-            if r != row and R[r, col] != GF(0):
+            if r != row and R[r, col] != field(0):
                 R[r, :] -= R[r, col] * R[row, :]
 
         pivot_rows.append((row, col))
@@ -117,29 +123,30 @@ def solve_linear_system_over_gf(A: IntNDArray, b: IntNDArray, GF: type | int) ->
             break
 
     for r in range(m):
-        if all(R[r, c] == GF(0) for c in range(n)) and R[r, n] != GF(0):
-            raise ValueError("Inconsistent linear system over GF(p).")
+        if all(R[r, c] == field(0) for c in range(n)) and R[r, n] != field(0):
+            raise ValueError("Inconsistent linear system over GF(dimension).")
 
-    x = GF.Zeros(n)
+    solution = field.Zeros(n)
     for row_idx, pivot_col in reversed(pivot_rows):
         value = R[row_idx, n]
         for j in range(pivot_col + 1, n):
-            if R[row_idx, j] != GF(0):
-                value -= R[row_idx, j] * x[j]
-        x[pivot_col] = value
+            if R[row_idx, j] != field(0):
+                value -= R[row_idx, j] * solution[j]
+        solution[pivot_col] = value
 
-    return x.copy()
+    return solution.copy()
 
 
-def solve_gf2(A: IntNDArray, b: IntNDArray) -> IntNDArray | None:
+def solve_gf2(coefficient_matrix: IntNDArray, right_hand_side: IntNDArray) -> IntNDArray | None:
     """
-    Solve the linear system Ax = b over GF(2) using Gaussian elimination.
+    Solve the linear system coefficient_matrix @ solution = right_hand_side over GF(2)
+    using Gaussian elimination.
 
     Parameters
     ----------
-    A : IntNDArray
+    coefficient_matrix : IntNDArray
         Coefficient matrix.
-    b : IntNDArray
+    right_hand_side : IntNDArray
         Right-hand side vector.
 
     Returns
@@ -147,10 +154,10 @@ def solve_gf2(A: IntNDArray, b: IntNDArray) -> IntNDArray | None:
     IntNDArray or None
         Solution vector, or None if no solution exists.
     """
-    GF2 = galois.GF(2)
+    field = galois.GF(2)
     try:
         solution = solve_linear_system_over_gf(
-            np.asarray(A, dtype=int) % 2, np.asarray(b, dtype=int) % 2, GF2
+            np.asarray(coefficient_matrix, dtype=int) % 2, np.asarray(right_hand_side, dtype=int) % 2, field
         )
     except ValueError:
         return None
@@ -201,45 +208,45 @@ def solve_modular_linear_additive(x: int, z: int, d: int) -> int:
     return n
 
 
-def solve_modular_linear_system(B: IntNDArray, v: IntNDArray) -> IntNDArray:
+def solve_modular_linear_system(coefficient_matrix: IntNDArray, right_hand_side: IntNDArray) -> IntNDArray:
     """
-    Solve x @ B = v over GF(p) using row-reduction (RREF).
+    Solve solution @ coefficient_matrix = right_hand_side over GF(dimension) using row-reduction (RREF).
 
     Parameters
     ----------
-    B : IntNDArray
-        Coefficient matrix (a `galois.FieldArray`); its type determines the field GF(p).
-    v : IntNDArray
+    coefficient_matrix : IntNDArray
+        Coefficient matrix (a `galois.FieldArray`); its type determines the field.
+    right_hand_side : IntNDArray
         Right-hand side vector.
 
     Returns
     -------
     IntNDArray
-        A solution `x` such that x @ B == v.
+        A solution such that solution @ coefficient_matrix == right_hand_side.
 
     Raises
     ------
     ValueError
-        If the computed solution does not satisfy x @ B == v.
+        If the computed solution does not satisfy solution @ coefficient_matrix == right_hand_side.
     """
-    GF = type(B)
-    solution = solve_linear_system_over_gf(B.T, v, GF)
-    if not np.array_equal(solution @ B, v):
-        raise ValueError("Failed to solve linear system over GF(p).")
+    field = type(coefficient_matrix)
+    solution = solve_linear_system_over_gf(coefficient_matrix.T, right_hand_side, field)
+    if not np.array_equal(solution @ coefficient_matrix, right_hand_side):
+        raise ValueError("Failed to solve linear system over GF(dimension).")
     return solution
 
 
-def gf_solve(A: IntNDArray, b: IntNDArray, GF: type) -> IntNDArray:
+def gf_solve(coefficient_matrix: IntNDArray, right_hand_side: IntNDArray, field: type) -> IntNDArray:
     """
-    Solve A x = b over GF(p).
+    Solve coefficient_matrix @ solution = right_hand_side over GF(dimension).
 
     Parameters
     ----------
-    A : IntNDArray
+    coefficient_matrix : IntNDArray
         Coefficient matrix.
-    b : IntNDArray
+    right_hand_side : IntNDArray
         Right-hand side vector.
-    GF : type
+    field : type
         The `galois.GF` field class to solve over.
 
     Returns
@@ -252,31 +259,32 @@ def gf_solve(A: IntNDArray, b: IntNDArray, GF: type) -> IntNDArray:
     ValueError
         If the system is inconsistent.
     """
-    solution = solve_linear_system_over_gf(A, b, GF)
+    solution = solve_linear_system_over_gf(coefficient_matrix, right_hand_side, field)
     return solution.reshape(-1, 1)
 
 
 def get_linear_dependencies(
     vectors: IntNDArray,
-    p: int | list[int] | IntNDArray,
+    dimension: int | list[int] | IntNDArray,
     compute_dependencies: bool = True,
 ) -> tuple[list[int], dict[int, list[tuple[int, int]]]]:
     """
     Find the linearly dependent rows of `vectors` over one or more finite fields.
 
-    - For a single prime p (especially p=2): returns exact pivot rows and exact dependencies.
-    - For per-column primes: returns correct pivot rows (same criterion as the single-prime case),
-      but dependency coefficients only if all primes are identical.
-    - For per-row primes: processes each group with the fast single-prime path.
+    - For a single dimension (especially dimension=2): returns exact pivot rows and exact dependencies.
+    - For per-column dimensions: returns correct pivot rows (same criterion as the single-dimension
+      case), but dependency coefficients only if all dimensions are identical.
+    - For per-row dimensions: processes each group with the fast single-dimension path.
 
     Parameters
     ----------
     vectors : IntNDArray
         Matrix whose rows are the candidate vectors to test for linear dependence.
-    p : int or list of int or IntNDArray
-        The prime(s) defining the finite field(s). A single int applies GF(p) to
-        all rows. A list/array applies per-row or per-column primes, depending on
-        its length (see raised `AssertionError` below for the accepted lengths).
+    dimension : int or list of int or IntNDArray
+        The prime dimension(s) defining the finite field(s). A single int applies
+        GF(dimension) to all rows. A list/array applies per-row or per-column
+        dimensions, depending on its length (see raised `AssertionError` below for
+        the accepted lengths).
     compute_dependencies : bool
         If True, also compute the dependency coefficients for each dependent row.
 
@@ -292,37 +300,37 @@ def get_linear_dependencies(
     Raises
     ------
     TypeError
-        If `p` is neither an int nor a list/array of ints.
+        If `dimension` is neither an int nor a list/array of ints.
     AssertionError
-        If `p` is a list/array whose length matches neither the number of rows,
-        the number of columns, nor half the number of columns.
+        If `dimension` is a list/array whose length matches neither the number of
+        rows, the number of columns, nor half the number of columns.
 
     Notes
     -----
-    For p=2, dependencies are coefficients in GF(2) (0/1).
-    For odd prime p, dependencies are coefficients in GF(p).
+    For dimension=2, dependencies are coefficients in GF(2) (0/1).
+    For odd prime dimension, dependencies are coefficients in GF(dimension).
     """
-    V = np.asarray(vectors, dtype=np.int64)
-    m, n = V.shape
+    vectors = np.asarray(vectors, dtype=np.int64)
+    m, n = vectors.shape
 
-    # Normalize p into mode and per-column primes when possible.
-    if isinstance(p, int):
-        p_int = int(p)
-        return _get_deps_single_prime(V, p_int, compute_dependencies)
+    # Normalize dimension into mode and per-column dimensions when possible.
+    if isinstance(dimension, int):
+        dimension_int = int(dimension)
+        return _get_deps_single_prime(vectors, dimension_int, compute_dependencies)
 
-    if isinstance(p, (list, np.ndarray)):
-        p = np.asarray(p, dtype=int)
-        lp = len(p)
+    if isinstance(dimension, (list, np.ndarray)):
+        dimension = np.asarray(dimension, dtype=int)
+        lp = len(dimension)
 
         if lp == m:
             # per-row legacy: group and process each group
             pivot_indices: list[int] = []
             dependencies: dict[int, list[tuple[int, int]]] = {}
             prime_groups = defaultdict(list)
-            for i, prime in enumerate(p.tolist()):
+            for i, prime in enumerate(dimension.tolist()):
                 prime_groups[int(prime)].append(i)
             for prime, idxs in prime_groups.items():
-                piv, deps = _get_deps_single_prime(V[idxs, :], int(prime), compute_dependencies)
+                piv, deps = _get_deps_single_prime(vectors[idxs, :], int(prime), compute_dependencies)
                 pivot_indices.extend([idxs[j] for j in piv])
                 if compute_dependencies:
                     for local_row, expr in deps.items():
@@ -330,18 +338,18 @@ def get_linear_dependencies(
             return pivot_indices, dependencies
 
         if lp == n:
-            p_cols = p.tolist()
+            dimension_cols = dimension.tolist()
         elif lp == n // 2 and n % 2 == 0:
-            p_cols = np.repeat(p, 2).tolist()
+            dimension_cols = np.repeat(dimension, 2).tolist()
         else:
-            raise AssertionError(f"Length of p must be rows={m}, cols={n}, or cols/2={n // 2}. Got {lp}")
+            raise AssertionError(f"Length of dimension must be rows={m}, cols={n}, or cols/2={n // 2}. Got {lp}")
 
-        # Per-column primes: pivot criterion is “independent if increases rank for any prime subset”.
+        # Per-column dimensions: pivot criterion is “independent if increases rank for any prime subset”.
         # We can do this by running elimination separately per distinct prime on its column subset,
-        # but WITHOUT galois row_reduce. Just incremental elimination mod p.
+        # but WITHOUT galois row_reduce. Just incremental elimination mod dimension.
 
         prime_cols = defaultdict(list)
-        for j, prime in enumerate(p_cols):
+        for j, prime in enumerate(dimension_cols):
             prime_cols[int(prime)].append(j)
         primes = list(prime_cols.keys())
 
@@ -359,7 +367,7 @@ def get_linear_dependencies(
             # test rank increase on any prime subset
             for q in primes:
                 cols = prime_cols[q]
-                row = V[i, cols] % q
+                row = vectors[i, cols] % q
                 if eliminators[q].would_increase_rank(row):
                     independent = True
                     break
@@ -369,34 +377,34 @@ def get_linear_dependencies(
                 # actually add to all eliminators (mirrors your “updated_seen” logic)
                 for q in primes:
                     cols = prime_cols[q]
-                    row = V[i, cols] % q
+                    row = vectors[i, cols] % q
                     eliminators[q].add_row(row, i, track_combo=False)
 
         # dependencies only if exactly one prime
         if compute_dependencies and len(primes) == 1:
             q = primes[0]
             cols = prime_cols[q]
-            piv, deps = _get_deps_single_prime(V[:, cols], q, compute_dependencies=True)
+            piv, deps = _get_deps_single_prime(vectors[:, cols], q, compute_dependencies=True)
             # piv returned are *row indices* already, but might differ slightly from the “any prime” criterion
             # Only return deps for those not in pivot_indices according to our pivot selection:
             pivot_set = set(pivot_indices)
             # Build basis rows from pivot_indices in this field:
-            B = (V[pivot_indices, :][:, cols] % q).astype(np.int64)
-            elim = _IncrementalElim(mod=q, ncols=B.shape[1])
+            basis_rows = (vectors[pivot_indices, :][:, cols] % q).astype(np.int64)
+            elim = _IncrementalElim(mod=q, ncols=basis_rows.shape[1])
             for k, ridx in enumerate(pivot_indices):
-                elim.add_row(B[k], ridx, track_combo=True)
+                elim.add_row(basis_rows[k], ridx, track_combo=True)
 
             for i in range(m):
                 if i in pivot_set:
                     continue
-                row = (V[i, cols] % q).astype(np.int64)
+                row = (vectors[i, cols] % q).astype(np.int64)
                 combo = elim.solve_in_span(row)
                 if combo is not None:
                     dependencies[i] = [(ridx, int(coeff)) for ridx, coeff in combo.items() if coeff % q != 0]
 
         return pivot_indices, dependencies
 
-    raise TypeError(f"p must be int or list/np.ndarray of ints, got {type(p)}")
+    raise TypeError(f"dimension must be int or list/np.ndarray of ints, got {type(dimension)}")
 
 
 # ----------------------------
@@ -404,17 +412,17 @@ def get_linear_dependencies(
 # ----------------------------
 
 def _get_deps_single_prime(
-    V: IntNDArray, p: int, compute_dependencies: bool
+    vectors: IntNDArray, dimension: int, compute_dependencies: bool
 ) -> tuple[list[int], dict[int, list[tuple[int, int]]]]:
     """
-    Exact pivots + dependencies for a single prime field GF(p).
+    Exact pivots + dependencies for a single prime field GF(dimension).
 
     Parameters
     ----------
-    V : IntNDArray
+    vectors : IntNDArray
         Matrix whose rows are the candidate vectors to test for linear dependence.
-    p : int
-        Prime defining the finite field GF(p).
+    dimension : int
+        Prime defining the finite field GF(dimension).
     compute_dependencies : bool
         If True, also compute the dependency coefficients for each dependent row.
 
@@ -427,17 +435,17 @@ def _get_deps_single_prime(
         pairs expressing that row as a linear combination of the pivot rows.
         Empty if `compute_dependencies` is False.
     """
-    m, n = V.shape
-    p = int(p)
+    m, n = vectors.shape
+    dimension = int(dimension)
 
-    elim = _IncrementalElim(mod=p, ncols=n)
+    elim = _IncrementalElim(mod=dimension, ncols=n)
 
     pivots: list[int] = []
     deps: dict[int, list[tuple[int, int]]] = {} if compute_dependencies else {}
 
     for i in range(m):
-        row = (V[i] % p).astype(np.int64, copy=False)
-        if p == 2:
+        row = (vectors[i] % dimension).astype(np.int64, copy=False)
+        if dimension == 2:
             row = (row & 1).astype(np.uint8, copy=False)
 
         if elim.would_increase_rank(row):
@@ -450,7 +458,7 @@ def _get_deps_single_prime(
                     # should not happen if would_increase_rank returned False
                     continue
                 # return as list of (pivot_row_index, coeff)
-                deps[i] = [(ridx, int(coeff)) for ridx, coeff in combo.items() if coeff % p != 0]
+                deps[i] = [(ridx, int(coeff)) for ridx, coeff in combo.items() if coeff % dimension != 0]
 
     return pivots, deps
 
@@ -668,68 +676,68 @@ class _IncrementalElim:
         return int(nz[0]) if nz.size else None
 
 
-def gf_inv(A: IntNDArray, p: int = 2) -> IntNDArray:
+def gf_inv(matrix: IntNDArray, dimension: int = 2) -> IntNDArray:
     """
-    Compute the inverse of a square matrix over GF(p) for a prime p.
+    Compute the inverse of a square matrix over GF(dimension) for a prime dimension.
 
     Defaults to GF(2) for backwards compatibility.
 
     Parameters
     ----------
-    A : IntNDArray
+    matrix : IntNDArray
         Square matrix to invert.
-    p : int
-        Prime defining the finite field GF(p).
+    dimension : int
+        Prime defining the finite field GF(dimension).
 
     Returns
     -------
     IntNDArray
-        The inverse of `A` over GF(p).
+        The inverse of `matrix` over GF(dimension).
 
     Raises
     ------
     ValueError
-        If `A` is not square, or is singular over GF(p).
+        If `matrix` is not square, or is singular over GF(dimension).
     """
-    A = np.asarray(A, dtype=int) % p
-    if A.ndim != 2 or A.shape[0] != A.shape[1]:
-        raise ValueError("Matrix must be square to compute an inverse over GF(p).")
+    matrix = np.asarray(matrix, dtype=int) % dimension
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+        raise ValueError("Matrix must be square to compute an inverse over GF(dimension).")
 
-    n = A.shape[0]
-    Id = np.eye(n, dtype=int) % p
-    AI = np.concatenate((A.copy(), Id), axis=1)
+    n = matrix.shape[0]
+    Id = np.eye(n, dtype=int) % dimension
+    AI = np.concatenate((matrix.copy(), Id), axis=1)
 
     for i in range(n):
         pivot_row = None
         for r in range(i, n):
-            if AI[r, i] % p != 0:
+            if AI[r, i] % dimension != 0:
                 pivot_row = r
                 break
         if pivot_row is None:
-            raise ValueError("Matrix is singular over GF(p); inverse does not exist.")
+            raise ValueError("Matrix is singular over GF(dimension); inverse does not exist.")
         if pivot_row != i:
             AI[[i, pivot_row]] = AI[[pivot_row, i]]
 
-        pivot_val = int(AI[i, i] % p)
-        pivot_inv = pow(pivot_val, -1, p)
-        AI[i, :] = (AI[i, :] * pivot_inv) % p
+        pivot_val = int(AI[i, i] % dimension)
+        pivot_inv = pow(pivot_val, -1, dimension)
+        AI[i, :] = (AI[i, :] * pivot_inv) % dimension
 
         for r in range(n):
             if r == i:
                 continue
-            factor = AI[r, i] % p
+            factor = AI[r, i] % dimension
             if factor != 0:
-                AI[r, :] = (AI[r, :] - factor * AI[i, :]) % p
+                AI[r, :] = (AI[r, :] - factor * AI[i, :]) % dimension
 
-    return AI[:, n:] % p
+    return AI[:, n:] % dimension
 
 
-def gf2_inv(M: IntNDArray) -> IntNDArray:
+def gf2_inv(matrix: IntNDArray) -> IntNDArray:
     """Invert a square GF(2) matrix using XOR elimination.
 
     Parameters
     ----------
-    M : IntNDArray
+    matrix : IntNDArray
         Square matrix with entries in {0,1}. Any integer dtype is accepted.
 
     Returns
@@ -742,12 +750,12 @@ def gf2_inv(M: IntNDArray) -> IntNDArray:
     np.linalg.LinAlgError
         If the matrix is not square or is singular over GF(2).
     """
-    A = np.asarray(M, dtype=np.uint8).copy() & 1
-    if A.ndim != 2 or A.shape[0] != A.shape[1]:
+    matrix = np.asarray(matrix, dtype=np.uint8).copy() & 1
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
         raise np.linalg.LinAlgError("GF2 inverse requires square matrix")
 
-    n = A.shape[0]
-    aug = np.hstack((A, np.eye(n, dtype=np.uint8)))
+    n = matrix.shape[0]
+    aug = np.hstack((matrix, np.eye(n, dtype=np.uint8)))
 
     row = 0
     for col in range(n):
@@ -770,49 +778,50 @@ def gf2_inv(M: IntNDArray) -> IntNDArray:
     return aug[:, n:] & 1
 
 
-def gf_rref(A: IntNDArray, p: int = 2) -> tuple[IntNDArray, IntNDArray, IntNDArray, int]:
+def gf_rref(matrix: IntNDArray, dimension: int = 2) -> tuple[IntNDArray, IntNDArray, IntNDArray, int]:
     """
-    Compute the reduced row echelon form of a matrix over GF(p) for a prime p.
+    Compute the reduced row echelon form of a matrix over GF(dimension) for a prime dimension.
 
     Defaults to GF(2) for backwards compatibility.
 
     Parameters
     ----------
-    A : IntNDArray
+    matrix : IntNDArray
         Matrix to row-reduce.
-    p : int
-        Prime defining the finite field GF(p).
+    dimension : int
+        Prime defining the finite field GF(dimension).
 
     Returns
     -------
     IntNDArray
-        The reduced row echelon form of `A`.
+        The reduced row echelon form of `matrix`.
     IntNDArray
-        The left transformation matrix M (row operations), such that M @ A == the RREF (before column ops).
+        The row_transform_matrix (row operations), such that row_transform_matrix @ matrix ==
+        the RREF (before column ops).
     IntNDArray
-        The right transformation matrix N (column operations).
+        The column_transform_matrix (column operations).
     int
-        The rank of `A`.
+        The rank of `matrix`.
 
     Raises
     ------
     ValueError
-        If `A` is not 2-dimensional.
+        If `matrix` is not 2-dimensional.
     """
-    A = np.asarray(A, dtype=int) % p
-    if A.ndim != 2:
+    matrix = np.asarray(matrix, dtype=int) % dimension
+    if matrix.ndim != 2:
         raise ValueError("Input matrix must be 2-dimensional for RREF.")
 
-    A = A.copy()
-    m, n = A.shape
+    matrix = matrix.copy()
+    m, n = matrix.shape
     i = j = 0
-    M = np.eye(m, dtype=int) % p
-    N = np.eye(n, dtype=int) % p
+    row_transform_matrix = np.eye(m, dtype=int) % dimension
+    column_transform_matrix = np.eye(n, dtype=int) % dimension
 
     while i < m and j < n:
         pivot_row = None
         for r in range(i, m):
-            if A[r, j] % p != 0:
+            if matrix[r, j] % dimension != 0:
                 pivot_row = r
                 break
 
@@ -821,98 +830,105 @@ def gf_rref(A: IntNDArray, p: int = 2) -> tuple[IntNDArray, IntNDArray, IntNDArr
             continue
 
         if pivot_row != i:
-            A[[i, pivot_row]] = A[[pivot_row, i]]
-            M[[i, pivot_row]] = M[[pivot_row, i]]
+            matrix[[i, pivot_row]] = matrix[[pivot_row, i]]
+            row_transform_matrix[[i, pivot_row]] = row_transform_matrix[[pivot_row, i]]
 
-        pivot_val = int(A[i, j] % p)
-        pivot_inv = pow(pivot_val, -1, p)
-        A[i, :] = (A[i, :] * pivot_inv) % p
-        M[i, :] = (M[i, :] * pivot_inv) % p
+        pivot_val = int(matrix[i, j] % dimension)
+        pivot_inv = pow(pivot_val, -1, dimension)
+        matrix[i, :] = (matrix[i, :] * pivot_inv) % dimension
+        row_transform_matrix[i, :] = (row_transform_matrix[i, :] * pivot_inv) % dimension
 
         for r in range(m):
             if r == i:
                 continue
-            factor = A[r, j] % p
+            factor = matrix[r, j] % dimension
             if factor != 0:
-                A[r, :] = (A[r, :] - factor * A[i, :]) % p
-                M[r, :] = (M[r, :] - factor * M[i, :]) % p
+                matrix[r, :] = (matrix[r, :] - factor * matrix[i, :]) % dimension
+                row_transform_matrix[r, :] = (
+                    row_transform_matrix[r, :] - factor * row_transform_matrix[i, :]
+                ) % dimension
 
         for c in range(n):
             if c == j:
                 continue
-            factor = A[i, c] % p
+            factor = matrix[i, c] % dimension
             if factor != 0:
-                A[:, c] = (A[:, c] - factor * A[:, j]) % p
-                N[:, c] = (N[:, c] - factor * N[:, j]) % p
+                matrix[:, c] = (matrix[:, c] - factor * matrix[:, j]) % dimension
+                column_transform_matrix[:, c] = (
+                    column_transform_matrix[:, c] - factor * column_transform_matrix[:, j]
+                ) % dimension
 
         i += 1
         j += 1
 
     rank = i
-    return A % p, M % p, N % p, rank
+    return matrix % dimension, row_transform_matrix % dimension, column_transform_matrix % dimension, rank
 
 
-def gf_lu(A: IntNDArray, p: int = 2) -> tuple[IntNDArray, IntNDArray, IntNDArray]:
+def gf_lu(matrix: IntNDArray, dimension: int = 2) -> tuple[IntNDArray, IntNDArray, IntNDArray]:
     """
-    Perform LU decomposition of a matrix over GF(p) for prime p.
+    Perform LU decomposition of a matrix over GF(dimension) for prime dimension.
 
     Defaults to GF(2) for backwards compatibility.
 
     Parameters
     ----------
-    A : IntNDArray
+    matrix : IntNDArray
         Square matrix to decompose.
-    p : int
-        Prime defining the finite field GF(p).
+    dimension : int
+        Prime defining the finite field GF(dimension).
 
     Returns
     -------
     IntNDArray
-        L, the lower-triangular factor with unit diagonal.
+        lower_triangular_matrix, the lower-triangular factor with unit diagonal.
     IntNDArray
-        U, the upper-triangular factor.
+        upper_triangular_matrix, the upper-triangular factor.
     IntNDArray
-        P, the permutation matrix such that P @ A == L @ U.
+        permutation_matrix, such that permutation_matrix @ matrix ==
+        lower_triangular_matrix @ upper_triangular_matrix.
 
     Raises
     ------
     ValueError
-        If `A` is not square.
+        If `matrix` is not square.
     """
-    A = np.asarray(A, dtype=int) % p
-    if A.ndim != 2 or A.shape[0] != A.shape[1]:
-        raise ValueError("LU decomposition requires a square matrix over GF(p).")
+    matrix = np.asarray(matrix, dtype=int) % dimension
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+        raise ValueError("LU decomposition requires a square matrix over GF(dimension).")
 
-    m = A.shape[0]
-    U = A.copy()
-    L = np.eye(m, dtype=int) % p
-    P = np.eye(m, dtype=int)
+    m = matrix.shape[0]
+    upper_triangular_matrix = matrix.copy()
+    lower_triangular_matrix = np.eye(m, dtype=int) % dimension
+    permutation_matrix = np.eye(m, dtype=int)
 
     for k in range(m):
-        pivot_candidates = np.where(U[k:, k] % p != 0)[0]
+        pivot_candidates = np.where(upper_triangular_matrix[k:, k] % dimension != 0)[0]
         if pivot_candidates.size == 0:
             continue
         pivot = pivot_candidates[0] + k
         if pivot != k:
-            U[[k, pivot], k:] = U[[pivot, k], k:]
-            L[[k, pivot], :k] = L[[pivot, k], :k]
-            P[[k, pivot]] = P[[pivot, k]]
+            upper_triangular_matrix[[k, pivot], k:] = upper_triangular_matrix[[pivot, k], k:]
+            lower_triangular_matrix[[k, pivot], :k] = lower_triangular_matrix[[pivot, k], :k]
+            permutation_matrix[[k, pivot]] = permutation_matrix[[pivot, k]]
 
-        pivot_val = int(U[k, k] % p)
-        pivot_inv = pow(pivot_val, -1, p)
+        pivot_val = int(upper_triangular_matrix[k, k] % dimension)
+        pivot_inv = pow(pivot_val, -1, dimension)
 
         for j in range(k + 1, m):
-            factor = (U[j, k] * pivot_inv) % p
-            L[j, k] = factor
+            factor = (upper_triangular_matrix[j, k] * pivot_inv) % dimension
+            lower_triangular_matrix[j, k] = factor
             if factor != 0:
-                U[j, k:] = (U[j, k:] - factor * U[k, k:]) % p
+                upper_triangular_matrix[j, k:] = (
+                    upper_triangular_matrix[j, k:] - factor * upper_triangular_matrix[k, k:]
+                ) % dimension
 
-    return L % p, U % p, P
+    return lower_triangular_matrix % dimension, upper_triangular_matrix % dimension, permutation_matrix
 
 
-def _select_row_basis_indices(A_int: IntNDArray, p: int, max_rows: int) -> IntNDArray:
+def _select_row_basis_indices(matrix: IntNDArray, dimension: int, max_rows: int) -> IntNDArray:
     """
-    Return indices of a greedily chosen row basis of `A_int` over GF(p).
+    Return indices of a greedily chosen row basis of `matrix` over GF(dimension).
 
     The routine performs a light Gauss-Jordan sweep, moving left-to-right across
     columns and picking the first unused row with a non-zero entry as the pivot.
@@ -922,32 +938,32 @@ def _select_row_basis_indices(A_int: IntNDArray, p: int, max_rows: int) -> IntND
 
     Parameters
     ----------
-    A_int : IntNDArray
+    matrix : IntNDArray
         Integer matrix whose rows are candidate equations.
-    p : int
-        Prime for the finite field GF(p).
+    dimension : int
+        Prime for the finite field GF(dimension).
     max_rows : int
         Maximum number of independent rows to return (often the number of columns).
 
     Returns
     -------
     IntNDArray
-        1-D array of row indices that are linearly independent over GF(p).
+        1-D array of row indices that are linearly independent over GF(dimension).
     """
-    GF = galois.GF(p)
-    A = GF(A_int % p).copy()
-    N, M = A.shape
-    used = np.zeros(N, dtype=bool)
+    field = galois.GF(dimension)
+    matrix = field(matrix % dimension).copy()
+    num_rows, num_cols = matrix.shape
+    used = np.zeros(num_rows, dtype=bool)
     basis = []
     col = 0
-    for _ in range(N):
-        if col >= M:
+    for _ in range(num_rows):
+        if col >= num_cols:
             break
         pick = None
-        for r in range(N):
+        for r in range(num_rows):
             if used[r]:
                 continue
-            if A[r, col] != GF(0):
+            if matrix[r, col] != field(0):
                 pick = r
                 break
         if pick is None:
@@ -955,13 +971,13 @@ def _select_row_basis_indices(A_int: IntNDArray, p: int, max_rows: int) -> IntND
             continue
         basis.append(pick)
         used[pick] = True
-        inv = GF(1) / A[pick, col]
-        A[pick, :] = A[pick, :] * inv
-        for r in range(N):
+        inv = field(1) / matrix[pick, col]
+        matrix[pick, :] = matrix[pick, :] * inv
+        for r in range(num_rows):
             if r == pick or used[r]:
                 continue
-            if A[r, col] != GF(0):
-                A[r, :] = A[r, :] - A[r, col] * A[pick, :]
+            if matrix[r, col] != field(0):
+                matrix[r, :] = matrix[r, :] - matrix[r, col] * matrix[pick, :]
         col += 1
         if len(basis) >= max_rows:
             break

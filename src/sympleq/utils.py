@@ -78,16 +78,16 @@ def int_to_bases(number: int, dimensions: IntArrayLike) -> IntNDArray:
 
 
 # TODO: This function is not used anywhere in the codebase. Remove it in a following PR.
-def get_linearly_independent_rows(A: IntNDArray, d: int) -> list[int]:
+def get_linearly_independent_rows(matrix: IntNDArray, dimension: int) -> list[int]:
     """
-    Returns the pivot column indices for the row-reduced form of matrix A over a Galois field.
+    Returns the pivot column indices for the row-reduced form of `matrix` over a Galois field.
 
     Parameters
     ----------
-    A : IntNDArray
-        Input matrix over GF(d).
-    d : int
-        The prime (or prime power) defining the Galois field GF(d).
+    matrix : IntNDArray
+        Input matrix over GF(dimension).
+    dimension : int
+        The prime (or prime power) defining the Galois field GF(dimension).
 
     Returns
     -------
@@ -95,11 +95,11 @@ def get_linearly_independent_rows(A: IntNDArray, d: int) -> list[int]:
         List of pivot column indices.
     """
 
-    GF = galois.GF(d)
-    A = GF(A)
-    R = A.row_reduce()
+    field = galois.GF(dimension)
+    matrix = field(matrix)
+    reduced_matrix = matrix.row_reduce()
     pivots = []
-    for row in R:
+    for row in reduced_matrix:
         nz_indices = np.nonzero(row)[0]
         if nz_indices.size > 0:
             pivots.append(nz_indices[0])

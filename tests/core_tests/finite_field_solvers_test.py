@@ -8,7 +8,7 @@ def _random_invertible_matrix(p: int, size: int, rng: np.random.Generator) -> np
     while True:
         matrix = rng.integers(0, p, size=(size, size), dtype=int)
         try:
-            gf_inv(matrix, p=p)
+            gf_inv(matrix, dimension=p)
         except ValueError:
             continue
         return matrix
@@ -34,7 +34,7 @@ def test_gf_inv_returns_inverse(p: int, n: int):
     rng = np.random.default_rng(seed=1000 + 10 * p + n)
     A = _random_invertible_matrix(p, n, rng)
 
-    inv = gf_inv(A, p=p)
+    inv = gf_inv(A, dimension=p)
 
     assert np.array_equal((A @ inv) % p, np.eye(n, dtype=int) % p)
 
@@ -44,7 +44,7 @@ def test_gf_rref_reconstructs_reduced_matrix(p: int):
     rng = np.random.default_rng(seed=2000 + p)
     A = _random_matrix(p, (4, 6), rng)
 
-    R, M, N, rank = gf_rref(A, p=p)
+    R, M, N, rank = gf_rref(A, dimension=p)
 
     assert np.array_equal(((M @ A) % p @ N) % p, R)
     pivots = []
@@ -67,7 +67,7 @@ def test_gf_lu_reconstructs_permuted_matrix(p: int, n: int):
     rng = np.random.default_rng(seed=3000 + 10 * p + n)
     A = _random_matrix(p, (n, n), rng)
 
-    L, U, P = gf_lu(A, p=p)
+    L, U, P = gf_lu(A, dimension=p)
 
     assert _is_permutation_matrix(P)
     assert np.array_equal((P @ A) % p, (L @ U) % p)
