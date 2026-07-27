@@ -9,6 +9,7 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     CrossingSettings,
     default_backend_factory,
     quantinuum_emulator_backend_factory,
+    quantinuum_H2_backend_factory,
 )
 
 
@@ -37,7 +38,7 @@ class FantasySettings(CrossingSettings):
     use_fake_corners: bool = True
     easy_corner_outcome: int = 1
     hard_corner_outcome: int = 0
-    extra_fake_anchors: list[tuple[float, float, int]] = field(default_factory=list)
+    extra_fake_anchors: list[tuple] = field(default_factory=list)
 
     # Explicit Sobol warm-up
     initial_sobol_samples: int = 10
@@ -49,7 +50,11 @@ class FantasySettings(CrossingSettings):
     save_real_checkpoints: bool = True
 
     # Gate budget per stitched submission (for emulator only)
-    gate_budget: int | None = None
+    gate_budget: int = 7000
+
+    # Recovery
+    recovery_mode: bool = False
+    recovery_folder: str | Path | None = None
 
     # AEPsych / GP / acquisition
     optimization_steps: int = 10000
@@ -86,16 +91,16 @@ TARGET_THRESHOLD = 0.5
 # NuUMBER of Qubits
 # -------------------------------------------------------------------------
 
-N_QUBITS = 5
+N_QUBITS = 20
 # For a multi-slice run, use e.g.:
-N_QUBITS = [5,20]
+# N_QUBITS = [5,20]
 
 # -------------------------------------------------------------------------
 # SEARCH-BOX HANDLES
 # -------------------------------------------------------------------------
 # Set to None to use the defaults inherited from CrossingSettings.
 
-N_GATES_BOUNDS = (10, 3000)
+N_GATES_BOUNDS = (100, 5000)
 RATIO_BOUNDS = (0.1, 0.9)
 
 # -------------------------------------------------------------------------
@@ -103,14 +108,14 @@ RATIO_BOUNDS = (0.1, 0.9)
 # -------------------------------------------------------------------------
 # Set to None to use the defaults inherited from CrossingSettings.
 
-HQC_BUDGET = 200.0
-MAX_COST_PER_RUN = 15.0
+HQC_BUDGET = 500
+MAX_COST_PER_RUN = 30
 
 # -------------------------------------------------------------------------
 # Gate BUDGET HANDLES
 # -------------------------------------------------------------------------
 # Set to None to use the defaults inherited from CrossingSettings.
-GATE_BUDGET = 7500
+GATE_BUDGET = 7000
 
 # -------------------------------------------------------------------------
 # FAKE-ANCHOR HANDLES
@@ -119,20 +124,26 @@ GATE_BUDGET = 7500
 USE_FAKE_CORNERS = True
 EASY_CORNER_OUTCOME = 1
 HARD_CORNER_OUTCOME = 0
-EXTRA_FAKE_ANCHORS =[#(15, 0.1, 1), (25, 0.2, 1), (20, 0.1, 1),
-    #(2900, 0.85, 0), (2890, 0.87, 0), (2788, 0.9, 0)
-]
+EXTRA_FAKE_ANCHORS = []
 
 # -------------------------------------------------------------------------
 # SOBOL WARM-UP HANDLES
 # -------------------------------------------------------------------------
 
-INITIAL_SOBOL_SAMPLES = 10
-INITIAL_SOBOL_MAX_COST_PER_RUN = 15.0
+INITIAL_SOBOL_SAMPLES = 15
+INITIAL_SOBOL_MAX_COST_PER_RUN = 30
 SOBOL_SCRAMBLE = True
 
 SAVE_GP_PREDICTION_GRID = True
 SAVE_REAL_CHECKPOINTS = True
+
+# -------------------------------------------------------------------------
+# RECOVERY HANDLES
+# -------------------------------------------------------------------------
+
+RECOVERY_MODE = False
+RECOVERY_FOLDER = Path(r"Personal\FLE\H2_2\qband_4\seed_2028\FLE_20260720_145715")
+
 
 # -------------------------------------------------------------------------
 # GP / AEPSYCH HANDLES
@@ -163,14 +174,15 @@ FORCE_DEFAULT_DEVICE_DURING_AEPSYCH = True
 # BACKEND HANDLE
 # -------------------------------------------------------------------------
 
+# BACKEND_FACTORY = default_backend_factory
 # BACKEND_FACTORY = quantinuum_emulator_backend_factory
-BACKEND_FACTORY = default_backend_factory
+BACKEND_FACTORY = quantinuum_H2_backend_factory
 
 # -------------------------------------------------------------------------
 # REPRODUCIBILITY / DEBUG HANDLES
 # -------------------------------------------------------------------------
 
-RNG_SEEDS = [2025]
+RNG_SEEDS = [2029]
 VERBOSE_FANTASIES = True
 PLOT = True
 
@@ -188,6 +200,8 @@ def control_panel_settings_kwargs() -> dict:
         sobol_scramble=SOBOL_SCRAMBLE,
         save_gp_prediction_grid=SAVE_GP_PREDICTION_GRID,
         save_real_checkpoints=SAVE_REAL_CHECKPOINTS,
+        recovery_mode=RECOVERY_MODE,
+        recovery_folder=RECOVERY_FOLDER,
         optimization_steps=OPTIMIZATION_STEPS,
         inducing_size=INDUCING_SIZE,
         acquisition_function=ACQUISITION_FUNCTION,

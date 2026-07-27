@@ -657,11 +657,12 @@ def print_run_handles(
 
     if MODEL == 'FLE':
         #gp_device = torch.device
+
         print("[target]")
         print(f"  target_threshold                     = {settings.target_threshold}")
 
         print("[qubits]")
-        print(f"  qubits                     = {settings.n_qubits}")
+        print(f"  qubits                     = {settings.n_qubits_bounds}")
         print(f"  qubit_band_length                     = {settings.qubit_band_length}")
 
         print("[fake anchors]")

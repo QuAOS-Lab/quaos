@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import logging
 import json
+import re
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -43,20 +44,23 @@ import torch
 
 from aepsych.strategy import SequentialStrategy
 
-from sympleq.applications.randomized_benchmarking.RMB import resolve_data_path
+from sympleq.applications.randomized_benchmarking.RMB import RMB, resolve_data_path
 from sympleq.applications.randomized_benchmarking.experiments.common import (
+    default_backend_factory,
     print_experiment_summary,
     print_progress,
     start_run,
 )
 from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.fantasy_levelset_estimation import (
     Observation,
+    add_observation_to_strategy,
     build_strategy,
     choose_gp_device,
     contour_target,
     level_set_configs,
     measure_batch_and_update_real_strategy,
     move_strategy_models_to_device,
+    point_from_config,
     repair_stats,
     refreshed_strategy_for_prediction,
     reset_repair_stats,
@@ -76,27 +80,46 @@ from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estima
 
 # Storing
 
+def backend_folder_from_kwargs(seed_kwargs: dict) -> str:
+    """Return the run-folder backend name from the backend's device_name."""
+
+    settings = FantasySettings(**seed_kwargs)
+    backend_factory = seed_kwargs.get("backend_factory", default_backend_factory)
+    backend = backend_factory(settings, np.random.default_rng(settings.rng_seed))
+    device_name = getattr(backend, "device_name", type(backend).__name__)
+    return str(device_name).replace("-", "_")
+
+
 def timestamped_personal_save_path(
     seed: int | None = None,
     *,
     timestamp: str | None = None,
     n_qubits: int | None = None,
     multi_qubit: bool = False,
+    backend_folder: str = "backend_unknown",
 ) -> Path:
-    """Timestamped JSON output path under the repository's Personal folder."""
+    """Timestamped 2D FLE JSON path under ``Personal/FLE``."""
+
     timestamp = timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
-    if seed is None:
-        if multi_qubit:
-            return Path("Personal") / f"FLE_{timestamp}" / f"FLE_{timestamp}_q{n_qubits}.json"
-        return Path("Personal") / f"FLE_{timestamp}.json"
-    if multi_qubit:
-        return (
-            Path("Personal")
-            / f"seed_{seed}"
-            / f"FLE_{timestamp}"
-            / f"FLE_{timestamp}_q{n_qubits}.json"
-        )
-    return Path("Personal") / f"seed_{seed}" / f"FLE_{timestamp}.json"
+    seed_folder = "seed_unseeded" if seed is None else f"seed_{seed}"
+    qubit_folder = "q_unknown" if n_qubits is None else f"q{int(n_qubits)}"
+    suffix = f"_q{int(n_qubits)}" if multi_qubit and n_qubits is not None else ""
+    run_folder = (
+        Path("Personal")
+        / "FLE"
+        / backend_folder
+        / qubit_folder
+        / seed_folder
+        / f"FLE_{timestamp}"
+    )
+    return run_folder / f"FLE_{timestamp}{suffix}.json"
+
+
+def timestamped_recovery_save_path(recovery_folder: str | Path) -> Path:
+    """Timestamped final JSON path inside an existing recovery folder."""
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Path(recovery_folder) / f"FLE_recovery_{timestamp}.json"
 
 
 def qubit_slices(value) -> list[int]:
@@ -211,6 +234,11 @@ def write_hqc_metadata(
         "repair_stats": repair_stats(),
     }
     if sent_configs is not None:
+        sent_configs = sorted(
+            sent_configs,
+            key=lambda config: config.n_qubits,
+            reverse=True,
+        )
         payload["experiment"]["sent_configs"] = [
             {
                 "n_1qb_gates": int(config.n_1qb_gates),
@@ -222,6 +250,161 @@ def write_hqc_metadata(
             for config in sent_configs
         ]
     json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _settings_run_folder(settings: FantasySettings) -> Path | None:
+    if settings.save_path is not None:
+        return Path(settings.save_path).parent
+    if settings.recovery_folder is not None:
+        return Path(settings.recovery_folder)
+    return None
+
+
+def pending_backend_batch_path(settings: FantasySettings) -> Path | None:
+    folder = _settings_run_folder(settings)
+    if folder is None:
+        return None
+    return folder / "pending_backend_batch.json"
+
+
+def write_pending_backend_batch(
+    *,
+    settings: FantasySettings,
+    phase: str,
+    step: int,
+    sent_configs,
+    data=None,
+) -> None:
+    """Persist the exact FLE batch before submitting stitched circuits."""
+
+    if not settings.save_real_checkpoints:
+        return
+
+    path = pending_backend_batch_path(settings)
+    if path is None:
+        return
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    requests = []
+    for config in sent_configs:
+        first_shot_index = None
+        if data is not None:
+            estimator = data.get(config) if hasattr(data, "get") else None
+            if estimator is not None and hasattr(estimator, "num_runs"):
+                first_shot_index = int(estimator.num_runs())
+        requests.append(
+            {
+                "config": {
+                    "n_1qb_gates": int(config.n_1qb_gates),
+                    "n_2qb_gates": int(config.n_2qb_gates),
+                    "n_qubits": int(config.n_qubits),
+                    "n_gates": int(config.n_gates),
+                    "ratio_2_qb_gates": float(config.ratio_2_qb_gates),
+                    "random_elimination": float(config.random_elimination),
+                    "use_scrambler": bool(config.use_scrambler),
+                },
+                "requested_shots": 1,
+                "first_shot_index": first_shot_index,
+            }
+        )
+
+    payload = {
+        "reason": "before_backend_submit",
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "model": "FLE",
+        "phase": phase,
+        "step": int(step),
+        "pending_batch": {
+            "requests": requests,
+        },
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    print(f"[saved] pending backend batch: {path}")
+
+
+def clear_pending_backend_batch(settings: FantasySettings) -> None:
+    path = pending_backend_batch_path(settings)
+    if path is not None and path.exists():
+        path.unlink()
+
+
+def latest_recovery_json(settings: FantasySettings) -> Path | None:
+    """Return the latest cumulative RMB JSON checkpoint for recovery."""
+
+    if settings.recovery_folder is not None:
+        folder = Path(settings.recovery_folder)
+    elif settings.save_path is not None:
+        folder = Path(settings.save_path).parent
+    else:
+        return None
+
+    candidates = sorted(folder.glob("measurement_*.json"))
+    if not candidates:
+        candidates = sorted(folder.glob("FLE_*.json"))
+
+    return candidates[-1] if candidates else None
+
+
+def measurement_checkpoint_step(json_path: Path) -> int:
+    """Return the numeric step from a measurement checkpoint filename."""
+
+    match = re.match(r"measurement_(\d+)_", json_path.name)
+    return int(match.group(1)) if match else 0
+
+
+def latest_measurement_checkpoint_step(folder: Path) -> int:
+    """Return the largest measurement checkpoint step already in a folder."""
+
+    return max(
+        (measurement_checkpoint_step(path) for path in folder.glob("measurement_*.json")),
+        default=0,
+    )
+
+
+def recovery_hqc_spent(json_path: Path) -> float | None:
+    """Read spent HQC metadata from a recovery checkpoint if present."""
+
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    experiment = payload.get("experiment", {})
+    spent_hqc = experiment.get("spent_hqc")
+    return None if spent_hqc is None else float(spent_hqc)
+
+
+def recover_observations_from_json(
+    json_path: Path,
+    *,
+    strategy: SequentialStrategy,
+    rmb,
+    observations: list[Observation],
+    results_for_plot: list[tuple[float, float, int]],
+    device: torch.device,
+) -> int:
+    """Load saved RMB data and replay its real observations into AEPsych."""
+
+    recovered_rmb = RMB.load(json_path)
+    rmb._data.update(recovered_rmb._data)
+
+    n_observations = 0
+    for config, estimator in recovered_rmb._data.items():
+        for outcome, count in estimator.counts().items():
+            for _ in range(int(count)):
+                obs = Observation(
+                    x_cpu=point_from_config(config, device=torch.device("cpu")),
+                    y=int(outcome),
+                    source="recovery",
+                )
+                add_observation_to_strategy(strategy, obs, device=device)
+                observations.append(obs)
+                results_for_plot.append(
+                    (
+                        float(config.n_gates),
+                        float(config.ratio_2_qb_gates),
+                        int(outcome),
+                    )
+                )
+                n_observations += 1
+
+    return n_observations
 
 
 def save_real_checkpoint(
@@ -297,6 +480,10 @@ def print_run_handles(
     print(f"  initial_sobol_max cost_per_run       = "
           f"{settings.initial_sobol_max_cost_per_run}")
     print(f"  sobol_scramble                       = {settings.sobol_scramble}")
+
+    print("[recovery]")
+    print(f"  recovery_mode                        = {settings.recovery_mode}")
+    print(f"  recovery_folder                      = {settings.recovery_folder}")
 
     print("[GP / AEPsych]")
     print(f"  acquisition_function                 = {settings.acquisition_function}")
@@ -399,21 +586,78 @@ def run(
         device=gp_device,
     )
 
+    recovered_observations = 0
+    if settings.recovery_mode:
+        recovery_json = latest_recovery_json(settings)
+        if recovery_json is None:
+            print("[recovery] enabled, but no checkpoint JSON found; running Sobol.")
+        else:
+            output_folder = (
+                Path(settings.save_path).parent
+                if settings.save_path is not None
+                else recovery_json.parent
+            )
+            checkpoint_step = latest_measurement_checkpoint_step(output_folder)
+            print(f"[recovery] next measurement step starts after {checkpoint_step}")
+
+            recovered_hqc_spent = recovery_hqc_spent(recovery_json)
+            if recovered_hqc_spent is None:
+                print(f"[recovery] HQC spent unavailable in {recovery_json}")
+            else:
+                budget.spent_hqc = recovered_hqc_spent
+                budget.remaining_hqc = max(
+                    0.0,
+                    float(settings.hqc_budget) - recovered_hqc_spent,
+                )
+                print(f"[recovery] recovered HQC spent = {recovered_hqc_spent:.6g}")
+                print(f"[recovery] remaining HQC budget = {budget.remaining_hqc:.6g}")
+
+            recovered_observations = recover_observations_from_json(
+                recovery_json,
+                strategy=strategy,
+                rmb=rmb,
+                observations=observations,
+                results_for_plot=results_for_plot,
+                device=gp_device,
+            )
+            if recovered_observations:
+                print(
+                    f"[recovery] loaded {recovered_observations} observations "
+                    f"from {recovery_json}; skipping Sobol warm-up."
+                )
+            else:
+                print(
+                    f"[recovery] found {recovery_json}, but it contained no "
+                    "observations; running Sobol."
+                )
+
     # -------------------------------------------------------------------------
     # 2. Sobol warm-up batch
     # -------------------------------------------------------------------------
 
     exhausted = False
 
-    sobol_candidates = sobol_initial_candidates(settings)
-    sobol_batch, exhausted = select_affordable_prefix(
-        sobol_candidates,
-        settings,
-        budget,
-        max_cost_per_run=settings.initial_sobol_max_cost_per_run,
-    )
+    if recovered_observations:
+        print_progress(settings, budget, "sobol: skipped after recovery")
+    else:
+        sobol_candidates = sobol_initial_candidates(settings)
+        sobol_batch, exhausted = select_affordable_prefix(
+            sobol_candidates,
+            settings,
+            budget,
+            max_cost_per_run=settings.initial_sobol_max_cost_per_run,
+        )
 
-    if sobol_batch:
+    if not recovered_observations and sobol_batch:
+        pending_step = checkpoint_step + 1
+        write_pending_backend_batch(
+            settings=settings,
+            phase="sobol",
+            step=pending_step,
+            sent_configs=sobol_batch,
+            data=data,
+        )
+
         measure_batch_and_update_real_strategy(
             phase="sobol",
             selected=sobol_batch,
@@ -439,7 +683,8 @@ def run(
             budget=budget,
             sent_configs=sobol_batch,
         )
-    else:
+        clear_pending_backend_batch(settings)
+    elif not recovered_observations:
         print_progress(settings, budget, "sobol: no affordable initial batch")
 
     # -------------------------------------------------------------------------
@@ -483,6 +728,15 @@ def run(
         )
         print()
 
+        pending_step = checkpoint_step + 1
+        write_pending_backend_batch(
+            settings=settings,
+            phase="globalsur",
+            step=pending_step,
+            sent_configs=selected,
+            data=data,
+        )
+
         measure_batch_and_update_real_strategy(
             phase="globalsur",
             selected=selected,
@@ -508,6 +762,7 @@ def run(
             budget=budget,
             sent_configs=selected,
         )
+        clear_pending_backend_batch(settings)
 
     # -------------------------------------------------------------------------
     # 4. Summary and contour extraction
@@ -579,12 +834,24 @@ def main() -> None:
             seed_kwargs = dict(kwargs)
             seed_kwargs["rng_seed"] = rng_seed
             seed_kwargs["n_qubits"] = n_qubits
-            seed_kwargs["save_path"] = timestamped_personal_save_path(
-                seed=rng_seed,
-                timestamp=timestamp,
-                n_qubits=n_qubits,
-                multi_qubit=multi_qubit,
-            )
+            if seed_kwargs.get("recovery_mode"):
+                if seed_kwargs.get("recovery_folder") is None:
+                    raise ValueError(
+                        "RECOVERY_FOLDER must be set when RECOVERY_MODE=True "
+                        "so resumed outputs are written into that folder."
+                    )
+                seed_kwargs["save_path"] = timestamped_recovery_save_path(
+                    seed_kwargs["recovery_folder"]
+                )
+            else:
+                backend_folder = backend_folder_from_kwargs(seed_kwargs)
+                seed_kwargs["save_path"] = timestamped_personal_save_path(
+                    seed=rng_seed,
+                    timestamp=timestamp,
+                    n_qubits=n_qubits,
+                    multi_qubit=multi_qubit,
+                    backend_folder=backend_folder,
+                )
             print(
                 f"\n[seed run] {run_index}/{len(RNG_SEEDS)} "
                 f"qubit slice {qubit_index}/{len(qubits)} "
