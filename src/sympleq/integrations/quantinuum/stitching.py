@@ -74,7 +74,7 @@ def circuit_stitching(
     # To reset the whole circuit:
     # uncomment line 52 (reset_box = reset_operations(s_circuit.n_qubits)),
     # remove line 69 i.e., local_reset_box = reset_operations(s_circuit.n_qubits)), and
-    # replace line 70 with: sum_circuit.add_circbox(local_reset_box, sum_circuit.qubits)
+    # replace line 70 with: sum_circuit.add_circbox(reset_box, sum_circuit.qubits)
 
     # Flatten the CircBoxes into native gates so the stitched circuit is a
     # single genuine circuit. This is what lets gate-count-based cost and
