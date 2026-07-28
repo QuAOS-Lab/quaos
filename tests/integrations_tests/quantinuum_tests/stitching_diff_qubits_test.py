@@ -13,18 +13,18 @@ list it is passed and does not sort internally. So the desticthcing must obey th
 The RMB algorithms (Cost-Aware and FLE) guard against this by sorting stitched registers
 numerically before calling ``destitch_results``.  Same is implemented here in line 58.
 """
-
+import numpy as np
 from pytket.circuit import Circuit
-
 from sympleq.integrations.quantinuum.stitching import circuit_stitching
 
-def _deterministic_native_circuit(n_qubits: int, seed: int) -> tuple[Circuit, tuple[int, ...]]:
-    """Build a native circuit with a known computational-basis output."""
-    circuit = Circuit(n_qubits, n_qubits)
-    expected = tuple((seed + qubit) % 2 for qubit in range(n_qubits))
 
-    for qubit, bit in enumerate(expected):
-        if bit:
+def _native_circuit(n_qubits: int, seed: int) -> Circuit:
+    """Build a circuit with native gates and n qubits."""
+    rng = np.random.default_rng(seed)
+    circuit = Circuit(n_qubits, n_qubits)
+
+    for qubit in range(n_qubits):
+        if rng.integers(2):
             circuit.X(qubit)
 
     if n_qubits >= 2:
@@ -33,7 +33,7 @@ def _deterministic_native_circuit(n_qubits: int, seed: int) -> tuple[Circuit, tu
     for qubit in range(n_qubits):
         circuit.Measure(qubit, qubit)
 
-    return circuit, expected
+    return circuit
 
 
 class TestCircuitStitching:
@@ -43,11 +43,10 @@ class TestCircuitStitching:
     """
 
     def test_stitches_circuits_in_descending_qubit_order(self):
-        circuits_with_expected = [
-            _deterministic_native_circuit(n_qubits=1 + index % 10, seed=index)
-            for index in range(9)
-        ]
-        stitched = circuit_stitching([circuit for circuit, _ in circuits_with_expected])
+        circuits = [_native_circuit(n_qubits=1 + index % 10, seed=index)
+                    for index in range(9)
+                    ]
+        stitched = circuit_stitching([circuit for circuit in circuits])
 
         registers = sorted(
             stitched.c_registers,
@@ -56,7 +55,7 @@ class TestCircuitStitching:
 
         expected_register_sizes = [
             circuit.n_qubits
-            for circuit, _ in sorted(circuits_with_expected, key=lambda item: item[0].n_qubits, reverse=True)
+            for circuit in sorted(circuits, key=lambda item: item.n_qubits, reverse=True)
         ]
 
         assert [register.size for register in registers] == expected_register_sizes
