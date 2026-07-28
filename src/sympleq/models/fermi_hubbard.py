@@ -4,6 +4,8 @@ import numpy as np
 from openfermion.transforms.opconversions.jordan_wigner import jordan_wigner
 from openfermion.transforms.opconversions.bravyi_kitaev import bravyi_kitaev
 from openfermion.hamiltonians.hubbard import fermi_hubbard
+from openfermion.hamiltonians.special_operators import number_operator
+from openfermion.ops.operators import FermionOperator
 
 from sympleq.core.paulis import PauliSum
 
@@ -125,6 +127,39 @@ def fermi_hubbard_model(x_dimension: int,
 
     P = PauliSum.from_tableau(tableau, weights=coeffs, dimensions=[2] * n_qubits)
     return P
+
+
+def disordered_tv_chain_model(n_sites: int,
+                              tunneling: float = 1.0,
+                              coulomb: float = 4.0,
+                              disorder_strength: float = 0.5,
+                              periodic: bool = False,
+                              seed: int | None = 1234):
+    """
+    Build a spinless t-V chain with deterministic onsite disorder.
+
+    H = -t sum_<i,j> (a_i^dag a_j + h.c.) + V sum_<i,j> n_i n_j
+        + sum_i h_i n_i, with h_i sampled uniformly from [-W, W].
+    """
+    rng = np.random.default_rng(seed)
+    onsite = rng.uniform(-disorder_strength, disorder_strength, size=n_sites)
+    fermion_ham = FermionOperator()
+
+    pairs = [(i, i + 1) for i in range(n_sites - 1)]
+    if periodic and n_sites > 2:
+        pairs.append((n_sites - 1, 0))
+
+    for i, j in pairs:
+        fermion_ham += FermionOperator(((i, 1), (j, 0)), -tunneling)
+        fermion_ham += FermionOperator(((j, 1), (i, 0)), -tunneling)
+        fermion_ham += coulomb * number_operator(n_sites, i) * number_operator(n_sites, j)
+
+    for i, h_i in enumerate(onsite):
+        fermion_ham += number_operator(n_sites, i, float(h_i))
+
+    qubit_op = jordan_wigner(fermion_ham)
+    tableau, coeffs, _ = qubit_pauli_tableau(qubit_op, n_qubits=n_sites)
+    return PauliSum.from_tableau(tableau, weights=coeffs, dimensions=[2] * n_sites)
 
 
 if __name__ == "__main__":

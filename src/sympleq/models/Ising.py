@@ -3,7 +3,10 @@ from sympleq.core.circuits import Gate
 import numpy as np
 
 
-def ising_chain_hamiltonian(n_spins, J_zz, h_x, periodic=False):
+def ising_chain_hamiltonian(n_spins: int,
+                            J_zz: float | np.ndarray | list,
+                            h_x: float | np.ndarray | list,
+                            periodic: bool = False):
     """
     Constructs the Hamiltonian of the 1D Ising model in a transverse field.
 
@@ -11,9 +14,11 @@ def ising_chain_hamiltonian(n_spins, J_zz, h_x, periodic=False):
     ----------
     n_spins : int
         The number of spins in the chain.
-    J_zz : float
+    J_zz : float or np.ndarray or list
         The Ising interaction strength between nearest-neighbour spins.
-    h_x : float
+        If this is a matrix, it will be used as the interaction strength matrix
+        should only have nearest neighbour terms
+    h_x : float or np.ndarray or list
         The strength of the transverse field.
     periodic : bool, optional
         Whether the chain is periodic (default: False).
@@ -27,13 +32,43 @@ def ising_chain_hamiltonian(n_spins, J_zz, h_x, periodic=False):
     weights = []
     dims = [2 for _ in range(n_spins)]
 
+    if isinstance(J_zz, np.ndarray) or isinstance(J_zz, list):
+        J_zz = np.array(J_zz)  # Convert to numpy array if list
+        if J_zz.shape != (n_spins,) and periodic:
+            raise ValueError("J_zz must be a vector of size n_spins for periodic chain")
+        elif J_zz.shape != (n_spins - 1,) and not periodic:
+            raise ValueError("J_zz must be a vector of size n_spins-1 for closed chain")
+        else:
+            raise ValueError(f"J_zz shape, {J_zz.shape}, not compatible with boundary conditions."
+                             "Should be (n_spins) for periodic chain or (n_spins-1) for closed chain.")
+    elif isinstance(J_zz, float) or isinstance(J_zz, int):
+        J_zz = J_zz * np.ones(n_spins if periodic else n_spins - 1)
+    else:
+        raise ValueError("J_zz must be a float or numpy array")
+
+    if isinstance(h_x, np.ndarray):
+        h_x = np.array(h_x)  # Convert to numpy array if list
+        if h_x.shape != (n_spins,):
+            raise ValueError("h_x must be a vector of size n_spins")
+    elif isinstance(h_x, float) or isinstance(h_x, int):
+        h_x = h_x * np.ones(n_spins)
+    else:
+        raise ValueError("h_x must be a float or numpy array")
+
+    # this bit is just for typing
+    if not isinstance(J_zz, np.ndarray):
+        raise Exception("J_zz must be a numpy array")
+
+    if not isinstance(h_x, np.ndarray):
+        raise Exception("h_x must be a numpy array")
+
     # ZZ terms
     for i in range(n_spins - 1):
         zz = np.zeros(n_spins, dtype=int)
         zz[i] = 1
         zz[i + 1] = 1
         paulis.append(PauliString.from_exponents(np.zeros(n_spins, dtype=int), zz, dims))
-        weights.append(J_zz)
+        weights.append(J_zz[i])
 
     # Periodic ZZ term (last ↔ first spin)
     if periodic and n_spins > 2:
@@ -41,19 +76,25 @@ def ising_chain_hamiltonian(n_spins, J_zz, h_x, periodic=False):
         zz[0] = 1
         zz[-1] = 1
         paulis.append(PauliString.from_exponents(np.zeros(n_spins, dtype=int), zz, dims))
-        weights.append(J_zz)
+        weights.append(J_zz[n_spins])
 
     # X terms (transverse field)
     for i in range(n_spins):
         x = np.zeros(n_spins, dtype=int)
         x[i] = 1
         paulis.append(PauliString.from_exponents(x, np.zeros(n_spins, dtype=int), dims))
-        weights.append(h_x)
+        weights.append(h_x[i])
 
     return PauliSum.from_pauli_strings(paulis, weights=weights, phases=None)
 
 
-def ising_2d_hamiltonian(n_x: int, n_y: int, J_zz: float, h_x: float, periodic: bool = False) -> PauliSum:
+def ising_2d_hamiltonian(
+    n_x: int,
+    n_y: int,
+    J_zz: float,
+    h_x: float | np.ndarray | list,
+    periodic: bool = False,
+) -> PauliSum:
     """
     Constructs the Hamiltonian of a 2D Ising model with nearest-neighbor interactions
     and a transverse field.
@@ -64,8 +105,9 @@ def ising_2d_hamiltonian(n_x: int, n_y: int, J_zz: float, h_x: float, periodic: 
         The number of spins in the x- and y-directions, respectively.
     J_zz : float
         The strength of the nearest-neighbor interactions.
-    h_x : float
-        The strength of the transverse field.
+    h_x : float or np.ndarray or list
+        The strength of the transverse field. If array-like, must have length
+        ``n_x * n_y`` in row-major site order.
     periodic : bool, optional
         Whether the chain is periodic in both x- and y-directions (default: False).
 
@@ -78,6 +120,15 @@ def ising_2d_hamiltonian(n_x: int, n_y: int, J_zz: float, h_x: float, periodic: 
     weights = []
     n_spins = n_x * n_y
     dims = [2 for _ in range(n_spins)]
+
+    if isinstance(h_x, np.ndarray) or isinstance(h_x, list):
+        h_x = np.asarray(h_x, dtype=float).reshape(-1)
+        if h_x.shape != (n_spins,):
+            raise ValueError(f"h_x must be a scalar or a vector of size {n_spins}")
+    elif isinstance(h_x, float) or isinstance(h_x, int):
+        h_x = float(h_x) * np.ones(n_spins)
+    else:
+        raise ValueError("h_x must be a float, numpy array, or list")
 
     def site_index(x, y):
         """Map 2D coordinates to 1D index in row-major order."""
@@ -111,22 +162,202 @@ def ising_2d_hamiltonian(n_x: int, n_y: int, J_zz: float, h_x: float, periodic: 
         x = np.zeros(n_spins, dtype=int)
         x[i] = 1
         paulis.append(PauliString.from_exponents(x, np.zeros(n_spins, dtype=int), dims))
+        weights.append(h_x[i])
+
+    return PauliSum.from_pauli_strings(paulis, weights=weights, phases=None)
+
+
+def ising_lower_triangular_hamiltonian(L: int, J_zz: float, h_x: float) -> PauliSum:
+    """
+    Construct a transverse-field Ising Hamiltonian on the lower-triangular half
+    of an L x L square lattice (including the diagonal).
+
+    Geometry:
+      - Sites are integer coordinates (x, y) with 0 <= y <= x < L.
+      - Nearest-neighbor ZZ couplings are added along +x and +y lattice edges
+        whenever both endpoints are in the triangular region.
+      - Uniform transverse X field is added on every site.
+
+    Parameters
+    ----------
+    L : int
+        Side length of the parent square. Must satisfy L >= 1.
+    J_zz : float
+        Coupling strength of nearest-neighbor ZZ terms.
+    h_x : float
+        Transverse-field strength for single-site X terms.
+
+    Returns
+    -------
+    PauliSum
+        The Hamiltonian as a PauliSum object on N = L*(L+1)/2 qubits.
+    """
+    if int(L) < 1:
+        raise ValueError("L must be at least 1.")
+
+    # Deterministic indexing of triangular sites in row-major order by x then y.
+    coords: list[tuple[int, int]] = []
+    for x in range(int(L)):
+        for y in range(x + 1):
+            coords.append((x, y))
+
+    site_to_idx = {c: i for i, c in enumerate(coords)}
+    n_spins = len(coords)
+    dims = [2 for _ in range(n_spins)]
+
+    paulis: list[PauliString] = []
+    weights: list[float] = []
+    z0 = np.zeros(n_spins, dtype=int)
+    x0 = np.zeros(n_spins, dtype=int)
+
+    # ZZ terms along lattice edges internal to the triangular domain.
+    for (x, y), i in site_to_idx.items():
+        for xn, yn in ((x + 1, y), (x, y + 1)):
+            j = site_to_idx.get((xn, yn))
+            if j is None:
+                continue
+            zz = z0.copy()
+            zz[i] = 1
+            zz[j] = 1
+            paulis.append(PauliString.from_exponents(z0, zz, dims))
+            weights.append(J_zz)
+
+    # X terms (transverse field)
+    for i in range(n_spins):
+        x = x0.copy()
+        x[i] = 1
+        paulis.append(PauliString.from_exponents(x, z0, dims))
         weights.append(h_x)
 
     return PauliSum.from_pauli_strings(paulis, weights=weights, phases=None)
 
 
-def heuristic_clifford_symmetry(n_spins: int):
+def modified_ising_ladder_hamiltonian(n_x: int, n_y: int, J_zz: float, h_x: float) -> PauliSum:
+    """
+    Construct a transverse-field Ising Hamiltonian on a "ladder" geometry with
+    n_x rungs and n_y legs (n_x >= 1, n_y >= 2) with the following connectivity:
+
+    o- -o- -o- -o
+    | X | X | X |   ...
+    o- -o- -o- -o
+
+    Here the X represent couplings that couple the two chains at the ith and i+1th rungs
+    these are the additional couplings that make this different from the standard 2D Ising model on a ladder geometry.
+
+    Geometry:
+      - Sites are integer coordinates (x, y) with 0 <= x < n_x and 0 <= y < n_y.
+      - Standard nearest-neighbor ZZ couplings are included on the open n_x x n_y square lattice.
+      - Additional ZZ couplings are added on both diagonals of each elementary plaquette,
+        i.e. between (x, y) and (x + 1, y + 1), and between (x + 1, y) and (x, y + 1).
+      - Uniform transverse X field is added on every site.
+
+    Parameters
+    ----------
+    n_x, n_y : int
+        Number of rungs and legs in the ladder, respectively. Must satisfy n_x >= 1 and n_y >= 2.
+    J_zz : float
+        Coupling strength of ZZ terms.
+    h_x
+        Transverse-field strength for single-site X terms.
+
+    Returns
+    -------
+    PauliSum
+        The Hamiltonian as a PauliSum object on N = n_x * n_y qubits.
+    """
+    if int(n_x) < 1:
+        raise ValueError("n_x must be at least 1.")
+    if int(n_y) < 2:
+        raise ValueError("n_y must be at least 2.")
+
+    H = ising_2d_hamiltonian(int(n_x), int(n_y), J_zz, h_x, periodic=False)
+    n_spins = int(n_x) * int(n_y)
+    dims = [2 for _ in range(n_spins)]
+
+    def site_index(x: int, y: int) -> int:
+        return y * int(n_x) + x
+
+    diagonal_terms: list[PauliString] = []
+    diagonal_weights: list[float] = []
+    z0 = np.zeros(n_spins, dtype=int)
+
+    for x in range(int(n_x) - 1):
+        for y in range(int(n_y) - 1):
+            for i, j in (
+                (site_index(x, y), site_index(x + 1, y + 1)),
+                (site_index(x + 1, y), site_index(x, y + 1)),
+            ):
+                zz = z0.copy()
+                zz[i] = 1
+                zz[j] = 1
+                diagonal_terms.append(PauliString.from_exponents(z0, zz, dims))
+                diagonal_weights.append(J_zz)
+
+    if not diagonal_terms:
+        return H
+
+    H_modified = H + PauliSum.from_pauli_strings(diagonal_terms, weights=diagonal_weights, phases=None)
+    H_modified.combine_equivalent_paulis()
+    H_modified.remove_zero_weight_paulis()
+    return H_modified
+
+
+def heuristic_clifford_symmetry(n_spins: int, periodic: bool = False) -> Gate:
     A = np.zeros((n_spins, n_spins), dtype=int)
-    B = np.ones((n_spins, n_spins), dtype=int)
+    B = np.zeros((n_spins, n_spins), dtype=int)
     C = np.zeros((n_spins, n_spins), dtype=int)
 
-    A[0, 1] = 1
-    A[1, 0] = 1
-    for i in range(n_spins - 2):
-        A[-1 - i, 2 + i] = 1
+    if periodic:
+        A[0, 1] = 1
+        A[1, 0] = 1
+        for i in range(n_spins - 2):
+            A[-1 - i, 2 + i] = 1
+    else:
+        # ones on anti-diagonal
+        for i in range(n_spins):
+            A[-i - 1, i] = 1
 
     F = np.block([[A, B], [C, A]])
     F_G = Gate('F', F,
                np.concatenate([np.zeros(n_spins, dtype=int), np.ones(n_spins, dtype=int)]))
     return F_G
+
+
+def product_state_ising(
+    N: int,
+    kind: str = "x_plus",
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Build a simple product state on an N-site qubit chain.
+
+    Returns
+    -------
+    psi : (2**N,) complex ndarray
+        Statevector in computational basis |0...0>,|0...1>,...,|1...1>.
+    dims : (N,) int ndarray
+        Dimensions (all 2's).
+    """
+    dims = np.full(N, 2, dtype=int)
+
+    # Single-qubit kets
+    ket0 = np.array([1.0, 0.0], dtype=np.complex128)  # |0> ~ |↑_z>
+    ket1 = np.array([0.0, 1.0], dtype=np.complex128)  # |1> ~ |↓_z>
+    ket_plus = (ket0 + ket1) / np.sqrt(2.0)
+    ket_minus = (ket0 - ket1) / np.sqrt(2.0)
+
+    if kind == "z_up":
+        locals_ = [ket0 for _ in range(N)]
+    elif kind == "z_neel":
+        locals_ = [ket0 if i % 2 == 0 else ket1 for i in range(N)]
+    elif kind == "x_plus":
+        locals_ = [ket_plus for _ in range(N)]
+    elif kind == "x_minus":
+        locals_ = [ket_minus for _ in range(N)]
+    else:
+        raise ValueError(f"Unknown product_state kind '{kind}'.")
+
+    psi = locals_[0]
+    for k in range(1, N):
+        psi = np.kron(psi, locals_[k])
+
+    return psi, dims
