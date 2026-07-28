@@ -1,11 +1,13 @@
 """Codes for finding target Paulis and gates which map a given Pauli to a target Pauli."""
+# TODO: move all functions that are required for the class method
+#       `input_to_target` to a unique file, that works with mixed dimension.
 from __future__ import annotations
 from sympleq.core.paulis import PauliString, PauliSum
 from sympleq.core.paulis._typing import TableauType, PhasesType
 import numpy as np
 from collections import defaultdict
 from itertools import product
-from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
+from sympleq.core.circuits.find_symplectic import map_paulisum_to_target_tableau
 
 
 def find_map_to_target_pauli_sum(input_pauli: PauliSum, target_pauli: PauliSum) -> tuple[TableauType, PhasesType,
@@ -46,13 +48,7 @@ def find_map_to_target_pauli_sum(input_pauli: PauliSum, target_pauli: PauliSum) 
     input_tableau = input_pauli.tableau  # [:, qudit_indices]
     target_tableau = target_pauli.tableau  # [:, qudit_indices]
 
-    F = map_pauli_sum_to_target_tableau(input_tableau, target_tableau, p=int(gate_dimension))
-
-    # print('IN FUNCTION')
-    # # print(input_symplectic)
-    # # print()
-    # print(target_symplectic - input_symplectic @ F % 2)
-    # print('----------')
+    F = map_paulisum_to_target_tableau(input_tableau, target_tableau, p=int(gate_dimension), method="auto")
 
     h = get_phase_vector(F, gate_dimension)
 

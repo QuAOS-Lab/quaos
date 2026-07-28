@@ -6,6 +6,7 @@ from sympleq.core.circuits.gates import Gate
 from sympleq.core.circuits.utils import is_symplectic
 from sympleq.core.paulis import PauliSum, PauliString
 from sympleq.core.circuits.random_symplectic import (symplectic_gf2, symplectic_group_size,
+                                                     symplectic_random_koenig_smolin_gf2,
                                                      symplectic_random_transvection)
 
 
@@ -260,6 +261,41 @@ class TestGates():
                         F = symplectic_random_transvection(n, dimension=d)
                     assert is_symplectic(F, d), f"Failed symplectic check: n={n}, test {i}"
 
+    def test_random_transvection_sampler_repeatable_with_rng(self):
+        rng1 = np.random.default_rng(321)
+        rng2 = np.random.default_rng(321)
+
+        F1 = symplectic_random_transvection(3, dimension=5, num_transvections=12, rng=rng1)
+        F2 = symplectic_random_transvection(3, dimension=5, num_transvections=12, rng=rng2)
+
+        assert is_symplectic(F1, 5)
+        assert np.array_equal(F1, F2)
+
+    def test_koenig_smolin_gf2_n1_enumerates_whole_group(self):
+        elements = []
+        for index in range(symplectic_group_size(1, 2)):
+            F = symplectic_gf2(index, 1)
+            assert is_symplectic(F, 2)
+            elements.append(tuple(F.ravel().tolist()))
+
+        assert len(elements) == 6
+        assert len(set(elements)) == 6
+
+    @pytest.mark.parametrize("n", [1, 2, 3])
+    def test_koenig_smolin_gf2_random_sampler_is_symplectic_and_repeatable(self, n: int):
+        rng1 = np.random.default_rng(1234 + n)
+        rng2 = np.random.default_rng(1234 + n)
+
+        F1 = symplectic_random_koenig_smolin_gf2(n, rng=rng1)
+        F2 = symplectic_random_koenig_smolin_gf2(n, rng=rng2)
+
+        assert is_symplectic(F1, 2)
+        assert np.array_equal(F1, F2)
+
+    def test_koenig_smolin_gf2_random_sampler_rejects_invalid_n(self):
+        with pytest.raises(ValueError, match="n_qubits must be >= 1"):
+            symplectic_random_koenig_smolin_gf2(0)
+
     def test_gate_from_target(self):
         """Test Gate.solve_from_target finds correct symplectic transformation."""
         from sympleq.core.circuits import Gate
@@ -268,35 +304,120 @@ class TestGates():
         # Map X to Z on a single qubit: [1, 0] -> [0, 1]
         input_tableau = np.array([[1, 0]])
         target_tableau = np.array([[0, 1]])
-        gate = Gate.solve_from_target(input_tableau, target_tableau)
+        dim = 2
+        gate = Gate.solve_from_target(input_tableau, target_tableau, dim)
         result = (input_tableau @ gate.symplectic) % 2
         assert np.array_equal(result, target_tableau), f"Single mapping failed: {result} != {target_tableau}"
 
         # Test multiple Pauli string mapping (2 qubits)
         # This requires compatible symplectic product matrices
         for _ in range(10):
-            n = 2
+            n_qudits = np.random.randint(1, 7)
             # Generate random input
-            input_tableau = np.random.randint(0, 2, size=(2, 2 * n))
+            input_tableau = np.random.randint(0, 2, size=(2, 2 * n_qudits))
             # Apply a random symplectic to get a valid target
-            random_gate = Gate.from_random(n, 2)
+            random_gate = Gate.from_random(n_qudits, 2)
             target_tableau = (input_tableau @ random_gate.symplectic) % 2
 
-            gate = Gate.solve_from_target(input_tableau, target_tableau)
+            gate = Gate.solve_from_target(input_tableau, target_tableau, dim)
             result = (input_tableau @ gate.symplectic) % 2
             assert np.array_equal(result, target_tableau), "Multi-Pauli mapping failed"
 
-    @pytest.mark.parametrize("d", [2, 3, 5])
-    @pytest.mark.parametrize("n", [1, 2, 3])
-    def test_gate_from_random_symplecticity(self, d: int, n: int):
+    @pytest.mark.parametrize("dim", [3, 5])
+    def test_gate_from_target_qudit_dimension(self, dim: int):
+        """Test Gate.solve_from_target works for qudit (non-qubit prime) dimensions."""
+
+        for _ in range(10):
+            n_qudits = np.random.randint(1, 7)
+            input_tableau = np.random.randint(0, dim, size=(2, 2 * n_qudits))
+            # Regenerate any all-zero row: it represents the identity Pauli, which has
+            # no well-defined transvection image and is correctly rejected by the solver.
+            while not input_tableau.any(axis=1).all():
+                input_tableau = np.random.randint(0, dim, size=(2, 2 * n_qudits))
+            # Apply a random symplectic to get a valid, guaranteed-reachable target.
+            random_gate = Gate.from_random(n_qudits, dim)
+            target_tableau = (input_tableau @ random_gate.symplectic) % dim
+
+            gate = Gate.solve_from_target(input_tableau, target_tableau, dim)
+            result = (input_tableau @ gate.symplectic) % dim
+            assert np.array_equal(result, target_tableau), f"Qudit mapping failed for dimension={dim}"
+
+    def test_full_symplectic_embeds_and_reduces_mod_dimension(self):
+        """Test Gate.full_symplectic embeds a local symplectic into a larger system and reduces mod dimension."""
+        n_qudits = 3
+        qudits = (1,)
+
+        # dimension=None returns the raw embedding, un-reduced.
+        raw = GATES.H.full_symplectic(qudits, n_qudits)
+        assert raw.shape == (2 * n_qudits, 2 * n_qudits)
+        # Hadamard's local symplectic [[0, -1], [1, 0]] should appear verbatim, including the -1.
+        assert -1 in raw
+
+        # Qudits the gate does not act on must be left as identity.
+        for q in range(n_qudits):
+            if q in qudits:
+                continue
+            idx = [q, q + n_qudits]
+            block = raw[np.ix_(idx, idx)]
+            assert np.array_equal(block, np.eye(2, dtype=int))
+
+        # An explicit dimension reduces the embedded matrix mod that dimension.
+        dimension = 5
+        reduced = GATES.H.full_symplectic(qudits, n_qudits, dimension=dimension)
+        assert np.array_equal(reduced, raw % dimension)
+        assert np.all(reduced >= 0) and np.all(reduced < dimension)
+
+    @pytest.mark.parametrize("dimension", [2, 3, 5])
+    @pytest.mark.parametrize("n_qudits", [1, 2, 3])
+    def test_gate_from_random_symplecticity(self, dimension: int, n_qudits: int):
         """Test that Gate.from_random produces valid symplectic matrices."""
         from sympleq.core.circuits import Gate
 
         for _ in range(5):
-            gate = Gate.from_random(n, d)
-            assert is_symplectic(gate.symplectic, d), (
-                f"Random gate not symplectic for n={n}, d={d}"
+            gate = Gate.from_random(n_qudits, dimension)
+            assert is_symplectic(gate.symplectic, dimension), (
+                f"Random gate not symplectic for n={n_qudits}, d={dimension}"
             )
+
+    @pytest.mark.parametrize("n_qudits", [1, 2, 3])
+    def test_gate_from_random_koenig_smolin_symplecticity(self, n_qudits: int):
+        gate = Gate.from_random(
+            n_qudits,
+            2,
+            sampler="koenig-smolin",
+            rng=np.random.default_rng(100 + n_qudits),
+        )
+        assert is_symplectic(gate.symplectic, 2)
+
+    def test_gate_from_random_koenig_smolin_repeatable_with_rng(self):
+        rng1 = np.random.default_rng(123)
+        rng2 = np.random.default_rng(123)
+
+        gate1 = Gate.from_random(3, 2, sampler="koenig-smolin", rng=rng1)
+        gate2 = Gate.from_random(3, 2, sampler="koenig-smolin", rng=rng2)
+
+        assert np.array_equal(gate1.symplectic, gate2.symplectic)
+
+    def test_gate_from_random_koenig_smolin_rejects_invalid_options(self):
+        with pytest.raises(ValueError, match="only implemented for dimension=2"):
+            Gate.from_random(2, 3, sampler="koenig-smolin")
+        with pytest.raises(ValueError, match="num_transvections is not used"):
+            Gate.from_random(2, 2, 10, sampler="koenig-smolin")
+        with pytest.raises(ValueError, match="Unknown random Clifford sampler"):
+            Gate.from_random(2, 2, sampler="unknown")
+
+    def test_gate_from_random_transvection_repeatable_with_rng(self):
+        rng1 = np.random.default_rng(123)
+        rng2 = np.random.default_rng(123)
+
+        gate1 = Gate.from_random(3, 2, sampler="transvection", rng=rng1)
+        gate2 = Gate.from_random(3, 2, sampler="transvection", rng=rng2)
+
+        assert np.array_equal(gate1.symplectic, gate2.symplectic)
+
+    def test_gate_from_random_transvection_still_accepts_positional_depth(self):
+        gate = Gate.from_random(2, 2, 10)
+        assert is_symplectic(gate.symplectic, 2)
 
     @pytest.mark.parametrize("d", [2, 3, 5])
     @pytest.mark.parametrize("n", [2, 3])
@@ -320,13 +441,71 @@ class TestGates():
 
     @pytest.mark.parametrize("d", [2, 3, 5])
     @pytest.mark.parametrize("gate", [GATES.H, GATES.H_inv, GATES.S, GATES.S_inv,
-                                      GATES.CX, GATES.CX_inv, GATES.SWAP, GATES.CZ])
+                                      GATES.CX, GATES.CX_inv, GATES.SWAP, GATES.CZ,
+                                      GATES.ZZMax, GATES.ZZMax_inv])
     def test_unitary_is_unitary(self, d: int, gate: Gate):
         """Test that all gate unitaries are actually unitary matrices."""
         U = gate.local_unitary(d).toarray()
         Id = np.eye(U.shape[0])
         assert np.allclose(U.conj().T @ U, Id), f"{gate.name}(d={d}) is not unitary"
         assert np.allclose(U @ U.conj().T, Id), f"{gate.name}(d={d}) is not unitary"
+
+    @pytest.mark.parametrize("gate", [GATES.V, GATES.V_inv])
+    def test_V_unitary_is_unitary(self, gate: Gate):
+        """V is qubit-only; verify the local_unitary is unitary for d=2."""
+        U = gate.local_unitary(2).toarray()
+        Id = np.eye(2)
+        assert np.allclose(U.conj().T @ U, Id), f"{gate.name} is not unitary"
+        assert np.allclose(U @ U.conj().T, Id), f"{gate.name} is not unitary"
+
+    def test_V_matches_sqrt_X(self):
+        """V should equal exp(-iπ/4 X) = (1/√2)(I - iX); V_inv = V†."""
+        U_V = GATES.V.local_unitary(2).toarray()
+        expected = np.array([[1, -1j], [-1j, 1]], dtype=complex) / np.sqrt(2)
+        assert np.allclose(U_V, expected), "V does not equal √X"
+
+        U_V_inv = GATES.V_inv.local_unitary(2).toarray()
+        assert np.allclose(U_V @ U_V_inv, np.eye(2)), "V · V_inv != I"
+
+    def test_V_squared_is_X_up_to_phase(self):
+        """V² = -i·X"""
+        U_V = GATES.V.local_unitary(2).toarray()
+        X = np.array([[0, 1], [1, 0]], dtype=complex)
+        assert np.allclose(U_V @ U_V, -1j * X), "V² != -i·X"
+
+    def test_V_clifford_action_on_paulis(self):
+        """V's symplectic + phase action: X → X (phase 1), Z → XZ (phase ω⁻¹ = -i for d=2)."""
+        # X stays X with phase 0
+        X = PauliString.from_string("x1z0", dimensions=[2])
+        out_X = GATES.V.act(X, 0)
+        assert out_X.has_equal_tableau(X), "V·X·V† should keep tableau as X"
+        assert (out_X.phases % (2 * X.lcm) == 0).all(), "V·X·V† should have phase 0"
+
+        # Z -> XZ with phase -1 (mod 2*lcm = 4 for qubits) i.e. phase factor ω^{-1} = -i
+        Z = PauliString.from_string("x0z1", dimensions=[2])
+        out_Z = GATES.V.act(Z, 0)
+        expected_Z = PauliString.from_string("x1z1", dimensions=[2])
+        assert out_Z.has_equal_tableau(expected_Z), "V·Z·V† should map to XZ"
+        assert (out_Z.phases[0] % (2 * Z.lcm)) == 3, "V·Z·V† phase should be -1 (=3 mod 4)"
+
+        # V_inv flips the sign: Z -> XZ with phase +1
+        out_Z_inv = GATES.V_inv.act(Z, 0)
+        assert out_Z_inv.has_equal_tableau(expected_Z), "V_inv·Z·V_inv† should map to XZ"
+        assert (out_Z_inv.phases[0] % (2 * Z.lcm)) == 1, "V_inv·Z·V_inv† phase should be +1"
+
+    def test_V_inverse_round_trip(self):
+        """V_inv · V applied to any single-qubit Pauli should be the identity."""
+        for s in ["x1z0", "x0z1", "x1z1"]:
+            ps = PauliString.from_string(s, dimensions=[2])
+            roundtrip = GATES.V_inv.act(GATES.V.act(ps, 0), 0)
+            assert roundtrip.has_equal_tableau(ps) and \
+                np.array_equal(roundtrip.phases % (2 * ps.lcm), ps.phases % (2 * ps.lcm)), \
+                f"V_inv·V·{s} != {s}"
+
+    def test_V_qudit_local_unitary_raises(self):
+        """V's local_unitary is only defined for qubits."""
+        with pytest.raises(NotImplementedError):
+            GATES.V.local_unitary(3)
 
     @pytest.mark.parametrize("d", [2, 3, 5])
     def test_unitary_inverse(self, d: int):
@@ -449,6 +628,60 @@ class TestGates():
                 assert np.allclose(out_state, expected), (
                     f"CX(d={d}) failed for |{j},{k}⟩"
                 )
+
+    @pytest.mark.parametrize("d", [2, 3, 5])
+    def test_ZZMax_unitary_inverse(self, d: int):
+        """ZZMax @ ZZMax_inv should be the identity."""
+        U = GATES.ZZMax.local_unitary(d).toarray()
+        U_inv = GATES.ZZMax_inv.local_unitary(d).toarray()
+        assert np.allclose(U @ U_inv, np.eye(d * d)), f"ZZMax @ ZZMax_inv != I for d={d}"
+        assert np.allclose(U_inv @ U, np.eye(d * d)), f"ZZMax_inv @ ZZMax != I for d={d}"
+
+    @pytest.mark.parametrize("d", [2, 3, 5])
+    @pytest.mark.parametrize("gate", [GATES.ZZMax, GATES.ZZMax_inv])
+    def test_ZZMax_clifford_property(self, d: int, gate: Gate):
+        """U P U† should equal the symplectically-predicted Pauli up to a global phase."""
+        from sympleq.core.circuits.utils import pauli_unitary_qudit
+
+        U = gate.local_unitary(d).toarray()
+
+        for x0, x1, z0, z1 in [(1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)]:
+            P0 = pauli_unitary_qudit(d, x0, z0).toarray()
+            P1 = pauli_unitary_qudit(d, x1, z1).toarray()
+            P = np.kron(P0, P1)
+
+            P_conj = U @ P @ U.conj().T
+
+            v_out = (gate.symplectic @ np.array([x0, x1, z0, z1])) % d
+            x0_out, x1_out, z0_out, z1_out = v_out
+            P0_exp = pauli_unitary_qudit(d, x0_out, z0_out).toarray()
+            P1_exp = pauli_unitary_qudit(d, x1_out, z1_out).toarray()
+            P_exp = np.kron(P0_exp, P1_exp)
+
+            mask = np.abs(P_exp) > 0.1
+            ratio = P_conj[mask] / P_exp[mask]
+            assert np.allclose(np.abs(ratio), 1.0), (
+                f"{gate.name}(d={d}) Clifford property failed for {(x0, x1, z0, z1)}"
+            )
+
+    def test_ZZMax_act_matches_unitary_qubits(self):
+        """For qubits, acting on each single-qudit basis Pauli via .act() should match the
+        unitary conjugation including the ±i phase captured in the exceptional_phase_vector."""
+        dims = [2, 2]
+        # X on qudit 0: expect phase +i  (encoded as phase_vector entry 1 -> phases units of lcm=2)
+        input_ps = PauliString.from_string("x1z0 x0z0", dimensions=dims)
+        out = GATES.ZZMax.act(input_ps, (0, 1))
+        # symplectic image: X0 -> X0 Z0 Z1 with phase +i
+        expected_tableau = PauliString.from_string("x1z1 x0z1", dimensions=dims)
+        assert out.has_equal_tableau(expected_tableau), "ZZMax X0 tableau mismatch"
+
+        # Inverse acts with -i on the same tableau image
+        out_inv = GATES.ZZMax_inv.act(input_ps, (0, 1))
+        assert out_inv.has_equal_tableau(expected_tableau), "ZZMax_inv X0 tableau mismatch"
+        # Phases should differ by a full i^2 = -1 (i.e. by the lcm=2 factor in phase units)
+        assert ((out.phases - out_inv.phases) % (2 * input_ps.lcm)).any(), (
+            "ZZMax and ZZMax_inv should produce different phases on X0"
+        )
 
     @pytest.mark.parametrize("d", [2, 3, 5])
     def test_pauli_gate_unitary(self, d: int):

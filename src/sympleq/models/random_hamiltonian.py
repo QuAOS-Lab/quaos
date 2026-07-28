@@ -2,7 +2,6 @@ import random
 import numpy as np
 from sympleq.core.paulis import PauliSum, PauliString
 from sympleq.core.circuits import Gate
-from sympleq.utils import int_to_bases, bases_to_int
 
 
 def random_pauli_hamiltonian(num_paulis, qudit_dims, mode='rand'):
@@ -39,32 +38,41 @@ def random_pauli_hamiltonian(num_paulis, qudit_dims, mode='rand'):
         pauli_str_H = ''
     '''
     q2 = np.repeat(qudit_dims, 2)
-    available_paulis = list(np.arange(int(np.prod(q2))))
+    total_paulis = int(np.prod(q2))
+    if num_paulis > total_paulis:
+        raise ValueError("num_paulis cannot exceed the number of available Pauli labels.")
 
     pauli_strings = []
     coefficients = []
+    used_paulis: set[tuple[int, ...]] = set()
 
     for _ in range(num_paulis):
-        pauli_index = random.choice(available_paulis)
-        available_paulis.remove(pauli_index)
+        for _attempt in range(1000):
+            exponents = np.array([random.randrange(int(dim)) for dim in q2], dtype=int)
+            key = tuple(int(x) for x in exponents)
+            exponents_H = np.zeros_like(exponents)
+            for j in range(len(qudit_dims)):
+                r, s = int(exponents[2 * j]), int(exponents[2 * j + 1])
+                exponents_H[2 * j] = (-r) % qudit_dims[j]
+                exponents_H[2 * j + 1] = (-s) % qudit_dims[j]
+            conjugate_key = tuple(int(x) for x in exponents_H)
+            if key not in used_paulis and conjugate_key not in used_paulis:
+                break
+        else:
+            raise RuntimeError("Unable to sample a new Pauli label without replacement.")
 
-        exponents = int_to_bases(pauli_index, q2)
-        exponents_H = np.zeros_like(exponents)
+        used_paulis.add(key)
         phase_factor = 1
-        pauli_str = ' '
-        pauli_str_H = ' '
 
         for j in range(len(qudit_dims)):
             r, s = int(exponents[2 * j]), int(exponents[2 * j + 1])
-            pauli_str += f"x{r}z{s} "
-            exponents_H[2 * j] = (-r) % qudit_dims[j]
-            exponents_H[2 * j + 1] = (-s) % qudit_dims[j]
-            pauli_str_H += f"x{exponents_H[2 * j]}z{exponents_H[2 * j + 1]} "
 
             omega = np.exp(2 * np.pi * 1j / qudit_dims[j])
             phase_factor *= omega**(r * s)
 
-        pauli_strings.append(PauliString.from_string(pauli_str.strip(), dimensions=qudit_dims))
+        pauli_strings.append(
+            PauliString.from_exponents(exponents[0::2], exponents[1::2], dimensions=qudit_dims)
+        )
         if mode == 'rand' or mode == 'random':
             coeff = np.random.normal(0, 1) + 1j * np.random.normal(0, 1)
         elif mode == 'uniform' or mode == 'one':
@@ -73,14 +81,21 @@ def random_pauli_hamiltonian(num_paulis, qudit_dims, mode='rand'):
             # mode is 'randint2', 'randint3', etc.
             d = int(mode[7:])
             coeff = np.random.randint(1, d + 1)
+        else:
+            raise ValueError(f"Unknown coefficient mode {mode!r}.")
 
         if not np.array_equal(exponents, exponents_H):
             # random string not Hermitian, add conjugate pair
-            conjugate_index = bases_to_int(exponents_H, q2)
             coefficients.append(coeff)
             coefficients.append(np.conj(coeff) * phase_factor)
-            available_paulis.remove(conjugate_index)
-            pauli_strings.append(PauliString.from_string(pauli_str_H.strip(), dimensions=qudit_dims))
+            used_paulis.add(tuple(int(x) for x in exponents_H))
+            pauli_strings.append(
+                PauliString.from_exponents(
+                    exponents_H[0::2],
+                    exponents_H[1::2],
+                    dimensions=qudit_dims,
+                )
+            )
         else:
             coefficients.append(coeff.real)
 
@@ -372,9 +387,11 @@ def random_gate_symmetric_hamiltonian(G: Gate,
                                       weight_mode: str = 'uniform',
                                       scrambled: bool = False,
                                       # generation controls
-                                      extra_orbit_budget: int = 10_000,   # how many extra random orbit seeds to add after basis orbits
-                                      avoid_rounding: bool = True,        # recommended True for rank robustness
-                                      target_count_tolerance: float = 0.10,  # acceptable relative deviation from n_paulis
+                                      # Extra random orbit seeds to add after basis orbits.
+                                      extra_orbit_budget: int = 10_000,
+                                      avoid_rounding: bool = True,  # Recommended True for rank robustness.
+                                      # Acceptable relative deviation from n_paulis.
+                                      target_count_tolerance: float = 0.10,
                                       ) -> PauliSum:
     """
     Generate a gate-symmetric Hamiltonian while enforcing Hermiticity.

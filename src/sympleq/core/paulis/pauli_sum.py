@@ -684,9 +684,6 @@ class PauliSum(PauliObject):
         if isinstance(A, PauliString):
             A = PauliSum.from_pauli_strings(A)
 
-        new_dimensions = np.concatenate((self.dimensions, A.dimensions))
-        new_lcm = np.lcm.reduce(new_dimensions)
-
         n1, n2 = self.n_qudits(), A.n_qudits()
         p1, p2 = self.n_paulis(), A.n_paulis()
 
@@ -1186,32 +1183,16 @@ class PauliSum(PauliObject):
 
         # Convert PauliSum to matrix form
         sparse_matrix = self.to_hilbert_space()
-        shape = cast(tuple[int, int], sparse_matrix.shape)
+        matrix_shape = sparse_matrix.shape
+        if matrix_shape is None:
+            raise ValueError("Hilbert-space matrix shape is unavailable.")
+        matrix_size = matrix_shape[0]
 
         if num_eigens is None:
-            num_eigens = shape[0]
+            num_eigens = matrix_size
 
         # Get eigenvalues and eigenvectors
-        if num_eigens == 1 and shape[0] > 3:
-            if return_eigenvectors:
-                val, vec = spla.eigsh(sparse_matrix, k=1, which="SA")
-            else:
-                val = spla.eigsh(sparse_matrix, k=1, which="SA", return_eigenvectors=False)
-            energy = np.array([float(np.real(val[0]))], dtype=float)
-            assert np.allclose(np.imag(energy), 0.0, rtol=1e-10), \
-                "Energy is not real, but the matrix is Hermitian."
-
-            if not return_eigenvectors:
-                return energy, None
-
-            state = np.asarray(vec[:, 0], dtype=complex)
-            normalized_state = state / np.linalg.norm(state)
-
-            assert np.allclose(np.linalg.norm(normalized_state), 1.0,
-                               rtol=1e-10), "Eigenvector is not normalized."
-
-            return energy, normalized_state.reshape(1, -1)
-        elif num_eigens >= shape[0] - 2:
+        if num_eigens >= matrix_size - 2:
             val, vec = np.linalg.eigh(sparse_matrix.toarray())
             val = val[:num_eigens]
             if return_eigenvectors:

@@ -1,11 +1,13 @@
 from sympleq.core.circuits.find_symplectic import (
-    map_single_pauli_string_to_target,
+    map_single_paulistring_to_target,
     find_symplectic_solution,
     find_symplectic_solution_extended,
     solve_gf2,
-    map_pauli_sum_to_target_tableau
+    map_paulisum_to_target_tableau,
+    symplectic_from_pauli_permutation,
 )
 import numpy as np
+import pytest
 from sympleq.core.circuits.utils import transvection, transvection_matrix, symplectic_product_arrays
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 from sympleq.models import random_hamiltonian
@@ -84,7 +86,7 @@ class TestSymplecticSolver:
 
             assert np.all(transvection(h, x) == (x @ transvection_matrix(h)) % 2)
 
-    def test_map_single_pauli_string_to_target(self):
+    def test_map_single_paulistring_to_target(self):
         n = 14
         p = 2
         for _ in range(1000):
@@ -95,9 +97,27 @@ class TestSymplecticSolver:
             if np.array_equal(target_ps, np.zeros(2 * n)):
                 target_ps[np.random.randint(2 * n)] = 1  # Ensure non-zero target
 
-            F_map = map_single_pauli_string_to_target(input_ps, target_ps)
+            F_map = map_single_paulistring_to_target(input_ps, target_ps)
             assert np.all((input_ps @ F_map) % p == target_ps), (f"\n{F_map}\n{input_ps}"
                                                                  f"\n{(input_ps @ F_map) % p}\n{target_ps}")
+
+    def test_symplectic_from_pauli_permutation(self):
+        tableau = np.eye(4, dtype=int)
+        permutation = np.array([1, 0, 3, 2])
+
+        F_map = symplectic_from_pauli_permutation(tableau, permutation, p=2)
+
+        assert np.all((tableau @ F_map) % 2 == tableau[permutation])
+
+    def test_symplectic_from_pauli_permutation_uses_inverse_by_default(self):
+        tableau = np.array([[1, 0, 0, 0], [0, 0, 1, 0]], dtype=int)
+        permutation = np.array([1, 0])
+
+        with pytest.raises(ValueError, match="complete independent Pauli basis"):
+            symplectic_from_pauli_permutation(tableau, permutation, p=2)
+
+        F_map = symplectic_from_pauli_permutation(tableau, permutation, p=2, method="transvection")
+        assert np.all((tableau @ F_map) % 2 == tableau[permutation])
 
     def test_find_w(self):
         """Test function that properly handles cases where no solution exists."""
@@ -213,7 +233,7 @@ class TestSymplecticSolver:
             if check_pl_sum.n_paulis() != pl_sum.n_paulis():
                 continue  # Skip if not mappable
 
-            F = map_pauli_sum_to_target_tableau(sym_sum, target_sym_sum)
+            F = map_paulisum_to_target_tableau(sym_sum, target_sym_sum, method="auto")
 
             # Verify the mapping
             mapped_sym_sum = (sym_sum @ F) % pl_sum.lcm
@@ -225,3 +245,60 @@ class TestSymplecticSolver:
                 "The matrix M is:\n"
                 f"{F}\n"
             )
+
+    def test_map_pauli_sum_to_target_complete_basis_fast_path(self):
+        n = 2
+        input_tab = np.eye(2 * n, dtype=int)
+        F_expected = np.block([
+            [np.zeros((n, n), dtype=int), np.eye(n, dtype=int)],
+            [np.eye(n, dtype=int), np.zeros((n, n), dtype=int)],
+        ])
+        target_tab = input_tab @ F_expected % 2
+
+        F = map_paulisum_to_target_tableau(input_tab, target_tab, p=2)
+
+        assert np.array_equal(F, F_expected)
+        assert np.array_equal((input_tab @ F) % 2, target_tab)
+
+    def test_map_pauli_sum_to_target_default_inverse_requires_complete_basis(self):
+        input_tab = np.array([[1, 0, 0, 0], [0, 0, 1, 0]], dtype=int)
+        target_tab = input_tab[[1, 0]]
+
+        with pytest.raises(ValueError, match="complete independent Pauli basis"):
+            map_paulisum_to_target_tableau(input_tab, target_tab, p=2)
+
+        F = map_paulisum_to_target_tableau(input_tab, target_tab, p=2, method="transvection")
+        assert np.array_equal((input_tab @ F) % 2, target_tab)
+
+    def test_map_pauli_sum_to_target_complete_basis_with_dependent_row(self):
+        n = 2
+        p = 3
+        input_basis = np.eye(2 * n, dtype=int)
+        dependent_row = (input_basis[0] + 2 * input_basis[2]) % p
+        input_tab = np.vstack([input_basis, dependent_row])
+
+        F_expected = np.block([
+            [np.zeros((n, n), dtype=int), np.eye(n, dtype=int)],
+            [-np.eye(n, dtype=int), np.zeros((n, n), dtype=int)],
+        ]) % p
+        target_tab = input_tab @ F_expected % p
+
+        F = map_paulisum_to_target_tableau(input_tab, target_tab, p=p)
+
+        assert np.array_equal(F, F_expected)
+        assert np.array_equal((input_tab @ F) % p, target_tab)
+
+    def test_map_pauli_sum_to_target_complete_basis_qudit_default_inverse(self):
+        n = 2
+        p = 5
+        input_tab = np.eye(2 * n, dtype=int)
+        F_expected = np.block([
+            [np.zeros((n, n), dtype=int), np.eye(n, dtype=int)],
+            [-np.eye(n, dtype=int), np.zeros((n, n), dtype=int)],
+        ]) % p
+        target_tab = input_tab @ F_expected % p
+
+        F = map_paulisum_to_target_tableau(input_tab, target_tab, p=p)
+
+        assert np.array_equal(F, F_expected)
+        assert np.array_equal((input_tab @ F) % p, target_tab)

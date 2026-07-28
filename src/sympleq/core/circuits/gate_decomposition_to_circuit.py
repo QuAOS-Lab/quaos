@@ -1,3 +1,11 @@
+# TODO: This is an important file, that should be enhanced for platform-specific compilation.
+#       - clarity and maintenability should be enhanced
+#       - needs to be generalized to different gate_set.
+#         This is important for expressing the circuit with only gates
+#         that are native to the platform we are using (e.g. quantinuum)
+#       - The code should be generalized to qudits
+#
+#       - This could be a nice master project.
 from __future__ import annotations
 import numpy as np
 from sympleq.core.circuits import Circuit
@@ -95,6 +103,24 @@ def ensure_invertible_A_circuit(F: TableauType, p: int, max_depth: int | None = 
     A, _, _, _ = blocks(F, p)
     if _is_invertible_mod(A, p):
         return Circuit.empty([p] * n)
+
+    # A common singular-A case is fixed by applying H gates, which exchange
+    # X/Z rows on selected qudits.  Try this structured search before the
+    # unrestricted BFS below; it avoids a combinatorial blow-up for dense
+    # Clifford basis transforms.
+    if p == 2 and n <= 20:
+        for mask in range(1, 1 << n):
+            F_new = F.copy()
+            ops: list[GateSpec] = []
+            for q in range(n):
+                if (mask >> q) & 1:
+                    F_new[[q, n + q], :] = F_new[[n + q, q], :]
+                    ops.append((H, q))
+            Anew, _, _, _ = blocks(F_new, p)
+            if _is_invertible_mod(Anew, p):
+                C_pre = Circuit.empty([p] * n)
+                _add_ops_to_circuit(C_pre, ops)
+                return C_pre
 
     if max_depth is None:
         max_depth = max(1, 3 * n)

@@ -17,8 +17,8 @@ def _fermionic_chain_hamiltonian(
 
         H = -J Σ_j (c_j^† c_{j+1} + h.c.) + Σ_j D_j n_j + V Σ_j n_j n_{j+1}
 
-    using the identifications (as requested):
-        c_j = (X_j + i Y_j)/2,  n_j = (Z_j + I)/2.
+    using the standard qubit Jordan-Wigner number-operator convention:
+        c_j = (X_j + i Y_j)/2,  n_j = (I - Z_j)/2.
 
     Output:
       tableau : (M, 2n) uint8 array. Row m is [x_0..x_{n-1} | z_0..z_{n-1}]
@@ -73,19 +73,19 @@ def _fermionic_chain_hamiltonian(
         z[k] = 1
         add_term(x, z, phase=2, coeff=-(J / 2.0))
 
-    # 2) On-site: Σ D_j n_j = Σ (D_j/2) Z_j + (D_j/2) I
+    # 2) On-site: Σ D_j n_j = Σ -(D_j/2) Z_j + (D_j/2) I
     for j, Dj in enumerate(D_vec):
         if Dj == 0:
             continue
         x, z = zeros()
         z[j] = 1
-        add_term(x, z, phase=0, coeff=(Dj / 2.0))
+        add_term(x, z, phase=0, coeff=-(Dj / 2.0))
 
         if include_identity_shift:
             x, z = zeros()
             add_term(x, z, phase=0, coeff=(Dj / 2.0))
 
-    # 3) Interaction: V Σ n_j n_{j+1} = (V/4) Σ (ZZ + Z_j + Z_{j+1} + I)
+    # 3) Interaction: V Σ n_j n_{j+1} = (V/4) Σ (ZZ - Z_j - Z_{j+1} + I)
     if V != 0:
         for j in range(n_edges):
             k = (j + 1) % n
@@ -99,12 +99,12 @@ def _fermionic_chain_hamiltonian(
             # Z_j
             x, z = zeros()
             z[j] = 1
-            add_term(x, z, phase=0, coeff=(V / 4.0))
+            add_term(x, z, phase=0, coeff=-(V / 4.0))
 
             # Z_{j+1}
             x, z = zeros()
             z[k] = 1
-            add_term(x, z, phase=0, coeff=(V / 4.0))
+            add_term(x, z, phase=0, coeff=-(V / 4.0))
 
             # I
             if include_identity_shift:

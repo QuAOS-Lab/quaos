@@ -4,61 +4,12 @@ import tempfile
 import numpy as np
 import pytest
 from scipy.sparse import issparse
-from sympleq.core.circuits.known_circuits import to_x, to_ix
 from sympleq.core.circuits import Circuit, GATES
-from sympleq.core.paulis import PauliSum, PauliString
+from sympleq.core.noise.noise_model import CompositeNoise, DepolarizingNoise, DephasingNoise, Noiseless, NoiseModel
+from sympleq.core.paulis import PauliSum
 
 
 class TestCircuits():
-
-    # TODO: I have tried to generalise this to mixed dimensions, but it seems that the to_x
-    # function does not yet support this properly. If this is OK ignore this
-    # (I added an error when mixed dimensions are inputted for the time being)
-    @pytest.mark.skip()
-    def test_to_x(self, n_tests=500):
-        max_qudits = 25
-        list_of_failures = []
-        for _ in range(n_tests):
-            dimension_chosen = np.random.choice([2, 3, 5, 7, 11, 13, 17], size=1)[0]
-            dims = [dimension_chosen for _ in range(np.random.randint(1, max_qudits))]
-            target_x = np.random.randint(0, len(dims))
-            ps = PauliString.from_random(dims)
-            if ps.n_identities() == len(dims):
-                continue
-            c = to_x(ps, target_x)
-            if c.act(ps).x_exp[target_x] == 0 or c.act(ps).z_exp[target_x] != 0:
-                print(f"Failed: {ps} -> {c.act(ps)}")
-                list_of_failures.append(ps)
-
-        assert len(list_of_failures) == 0, f"Failures: {list_of_failures}"
-
-    @pytest.mark.skip()
-    def test_to_ix(self, n_tests=500):
-        target_x = 0
-        list_of_failures = []
-        for _ in range(n_tests):
-            ps = PauliString.from_random([2, 2, 2, 2])
-            if ps.n_identities() == 4:
-                continue
-            c = to_ix(ps, 0)
-            if c is None:
-                print(f"Failed: {ps} -> {c}")
-                list_of_failures.append(ps)
-                continue
-            failed = False
-            for i in range(ps.n_qudits()):
-                if i == target_x and failed is False:
-                    if c.act(ps).x_exp[target_x] == 0 or c.act(ps).z_exp[target_x] != 0:
-                        print(f"Failed target x: {ps} -> {c.act(ps)}")
-                        list_of_failures.append(ps)
-                        failed = True
-                elif failed is False:
-                    if c.act(ps).x_exp[i] != 0 or c.act(ps).z_exp[i] != 0:
-                        print(f"Failed identity: {ps} -> {c.act(ps)}")
-                        list_of_failures.append(ps)
-                        failed = True
-        print(list_of_failures)
-        assert len(list_of_failures) == 0
 
     def test_circuit_composition(self):
         # TODO: Full test for mixed dimensions
@@ -328,7 +279,7 @@ class TestCircuits():
         data = json.loads(s)
 
         assert data["dimensions"] == dimensions
-        assert data["data"] == [["H", [0]], ["CX", [0, 1]]]
+        assert data["data"] == [["H", [0], "None"], ["CX", [0, 1], "None"]]
 
     def test_from_string_basic(self):
         """Test basic from_string functionality."""
@@ -439,6 +390,73 @@ class TestCircuits():
 
         assert original_result == restored_result
 
+    def test_roundtrip_with_global_noise(self):
+        """Test roundtrip with a single noise model applied to all gates."""
+        dimensions = [2, 2]
+        circuit = Circuit.from_tuples(
+            dimensions, [(GATES.H, 0), (GATES.CX, 0, 1)]
+        ).with_noise(DepolarizingNoise(0.05))
+
+        restored = Circuit.from_string(circuit.to_string())
+        assert circuit == restored
+
+    def test_roundtrip_with_per_gate_noise(self):
+        """Test roundtrip with different noise models per gate."""
+        dimensions = [2, 2]
+        circuit = Circuit.from_tuples(
+            dimensions, [(GATES.H, 0), (GATES.S, 1), (GATES.CX, 0, 1)]
+        ).with_noise([DepolarizingNoise(0.05), DephasingNoise(0.1), None])
+
+        restored = Circuit.from_string(circuit.to_string())
+        assert circuit == restored
+
+    def test_roundtrip_with_noiseless(self):
+        """Test roundtrip with Noiseless noise model."""
+        dimensions = [2, 2]
+        circuit = Circuit.from_tuples(
+            dimensions, [(GATES.H, 0), (GATES.CX, 0, 1)]
+        ).with_noise(Noiseless())
+
+        restored = Circuit.from_string(circuit.to_string())
+        assert circuit == restored
+
+    def test_noise_model_from_string_none(self):
+        """Test NoiseModel.from_string with None."""
+        assert NoiseModel.from_string("None") is None
+
+    def test_noise_model_from_string_unknown(self):
+        """Test NoiseModel.from_string raises on unknown model."""
+        with pytest.raises(ValueError, match="Unknown noise model"):
+            NoiseModel.from_string("UnknownNoise(error_rate=0.1)")
+
+    def test_noise_model_from_string_invalid(self):
+        """Test NoiseModel.from_string raises on unparseable string."""
+        with pytest.raises(ValueError, match="Cannot parse"):
+            NoiseModel.from_string("garbage")
+
+    def test_roundtrip_with_composite_noise(self):
+        """Test roundtrip with CompositeNoise applied to all gates."""
+        dimensions = [2, 2]
+        noise = CompositeNoise.from_noise_models([
+            DepolarizingNoise(0.05), DephasingNoise(0.1)
+        ])
+        circuit = Circuit.from_tuples(
+            dimensions, [(GATES.H, 0), (GATES.CX, 0, 1)]
+        ).with_noise(noise)
+
+        restored = Circuit.from_string(circuit.to_string())
+        assert circuit == restored
+
+    def test_composite_noise_str(self):
+        """Test CompositeNoise.__str__ output."""
+        noise = CompositeNoise.from_noise_models([
+            DepolarizingNoise(0.05), DephasingNoise(0.1)
+        ])
+        s = str(noise)
+        assert s.startswith("CompositeNoise([")
+        assert "DepolarizingNoise" in s
+        assert "DephasingNoise" in s
+
     def test_gates_layout(self):
         dimensions = [3] * 4
         circuit = Circuit.from_random(np.random.randint(4, 12), dimensions)
@@ -486,6 +504,135 @@ class TestCircuits():
             _ = Circuit.from_gates_and_qudits(dimensions, [GATES.CX, GATES.H], [(0, 1), (2,), (1,)])
         with pytest.raises(ValueError):
             _ = Circuit.from_gates_and_qudits(dimensions, [GATES.CX, GATES.H, GATES.S], [(0, 1), (2,)])
+
+    def test_from_random_gates_set_default(self):
+        """Default gate set is {H, S, CX, SWAP}; no ZZMax or CZ should appear."""
+        rng = np.random.default_rng(0)
+        c = Circuit.from_random(50, [2, 2, 2], rng=rng)
+        allowed = {GATES.H, GATES.S, GATES.CX, GATES.SWAP}
+        for g in c.gates:
+            assert g in allowed, f"Default gate set produced unexpected gate {g.name}"
+
+    def test_from_random_gates_set_restricts_sampling(self):
+        """Only the gates in gates_set should appear in the produced circuit."""
+        gates_set = [GATES.S, GATES.ZZMax]
+        rng = np.random.default_rng(42)
+        c = Circuit.from_random(100, [2] * 4, gates_set=gates_set,
+                                two_qudit_gate_ratio=0.5, rng=rng)
+        seen = set(c.gates)
+        assert seen.issubset({GATES.S, GATES.ZZMax})
+        # With 100 gates and 50/50 ratio both should actually appear.
+        assert GATES.S in seen
+        assert GATES.ZZMax in seen
+
+    def test_from_random_gates_set_only_single_qudit(self):
+        """With only single-qudit gates and ratio=0, only single-qudit gates should appear."""
+        gates_set = [GATES.H, GATES.S]
+        rng = np.random.default_rng(0)
+        c = Circuit.from_random(40, [2, 2, 2], gates_set=gates_set,
+                                two_qudit_gate_ratio=0.0, rng=rng)
+        for g in c.gates:
+            assert g.n_qudits == 1
+            assert g in {GATES.H, GATES.S}
+
+    def test_from_random_gates_set_warns_on_multi_qudit(self):
+        """Passing a gate that acts on >2 qudits should emit a warning (and be ignored)."""
+        from sympleq.core.circuits import Gate
+        # A 3-qudit random Clifford as a stand-in for an unsupported multi-qudit gate
+        three_qudit_gate = Gate.from_random(n_qudits=3, dimension=2)
+        gates_set = [GATES.H, GATES.CX, three_qudit_gate]
+        with pytest.warns(UserWarning, match="single qudit and 2-qudits"):
+            c = Circuit.from_random(10, [2, 2, 2], gates_set=gates_set,
+                                    rng=np.random.default_rng(0))
+        for g in c.gates:
+            assert g.n_qudits <= 2
+            assert g is not three_qudit_gate
+
+    def test_from_random_gates_set_invalid_type(self):
+        """A non-container gates_set should raise ValueError."""
+        with pytest.raises(ValueError):
+            _ = Circuit.from_random(5, [2, 2], gates_set=GATES.H)  # type: ignore[arg-type]
+
+    def test_from_depth_default_gate_set(self):
+        """Default from_depth gate set is {H, S, CX, CZ, SWAP}."""
+        rng = np.random.default_rng()
+        c = Circuit.from_depth(depth=10, dimensions=[2] * 4, rng=rng)
+        allowed = {GATES.H, GATES.S, GATES.CX, GATES.CZ, GATES.SWAP}
+        for g in c.gates:
+            assert g in allowed, f"Default gate set produced unexpected gate {g.name}"
+
+    def test_from_depth_single_qudit_only_covers_full_grid(self):
+        """With ratio=0 every layer is filled with single-qudit gates -> n_gates == depth * n_qudits."""
+        depth = 4
+        dimensions = [2, 2, 2]
+        c = Circuit.from_depth(depth=depth, dimensions=dimensions,
+                               two_qudit_gate_ratio=0.0,
+                               rng=np.random.default_rng(0))
+        assert c.n_gates() == depth * len(dimensions)
+        for g in c.gates:
+            assert g.n_qudits == 1
+
+    def test_from_depth_qudit_positions_cover_full_grid(self):
+        """Every layer fully tiles the qudit register: total qudit-slots == depth * n_qudits."""
+        depth = 6
+        dimensions = [2, 2, 2, 2]
+        c = Circuit.from_depth(depth=depth, dimensions=dimensions,
+                               rng=np.random.default_rng(7))
+        total_positions = sum(len(idxs) for idxs in c.qudit_indices)
+        assert total_positions == depth * len(dimensions)
+
+    def test_from_depth_gates_set_restricts_sampling(self):
+        """Only gates in gates_set should appear."""
+        gates_set = [GATES.H, GATES.CX]
+        c = Circuit.from_depth(depth=10, dimensions=[2] * 3, gates_set=gates_set,
+                               rng=np.random.default_rng(0))
+        seen = set(c.gates)
+        assert seen.issubset({GATES.H, GATES.CX})
+
+    def test_from_depth_only_single_qudit_in_gates_set(self):
+        """If gates_set contains only single-qudit gates, the produced circuit has only those."""
+        gates_set = [GATES.H, GATES.S]
+        c = Circuit.from_depth(depth=5, dimensions=[2, 2, 2], gates_set=gates_set,
+                               two_qudit_gate_ratio=0.0,
+                               rng=np.random.default_rng(0))
+        for g in c.gates:
+            assert g.n_qudits == 1
+            assert g in {GATES.H, GATES.S}
+
+    def test_from_depth_warns_on_multi_qudit(self):
+        """Passing a gate acting on >2 qudits emits a warning and ignores it."""
+        from sympleq.core.circuits import Gate
+        three_qudit_gate = Gate.from_random(n_qudits=3, dimension=2)
+        gates_set = [GATES.H, GATES.CX, three_qudit_gate]
+        with pytest.warns(UserWarning, match="single qudit and 2-qudits"):
+            c = Circuit.from_depth(depth=4, dimensions=[2, 2, 2], gates_set=gates_set,
+                                   rng=np.random.default_rng(0))
+        for g in c.gates:
+            assert g.n_qudits <= 2
+            assert g is not three_qudit_gate
+
+    def test_from_depth_invalid_gates_set_type(self):
+        """A non-container gates_set should raise ValueError."""
+        with pytest.raises(ValueError):
+            _ = Circuit.from_depth(depth=3, dimensions=[2, 2], gates_set=GATES.H)  # type: ignore[arg-type]
+
+    def test_from_depth_invalid_ratio(self):
+        """two_qudit_gate_ratio outside [0, 1] should raise ValueError."""
+        with pytest.raises(ValueError):
+            _ = Circuit.from_depth(depth=3, dimensions=[2, 2], two_qudit_gate_ratio=-0.1)
+        with pytest.raises(ValueError):
+            _ = Circuit.from_depth(depth=3, dimensions=[2, 2], two_qudit_gate_ratio=1.5)
+
+    def test_from_depth_rng_reproducible(self):
+        """Same seed yields the same circuit."""
+        c1 = Circuit.from_depth(depth=5, dimensions=[2, 2, 2],
+                                rng=np.random.default_rng(123))
+        c2 = Circuit.from_depth(depth=5, dimensions=[2, 2, 2],
+                                rng=np.random.default_rng(123))
+        assert c1.n_gates() == c2.n_gates()
+        for g1, g2 in zip(c1.gates, c2.gates):
+            assert g1 is g2
+        assert list(c1.qudit_indices) == list(c2.qudit_indices)
 
 
 if __name__ == '__main__':

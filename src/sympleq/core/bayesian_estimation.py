@@ -1,7 +1,15 @@
+from __future__ import annotations
 from typing import Any, Callable, Generator, Hashable
+
+from scipy.stats import beta as beta_dist
+
+
+type EstimatorCallable[T: Hashable] = Callable[[], T | list[T]]
 
 
 class BayesianEstimator:
+    # FIXME: after merging the RMB applications, check if the posteriors are needed
+    # or if we can refactor using priors
     def __init__(self, threshold: float = 10**(-2), min_runs: int = 100, max_runs: int | None = None) -> None:
         """
         Initialize the Bayesian estimator.
@@ -32,6 +40,10 @@ class BayesianEstimator:
     def __str__(self) -> str:
         return (f"BayesianEstimator(threshold={self.threshold}, "
                 f"min_runs={self.min_runs}, max_runs={self.max_runs})")
+
+    @classmethod
+    def default(cls) -> BayesianEstimator:
+        return BayesianEstimator(threshold=0.0, min_runs=0)
 
     def results(self) -> list[Any]:
         """
@@ -69,6 +81,8 @@ class BayesianEstimator:
         float
             Bayesian posterior mean probability.
         """
+        if key not in self._probabilities:
+            return 0.0
         return self._probabilities[key]
 
     def variance(self, key: Hashable) -> float:
@@ -85,6 +99,8 @@ class BayesianEstimator:
         float
             Bayesian posterior variance.
         """
+        if key not in self._probabilities:
+            return 0.0
         return self._variances[key]
 
     def _update_estimates(self, base: float, counts_tot: int, a_tot: float):
@@ -96,18 +112,77 @@ class BayesianEstimator:
             self._probabilities_squared[key] = p2
             self._variances[key] = (p2 - p**2)
 
-    def _record_result(self, result: Hashable):
-        is_new = result not in self._results
-        self._results[result] = self._results.get(result, 0) + 1
-        self._counts_tot += 1
+    def record(self, outcome: Hashable, count: int = 1) -> None:
+        """Record ``count`` occurrences of ``outcome`` and refresh estimates.
+
+        Parameters
+        ----------
+        outcome : Hashable
+            The observed outcome.
+        count : int
+            Number of occurrences to add. Must be positive; ``<= 0`` is a no-op.
+        """
+        if count <= 0:
+            return
+        is_new = outcome not in self._results
+        self._results[outcome] = self._results.get(outcome, 0) + count
+        self._counts_tot += count
         if is_new:
             self._a_tot += self._base
         self._update_estimates(self._base, self._counts_tot, self._a_tot)
 
-    def _converged(self) -> bool:
+    def merge(self, other: BayesianEstimator) -> None:
+        """Add all of ``other``'s recorded outcomes to this estimator.
+
+        Parameters
+        ----------
+        other : BayesianEstimator
+            Estimator whose outcome counts are to be folded in.
+        """
+        for outcome, count in other._results.items():
+            self.record(outcome, count)
+
+    def counts(self) -> dict[Hashable, int]:
+        """Return a copy of the per-outcome count map.
+
+        Returns
+        -------
+        dict[Hashable, int]
+            ``{outcome: count}`` for every observed outcome.
+        """
+        return dict(self._results)
+
+    def posterior_alpha_beta(self) -> tuple[float, float]:
+        """Return the Beta(1, 1) posterior parameters of the ``True`` outcome probability."""
+        return self._results.get(True, 0) + 1.0, self._results.get(False, 0) + 1.0
+
+    def posterior_mean(self) -> float:
+        """Return the Beta(1, 1) posterior mean of the ``True`` outcome probability.
+
+        Unlike :meth:`probability`, the flat prior is applied even before both
+        Boolean outcomes have been observed.
+        """
+        alpha, beta = self.posterior_alpha_beta()
+        return alpha / (alpha + beta)
+
+    def posterior_variance(self) -> float:
+        """Return the Beta(1, 1) posterior variance of the ``True`` outcome probability."""
+        alpha, beta = self.posterior_alpha_beta()
+        total = alpha + beta
+        return alpha * beta / (total * total * (total + 1.0))
+
+    def posterior_above(self, threshold: float = 0.5) -> float:
+        """Return the posterior probability that the ``True`` outcome probability
+        exceeds ``threshold`` (default 0.5)."""
+        alpha, beta = self.posterior_alpha_beta()
+        return float(beta_dist.sf(threshold, alpha, beta))
+
+    def is_converged(self) -> bool:
+        """Return ``True`` when at least ``min_runs`` samples have been recorded
+        and every variance is at or below ``threshold``."""
         return (self._counts_tot >= self.min_runs and all(v <= self.threshold for v in self._variances.values()))
 
-    def run(self, callable: Callable[[], Hashable]):
+    def run[T: Hashable](self, callable: EstimatorCallable[T], verbose: bool = False):
         """
         Run the estimator to convergence.
 
@@ -119,10 +194,11 @@ class BayesianEstimator:
         callable : Callable[[], Hashable]
             A zero-argument function that returns a hashable outcome.
         """
-        for _ in self.run_iter(callable):
+        for _ in self.run_iter(callable, verbose):
             pass
 
-    def run_iter(self, callable: Callable[[], Hashable]) -> Generator[None, None, None]:
+    def run_iter[T: Hashable](self, callable: EstimatorCallable[T],
+                              verbose: bool = False) -> Generator[None, None, None]:
         """
         Run the estimator, yielding after each sample.
 
@@ -139,11 +215,39 @@ class BayesianEstimator:
         None
             Yields after each sample is recorded.
         """
-        while not self._converged():
+        if verbose:
+            import time
+            now = time.time()
+            n_printed = 0
+
+        while not self.is_converged():
             if self.max_runs and self.num_runs() > self.max_runs:
                 break
-            result = callable()
-            self._record_result(result)
+            results = callable()
+            if not isinstance(results, list):
+                results = [results]
+
+            for result in results:
+                self.record(result)
+
+            if verbose:
+                import numpy as np
+                if n_printed > 0:
+                    print(f"\033[{n_printed}A", end="")
+
+                n_printed = 1
+                print(f"Threshold={self.threshold} - {time.time() - now:.2f}s")
+
+                seen = self.results()
+                for res in seen:
+                    p = self.probability(res)
+                    std = np.sqrt(self.variance(res))
+                    print(f"\033[K{res}: p={p:.5f} ± {std:.5f}")
+                n_printed += len(seen)
+
+                n_runs = self.num_runs()
+                print(f"n_runs={n_runs}\n")
+                n_printed += 2
             yield
 
     def report(self) -> str:

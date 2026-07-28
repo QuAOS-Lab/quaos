@@ -1,30 +1,50 @@
 @echo off
+setlocal enabledelayedexpansion
 
-REM Change the working directory to the script's
-REM directory and load environment variables
-cd /d %~dp0
+REM Change working directory to script directory and load env
+cd /d "%~dp0"
 call env.bat
-cd %PROJECT_ROOT%
+cd /d "%PROJECT_ROOT%"
 
 REM Initializing virtual environment...
-if not exist %SRC_VENV% (
+if not exist "%SRC_VENV%" (
     echo Creating virtual environment %SRC_VENV%...
-    python -m venv %SRC_VENV%
-    call %SRC_VENV%/Scripts/activate
-    call python -m pip install -r %DEV_REQUIREMENTS%
-    call deactivate
+    py -m venv "%SRC_VENV%"
 )
 
-call %SRC_VENV%/Scripts/activate
-call python -m pip install --upgrade pip setuptools setuptools-scm
-call python -m pip install -e %PYTHON_PY_SETUP%
+if not exist "%SRC_VENV%\Scripts\activate.bat" (
+    echo ERROR: Failed to create virtual environment.
+    echo Ensure Python is installed, then rerun this script.
+    exit /b 1
+)
+
+REM Activate venv
+call "%SRC_VENV%\Scripts\activate.bat"
+
+REM Install dependencies
+python -m pip install --upgrade pip
+python -m pip install uv
+uv pip install -e ".[development]"
+
+REM Optional package groups
+echo.
+choice /c YN /m "Install experiments packages?"
+if errorlevel 2 goto skip_experiments
+uv pip install -e ".[experiments]"
+
+:skip_experiments
+
+REM Deactivate venv
 call deactivate
 
-REM Generating unversioned folders...
+REM Create folders
 set "folders=%PERSONAL_FOLDER%"
+
 for %%F in (%folders%) do (
     if not exist "%%F" (
         mkdir "%%F"
         echo Created folder: %%F
     )
 )
+
+endlocal

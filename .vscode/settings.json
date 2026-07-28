@@ -43,8 +43,35 @@
   "esbonio.sphinx.confDir": "${workspaceFolder}/docs",
   "esbonio.sphinx.buildDir": "${workspaceFolder}/docs/_build",
 
+  // Python interpreter and terminal activation
+  "windows": {
+        "python.defaultInterpreterPath": "${workspaceFolder}/venv/Scripts/python.exe"
+    },
+
+    "linux": {
+        "python.defaultInterpreterPath": "${workspaceFolder}/venv/bin/python"
+    },
+
+    "osx": {
+        "python.defaultInterpreterPath": "${workspaceFolder}/venv/bin/python"
+    },
+  "python.terminal.activateEnvironment": true,
+
   // Python analysis and testing
   "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.diagnosticMode": "workspace",
+  "python.analysis.include": [
+    "**/src",
+    "**/tests",
+  ],
+  "python.analysis.exclude": [
+    "**/.github",
+    "**/.vscode",
+    "**/docs",
+    "**/scripts",
+    "**/venv",
+    "**/vcpkg",
+  ],
   "python.testing.pytestArgs": ["tests"],
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,
@@ -53,5 +80,9 @@
   "jupyter.notebookFileRoot": "${workspaceFolder}",
   "task.autoDetect": "off",
   "python-envs.pythonProjects": [],
-  "editor.inlineSuggest.enabled": true
+  "editor.inlineSuggest.enabled": true,
+  "sonarlint.connectedMode.project": {
+    "connectionId": "quaos-lab",
+    "projectKey": "QuAOS-Lab_SympleQ"
+  }
 }

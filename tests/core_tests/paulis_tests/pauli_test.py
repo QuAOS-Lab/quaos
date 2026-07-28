@@ -5,7 +5,7 @@ from numpy.random import Generator as RNGGenerator, default_rng
 from sympleq.core.circuits.circuits import Circuit
 from sympleq.core.paulis import PauliSum, PauliString, Pauli
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
-from sympleq.models.symmetric_hamiltonian import int_to_bases
+from sympleq import int_to_bases
 from tests import PRIME_LIST, choose_random_dimensions
 
 
@@ -14,6 +14,43 @@ rng = default_rng()
 
 
 class TestPaulis:
+
+    def test_pauli_string_basic_relations(self):
+        for dim in PRIME_LIST:
+            x1 = PauliString.from_string('x1z0', dimensions=dim)
+            y1 = PauliString.from_string('x1z1', dimensions=dim)
+            z1 = PauliString.from_string('x0z1', dimensions=dim)
+            id = PauliString.from_string('x0z0', dimensions=dim)
+
+            # REMARK: phases do not matter, since these are Pauli objects
+            assert x1 * z1 == y1, f'Error in Pauli multiplication (x * z = y), got {x1 * z1} instead of {y1}'
+            assert x1**dim == id, f'Error in Pauli exponentiation (x**dim = id), got {x1**dim} instead of {id}'
+            assert y1**dim == id, f'Error in Pauli exponentiation (y**dim = id), got {y1**dim} instead of {id}'
+            assert z1**dim == id, f'Error in Pauli exponentiation (z**dim = id), got {z1**dim} instead of {id}'
+            assert x1 * y1 == x1**2 * \
+                z1, f'Error in Pauli multiplication (x * y = x**2 * z), got {x1 * y1} instead of {x1**2 * z1}'
+            assert y1 * z1 == x1 * \
+                z1**2, f'Error in Pauli multiplication (y * z = x**2 * z), got {y1 * z1} instead of {x1 * z1**2}'
+            # fix phases for the next test
+            y1_minus = y1.copy()
+            y1_minus.set_phases([2])
+            assert z1 * x1 == y1_minus, f'Error in Pauli multiplication (z * x = y), got {z1 * x1} instead of {y1}'
+            assert x1 * id == x1, f'Error in Pauli multiplication (x * id = x), got {x1 * id} instead of {x1}'
+            assert y1 * id == y1, f'Error in Pauli multiplication (y * id = y), got {y1 * id} instead of {y1}'
+            assert z1 * id == z1, f'Error in Pauli multiplication (z * id = z), got {z1 * id} instead of {z1}'
+
+        for dim in PRIME_LIST:
+            for _ in range(N_tests):
+                s1 = np.random.randint(0, dim)
+                r1 = np.random.randint(0, dim)
+                s2 = np.random.randint(0, dim)
+                r2 = np.random.randint(0, dim)
+                p1 = PauliString.from_exponents(r1, s1, dim)
+                p2 = PauliString.from_exponents(r2, s2, dim)
+                p3 = p1 * p2
+                assert p3.x_exp == (p1.x_exp + p2.x_exp) % dim, 'Error in Pauli multiplication (x_exp)'
+                assert p3.z_exp == (p1.z_exp + p2.z_exp) % dim, 'Error in Pauli multiplication (z_exp)'
+                assert p3.dimensions == dim, 'Error in Pauli multiplication (dimension)'
 
     def test_pauli_string_multiplication(self):
         for dim in PRIME_LIST:
@@ -82,51 +119,116 @@ class TestPaulis:
                 assert p_string1[0] == ps0, f'Error in __getitem__, expected {ps0}, got {p_string1[0]}'
                 assert p_string1[1] == ps1, f'Error in __getitem__, expected {ps1}, got {p_string1[1]}'
 
-    def test_to_hilbert_space_consistency(self):
-        # Single Pauli matches PauliString representation
-        for _ in range(N_tests):
-            d = random.choice(PRIME_LIST)
-            r = np.random.randint(0, d)
-            s = np.random.randint(0, d)
-            p = Pauli.from_exponents(r, s, d)
-            h_pauli = p.to_hilbert_space().toarray()
+    def test_pauli_string_get_and_set_one_item(self):
+        for dim in PRIME_LIST:
+            for _ in range(N_tests):
+                r1 = np.random.randint(0, dim)
+                s1 = np.random.randint(0, dim)
+                r2 = np.random.randint(0, dim)
+                s2 = np.random.randint(0, dim)
 
-            ps = PauliString.from_pauli(p)
-            h_ps = ps.to_hilbert_space().toarray()
+                p_string1 = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2}", dimensions=[dim, dim])
+                ps0 = PauliString.from_string(f"x{r1}z{s1}", dimensions=dim)
+                ps1 = PauliString.from_string(f"x{r2}z{s2}", dimensions=dim)
 
-            assert np.allclose(h_pauli, h_ps, atol=1e-10)
-            # Pauli operators should be unitary
-            assert np.allclose(h_ps.conj().T @ h_ps, np.eye(h_ps.shape[0]), atol=1e-10)
+                assert p_string1[0] == ps0, 'Error in PauliString getitem (first PauliString)'
+                assert p_string1[1] == ps1, 'Error in PauliString getitem (second PauliString)'
 
-        # PauliString and equivalent single-term PauliSum should have identical matrices
-        for _ in range(N_tests):
-            n_qudits = random.randint(1, 3)
-            dims = [random.choice(PRIME_LIST) for _ in range(n_qudits)]
-            x_exp = [np.random.randint(0, d) for d in dims]
-            z_exp = [np.random.randint(0, d) for d in dims]
-            ps = PauliString.from_exponents(x_exp, z_exp, dimensions=dims)
+                # Test setitem
+                new_r1 = np.random.randint(0, dim)
+                new_s1 = np.random.randint(0, dim)
+                new_ps0 = PauliString.from_string(f"x{new_r1}z{new_s1}", dimensions=dim)
 
-            h_ps = ps.to_hilbert_space().toarray()
-            ps_sum = PauliSum.from_pauli_strings(ps)
-            h_ps_sum = ps_sum.to_hilbert_space().toarray()
+                p_string1[0] = new_ps0
 
-            D = int(np.prod(dims))
-            assert h_ps.shape == (D, D)
-            assert np.allclose(h_ps, h_ps_sum, atol=1e-10)
+                assert p_string1[0] == new_ps0, 'Error in PauliString setitem (first PauliString)'
 
-    def test_known_single_qubit_paulis_to_hilbert_space(self):
-        # For qubits, to_hilbert_space should recover the standard matrices for X, Y=XZ (bare convention), Z.
-        X = Pauli.Xnd(1, 2).to_hilbert_space().toarray()
-        Z = Pauli.Znd(1, 2).to_hilbert_space().toarray()
-        Y = Pauli.Ynd(1, 2).to_hilbert_space().toarray()  # XZ with no extra phase
+    def test_pauli_string_get_and_set_multiple_item(self):
+        for dim in PRIME_LIST:
+            for _ in range(N_tests):
+                r1 = np.random.randint(0, dim)
+                s1 = np.random.randint(0, dim)
+                r2 = np.random.randint(0, dim)
+                s2 = np.random.randint(0, dim)
+                r3 = np.random.randint(0, dim)
+                s3 = np.random.randint(0, dim)
 
-        X_expected = np.array([[0, 1], [1, 0]], dtype=complex)
-        Z_expected = np.array([[1, 0], [0, -1]], dtype=complex)
-        Y_expected = X_expected @ Z_expected  # [[0, -1], [1, 0]]
+                p_string1 = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2} x{r3}z{s3}", dimensions=[dim, dim, dim])
 
-        assert np.allclose(X, X_expected)
-        assert np.allclose(Z, Z_expected)
-        assert np.allclose(Y, Y_expected)
+                # Test getitem with slice
+                p_test = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2}", dimensions=[dim, dim])
+                assert p_string1[0:2] == p_test, \
+                    f'Error in PauliString __getitem__ with slice, expected {p_test}, got {p_string1[0:2]}'
+
+                # Test getitem with np.ndarray
+                p_test = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2}", dimensions=[dim, dim])
+                assert p_string1[np.array(
+                    [0, 1])] == p_test, \
+                    f'Error in PauliString __getitem__ with np.ndarray, expected {p_test}, got {p_string1[np.array([0, 1])]}'
+
+                # Test getitem with list of integers
+                p_test = PauliString.from_string(f"x{r1}z{s1} x{r2}z{s2}", dimensions=[dim, dim])
+                assert p_string1[[0, 1]] == p_test, \
+                    f'Error in PauliString __getitem__ with list of integers, expected {p_test}, got {p_string1[[0, 1]]}'
+
+                new_r1 = np.random.randint(0, dim)
+                new_s1 = np.random.randint(0, dim)
+                new_r2 = np.random.randint(0, dim)
+                new_s2 = np.random.randint(0, dim)
+
+                new_ps0 = PauliString.from_string(f"x{new_r1}z{new_s1} x{new_r2}z{new_s2}", dimensions=[dim, dim])
+
+                # Test setitem with slice
+                p_string1[0:2] = new_ps0
+                assert p_string1[0:2] == new_ps0, 'Error in PauliString __setitem__ with slice'
+
+                # Test setitem with np.ndarray
+                p_string1[np.array([0, 2])] = new_ps0
+                assert p_string1[np.array([0, 2])] == new_ps0, 'Error in PauliString __setitem__ with np.ndarray'
+
+                # Test setitem with list of integers
+                p_string1[[1, 2]] = new_ps0
+                assert p_string1[[1, 2]] == new_ps0, 'Error in PauliString __setitem__ with list of integers'
+
+    def test_pauli_string_get_item_errors(self):
+        for dim in PRIME_LIST:
+
+            p_string1 = PauliString.from_string(f"x{1}z{0} x{0}z{1}", dimensions=[dim, dim])
+
+            with pytest.raises(IndexError):
+                _ = p_string1[2]
+
+            with pytest.raises(IndexError):
+                _ = p_string1[-3]
+
+            with pytest.raises(ValueError):
+                _ = p_string1['invalid']
+
+            with pytest.raises(ValueError):
+                _ = p_string1[1.0]
+
+    def test_pauli_string_set_item_errors(self):
+        for dim in PRIME_LIST:
+
+            p_string1 = PauliString.from_string(f"x{1}z{0} x{0}z{1}", dimensions=[dim, dim])
+
+            with pytest.raises(IndexError):
+                p_string1[2] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)
+
+            with pytest.raises(IndexError):
+                p_string1[-3] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)
+
+            with pytest.raises(ValueError):
+                p_string1['invalid'] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)
+
+            with pytest.raises(ValueError):
+                p_string1[1.0] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)
+
+            with pytest.raises(ValueError):
+                p_string1[1] = PauliString.from_string(f"x{1}z{0}", dimensions=dim + 1)
+
+            with pytest.raises(ValueError):
+                p_string1[1] = PauliString.from_string(f"x{1}z{0} x{0}z{2} x{1}z{0}", dimensions=[dim, dim, dim])
 
     def test_pauli_sum_multiplication(self):
         for dim in PRIME_LIST:
@@ -141,7 +243,7 @@ class TestPaulis:
                 r12 = np.random.randint(0, 2 * dim)
                 r22 = np.random.randint(0, 2 * dim)
                 s12 = np.random.randint(0, 2 * dim)
-                s22 = np.random.randint(0, dim)
+                s22 = np.random.randint(0, 2 * dim)
                 p_string2 = PauliString.from_string(f"x{r12}z{s12} x{r22}z{s22}", dimensions=[dim, dim])
 
                 random_pauli_sum = PauliSum.from_pauli_strings([p_string1, p_string2])

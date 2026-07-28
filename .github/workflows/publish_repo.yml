@@ -11,6 +11,9 @@ env:
   PROJECT_NAME: "sympleq"
   NATIVE_SRC_PATH: src
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Python ${{ matrix.python }}
@@ -18,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.12", "3.13"]
+        python: ["3.12", "3.13", "3.14"]
 
     steps:
       - name: Checkout repository
@@ -85,6 +88,8 @@ jobs:
   cleanup-on-failure:
     needs: [publish, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Delete release if workflow failed
         if: github.event_name == 'release' && (needs.publish.result == 'failure' || needs.build.result == 'failure')

@@ -596,13 +596,13 @@ class PauliString(PauliObject):
             key = np.asarray([key], dtype=int)
 
         # Return a (smaller) PauliString
-        elif isinstance(key, slice) or isinstance(key, list):
+        elif isinstance(key, slice):
+            key = np.asarray(range(key.stop)[key], dtype=int)
+
+        elif isinstance(key, list):
             key = np.asarray(key, dtype=int)
 
         if isinstance(key, np.ndarray):
-            if np.any(key >= self.n_qudits()) or np.any(key < 0):
-                raise ValueError(f"Key {key} contains indices out of bounds for \
-                                 PauliString with {self.n_qudits()} qudits.")
             tableau_mask = np.concatenate([key, key + self.n_qudits()])
             return PauliString(
                 self.tableau[0, tableau_mask], self.dimensions[key], self.weights, self.phases)
@@ -631,9 +631,9 @@ class PauliString(PauliObject):
         # TODO: is it necessary to distinguish the two cases in the if... elif... loop?
 
         if isinstance(value, PauliString):
-            if isinstance(key, slice):
-                # Trick to convert slice to NumPy array.
-                # This is necessary to be able to get the number of items in the slice.
+            if isinstance(key, int):
+                key = np.asarray([key], dtype=int)
+            elif isinstance(key, slice):
                 key = np.asarray(range(key.stop)[key], dtype=int)
             elif isinstance(key, list):
                 key = np.asarray(key, dtype=int)
@@ -644,10 +644,10 @@ class PauliString(PauliObject):
             if len(key) != value.n_qudits():
                 raise ValueError(f"Cannot set item with key {key} and value {value}:\
                                  mismatching dimensions.")
-            self._tableau[key] = value.x_exp
-            self._tableau[key + self.n_qudits()] = value.z_exp
-            self._dimensions[key] = value.dimensions
-            self._lcm = np.lcm.reduce(self.dimensions)
+            if np.any(self._dimensions[key] != value.dimensions):
+                raise ValueError(f"Cannot change dimension of qudit(s)! key: {key} and value: {value}.")
+            self._tableau[0, key] = value.x_exp
+            self._tableau[0, key + self.n_qudits()] = value.z_exp
 
         else:
             raise ValueError(f"Cannot set item with key {key} and value {value}.")

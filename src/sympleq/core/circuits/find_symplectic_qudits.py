@@ -1,12 +1,18 @@
 # flake8: noqa
 """
-Currently this module implements Lemma 5.1 in https://kups.ub.uni-koeln.de/50465/1/dissertation_heinrich.pdf
-to build the necessary transvection(s) to map one PauliSum in GF(p) to another.
-It also assumes p is prime dimension.
+Build the transvection sequence needed to map one PauliSum in GF(p) to another.
+This currently assumes prime qudit dimension.
 
 Future extensions: input symplectic matrix -> output symplectic matrix.
 """
-
+# TODO: move all functions that are required for the class method
+#       `input_to_target` to a unique file, that works with mixed dimension.
+# TODO: The logic can be simplified quite a bit here.
+#       I would use S = input^-1 target (sorry if typos) plus some check before that ensure consistency.
+#       This should be applicable to qudits as well and should be quite efficient?
+#
+#       Then it is only a matter to fix the phase, which should be always
+#       (? please correct me if wrong) doable efficiently.
 import numpy as np
 import galois
 from itertools import islice
