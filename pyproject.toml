@@ -44,6 +44,7 @@ experiments = [
     "botorch>=0.12.0",
     "gpytorch>=1.13.0",
 ]
+symmetry-finding = ["igraph>=0.11.0,<2.0.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
