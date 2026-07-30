@@ -2,10 +2,12 @@
 Helpers for mapping a Paulisum to a target Paulisum.
 
 The helper functions completes the basis for the input and target tableaus
-where they do not already contain 2n independent rows. The row-action Clifford map is obtained from
+where they do not already contain 2n independent rows.
+The row-action Clifford map is obtained from
 ``input_basis^{-1} @ output_basis``.
 """
 # TODO Mixed-dimension
+# TODO Phases
 # TODO Permutation
 
 import numpy as np
@@ -15,8 +17,20 @@ from sympleq.core.finite_field_solvers import (
     gf_inv,
     solve_linear_system_over_gf,
 )
-from sympleq.core.circuits.utils import symplectic_form
+from sympleq.core.circuits.utils import symplectic_form, symplectic_product_matrix
 from sympleq.core.symmetries.modular_helpers import nullspace_mod
+
+
+def check_mappable_via_clifford(paulisum_tableau: TableauType,
+                                target_paulisum_tableau: TableauType,
+                                p: int = 2) -> bool:
+    sym_check = np.all(
+        symplectic_product_matrix(paulisum_tableau, p) == symplectic_product_matrix(target_paulisum_tableau, p)
+    )
+    if sym_check:
+        return True
+
+    return False
 
 
 def gf_rank(A: TableauType, p: int) -> int:
@@ -34,9 +48,10 @@ def gf_rank(A: TableauType, p: int) -> int:
 def independent_solution(A: TableauType, b: TableauType, V: TableauType, p: int) -> TableauType:
     """
     Solve ``A @ y = b`` over GF(p), choosing ``y`` outside ``span(V)``.
-    ``solve_linear_system_over_gf`` returns one particular solution. If that
-    solution is dependent on the existing target rows, a nullspace direction of
-    ``A`` is added without changing the equation ``A @ y = b``.
+    V is the basis for the target tableau.``solve_linear_system_over_gf``
+    returns one particular solution y0. If y0 is dependent on the existing
+    target rows, k (nullspace direction of ``A``) is added to y0, and y=y0+k
+    is checked to see if it is independent, and returned.
     """
     A = np.asarray(A, dtype=int) % p
     b = np.asarray(b, dtype=int) % p
@@ -60,12 +75,11 @@ def independent_solution(A: TableauType, b: TableauType, V: TableauType, p: int)
 
 def complete_basis(input_tab: TableauType, target_tab: TableauType, p: int) -> tuple[TableauType, TableauType]:
     """
-    Complete a compatible partial tableau map to full input/output bases.
-    Starting from independent rows ``U -> V`` selected from the supplied tableaus,
-    this adds standard input basis vectors ``e``. For each accepted ``e``, it
-    chooses a target row ``y`` satisfying
-    ``<V_i, y> = <U_i, e>`` for all existing rows, so the extended map preserves
-    the symplectic product matrix.
+    Complete the partial basis of input and output tableaus to 2n independent entries.
+    Selects independent rows ``U` -> V` from the supplied tableaus,
+    Adds standard input basis vectors ``e``. For each accepted ``e``, it
+    chooses a target row ``y`` satisfying ``<V_i, y> = <U_i, e>`` for all existing rows,
+    so the extended map preserves the symplectic product matrix.
     """
     input_tab = np.asarray(input_tab, dtype=int) % p
     target_tab = np.asarray(target_tab, dtype=int) % p
