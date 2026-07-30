@@ -145,7 +145,7 @@ class Gate(ABC):
         return _GenericGate("random", symplectic, phase_vector)
 
     # TODO: the following function should work for mixed qudits. the gate method should actually take two PauliSums
-    #       (inclusive of phases) and should return a gate that maps the first to the second. This is the mthod that
+    #       (inclusive of phases) and should return a gate that maps the first to the second. This is the method that
     #       will use the functions in the new file that will contain a polished version of the functions in, e.g.,
     #       find_symplectic.py
     @classmethod
@@ -295,9 +295,7 @@ class Gate(ABC):
         """
         if isinstance(qudits, int):
             qudits = (qudits,)
-
         affected_qudits = np.asarray(qudits, dtype=int)
-
         if len(affected_qudits) != self._n_qudits:
             raise ValueError(f"Gate acts on {self._n_qudits} qudits, but {len(affected_qudits)} indices provided.")
 

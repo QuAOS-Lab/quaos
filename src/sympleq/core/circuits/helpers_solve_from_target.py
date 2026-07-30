@@ -7,7 +7,7 @@ The row-action Clifford map is obtained from
 ``input_basis^{-1} @ output_basis``.
 """
 # TODO Mixed-dimension
-# TODO Phases
+# TODO Check why qubits are not working
 # TODO Permutation
 
 import numpy as np
