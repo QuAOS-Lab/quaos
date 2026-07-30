@@ -133,7 +133,14 @@ def get_phase_vector(gate_symplectic: TableauType, dimension: int) -> PhasesType
     U = np.zeros((2 * n_qudits, 2 * n_qudits), dtype=int)
     U[n_qudits:, :n_qudits] = np.eye(n_qudits, dtype=int)
     lhs = (dimension - 1) * np.diag(gate_symplectic.T @ U @ gate_symplectic) % 2  # Eq. (10) mod 2 is there for all d
-    return lhs  # (- lhs) % (2 * dimension) TODO: d > 2 testing, do we need the minus?
+    return lhs
+# (- lhs) % (2 * dimension) TODO: d > 2 testing, do we need the minus?
+# Shreya: For the version implemented here, we do not. Ideally we should solve for this equation:
+# lhs + (dimension - 1) * np.diag(gate_symplectic.T @ U @ gate_symplectic) = 0 % 2,
+# which can have more than one solution, implying more than one starting point for the phase-solver.
+# Also, the implemented version returns a vector with all zero for qudits > 2, as (dimension -1) is even there.
+# For qubits, it gives an initial parity vector, which matters. making it a qubit only function for now. However,
+# could be useful for mixed??
 
 
 def str_to_int(string):
