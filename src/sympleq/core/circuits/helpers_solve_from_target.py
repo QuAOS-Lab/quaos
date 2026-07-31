@@ -128,6 +128,7 @@ def map_tableau_to_target_tableau(
     is computed directly from that basis. Otherwise the partial map is completed
     first via :func:`complete_basis`. The returned matrix ``F`` satisfies
     ``paulisum_tableau @ F == target_paulisum_tableau`` modulo ``p``.
+
     """
     input_tab = np.asarray(paulisum_tableau, dtype=int) % p
     output_tab = np.asarray(target_paulisum_tableau, dtype=int) % p
@@ -160,7 +161,7 @@ def map_tableau_to_target_tableau(
 
 
 def solve_phase_mod_2p(A: TableauType, delta: PhasesType, p: int) -> PhasesType | None:
-    """ 
+    """
     Chinese Remainder Theorem (CRT) combines:
         h = h_p mod p
         h = h_2 mod 2
@@ -185,6 +186,7 @@ def solve_phase_mod_2p(A: TableauType, delta: PhasesType, p: int) -> PhasesType 
     h = (h_p + p * t) % mod
 
     return h
+
 
 # To be removed??
 # Could be useful for mixed??
@@ -233,7 +235,7 @@ Odd primes work; qubits do not find a gate, fails at phase correction.
 """
 
 
-def solve_from_target(#cls,
+def solve_from_target(  # cls,
         input_pauli_sum: PauliSum,
         target_pauli_sum: PauliSum
 ) -> Gate:
@@ -283,7 +285,7 @@ def solve_from_target(#cls,
     n_qudits = input_tableau.shape[1] // 2
     p = int(input_pauli_sum.lcm)
 
-    if check_mappable_via_clifford(input_tableau, target_tableau, p) == False:
+    if check_mappable_via_clifford(input_tableau, target_tableau, p) is False:
         raise ValueError(
             f"Not mappable via Clifford: {input_tableau} ->  {target_tableau}."
         )
@@ -302,7 +304,7 @@ def solve_from_target(#cls,
         delta_2L = np.asarray(delta_2L, dtype=int)
 
         if p == 2:
-            h_lin = solve_phase_mod_2p(input_tableau, delta_2L, [p] * n_qudits)
+            h_lin = solve_phase_vector_h_from_residual(input_tableau, delta_2L, [p] * n_qudits)
         else:
             h_lin = solve_phase_mod_2p(input_tableau, delta_2L, p)
 
@@ -315,7 +317,4 @@ def solve_from_target(#cls,
 
             final_gate = Gate("final", F_total.T, h_final)
 
-        return final_gate
-
-
-
+            return final_gate
