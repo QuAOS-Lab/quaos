@@ -159,6 +159,33 @@ def map_tableau_to_target_tableau(
     return F
 
 
+def solve_phase_mod_2p(A: TableauType, delta: PhasesType, p: int) -> PhasesType | None:
+    """ 
+    Chinese Remainder Theorem (CRT) combines:
+        h = h_p mod p
+        h = h_2 mod 2
+
+        Since p is odd, p % 2 = 1.
+        h = h_p + p * t
+        Need h_p + p*t = h_2 mod 2
+        Since p = 1 mod 2, t = h_2 - h_p mod 2.
+    """
+    mod = 2 * p
+
+    # Solve mod p
+    h_p = solve_linear_system_over_gf(A % p, delta % p, p)
+
+    # Solve mod 2
+    h_2 = solve_linear_system_over_gf(A % 2, delta % 2, 2)
+
+    h_p = np.asarray(h_p, dtype=int) % p
+    h_2 = np.asarray(h_2, dtype=int) % 2
+
+    t = (h_2 - h_p) % 2
+    h = (h_p + p * t) % mod
+
+    return h
+
 # To be removed??
 # Could be useful for mixed??
 def get_phase_vector(gate_symplectic: TableauType, dimension: int) -> PhasesType:
@@ -275,9 +302,9 @@ def solve_from_target(#cls,
         delta_2L = np.asarray(delta_2L, dtype=int)
 
         if p == 2:
-            h_lin = solve_phase_vector_h_from_residual(input_tableau, delta_2L, [p] * n_qudits, debug=True)
+            h_lin = solve_phase_mod_2p(input_tableau, delta_2L, [p] * n_qudits)
         else:
-            h_lin = solve_phase_vector_h_from_residual(input_tableau, delta_2L, [p] * n_qudits)
+            h_lin = solve_phase_mod_2p(input_tableau, delta_2L, p)
 
         if h_lin is None:
             print("Phase correction not found")
@@ -289,3 +316,6 @@ def solve_from_target(#cls,
             final_gate = Gate("final", F_total.T, h_final)
 
         return final_gate
+
+
+
