@@ -192,6 +192,8 @@ def get_phase_vector(gate_symplectic: TableauType, dimension: int) -> PhasesType
 
 
 """
+Note
+
 One more function is needed for a clean implementation of solve_from_target:
 'from sympleq.core.phase_correction.solve import solve_phase_vector_h_from_residual'
 However, this needs to be cleaned up, especially the 'solve linear equations parts' in it.
@@ -216,10 +218,8 @@ def solve_from_target(#cls,
 
     Parameters
     ----------
-    input_pau : TableauLike
-        Input Pauli tableau of shape (m, 2n) where m is the number of Paulis
-        and n is the number of qudits.
-    target_tableau : TableauLike
+    input_pauli_sum : PauliSum
+    target_pauli_sum : PauliSum
         Target Pauli tableau of the same shape.
     dimension : int
         Local Hilbert space dimension (e.g., 2 for qubits).
@@ -280,6 +280,7 @@ def solve_from_target(#cls,
             h_lin = solve_phase_vector_h_from_residual(input_tableau, delta_2L, [p] * n_qudits)
 
         if h_lin is None:
+            print("Phase correction not found")
             return None
 
         else:
@@ -288,4 +289,3 @@ def solve_from_target(#cls,
             final_gate = Gate("final", F_total.T, h_final)
 
         return final_gate
-
