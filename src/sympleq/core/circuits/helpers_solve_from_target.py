@@ -293,7 +293,7 @@ def solve_from_target(  # cls,
         F_total = map_tableau_to_target_tableau(input_tableau, target_tableau, p)
 
         if p == 2:
-            h0 = get_phase_vector(F_total, p)
+            h0 = get_phase_vector(F_total.T, p)
         else:
             h0 = np.asarray([0] * 2 * n_qudits, dtype=int)
 
