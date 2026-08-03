@@ -235,12 +235,12 @@ def solve_phase_for_gate(
     Calculate the phase vector for a gate given its symplectic matrix.
     See PRA 71, 042315 (2005) Eq. (7), and 	arXiv:2605.30428 Eq. (8)
     Solves for directly for the phase vector of the Clifford gate that
-    maps the input Paulisum to the target Paulisum, given the symplectic
+    maps the input PauliSum to the target PauliSum, given the symplectic
     tableau of the gate.
 
     Args:
-        pl_sum (PauliSum): The input Paulisum.
-        target_pl_sum (PauliSum): The target Paulisum.
+        pl_sum (PauliSum): The input PauliSum.
+        target_pl_sum (PauliSum): The target PauliSum.
         F_underscore (np.ndarray): The symplectic matrix of the gate.
         p (int): The dimension of the qudit.
 
@@ -283,7 +283,8 @@ def solve_phase_for_gate(
     return gate_phi
 
 # Note
-# I am also defining the 'solve_from_target' function below; to be incorporated as the classmethod in Gates.py later.
+# I am also defining the 'solve_from_target' function below;
+# to be incorporated as the classmethod in Gates.py later.
 # Still not does do mixed qudits..
 
 
