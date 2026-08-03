@@ -315,7 +315,6 @@ def solve_from_target(  # cls,
     ------
     ValueError
         If the tableaus have different shapes or are not mappable via Clifford,
-        or does not have a phase correction.
 
     Notes
     -----

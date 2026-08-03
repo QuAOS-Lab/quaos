@@ -6,10 +6,13 @@ import numpy as np
 
 from sympleq.core.circuits import Gate
 from sympleq.core.circuits.find_symplectic import symplectic_from_pauli_permutation
-from sympleq.core.circuits.target import get_phase_vector
+from sympleq.core.circuits.helpers_solve_from_target import get_phase_vector
 from sympleq.core.graphs.graph_coloring import _build_base_partition
 from sympleq.core.paulis import PauliSum
 from sympleq.core.phase_correction import solve_phase_vector_h_from_residual
+
+from sympleq.core.paulis._typing import TableauType
+from sympleq.core.circuits.helpers_solve_from_target import map_tableau_to_target_tableau
 
 from .graph_builder import build_subdivision_graph_from_s_mod
 
@@ -69,6 +72,32 @@ def _column_invariants(pauli_sum: PauliSum, mode: str) -> np.ndarray | None:
         features[i, : min(p, 16)] = counts[: min(p, 16)]
     return features
 
+
+# This is a legacy function from find_symplectic.py,
+# kept for compatibility with the igraph automorphism code.
+# modified to use the helpers_solve_from_target.map_tableau_to_target_tableau
+# function instead of the original map_paulisum_to_target_tableau.
+
+def symplectic_from_pauli_permutation(
+    paulisum_tableau: TableauType,
+    permutation: TableauType,
+    p: int = 2,
+) -> TableauType:
+    tableau = np.asarray(paulisum_tableau, dtype=int) % p
+    pi = np.asarray(permutation, dtype=np.int64).reshape(-1)
+
+    if tableau.ndim != 2:
+        raise ValueError("paulisum_tableau must be a 2D tableau.")
+    if pi.shape[0] != tableau.shape[0]:
+        raise ValueError("permutation length must match the number of tableau rows.")
+    if sorted(pi.tolist()) != list(range(tableau.shape[0])):
+        raise ValueError("permutation must be a permutation of the tableau row indices.")
+
+    F = map_tableau_to_target_tableau(tableau, tableau[pi], p=p)
+    if F is None:
+        raise ValueError("No symplectic map found for this Pauli-row permutation.")
+
+    return F
 
 def _gate_from_pauli_permutation(
     pauli_sum: PauliSum,
