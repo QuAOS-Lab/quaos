@@ -19,7 +19,6 @@ from sympleq.core.finite_field_solvers import (
 )
 from sympleq.core.circuits.utils import symplectic_form, symplectic_product_matrix
 from sympleq.core.symmetries.modular_helpers import nullspace_mod
-from sympleq.core.circuits import Gate
 
 
 def check_mappable_via_clifford(pauli_sum_tableau: TableauType,
@@ -282,69 +281,3 @@ def solve_phase_for_gate(
 
     return gate_phi
 
-# Note
-# I am also defining the 'solve_from_target' function below;
-# to be incorporated as the classmethod in Gates.py later.
-# Still not does do mixed qudits..
-
-
-def solve_from_target(  # cls,
-        input_pauli_sum: PauliSum,
-        target_pauli_sum: PauliSum
-) -> Gate:
-    """
-    Find a Clifford gate that maps an input PauliSum to the target PauliSum.
-
-    Uses symplectic transvections to find a symplectic matrix F such that
-    input_tableau @ F = target_tableau (mod p), with p=`dimension`.
-
-    Parameters
-    ----------
-    input_pauli_sum : PauliSum
-    target_pauli_sum : PauliSum
-        Target Pauli tableau of the same shape.
-    dimension : int
-        Local Hilbert space dimension (e.g., 2 for qubits).
-
-    Returns
-    -------
-    Gate
-        A Clifford gate whose symplectic matrix performs the mapping.
-
-    Raises
-    ------
-    ValueError
-        If the tableaus have different shapes or are not mappable via Clifford,
-
-    Notes
-    -----
-    The input and target must have matching symplectic
-    product matrices for a Clifford mapping to exist.
-    """
-
-    input_tableau = input_pauli_sum.tableau
-    target_tableau = target_pauli_sum.tableau
-
-    if input_tableau.shape != target_tableau.shape:
-        raise ValueError(
-            f"Tableau shapes must match: {input_tableau.shape} vs {target_tableau.shape}"
-        )
-
-    if input_tableau.ndim == 1:
-        input_tableau = input_tableau.reshape(1, -1)
-        target_tableau = target_tableau.reshape(1, -1)
-
-    p = int(input_pauli_sum.lcm)
-
-    if check_mappable_via_clifford(input_tableau, target_tableau, p) is False:
-        raise ValueError(
-            f"Not mappable via Clifford: {input_tableau} ->  {target_tableau}."
-        )
-    else:
-        F_total = map_tableau_to_target_tableau(input_tableau, target_tableau, p)
-
-        phi_gate = solve_phase_for_gate(input_pauli_sum, target_pauli_sum, F_total, p)
-
-        final_gate = Gate("final", F_total.T, phi_gate)
-
-        return final_gate

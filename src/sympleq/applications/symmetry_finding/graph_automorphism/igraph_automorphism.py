@@ -5,7 +5,6 @@ from typing import Any
 import numpy as np
 
 from sympleq.core.circuits import Gate
-from sympleq.core.circuits.find_symplectic import symplectic_from_pauli_permutation
 from sympleq.core.circuits.helpers_solve_from_target import get_phase_vector
 from sympleq.core.graphs.graph_coloring import _build_base_partition
 from sympleq.core.paulis import PauliSum
@@ -99,6 +98,7 @@ def symplectic_from_pauli_permutation(
 
     return F
 
+
 def _gate_from_pauli_permutation(
     pauli_sum: PauliSum,
     pi: tuple[int, ...],
@@ -116,7 +116,6 @@ def _gate_from_pauli_permutation(
             pauli_sum.tableau,
             np.asarray(pi),
             p=p,
-            method=lift_method,
         )
     except Exception:
         return None
