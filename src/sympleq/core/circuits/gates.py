@@ -213,7 +213,7 @@ class Gate(ABC):
 
             phi_gate = solve_phase_for_gate(input_pauli_sum, target_pauli_sum, F_total, p)
 
-            final_gate = _GenericGate("solve_from_target", F_total, phi_gate)
+            final_gate = _GenericGate("solve_from_target", F_total.T, phi_gate)
 
             return final_gate
 
