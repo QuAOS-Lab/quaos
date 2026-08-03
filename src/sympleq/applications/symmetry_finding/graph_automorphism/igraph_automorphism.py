@@ -103,7 +103,6 @@ def _gate_from_pauli_permutation(
     pauli_sum: PauliSum,
     pi: tuple[int, ...],
     *,
-    lift_method: str = "inverse",
 ) -> Gate | None:
     p = int(pauli_sum.lcm)
     if not np.array_equal(pauli_sum.symplectic_product_matrix()[np.ix_(pi, pi)], pauli_sum.symplectic_product_matrix()):
@@ -154,7 +153,6 @@ def find_igraph_clifford_symmetries(
     pauli_sum: PauliSum,
     *,
     num_symmetries: int | None = 1,
-    lift_method: str = "inverse",
     extra_invs: str = "none",
     color_mode: str = "wl",
     max_wl_rounds: int = 10,
@@ -210,7 +208,7 @@ def find_igraph_clifford_symmetries(
             return
         seen_pauli_perms.add(pi_tuple)
         checked += 1
-        gate = _gate_from_pauli_permutation(pauli, pi_tuple, lift_method=lift_method)
+        gate = _gate_from_pauli_permutation(pauli, pi_tuple)
         if gate is None:
             return
         key = (
