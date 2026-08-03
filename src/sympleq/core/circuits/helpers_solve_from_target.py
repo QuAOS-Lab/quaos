@@ -7,7 +7,6 @@ The row-action Clifford map is obtained from
 ``input_basis^{-1} @ output_basis``.
 """
 # TODO Mixed-dimension
-# TODO Check why qubits are not working
 # TODO Permutation
 
 import numpy as np
@@ -20,15 +19,14 @@ from sympleq.core.finite_field_solvers import (
 )
 from sympleq.core.circuits.utils import symplectic_form, symplectic_product_matrix
 from sympleq.core.symmetries.modular_helpers import nullspace_mod
-from sympleq.core.phase_correction.solve import solve_phase_vector_h_from_residual
 from sympleq.core.circuits import Gate
 
 
-def check_mappable_via_clifford(paulisum_tableau: TableauType,
-                                target_paulisum_tableau: TableauType,
+def check_mappable_via_clifford(pauli_sum_tableau: TableauType,
+                                target_pauli_sum_tableau: TableauType,
                                 p: int = 2) -> bool:
     sym_check = np.all(
-        symplectic_product_matrix(paulisum_tableau, p) == symplectic_product_matrix(target_paulisum_tableau, p)
+        symplectic_product_matrix(pauli_sum_tableau, p) == symplectic_product_matrix(target_pauli_sum_tableau, p)
     )
     if sym_check:
         return True
@@ -120,7 +118,7 @@ def complete_basis(input_tab: TableauType, target_tab: TableauType, p: int) -> t
 
 
 def map_tableau_to_target_tableau(
-    paulisum_tableau: TableauType, target_paulisum_tableau: TableauType, p: int = 2
+    pauli_sum_tableau: TableauType, target_pauli_sum_tableau: TableauType, p: int = 2
 ) -> TableauType | None:
     """
     Return a row-action symplectic map taking one tableau to another.
@@ -130,8 +128,8 @@ def map_tableau_to_target_tableau(
     ``paulisum_tableau @ F == target_paulisum_tableau`` modulo ``p``.
 
     """
-    input_tab = np.asarray(paulisum_tableau, dtype=int) % p
-    output_tab = np.asarray(target_paulisum_tableau, dtype=int) % p
+    input_tab = np.asarray(pauli_sum_tableau, dtype=int) % p
+    output_tab = np.asarray(target_pauli_sum_tableau, dtype=int) % p
 
     if input_tab.ndim != 2 or output_tab.ndim != 2 or input_tab.shape != output_tab.shape:
         raise ValueError("Input and target tableaus must be 2-dimensional arrays with matching shape.")
@@ -160,9 +158,18 @@ def map_tableau_to_target_tableau(
     return F
 
 
-def solve_phase_mod_2p(A: TableauType, delta: PhasesType, p: int) -> PhasesType | None:
+def solve_mod_2p(A: TableauType, delta: PhasesType, p: int) -> PhasesType | None:
     """
-    Chinese Remainder Theorem (CRT) combines:
+    For p = 2, solve A h ≡ delta (mod 4) assuming h is even.
+
+    Write h = 2t with t ∈ GF(2). Then a solution exists only if delta
+    is even, and the lifted system becomes
+
+        (A mod 2) t = (delta / 2) mod 2.
+
+    Return h = 2t mod 4, or None if delta contains an odd entry.
+
+    For p = odd prime, the Chinese Remainder Theorem (CRT) combines:
         h = h_p mod p
         h = h_2 mod 2
 
@@ -171,21 +178,19 @@ def solve_phase_mod_2p(A: TableauType, delta: PhasesType, p: int) -> PhasesType 
         Need h_p + p*t = h_2 mod 2
         Since p = 1 mod 2, t = h_2 - h_p mod 2.
     """
-    mod = 2 * p
+    if p == 2:
+        if np.any(delta % 2):
+            return None
+        t = solve_linear_system_over_gf(A % 2, (delta // 2) % 2, 2)
+        return (2 * np.asarray(t, int)) % 4
 
     # Solve mod p
     h_p = solve_linear_system_over_gf(A % p, delta % p, p)
-
     # Solve mod 2
     h_2 = solve_linear_system_over_gf(A % 2, delta % 2, 2)
 
-    h_p = np.asarray(h_p, dtype=int) % p
-    h_2 = np.asarray(h_2, dtype=int) % 2
-
-    t = (h_2 - h_p) % 2
-    h = (h_p + p * t) % mod
-
-    return h
+    h_p, h_2 = np.asarray(h_p, int) % p, np.asarray(h_2, int) % 2
+    return (h_p + p * ((h_2 - h_p) % 2)) % (2 * p)
 
 
 # To be removed??
@@ -220,19 +225,66 @@ def get_phase_vector(gate_symplectic: TableauType, dimension: int) -> PhasesType
 # could be useful for mixed??
 
 
-"""
-Note
+def solve_phase_for_gate(
+    pl_sum: PauliSum,
+    target_pl_sum: PauliSum,
+    F_underscore: TableauType,
+    p: int,
+) -> PhasesType | None:
+    """
+    Calculate the phase vector for a gate given its symplectic matrix.
+    See PRA 71, 042315 (2005) Eq. (7), and 	arXiv:2605.30428 Eq. (8)
+    Solves for directly for the phase vector of the Clifford gate that
+    maps the input Paulisum to the target Paulisum, given the symplectic
+    tableau of the gate.
 
-One more function is needed for a clean implementation of solve_from_target:
-'from sympleq.core.phase_correction.solve import solve_phase_vector_h_from_residual'
-However, this needs to be cleaned up, especially the 'solve linear equations parts' in it.
-I am importing it for now before deciding if we are cleaning up
-phase correction as a whole, or just for the 'solve from target'.
+    Args:
+        pl_sum (PauliSum): The input Paulisum.
+        target_pl_sum (PauliSum): The target Paulisum.
+        F_underscore (np.ndarray): The symplectic matrix of the gate.
+        p (int): The dimension of the qudit.
 
-I am also defining the 'solve_from_target' function below; to be incorporated as the classmethod in Gates.py later.
-Still not does do mixed qudits.
-Odd primes work; qubits do not find a gate, fails at phase correction.
-"""
+    Returns:
+        np.ndarray: The phase vector of the gate.
+
+    Note: Comparing with Eq. 7 in PRA 71, 042315 (2005), The phi in Eq.(8) in arXiv:2605.30428
+    should not be the phase vector 'phi' of the gate, but a shifted phase vector,
+    phi_paper := (phi - 2D), where D is np.diag(R_1), R_1 defined below.
+
+    The repo previously used 'phi' as 'h', and the gate.act method uses (phi - D) as the linear part
+    of the phase equation (Eq. 7 in PRA 71, 042315 (2005)/Eq. 8 in arXiv:2605.30428). As Eq. 8 in
+    arxiv:2605.30428 uses (phi + D) as the linear part of the phase equation,
+    the only likely conclusion is that phi_paper := (phi -2D).
+
+    Here we solve using Eq. 8 in arxiv:2605.30428, but with the linear part as (phi-D) to match
+    the gate.act implementation, and also such that the returned phase vector is the actual phase vector
+    of the gate, and not a shifted version.
+
+    Additionally, R_2 in the paper should be
+        R_2 = 2 * np.triu(R_1, k=1) + np.diag(np.diag(R_1)), and not
+        R_2 = 2 * np.triu(R_1 + np.diag(np.diag(R_1)))
+    """
+
+    eta_i = pl_sum.phases
+    eta_f = target_pl_sum.phases
+    P = pl_sum.tableau
+    n = F_underscore.shape[0] // 2
+
+    U = np.zeros_like(F_underscore, dtype=int)
+    U[n:, :n] = np.eye(n, dtype=int)
+
+    R_1 = F_underscore @ U @ F_underscore.T
+    R_2 = 2 * np.triu(R_1, k=1) + np.diag(np.diag(R_1))
+
+    lhs = (eta_f - eta_i - np.diag(P @ R_2 @ P.T)) % (2 * p)
+
+    gate_phi = (solve_mod_2p(pl_sum.tableau, lhs, p) + np.diag(R_1)) % (2 * p)
+
+    return gate_phi
+
+# Note
+# I am also defining the 'solve_from_target' function below; to be incorporated as the classmethod in Gates.py later.
+# Still not does do mixed qudits..
 
 
 def solve_from_target(  # cls,
@@ -282,7 +334,6 @@ def solve_from_target(  # cls,
         input_tableau = input_tableau.reshape(1, -1)
         target_tableau = target_tableau.reshape(1, -1)
 
-    n_qudits = input_tableau.shape[1] // 2
     p = int(input_pauli_sum.lcm)
 
     if check_mappable_via_clifford(input_tableau, target_tableau, p) is False:
@@ -292,29 +343,8 @@ def solve_from_target(  # cls,
     else:
         F_total = map_tableau_to_target_tableau(input_tableau, target_tableau, p)
 
-        if p == 2:
-            h0 = get_phase_vector(F_total.T, p)
-        else:
-            h0 = np.asarray([0] * 2 * n_qudits, dtype=int)
+        phi_gate = solve_phase_for_gate(input_pauli_sum, target_pauli_sum, F_total, p)
 
-        trial_gate = Gate("trial", F_total.T, h0)
-        trial_pauli_sum = trial_gate.act(input_pauli_sum, tuple(range(n_qudits)))
+        final_gate = Gate("final", F_total.T, phi_gate)
 
-        delta_2L = (target_pauli_sum.phases - trial_pauli_sum.phases) % (2 * p)
-        delta_2L = np.asarray(delta_2L, dtype=int)
-
-        if p == 2:
-            h_lin = solve_phase_vector_h_from_residual(input_tableau, delta_2L, [p] * n_qudits)
-        else:
-            h_lin = solve_phase_mod_2p(input_tableau, delta_2L, p)
-
-        if h_lin is None:
-            print("Phase correction not found")
-            return None
-
-        else:
-            h_final = (h0 + h_lin) % (2 * p)
-
-            final_gate = Gate("final", F_total.T, h_final)
-
-            return final_gate
+        return final_gate
