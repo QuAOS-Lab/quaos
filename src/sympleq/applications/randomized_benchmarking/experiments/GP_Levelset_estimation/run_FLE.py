@@ -47,6 +47,7 @@ from aepsych.strategy import SequentialStrategy
 from sympleq.applications.randomized_benchmarking.RMB import RMB, resolve_data_path
 from sympleq.applications.randomized_benchmarking.experiments.common import (
     default_backend_factory,
+    measurement_rng,
     print_experiment_summary,
     print_progress,
     start_run,
@@ -216,6 +217,95 @@ def save_gp_prediction_grid(
     return grid_path
 
 
+def sent_config_payload(config) -> dict:
+    return {
+        "n_1qb_gates": int(config.n_1qb_gates),
+        "n_2qb_gates": int(config.n_2qb_gates),
+        "n_qubits": int(config.n_qubits),
+        "n_gates": int(config.n_gates),
+        "ratio_2_qb_gates": float(config.ratio_2_qb_gates),
+        "random_elimination": float(config.random_elimination),
+        "use_scrambler": bool(config.use_scrambler),
+    }
+
+
+def actual_after_elimination_payload(
+    config,
+    *,
+    rng_seed: int | None,
+    first_shot_index: int | None,
+) -> dict:
+    if rng_seed is None or first_shot_index is None:
+        return {
+            "n_1qb_gates": None,
+            "n_2qb_gates": None,
+            "n_qubits": int(config.n_qubits),
+            "n_gates": None,
+            "ratio_2_qb_gates": None,
+            "first_shot_index": first_shot_index,
+            "available": False,
+        }
+
+    circuit = config.random_circuit(
+        rng=measurement_rng(int(rng_seed), config, int(first_shot_index))
+    )
+    n_1q = sum(
+        1
+        for gate in circuit.gates
+        if gate.n_qudits == 1 and gate.name != "Id"
+    )
+    n_2q = sum(
+        1
+        for gate in circuit.gates
+        if gate.n_qudits == 2 and gate.name != "Id"
+    )
+    n_gates = n_1q + n_2q
+    return {
+        "n_1qb_gates": int(n_1q),
+        "n_2qb_gates": int(n_2q),
+        "n_qubits": int(config.n_qubits),
+        "n_gates": int(n_gates),
+        "ratio_2_qb_gates": float(n_2q / n_gates) if n_gates else 0.0,
+        "first_shot_index": int(first_shot_index),
+        "available": True,
+    }
+
+
+def sent_batch_metadata(
+    settings: FantasySettings,
+    sent_configs,
+    data=None,
+) -> list[dict]:
+    metadata = []
+    batch_offsets = {}
+    for config in sent_configs:
+        first_shot_index = None
+        if data is not None:
+            estimator = data.get(config) if hasattr(data, "get") else None
+            previous_runs = (
+                int(estimator.num_runs())
+                if estimator is not None and hasattr(estimator, "num_runs")
+                else 0
+            )
+            offset = batch_offsets.get(config, 0)
+            batch_offsets[config] = offset + 1
+            first_shot_index = previous_runs + offset
+
+        metadata.append(
+            {
+                "sent_config": sent_config_payload(config),
+                "requested_shots": 1,
+                "first_shot_index": first_shot_index,
+                "actual_after_elimination": actual_after_elimination_payload(
+                    config,
+                    rng_seed=settings.rng_seed,
+                    first_shot_index=first_shot_index,
+                ),
+            }
+        )
+    return metadata
+
+
 def write_hqc_metadata(
     json_path: Path,
     settings: FantasySettings,
@@ -223,6 +313,7 @@ def write_hqc_metadata(
     phase: str,
     step: int | None,
     sent_configs=None,
+    batch_metadata: list[dict] | None = None,
 ) -> None:
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     payload["experiment"] = {
@@ -234,20 +325,15 @@ def write_hqc_metadata(
         "repair_stats": repair_stats(),
     }
     if sent_configs is not None:
-        sent_configs = sorted(
-            sent_configs,
-            key=lambda config: config.n_qubits,
-            reverse=True,
-        )
+        if batch_metadata is None:
+            batch_metadata = sent_batch_metadata(settings, sent_configs)
         payload["experiment"]["sent_configs"] = [
-            {
-                "n_1qb_gates": int(config.n_1qb_gates),
-                "n_2qb_gates": int(config.n_2qb_gates),
-                "n_qubits": int(config.n_qubits),
-                "n_gates": int(config.n_gates),
-                "ratio_2_qb_gates": float(config.ratio_2_qb_gates),
-            }
-            for config in sent_configs
+            item["sent_config"]
+            for item in batch_metadata
+        ]
+        payload["experiment"]["actual_after_elimination"] = [
+            item["actual_after_elimination"]
+            for item in batch_metadata
         ]
     json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -267,6 +353,24 @@ def pending_backend_batch_path(settings: FantasySettings) -> Path | None:
     return folder / "pending_backend_batch.json"
 
 
+def pending_settings_snapshot(settings: FantasySettings) -> dict:
+    backend_factory_name = getattr(
+        settings.backend_factory,
+        "__name__",
+        type(settings.backend_factory).__name__,
+    )
+    return {
+        "rng_seed": settings.rng_seed,
+        "n_qubits": int(settings.n_qubits),
+        "n_gates_bounds": [float(value) for value in settings.n_gates_bounds],
+        "ratio_bounds": [float(value) for value in settings.ratio_bounds],
+        "hqc_budget": float(settings.hqc_budget),
+        "max_cost_per_run": float(settings.max_cost_per_run),
+        "backend_factory": backend_factory_name,
+        "save_path": None if settings.save_path is None else str(settings.save_path),
+    }
+
+
 def write_pending_backend_batch(
     *,
     settings: FantasySettings,
@@ -274,6 +378,7 @@ def write_pending_backend_batch(
     step: int,
     sent_configs,
     data=None,
+    batch_metadata: list[dict] | None = None,
 ) -> None:
     """Persist the exact FLE batch before submitting stitched circuits."""
 
@@ -286,25 +391,14 @@ def write_pending_backend_batch(
 
     path.parent.mkdir(parents=True, exist_ok=True)
     requests = []
-    for config in sent_configs:
-        first_shot_index = None
-        if data is not None:
-            estimator = data.get(config) if hasattr(data, "get") else None
-            if estimator is not None and hasattr(estimator, "num_runs"):
-                first_shot_index = int(estimator.num_runs())
+    if batch_metadata is None:
+        batch_metadata = sent_batch_metadata(settings, sent_configs, data=data)
+    for item in batch_metadata:
         requests.append(
             {
-                "config": {
-                    "n_1qb_gates": int(config.n_1qb_gates),
-                    "n_2qb_gates": int(config.n_2qb_gates),
-                    "n_qubits": int(config.n_qubits),
-                    "n_gates": int(config.n_gates),
-                    "ratio_2_qb_gates": float(config.ratio_2_qb_gates),
-                    "random_elimination": float(config.random_elimination),
-                    "use_scrambler": bool(config.use_scrambler),
-                },
-                "requested_shots": 1,
-                "first_shot_index": first_shot_index,
+                "config": item["sent_config"],
+                "requested_shots": item["requested_shots"],
+                "first_shot_index": item["first_shot_index"],
             }
         )
 
@@ -314,6 +408,7 @@ def write_pending_backend_batch(
         "model": "FLE",
         "phase": phase,
         "step": int(step),
+        "settings": pending_settings_snapshot(settings),
         "pending_batch": {
             "requests": requests,
         },
@@ -418,6 +513,7 @@ def save_real_checkpoint(
     step: int,
     budget,
     sent_configs=None,
+    batch_metadata: list[dict] | None = None,
 ) -> None:
     if not settings.save_real_checkpoints or settings.save_path is None:
         return
@@ -429,7 +525,15 @@ def save_real_checkpoint(
     )
     rmb.save(checkpoint_path)
     checkpoint_path = resolve_data_path(checkpoint_path)
-    write_hqc_metadata(checkpoint_path, settings, budget, phase, step, sent_configs)
+    write_hqc_metadata(
+        checkpoint_path,
+        settings,
+        budget,
+        phase,
+        step,
+        sent_configs,
+        batch_metadata=batch_metadata,
+    )
     print(f"[saved] real RMB checkpoint: {checkpoint_path}")
 
     if not settings.save_gp_prediction_grid:
@@ -650,12 +754,14 @@ def run(
 
     if not recovered_observations and sobol_batch:
         pending_step = checkpoint_step + 1
+        sobol_batch_metadata = sent_batch_metadata(settings, sobol_batch, data=data)
         write_pending_backend_batch(
             settings=settings,
             phase="sobol",
             step=pending_step,
             sent_configs=sobol_batch,
             data=data,
+            batch_metadata=sobol_batch_metadata,
         )
 
         measure_batch_and_update_real_strategy(
@@ -682,6 +788,7 @@ def run(
             step=checkpoint_step,
             budget=budget,
             sent_configs=sobol_batch,
+            batch_metadata=sobol_batch_metadata,
         )
         clear_pending_backend_batch(settings)
     elif not recovered_observations:
@@ -729,12 +836,14 @@ def run(
         print()
 
         pending_step = checkpoint_step + 1
+        selected_batch_metadata = sent_batch_metadata(settings, selected, data=data)
         write_pending_backend_batch(
             settings=settings,
             phase="globalsur",
             step=pending_step,
             sent_configs=selected,
             data=data,
+            batch_metadata=selected_batch_metadata,
         )
 
         measure_batch_and_update_real_strategy(
@@ -761,6 +870,7 @@ def run(
             step=checkpoint_step,
             budget=budget,
             sent_configs=selected,
+            batch_metadata=selected_batch_metadata,
         )
         clear_pending_backend_batch(settings)
 

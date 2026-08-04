@@ -32,6 +32,9 @@ ONE_Q_NOISE_SCALE = 1.0
 TWO_Q_NOISE_SCALE = 1.0
 LAST_BACKEND_BATCH_SIZE: int | None = None
 
+GATES_AXIS_LIMITS: tuple[float, float] | None = (80.0, 6000.0)
+RATIO_AXIS_LIMITS: tuple[float, float] | None = (0.05, 1.0)
+
 
 ANALYTIC_LINE_LABEL = "analytic Lindblad line"
 REFERENCE_CURVES = [
@@ -121,6 +124,22 @@ def load_points(
     )
 
 
+def qubit_title_part(json_path: Path) -> str:
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    experiment_q = payload.get("experiment", {}).get("n_qubits")
+    if experiment_q is not None:
+        return f" | q={int(experiment_q)}"
+
+    qubits = sorted({
+        int(record["n_qubits"])
+        for record in payload.get("data", [])
+        if "n_qubits" in record
+    })
+    if len(qubits) == 1:
+        return f" | q={qubits[0]}"
+    return ""
+
+
 def plot_fle_grid(
     json_path: str | Path = RMB_JSON_PATH,
     grid_path: str | Path | None = GP_GRID_PATH,
@@ -150,18 +169,18 @@ def plot_fle_grid(
 
     fig, ax = plt.subplots(1, 1, figsize=(8.0, 5.6))
     surface = ax.contourf(
-        gates_grid,
         ratio_grid,
+        gates_grid,
         probabilities,
-        levels=np.linspace(0.05, 0.95, 19),
+        levels=np.linspace(0.0, 1.0, 21),
         cmap="RdYlGn",
         alpha=0.85,
     )
     fig.colorbar(surface, ax=ax, label="Predicted fidelity")
 
     ax.contour(
-        gates_grid,
         ratio_grid,
+        gates_grid,
         latent_mean,
         levels=[latent_target],
         colors="black",
@@ -169,8 +188,8 @@ def plot_fle_grid(
         zorder=6,
     )
     ax.contour(
-        gates_grid,
         ratio_grid,
+        gates_grid,
         latent_mean + latent_std,
         levels=[latent_target],
         colors="black",
@@ -179,8 +198,8 @@ def plot_fle_grid(
         zorder=6,
     )
     ax.contour(
-        gates_grid,
         ratio_grid,
+        gates_grid,
         latent_mean - latent_std,
         levels=[latent_target],
         colors="black",
@@ -191,8 +210,8 @@ def plot_fle_grid(
 
     if len(point_gates) > 0:
         ax.scatter(
-            point_gates[~point_outcomes],
             point_ratios[~point_outcomes],
+            point_gates[~point_outcomes],
             marker="x",
             s=36,
             color="black",
@@ -201,8 +220,8 @@ def plot_fle_grid(
             zorder=8,
         )
         ax.scatter(
-            point_gates[point_outcomes],
             point_ratios[point_outcomes],
+            point_gates[point_outcomes],
             marker="o",
             s=42,
             facecolors="white",
@@ -212,52 +231,24 @@ def plot_fle_grid(
             zorder=9,
         )
 
-    ratios = np.linspace(float(np.min(ratio_grid)), float(np.max(ratio_grid)), 400)
-    analytic = analytic_gate_counts(
-        ratios,
-        one_q_noise_scale=ONE_Q_NOISE_SCALE,
-        two_q_noise_scale=TWO_Q_NOISE_SCALE,
-    )
     x_min = float(np.min(gates_grid[gates_grid > 0.0]))
     x_max = float(np.max(gates_grid))
 
-    analytic_mask = np.isfinite(analytic) & (x_min <= analytic) & (analytic <= x_max)
-    ax.plot(
-        analytic[analytic_mask],
-        ratios[analytic_mask],
-        color="tab:green",
-        linestyle=":",
-        linewidth=2.0,
-        label=ANALYTIC_LINE_LABEL,
-        zorder=7,
-    )
-    for curve in REFERENCE_CURVES:
-        reference = reference_gate_counts(
-            ratios,
-            numerator=float(curve["numerator"]),
-            offset=float(curve["offset"]),
-            slope=float(curve["slope"]),
-        )
-        reference_mask = np.isfinite(reference) & (x_min <= reference) & (reference <= x_max)
-        ax.plot(
-            reference[reference_mask],
-            ratios[reference_mask],
-            color=str(curve["color"]),
-            linestyle=str(curve["linestyle"]),
-            linewidth=1.8,
-            label=str(curve["label"]),
-            zorder=7,
-        )
-
     ax.plot([], [], color="black", linewidth=2.2, label=f"GP mean p={target:g}")
     ax.plot([], [], color="black", linestyle="--", linewidth=1.6, label=r"$\mu \pm 1\sigma$")
-    ax.set_xscale("log")
-    ax.set_xlim(left=max(1.0, x_min), right=x_max)
-    ax.set_ylim(0.07, float(np.max(ratio_grid)))
-    ax.set_xlabel("Total gates")
-    ax.set_ylabel("Two-qubit gate ratio")
+    ax.set_yscale("log")
+    if RATIO_AXIS_LIMITS is None:
+        ax.set_xlim(float(np.min(ratio_grid)), float(np.max(ratio_grid)))
+    else:
+        ax.set_xlim(float(RATIO_AXIS_LIMITS[0]), float(RATIO_AXIS_LIMITS[1]))
+    if GATES_AXIS_LIMITS is None:
+        ax.set_ylim(bottom=max(1.0, x_min), top=x_max)
+    else:
+        ax.set_ylim(bottom=max(1.0, float(GATES_AXIS_LIMITS[0])), top=float(GATES_AXIS_LIMITS[1]))
+    ax.set_xlabel("Two-qubit gate ratio")
+    ax.set_ylabel("Total gates")
     ax.set_title(
-        f"FLE GP level set | HQC={HQC_BUDGET:g} | S1={scores['S1']:.4g}, "
+        f"FLE GP level set{qubit_title_part(json_path)} | S1={scores['S1']:.4g}, "
         f"S2={scores['S2']:.4g}, A_gp={scores['A_gp']:.4g}"
     )
     ax.legend(loc="best", fontsize=8, frameon=True, framealpha=0.9)

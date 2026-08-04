@@ -29,11 +29,11 @@ LAST_BACKEND_BATCH_SIZE: int | None = None
 SHOW_VOLUME_BACKGROUND = False
 
 # Turn this off if you only want the GP level-set surface.
-SHOW_MEASURED_POINTS = False
+SHOW_MEASURED_POINTS = True
 SHOW_FAILURE_POINTS = True
 SHOW_SUCCESS_POINTS = True
 SHOW_FAKE_ANCHORS = False
-SHOW_ONE_SIGMA_SURFACES = False
+SHOW_ONE_SIGMA_SURFACES = True
 SHOW_TWO_SIGMA_SURFACES = False
 
 # Probability volume settings, only used if SHOW_VOLUME_BACKGROUND = True.
@@ -50,7 +50,7 @@ FAKE_ANCHOR_SLICES = 5
 GATE_AXIS_MIN_LOG10 = 1.5
 GATE_AXIS_MAX_LOG10 = 4.0
 RATIO_AXIS_MIN = 0.1
-RATIO_AXIS_MAX = 0.75
+RATIO_AXIS_MAX = 0.95
 
 # -------------------------------------------------------------------------
 # PATH HELPERS

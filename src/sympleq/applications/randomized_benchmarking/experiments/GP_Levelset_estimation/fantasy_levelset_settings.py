@@ -91,7 +91,7 @@ TARGET_THRESHOLD = 0.5
 # NuUMBER of Qubits
 # -------------------------------------------------------------------------
 
-N_QUBITS = 20
+N_QUBITS = 56
 # For a multi-slice run, use e.g.:
 # N_QUBITS = [5,20]
 
@@ -100,15 +100,15 @@ N_QUBITS = 20
 # -------------------------------------------------------------------------
 # Set to None to use the defaults inherited from CrossingSettings.
 
-N_GATES_BOUNDS = (100, 5000)
-RATIO_BOUNDS = (0.1, 0.9)
+N_GATES_BOUNDS = (300, 2000)
+RATIO_BOUNDS = (0.5, 0.9)
 
 # -------------------------------------------------------------------------
 # HQC BUDGET HANDLES
 # -------------------------------------------------------------------------
 # Set to None to use the defaults inherited from CrossingSettings.
 
-HQC_BUDGET = 500
+HQC_BUDGET = 700
 MAX_COST_PER_RUN = 30
 
 # -------------------------------------------------------------------------
@@ -121,7 +121,7 @@ GATE_BUDGET = 7000
 # FAKE-ANCHOR HANDLES
 # -------------------------------------------------------------------------
 
-USE_FAKE_CORNERS = True
+USE_FAKE_CORNERS = False
 EASY_CORNER_OUTCOME = 1
 HARD_CORNER_OUTCOME = 0
 EXTRA_FAKE_ANCHORS = []
@@ -182,7 +182,7 @@ BACKEND_FACTORY = quantinuum_H2_backend_factory
 # REPRODUCIBILITY / DEBUG HANDLES
 # -------------------------------------------------------------------------
 
-RNG_SEEDS = [2029]
+RNG_SEEDS = [42]
 VERBOSE_FANTASIES = True
 PLOT = True
 
