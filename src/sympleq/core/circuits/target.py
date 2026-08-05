@@ -9,6 +9,8 @@ from sympleq.core.circuits.helpers_solve_from_target import get_phase_vector, ma
 
 # TODO: Remove this function across repo and replace with solve_from_target,
 #       Then remove this file.
+
+
 def find_map_to_target_pauli_sum(input_pauli: PauliSum, target_pauli: PauliSum) -> tuple[TableauType, PhasesType,
                                                                                          list[int], int]:
     """

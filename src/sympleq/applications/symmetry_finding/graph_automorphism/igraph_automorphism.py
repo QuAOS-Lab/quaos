@@ -102,7 +102,6 @@ def symplectic_from_pauli_permutation(
 def _gate_from_pauli_permutation(
     pauli_sum: PauliSum,
     pi: tuple[int, ...],
-    *,
 ) -> Gate | None:
     p = int(pauli_sum.lcm)
     if not np.array_equal(pauli_sum.symplectic_product_matrix()[np.ix_(pi, pi)], pauli_sum.symplectic_product_matrix()):

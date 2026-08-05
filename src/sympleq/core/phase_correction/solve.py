@@ -62,6 +62,7 @@ def pauli_phase_correction(H: TableauType, delta_phi_2p: PhasesType, p: int, dim
     pauli = PauliString.from_exponents(P[:n], P[n:], dimensions=dims)
     return PauliGate(pauli)
 
+
 # Can be cleaned up
 def _gf_solve_one_solution(A_int: np.ndarray, b_int: np.ndarray, p: int) -> Optional[np.ndarray]:
     """
@@ -174,6 +175,7 @@ def solve_phase_vector_h_from_residual(
     if debug:
         print("[phase] mixed/composite dimensions: no safe solver implemented for Z_(2L)")
     return None
+
 
 # Shreya: This can be removed I think. We already have something similar in sympleq.core.finite_field_solvers
 def solve_linear_system_mod_prime(A: np.ndarray, b: np.ndarray, p: int) -> Optional[np.ndarray]:
