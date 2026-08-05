@@ -299,8 +299,8 @@ class TestGates():
             symplectic_random_koenig_smolin_gf2(0)
 
     @pytest.mark.parametrize("dim", [2, 3, 5, 7])
-    @pytest.mark.parametrize("n_qudits", [4,5])
-    @pytest.mark.parametrize("num_pauli", [5])
+    @pytest.mark.parametrize("n_qudits", [20, 30])
+    @pytest.mark.parametrize("num_pauli", [100])
     def test_gate_from_target(self, dim: int, n_qudits: int, num_pauli: int):
         """Test Gate.solve_from_target finds
         correct symplectic transformation,
@@ -318,9 +318,32 @@ class TestGates():
 
             found_pl_sum = final_gate.act(pl_sum, tuple(range(n_qudits)))
 
-            assert (found_pl_sum.tableau == target_pl_sum.tableau).all()
-            assert (found_pl_sum.phases == target_pl_sum.phases).all()
-            assert (found_pl_sum.weights == target_pl_sum.weights).all()
+            assert (found_pl_sum == target_pl_sum)
+
+    @pytest.mark.parametrize("dim", [2, 3, 5])
+    @pytest.mark.parametrize("n_qudits", [2, 3])
+    @pytest.mark.parametrize("num_pauli", [5])
+    def test_gate_from_target_hilbert_space(self, dim: int, n_qudits: int, num_pauli: int):
+        """Test Gate.solve_from_target finds
+        correct symplectic transformation,
+        correct phase vector, and
+        correct weights"""
+
+        dimensions = [dim] * n_qudits
+        for _ in range(100):
+            pl_sum = random_hamiltonian.random_pauli_hamiltonian(num_pauli, dimensions)
+
+            C = Circuit.from_random(n_gates=10 * n_qudits**2, dimensions=dimensions)
+            target_pl_sum = C.act(pl_sum)
+
+            final_gate = Gate.solve_from_target(pl_sum, target_pl_sum)
+
+            found_pl_sum = final_gate.act(pl_sum, tuple(range(n_qudits)))
+
+            assert np.allclose(
+                found_pl_sum.to_hilbert_space().toarray(),
+                target_pl_sum.to_hilbert_space().toarray(),
+            )
 
     def test_full_symplectic_embeds_and_reduces_mod_dimension(self):
         """Test Gate.full_symplectic embeds a local symplectic into a larger system and reduces mod dimension."""

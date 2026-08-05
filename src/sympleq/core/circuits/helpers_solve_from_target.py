@@ -280,4 +280,3 @@ def solve_phase_for_gate(
     gate_phi = (solve_mod_2p(pl_sum.tableau, lhs, p) + np.diag(R_1)) % (2 * p)
 
     return gate_phi
-
