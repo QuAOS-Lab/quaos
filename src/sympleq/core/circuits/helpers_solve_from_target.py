@@ -57,20 +57,25 @@ def independent_solution(A: TableauType, b: TableauType, V: TableauType, p: int)
     b = np.asarray(b, dtype=int) % p
     V = np.asarray(V, dtype=int) % p
 
-    y0 = np.asarray(solve_linear_system_over_gf(A, b, p), dtype=int) % p
+    if gf_rank(V, p) == V.shape[1]:
+        raise ValueError("Target tableau already contain a complete basis.")
 
-    if gf_rank(np.vstack([V, y0]), p) == gf_rank(V, p) + 1:
-        return y0
+    else:
 
-    K = np.asarray(nullspace_mod(A, p), dtype=int) % p
+        y0 = np.asarray(solve_linear_system_over_gf(A, b, p), dtype=int) % p
 
-    for k in K.T:
-        y = (y0 + k) % p
+        if gf_rank(np.vstack([V, y0]), p) == gf_rank(V, p) + 1:
+            return y0
 
-        if gf_rank(np.vstack([V, y]), p) == gf_rank(V, p) + 1:
-            return y
+        K = np.asarray(nullspace_mod(A, p), dtype=int) % p
 
-    raise ValueError("No independent compatible solution found.")
+        for k in K.T:
+            y = (y0 + k) % p
+
+            if gf_rank(np.vstack([V, y]), p) == gf_rank(V, p) + 1:
+                return y
+
+        raise ValueError("No independent compatible solution found.")
 
 
 def complete_basis(input_tab: TableauType, target_tab: TableauType, p: int) -> tuple[TableauType, TableauType]:
@@ -96,24 +101,32 @@ def complete_basis(input_tab: TableauType, target_tab: TableauType, p: int) -> t
     U = input_tab[basis_indices]
     V = target_tab[basis_indices]
 
-    for e in np.eye(d, dtype=int):
-        if gf_rank(np.vstack([U, e]), p) != gf_rank(U, p) + 1:
-            continue
+    if gf_rank(U, p) != gf_rank(V, p):
+        raise ValueError("Input and target tableaus must have the same rank.")
 
-        A = (V @ Omega) % p
-        b = (U @ Omega @ e) % p
-        try:
-            y = independent_solution(A, b, V, p)
-        except ValueError:
-            continue
+    elif gf_rank(U, p) == d and gf_rank(V, p) == d:
+        raise ValueError("Input and target tableaus already contain a complete basis.")
 
-        U = np.vstack([U, e % p])
-        V = np.vstack([V, y])
+    else:
 
-        if gf_rank(U, p) == d and gf_rank(V, p) == d:
-            return U, V
+        for e in np.eye(d, dtype=int):
+            if gf_rank(np.vstack([U, e]), p) != gf_rank(U, p) + 1:
+                continue
 
-    raise ValueError("Could not complete basis.")
+            A = (V @ Omega) % p
+            b = (U @ Omega @ e) % p
+            try:
+                y = independent_solution(A, b, V, p)
+            except ValueError:
+                continue
+
+            U = np.vstack([U, e % p])
+            V = np.vstack([V, y])
+
+            if gf_rank(U, p) == d and gf_rank(V, p) == d:
+                return U, V
+
+        raise ValueError("Could not complete basis.")
 
 
 def map_tableau_to_target_tableau(

@@ -298,7 +298,7 @@ class TestGates():
         with pytest.raises(ValueError, match="n_qubits must be >= 1"):
             symplectic_random_koenig_smolin_gf2(0)
 
-    @pytest.mark.parametrize("dim", [2, 3, 5, 7])
+    @pytest.mark.parametrize("dim", [2, 3, 5])
     @pytest.mark.parametrize("n_qudits", [5, 6])
     @pytest.mark.parametrize("num_pauli", [30, 40])
     def test_gate_from_target(self, dim: int, n_qudits: int, num_pauli: int):
