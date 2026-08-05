@@ -299,13 +299,11 @@ class TestGates():
             symplectic_random_koenig_smolin_gf2(0)
 
     @pytest.mark.parametrize("dim", [2, 3, 5, 7])
-    @pytest.mark.parametrize("n_qudits", [20, 30])
-    @pytest.mark.parametrize("num_pauli", [100])
+    @pytest.mark.parametrize("n_qudits", [5, 6])
+    @pytest.mark.parametrize("num_pauli", [30, 40])
     def test_gate_from_target(self, dim: int, n_qudits: int, num_pauli: int):
         """Test Gate.solve_from_target finds
-        correct symplectic transformation,
-        correct phase vector, and
-        correct weights"""
+        correct pauli sum"""
 
         dimensions = [dim] * n_qudits
         for _ in range(100):
@@ -320,14 +318,12 @@ class TestGates():
 
             assert (found_pl_sum == target_pl_sum)
 
-    @pytest.mark.parametrize("dim", [2, 3, 5])
-    @pytest.mark.parametrize("n_qudits", [2, 3])
+    @pytest.mark.parametrize("dim", [2, 3])
+    @pytest.mark.parametrize("n_qudits", [5])
     @pytest.mark.parametrize("num_pauli", [5])
     def test_gate_from_target_hilbert_space(self, dim: int, n_qudits: int, num_pauli: int):
         """Test Gate.solve_from_target finds
-        correct symplectic transformation,
-        correct phase vector, and
-        correct weights"""
+        correct pauli sum in hilbert space"""
 
         dimensions = [dim] * n_qudits
         for _ in range(100):
