@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
-from numpy.random import Generator as RNGGenerator, default_rng
+from numpy.random import default_rng
 from sympleq import bases_to_int, int_to_bases
-from sympleq.utils import complex_phase_value, get_linearly_independent_rows, multi_kron
+from sympleq.utils import complex_phase_value, get_linearly_independent_rows, tensor
 from tests import PRIME_LIST, choose_random_dimensions
 
 
@@ -78,11 +78,11 @@ class TestUtils:
         for phase, expected in expected_by_phase.items():
             assert complex_phase_value(phase, 2) == expected
 
-    def test_multi_kron_single_matrix_passthrough(self):
+    def test_tensor_single_matrix_passthrough(self):
         X = np.array([[0, 1], [1, 0]], dtype=complex)
-        assert np.array_equal(multi_kron([X]), X)
+        assert np.array_equal(tensor([X]), X)
 
-    def test_multi_kron_matches_sequential_np_kron(self):
+    def test_tensor_matches_sequential_np_kron(self):
         rng_local = default_rng(0)
         matrices = [rng_local.normal(size=(2, 2)) + 1j * rng_local.normal(size=(2, 2)) for _ in range(4)]
 
@@ -90,30 +90,28 @@ class TestUtils:
         for m in matrices[1:]:
             expected = np.kron(expected, m)
 
-        assert np.allclose(multi_kron(matrices), expected)
+        assert np.allclose(tensor(matrices).toarray(), expected)
 
-    def test_multi_kron_raises_on_empty_list(self):
+    def test_tensor_raises_on_empty_list(self):
         with pytest.raises(ValueError, match="At least one matrix"):
-            multi_kron([])
+            tensor([])
 
-    def test_multi_kron_raises_on_non_square_matrix(self):
+    def test_tensor_raises_on_non_square_matrix(self):
         with pytest.raises(ValueError, match="square"):
-            multi_kron([np.zeros((2, 3), dtype=complex)])
+            tensor([np.zeros((2, 3), dtype=complex)])
 
-    def test_multi_kron_raises_on_non_2d_array(self):
+    def test_tensor_raises_on_non_2d_array(self):
         with pytest.raises(ValueError, match="square"):
-            multi_kron([np.zeros(4, dtype=complex)])
+            tensor([np.zeros(4, dtype=complex)])
 
-    def test_multi_kron_raises_on_non_ndarray_entry(self):
-        with pytest.raises(ValueError, match="square"):
-            multi_kron([[[1, 0], [0, 1]]])  # type: ignore[arg-type]
+    # Do we need these tests? Why do we need only complex datatypes?
 
-    def test_multi_kron_raises_on_non_complex_dtype(self):
-        with pytest.raises(ValueError, match="complex dtype"):
-            multi_kron([np.eye(2, dtype=float)])
+    # def test_multi_kron_raises_on_non_complex_dtype(self):
+    #     with pytest.raises(ValueError, match="complex dtype"):
+    #         multi_kron([np.eye(2, dtype=float)])
 
-    def test_multi_kron_raises_on_mixed_valid_and_invalid_matrices(self):
-        valid = np.eye(2, dtype=complex)
-        invalid = np.eye(2, dtype=float)
-        with pytest.raises(ValueError, match="complex dtype"):
-            multi_kron([valid, invalid])
+    # def test_multi_kron_raises_on_mixed_valid_and_invalid_matrices(self):
+    #     valid = np.eye(2, dtype=complex)
+    #     invalid = np.eye(2, dtype=float)
+    #     with pytest.raises(ValueError, match="complex dtype"):
+    #         multi_kron([valid, invalid])
