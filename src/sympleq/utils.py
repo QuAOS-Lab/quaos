@@ -150,9 +150,6 @@ def tensor(mm: list[ComplexSparseMatrix]) -> ComplexSparseMatrix:
             shape = getattr(m, "shape", None)
             raise ValueError(f"Each matrix must be a square 2-dimensional array, got shape {shape}.")
 
-    if len(mm) == 0:
-        return sp.csr_matrix([])
-
     if len(mm) == 1:
         return mm[0]
 
