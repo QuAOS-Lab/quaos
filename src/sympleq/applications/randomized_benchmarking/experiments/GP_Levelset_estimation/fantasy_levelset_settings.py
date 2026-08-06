@@ -141,8 +141,8 @@ SAVE_REAL_CHECKPOINTS = True
 # RECOVERY HANDLES
 # -------------------------------------------------------------------------
 
-RECOVERY_MODE = False
-RECOVERY_FOLDER = Path(r"Personal\FLE\H2_2\qband_4\seed_2028\FLE_20260720_145715")
+RECOVERY_MODE = True
+RECOVERY_FOLDER = Path(r"Personal\FLE\H2_2\q56\seed_42\FLE_20260804_175518")
 
 
 # -------------------------------------------------------------------------

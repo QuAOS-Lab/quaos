@@ -32,8 +32,29 @@ ONE_Q_NOISE_SCALE = 1.0
 TWO_Q_NOISE_SCALE = 1.0
 LAST_BACKEND_BATCH_SIZE: int | None = None
 
-GATES_AXIS_LIMITS: tuple[float, float] | None = (80.0, 6000.0)
-RATIO_AXIS_LIMITS: tuple[float, float] | None = (0.05, 1.0)
+GATES_AXIS_LIMITS: tuple[float, float] | None = (290.0, 2010.0)
+RATIO_AXIS_LIMITS: tuple[float, float] | None = (0.4999, 0.9001)
+
+SHOW_PREDICTED_FIDELITY_HUE = False
+
+SHOW_Q56_REFERENCE_LINE = True
+SHOW_Q56_REFERENCE_POINTS = True
+Q56_REFERENCE_JSON_PATH: Path | None = Path(
+    r"Personal\FLE\H2_2\qband_4\accumulation"
+    r"\accumulated_final_H2_2_qband_4_20260804_090823_actual_gates_q_slices_gap_3"
+    r"\accumulated_final_H2_2_qband_4_20260804_090823_actual_gates_q56.json"
+)
+Q56_REFERENCE_GRID_PATH: Path | None = Path(
+    r"Personal\FLE\H2_2\qband_4\accumulation"
+    r"\accumulated_final_H2_2_qband_4_20260804_090823_actual_gates_q_slices_gap_3"
+    r"\accumulated_final_H2_2_qband_4_20260804_090823_actual_gates_q56_gp_grid.npz"
+)
+Q56_REFERENCE_LABEL = "accumulated q=56"
+Q56_REFERENCE_COLOR = "tab:blue"
+Q56_REFERENCE_LINESTYLE = "-."
+Q56_REFERENCE_POINTS_LABEL = "accumulated q=56"
+Q56_REFERENCE_SUCCESS_COLOR = "tab:green"
+Q56_REFERENCE_FAILURE_COLOR = "tab:red"
 
 
 ANALYTIC_LINE_LABEL = "analytic Lindblad line"
@@ -140,6 +161,81 @@ def qubit_title_part(json_path: Path) -> str:
     return ""
 
 
+def add_reference_contour(
+    ax,
+    *,
+    grid_path: Path | None,
+    label: str,
+    color: str,
+    linestyle: str,
+) -> None:
+    if grid_path is None:
+        return
+    if not grid_path.exists():
+        print(f"[warning] skipped reference line; missing grid: {grid_path}")
+        return
+
+    grid = np.load(grid_path)
+    target = float(np.asarray(grid["target"]).item())
+    latent_target = float(ndtri(target))
+    ax.contour(
+        np.asarray(grid["ratio_grid"], dtype=float),
+        np.asarray(grid["gates_grid"], dtype=float),
+        np.asarray(grid["latent_mean"], dtype=float),
+        levels=[latent_target],
+        colors=color,
+        linestyles=linestyle,
+        linewidths=2.0,
+        zorder=7,
+    )
+    ax.plot([], [], color=color, linestyle=linestyle, linewidth=2.0, label=label)
+
+
+def add_reference_points(
+    ax,
+    *,
+    json_path: Path | None,
+    label: str,
+) -> None:
+    if json_path is None:
+        return
+    if not json_path.exists():
+        print(f"[warning] skipped reference data; missing JSON: {json_path}")
+        return
+
+    point_gates, point_ratios, point_outcomes = load_points(json_path)
+    if len(point_gates) == 0:
+        print(f"[warning] skipped reference data; no points in: {json_path}")
+        return
+
+    failure_mask = ~point_outcomes
+    success_mask = point_outcomes
+    if np.any(failure_mask):
+        ax.scatter(
+            point_ratios[failure_mask],
+            point_gates[failure_mask],
+            marker="s",
+            s=24,
+            color=Q56_REFERENCE_FAILURE_COLOR,
+            alpha=0.75,
+            linewidths=0.0,
+            label=f"{label} failure",
+            zorder=7,
+        )
+    if np.any(success_mask):
+        ax.scatter(
+            point_ratios[success_mask],
+            point_gates[success_mask],
+            marker="s",
+            s=24,
+            color=Q56_REFERENCE_SUCCESS_COLOR,
+            alpha=0.75,
+            linewidths=0.0,
+            label=f"{label} success",
+            zorder=7,
+        )
+
+
 def plot_fle_grid(
     json_path: str | Path = RMB_JSON_PATH,
     grid_path: str | Path | None = GP_GRID_PATH,
@@ -168,15 +264,16 @@ def plot_fle_grid(
     point_gates, point_ratios, point_outcomes = load_points(json_path)
 
     fig, ax = plt.subplots(1, 1, figsize=(8.0, 5.6))
-    surface = ax.contourf(
-        ratio_grid,
-        gates_grid,
-        probabilities,
-        levels=np.linspace(0.0, 1.0, 21),
-        cmap="RdYlGn",
-        alpha=0.85,
-    )
-    fig.colorbar(surface, ax=ax, label="Predicted fidelity")
+    if SHOW_PREDICTED_FIDELITY_HUE:
+        surface = ax.contourf(
+            ratio_grid,
+            gates_grid,
+            probabilities,
+            levels=np.linspace(0.0, 1.0, 21),
+            cmap="RdYlGn",
+            alpha=0.85,
+        )
+        fig.colorbar(surface, ax=ax, label="Predicted fidelity")
 
     ax.contour(
         ratio_grid,
@@ -207,6 +304,22 @@ def plot_fle_grid(
         linewidths=1.6,
         zorder=6,
     )
+
+    if SHOW_Q56_REFERENCE_LINE:
+        add_reference_contour(
+            ax,
+            grid_path=Q56_REFERENCE_GRID_PATH,
+            label=Q56_REFERENCE_LABEL,
+            color=Q56_REFERENCE_COLOR,
+            linestyle=Q56_REFERENCE_LINESTYLE,
+        )
+
+    if SHOW_Q56_REFERENCE_POINTS:
+        add_reference_points(
+            ax,
+            json_path=Q56_REFERENCE_JSON_PATH,
+            label=Q56_REFERENCE_POINTS_LABEL,
+        )
 
     if len(point_gates) > 0:
         ax.scatter(
