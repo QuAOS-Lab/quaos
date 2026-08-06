@@ -195,8 +195,6 @@ def embed_unitary(U_local: HilbertOperator,
     return P.T @ U_kron @ P
 
 
-# function tensor is now in src/sympleq/utils.py
-
 def H_mat(d: int) -> sp.csr_matrix:
     omega = np.exp(2 * np.pi * 1j / d)
     return sp.csr_matrix(1 / np.sqrt(d) * np.array([[omega ** (i0 * i1) for i0 in range(d)] for i1 in range(d)]))
