@@ -131,7 +131,7 @@ N_QUBITS = 56
 # -------------------------------------------------------------------------
 # Set to None to use the defaults inherited from CrossingSettings.
 
-N_GATES_BOUNDS = (400, 2000)
+N_GATES_BOUNDS = (400, 6000)
 RATIO_BOUNDS = (0.5, 0.9)
 
 # -------------------------------------------------------------------------
