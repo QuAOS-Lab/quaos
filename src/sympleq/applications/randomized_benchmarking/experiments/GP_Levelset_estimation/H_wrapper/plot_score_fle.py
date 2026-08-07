@@ -36,6 +36,9 @@ GATES_AXIS_LIMITS: tuple[float, float] | None = (290.0, 2010.0)
 RATIO_AXIS_LIMITS: tuple[float, float] | None = (0.4999, 0.9001)
 
 SHOW_PREDICTED_FIDELITY_HUE = False
+SHOW_SOBOL_POINTS = True
+SOBOL_SUCCESS_COLOR = "tab:blue"
+SOBOL_FAILURE_COLOR = "tab:orange"
 
 SHOW_Q56_REFERENCE_LINE = False
 SHOW_Q56_REFERENCE_POINTS = False
@@ -110,15 +113,36 @@ def sibling_png_path(json_path: Path) -> Path:
     return json_path.parent / f"{json_path.stem}_fle_levelset_score.png"
 
 
+def record_config_key(record: dict) -> tuple[int, int, int, float, bool]:
+    return (
+        int(record["n_1qb_gates"]),
+        int(record["n_2qb_gates"]),
+        int(record["n_qubits"]),
+        float(record.get("random_elimination", 0.0)),
+        bool(record.get("use_scrambler", True)),
+    )
+
+
+def sobol_config_keys(json_path: Path) -> set[tuple[int, int, int, float, bool]]:
+    keys = set()
+    for path in sorted(json_path.parent.glob("measurement_*_sobol*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        for record in payload.get("data", []):
+            keys.add(record_config_key(record))
+    return keys
+
+
 def load_points(
     json_path: Path,
     *,
     last_backend_batch_size: int | None = LAST_BACKEND_BATCH_SIZE,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     payload = json.loads(json_path.read_text(encoding="utf-8"))
+    sobol_keys = sobol_config_keys(json_path)
     gates: list[float] = []
     ratios: list[float] = []
     outcomes: list[int] = []
+    is_sobol: list[bool] = []
     records = payload.get("data", [])
     if last_backend_batch_size is not None:
         records = records[-last_backend_batch_size:]
@@ -137,11 +161,13 @@ def load_points(
         gates.append(float(total))
         ratios.append(float(n_2q / total))
         outcomes.append(int(successes >= failures))
+        is_sobol.append(record_config_key(record) in sobol_keys)
 
     return (
         np.asarray(gates, dtype=float),
         np.asarray(ratios, dtype=float),
         np.asarray(outcomes, dtype=bool),
+        np.asarray(is_sobol, dtype=bool),
     )
 
 
@@ -203,7 +229,7 @@ def add_reference_points(
         print(f"[warning] skipped reference data; missing JSON: {json_path}")
         return
 
-    point_gates, point_ratios, point_outcomes = load_points(json_path)
+    point_gates, point_ratios, point_outcomes, _ = load_points(json_path)
     if len(point_gates) == 0:
         print(f"[warning] skipped reference data; no points in: {json_path}")
         return
@@ -261,7 +287,7 @@ def plot_fle_grid(
         two_q_noise_scale=TWO_Q_NOISE_SCALE,
     )
 
-    point_gates, point_ratios, point_outcomes = load_points(json_path)
+    point_gates, point_ratios, point_outcomes, point_is_sobol = load_points(json_path)
 
     fig, ax = plt.subplots(1, 1, figsize=(8.0, 5.6))
     if SHOW_PREDICTED_FIDELITY_HUE:
@@ -322,9 +348,15 @@ def plot_fle_grid(
         )
 
     if len(point_gates) > 0:
+        regular_mask = ~point_is_sobol
+        regular_failure = regular_mask & ~point_outcomes
+        regular_success = regular_mask & point_outcomes
+        sobol_failure = point_is_sobol & ~point_outcomes
+        sobol_success = point_is_sobol & point_outcomes
+
         ax.scatter(
-            point_ratios[~point_outcomes],
-            point_gates[~point_outcomes],
+            point_ratios[regular_failure],
+            point_gates[regular_failure],
             marker="x",
             s=36,
             color="black",
@@ -333,8 +365,8 @@ def plot_fle_grid(
             zorder=8,
         )
         ax.scatter(
-            point_ratios[point_outcomes],
-            point_gates[point_outcomes],
+            point_ratios[regular_success],
+            point_gates[regular_success],
             marker="o",
             s=42,
             facecolors="white",
@@ -343,6 +375,29 @@ def plot_fle_grid(
             label="Success",
             zorder=9,
         )
+        if SHOW_SOBOL_POINTS and np.any(sobol_failure):
+            ax.scatter(
+                point_ratios[sobol_failure],
+                point_gates[sobol_failure],
+                marker="x",
+                s=42,
+                color=SOBOL_FAILURE_COLOR,
+                linewidths=1.7,
+                label="Sobol failure",
+                zorder=10,
+            )
+        if SHOW_SOBOL_POINTS and np.any(sobol_success):
+            ax.scatter(
+                point_ratios[sobol_success],
+                point_gates[sobol_success],
+                marker="o",
+                s=48,
+                facecolors=SOBOL_SUCCESS_COLOR,
+                edgecolors="black",
+                linewidths=1.0,
+                label="Sobol success",
+                zorder=11,
+            )
 
     x_min = float(np.min(gates_grid[gates_grid > 0.0]))
     x_max = float(np.max(gates_grid))
