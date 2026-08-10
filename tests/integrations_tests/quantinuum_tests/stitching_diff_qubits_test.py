@@ -13,22 +13,14 @@ list it is passed and does not sort internally. So the desticthcing must obey th
 The RMB algorithms (Cost-Aware and FLE) guard against this by sorting stitched registers
 numerically before calling ``destitch_results``.  Same is implemented here in line 58.
 """
-import numpy as np
 from pytket.circuit import Circuit
 from sympleq.integrations.quantinuum.stitching import circuit_stitching
 
 
-def _native_circuit(n_qubits: int, seed: int) -> Circuit:
-    """Build a circuit with native gates and n qubits."""
-    rng = np.random.default_rng(seed)
+def _dummy_circuit(n_qubits: int, seed: int) -> Circuit:
+    """Build a circuit n qubits."""
+
     circuit = Circuit(n_qubits, n_qubits)
-
-    for qubit in range(n_qubits):
-        if rng.integers(2):
-            circuit.X(qubit)
-
-    if n_qubits >= 2:
-        circuit.ZZPhase(0.5, 0, 1)
 
     for qubit in range(n_qubits):
         circuit.Measure(qubit, qubit)
@@ -43,7 +35,7 @@ class TestCircuitStitching:
     """
 
     def test_stitches_circuits_in_descending_qubit_order(self):
-        circuits = [_native_circuit(n_qubits=1 + index % 10, seed=index)
+        circuits = [_dummy_circuit(n_qubits=1 + index % 10, seed=index)
                     for index in range(9)
                     ]
         stitched = circuit_stitching([circuit for circuit in circuits])
