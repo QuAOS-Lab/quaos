@@ -4,6 +4,7 @@ from functools import lru_cache
 from typing import Iterator
 
 import numpy as np
+import qnexus as qnx
 from pytket.backends.backendresult import BackendResult
 from pytket.circuit import Circuit as PytketCircuit, OpType
 from pytket.extensions.quantinuum.backends.quantinuum import QuantinuumBackend
