@@ -103,15 +103,3 @@ class TestUtils:
     def test_tensor_raises_on_non_2d_array(self):
         with pytest.raises(ValueError, match="square"):
             tensor([np.zeros(4, dtype=complex)])
-
-    # Do we need these tests? Why do we need only complex datatypes?
-
-    # def test_multi_kron_raises_on_non_complex_dtype(self):
-    #     with pytest.raises(ValueError, match="complex dtype"):
-    #         multi_kron([np.eye(2, dtype=float)])
-
-    # def test_multi_kron_raises_on_mixed_valid_and_invalid_matrices(self):
-    #     valid = np.eye(2, dtype=complex)
-    #     invalid = np.eye(2, dtype=float)
-    #     with pytest.raises(ValueError, match="complex dtype"):
-    #         multi_kron([valid, invalid])
