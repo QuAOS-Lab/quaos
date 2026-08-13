@@ -7,28 +7,30 @@ from datetime import datetime
 from pathlib import Path
 
 COST_AWARE = True
-H2_DEVICE = "H2-2" if COST_AWARE else "H2_2"
+H2_DEVICE = "H2-1" # if COST_AWARE else "H2_2"
 FLE_SEEDS = [2026, 2027, 2028, 2029]
 COST_AWARE_SEEDS = {
     "H2-1": [2026, 20261, 20267, 20268],
     "H2-2": [20262, 20266, 20269, 20270],
 }
 SEEDS = COST_AWARE_SEEDS[H2_DEVICE.replace("_", "-")] if COST_AWARE else FLE_SEEDS
+COST_AWARE_SOURCE_JSON_NAME = "CostAware_restartable_actual_gates.json"
 
 # If this list is non-empty, the script accumulates these JSONs directly
 # instead of searching seed folders. Use this for accumulation-of-accumulations.
-EXPLICIT_SOURCE_JSONS: list[Path] = [
-    Path(
-        r"Personal\FLE\H2_2\qband_4\accumulation"
-        r"\accumulated_final_H2_2_qband_4_20260804_090823_actual_gates.json"
-    ),
-    Path(
-        r"Personal\Cost_aware\H2-2\accumulation"
-        r"\accumulated_final_H2-2_cost_aware_20260811_160022.json"
-    ),
-]
-EXPLICIT_OUTPUT_FOLDER: Path | None = Path(r"Personal\Cost_aware\H2-2\accumulation")
-EXPLICIT_OUTPUT_TAG = "H2-2_FLE_cost_aware_combined_accumulations"
+EXPLICIT_SOURCE_JSONS: list[Path] = []
+# EXPLICIT_SOURCE_JSONS: list[Path] = [
+#     Path(
+#         r"Personal\FLE\H2_2\qband_4\accumulation"
+#         r"\accumulated_final_H2_2_qband_4_20260804_090823_actual_gates.json"
+#     ),
+#     Path(
+#         r"Personal\Cost_aware\H2-2\accumulation"
+#         r"\accumulated_final_H2-2_cost_aware_20260811_160022.json"
+#     ),
+# ]
+EXPLICIT_OUTPUT_FOLDER: Path | None = Path(r"Personal\Cost_aware\H2-1\accumulation")
+EXPLICIT_OUTPUT_TAG = "H2-1_FLE_cost_aware_combined_accumulations"
 
 
 # 1. Folder creation.
@@ -63,7 +65,7 @@ if EXPLICIT_SOURCE_JSONS:
 else:
     for seed in SEEDS:
         if COST_AWARE:
-            paths = [source_root / f"seed_{seed}" / "CostAware_restartable.json"]
+            paths = [source_root / f"seed_{seed}" / COST_AWARE_SOURCE_JSON_NAME]
             paths = [path for path in paths if path.exists()]
         else:
             paths = list((source_root / f"seed_{seed}").rglob("measurement_*.json"))
