@@ -9,20 +9,30 @@ import numpy as np
 
 matplotlib.use("Agg")
 
-from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.plot_score_fle import (  # noqa: E402
-    plot_fle_grid,
-)
+from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation import plot_score_fle  # noqa: E402
 
 
 # Handles.
 ACCUMULATED_JSON = Path(
-    r"Personal\FLE\H2_2\qband_4\accumulation\accumulated_final_H2_2_qband_4_20260804_090823_actual_gates.json"
+    r"Personal\Cost_aware\H2-2\accumulation\accumulated_final_H2-2_cost_aware_20260811_160022.json"
 )
 GRID_3D = Path(
-    r"Personal\FLE\H2_2\uniform_10_5000_grids\qband_4\accumulation\accumulated_final_H2_2_qband_4_20260804_090823_actual_gates_gp_grid_3d.npz"
+    r"Personal\Cost_aware\H2-2\uniform_10_5000_grids\accumulation\accumulated_final_H2-2_cost_aware_20260811_160022_gp_grid_3d.npz"
 )
 QUBIT_GAP = 3
-QUBITS: list[int] | None = None
+QUBITS: list[int] | None = [56]
+
+plot_score_fle.CURRENT_SIGMA_BAND_LABEL = r"cost-aware $\mu \pm 1\sigma$"
+plot_score_fle.CURRENT_SIGMA_BAND_COLOR = "lightgrey"
+plot_score_fle.CURRENT_SIGMA_BAND_ALPHA = 0.55
+plot_score_fle.CURRENT_DATA_LABEL_PREFIX = "cost-aware data"
+plot_score_fle.SHOW_REFERENCE_DATA_COUNTS = True
+plot_score_fle.SHOW_Q56_REFERENCE_LINE = True
+plot_score_fle.SHOW_Q56_REFERENCE_SIGMA = True
+plot_score_fle.SHOW_Q56_REFERENCE_POINTS = False
+plot_score_fle.SHOW_SEED42_REFERENCE_LINE = True
+plot_score_fle.SHOW_SEED42_REFERENCE_SIGMA = True
+plot_score_fle.SHOW_SEED42_REFERENCE_POINTS = False
 
 
 def spaced_qubits(records: list[dict]) -> list[int]:
@@ -85,4 +95,4 @@ for q in spaced_qubits(records):
         target=np.asarray(grid["target"], dtype=float),
     )
     print(f"[slice] q={q} records={len(slice_payload['data'])} json={slice_json}")
-    plot_fle_grid(slice_json)
+    plot_score_fle.plot_fle_grid(slice_json)

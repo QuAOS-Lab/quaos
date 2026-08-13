@@ -40,7 +40,14 @@ SHOW_SOBOL_POINTS = True
 SOBOL_SUCCESS_COLOR = "tab:blue"
 SOBOL_FAILURE_COLOR = "tab:orange"
 
+CURRENT_SIGMA_BAND_LABEL = r"current $\mu \pm 1\sigma$"
+CURRENT_SIGMA_BAND_COLOR = "lightgrey"
+CURRENT_SIGMA_BAND_ALPHA = 0.55
+CURRENT_DATA_LABEL_PREFIX = "measured data"
+SHOW_REFERENCE_DATA_COUNTS = True
+
 SHOW_Q56_REFERENCE_LINE = True
+SHOW_Q56_REFERENCE_SIGMA = True
 SHOW_Q56_REFERENCE_POINTS = False
 Q56_REFERENCE_JSON_PATH: Path | None = Path(
     r"Personal\FLE\H2_2\qband_4\accumulation"
@@ -52,12 +59,36 @@ Q56_REFERENCE_GRID_PATH: Path | None = Path(
     r"\accumulated_final_H2_2_qband_4_20260804_090823_actual_gates_q_slices_gap_3"
     r"\accumulated_final_H2_2_qband_4_20260804_090823_actual_gates_q56_gp_grid.npz"
 )
-Q56_REFERENCE_LABEL = "accumulated q=56"
+Q56_REFERENCE_LABEL = "accumulated FLE q=56"
 Q56_REFERENCE_COLOR = "tab:blue"
 Q56_REFERENCE_LINESTYLE = "-."
-Q56_REFERENCE_POINTS_LABEL = "accumulated q=56"
+Q56_REFERENCE_SIGMA_LABEL = r"accumulated FLE q=56 $\mu \pm 1\sigma$"
+Q56_REFERENCE_SIGMA_LINESTYLE = ":"
+Q56_REFERENCE_SIGMA_BAND_ALPHA = 0.16
+Q56_REFERENCE_POINTS_LABEL = "accumulated FLE q=56"
 Q56_REFERENCE_SUCCESS_COLOR = "tab:green"
 Q56_REFERENCE_FAILURE_COLOR = "tab:red"
+
+SHOW_SEED42_REFERENCE_LINE = False
+SHOW_SEED42_REFERENCE_SIGMA = False
+SHOW_SEED42_REFERENCE_POINTS = False
+SEED42_REFERENCE_JSON_PATH: Path | None = Path(
+    r"Personal\FLE\H2_2\q56\seed_42\FLE_20260804_175518"
+    r"\measurement_015_globalsur_20260807_143527_392341_actual_gates.json"
+)
+SEED42_REFERENCE_GRID_PATH: Path | None = Path(
+    r"Personal\FLE\H2_2\q56\seed_42\FLE_20260804_175518"
+    r"\measurement_015_globalsur_20260807_143527_392341_actual_gates_gp_grid.npz"
+)
+SEED42_REFERENCE_LABEL = "slice FLE q=56"
+SEED42_REFERENCE_COLOR = "tab:purple"
+SEED42_REFERENCE_LINESTYLE = "--"
+SEED42_REFERENCE_SIGMA_LABEL = r"slice FLE q=56 $\mu \pm 1\sigma$"
+SEED42_REFERENCE_SIGMA_LINESTYLE = ":"
+SEED42_REFERENCE_SIGMA_BAND_ALPHA = 0.16
+SEED42_REFERENCE_POINTS_LABEL = "slice FLE q=56"
+SEED42_REFERENCE_SUCCESS_COLOR = "tab:cyan"
+SEED42_REFERENCE_FAILURE_COLOR = "tab:purple"
 
 
 ANALYTIC_LINE_LABEL = "analytic Lindblad line"
@@ -171,6 +202,53 @@ def load_points(
     )
 
 
+def measurement_data_counts(json_path: Path) -> tuple[int, int]:
+    payload = json.loads(json_path.read_text(encoding="utf-8"))
+    point_count = 0
+    observation_count = 0
+    for record in payload.get("data", []):
+        n_1q = int(record["n_1qb_gates"])
+        n_2q = int(record["n_2qb_gates"])
+        if n_1q + n_2q <= 0:
+            continue
+        total = sum(int(count) for _, count in record.get("results", []))
+        if total <= 0:
+            continue
+        point_count += 1
+        observation_count += total
+    return point_count, observation_count
+
+
+def measurement_count_title_part(json_path: Path) -> str:
+    point_count, observation_count = measurement_data_counts(json_path)
+    if point_count == observation_count:
+        return f" | measured data={point_count}"
+    return f" | measured data={point_count}, obs={observation_count}"
+
+
+def measurement_count_legend_label(json_path: Path, *, prefix: str) -> str:
+    point_count, observation_count = measurement_data_counts(json_path)
+    if point_count == observation_count:
+        return f"{prefix}: {point_count}"
+    return f"{prefix}: {point_count} configs, {observation_count} obs"
+
+
+def add_measurement_count_legend(
+    ax,
+    *,
+    json_path: Path | None,
+    prefix: str,
+) -> None:
+    if json_path is None or not json_path.exists():
+        return
+    ax.plot(
+        [],
+        [],
+        color="none",
+        label=measurement_count_legend_label(json_path, prefix=prefix),
+    )
+
+
 def qubit_title_part(json_path: Path) -> str:
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     experiment_q = payload.get("experiment", {}).get("n_qubits")
@@ -187,6 +265,39 @@ def qubit_title_part(json_path: Path) -> str:
     return ""
 
 
+def add_sigma_band(
+    ax,
+    *,
+    ratio_grid: np.ndarray,
+    gates_grid: np.ndarray,
+    latent_mean: np.ndarray,
+    latent_std: np.ndarray,
+    latent_target: float,
+    color: str,
+    alpha: float,
+    label: str | None,
+    zorder: int,
+) -> None:
+    band = np.abs(latent_mean - latent_target) - latent_std
+    finite_band = band[np.isfinite(band)]
+    if finite_band.size == 0:
+        return
+    band_min = float(np.min(finite_band))
+    if band_min >= 0.0:
+        return
+    ax.contourf(
+        ratio_grid,
+        gates_grid,
+        band,
+        levels=[band_min, 0.0],
+        colors=[color],
+        alpha=alpha,
+        zorder=zorder,
+    )
+    if label is not None:
+        ax.plot([], [], color=color, linewidth=8.0, alpha=alpha, label=label)
+
+
 def add_reference_contour(
     ax,
     *,
@@ -194,6 +305,10 @@ def add_reference_contour(
     label: str,
     color: str,
     linestyle: str,
+    show_sigma: bool = False,
+    sigma_label: str | None = None,
+    sigma_linestyle: str = ":",
+    sigma_band_alpha: float = 0.16,
 ) -> None:
     if grid_path is None:
         return
@@ -204,10 +319,11 @@ def add_reference_contour(
     grid = np.load(grid_path)
     target = float(np.asarray(grid["target"]).item())
     latent_target = float(ndtri(target))
+    latent_mean = np.asarray(grid["latent_mean"], dtype=float)
     ax.contour(
         np.asarray(grid["ratio_grid"], dtype=float),
         np.asarray(grid["gates_grid"], dtype=float),
-        np.asarray(grid["latent_mean"], dtype=float),
+        latent_mean,
         levels=[latent_target],
         colors=color,
         linestyles=linestyle,
@@ -215,6 +331,21 @@ def add_reference_contour(
         zorder=7,
     )
     ax.plot([], [], color=color, linestyle=linestyle, linewidth=2.0, label=label)
+    if show_sigma:
+        latent_variance = np.maximum(np.asarray(grid["latent_variance"], dtype=float), 0.0)
+        latent_std = np.sqrt(latent_variance)
+        add_sigma_band(
+            ax,
+            ratio_grid=np.asarray(grid["ratio_grid"], dtype=float),
+            gates_grid=np.asarray(grid["gates_grid"], dtype=float),
+            latent_mean=latent_mean,
+            latent_std=latent_std,
+            latent_target=latent_target,
+            color=color,
+            alpha=sigma_band_alpha,
+            label=sigma_label,
+            zorder=4,
+        )
 
 
 def add_reference_points(
@@ -222,6 +353,10 @@ def add_reference_points(
     *,
     json_path: Path | None,
     label: str,
+    success_color: str,
+    failure_color: str,
+    marker: str = "s",
+    zorder: int = 7,
 ) -> None:
     if json_path is None:
         return
@@ -240,25 +375,25 @@ def add_reference_points(
         ax.scatter(
             point_ratios[failure_mask],
             point_gates[failure_mask],
-            marker="s",
+            marker=marker,
             s=24,
-            color=Q56_REFERENCE_FAILURE_COLOR,
+            color=failure_color,
             alpha=0.75,
             linewidths=0.0,
             label=f"{label} failure",
-            zorder=7,
+            zorder=zorder,
         )
     if np.any(success_mask):
         ax.scatter(
             point_ratios[success_mask],
             point_gates[success_mask],
-            marker="s",
+            marker=marker,
             s=24,
-            color=Q56_REFERENCE_SUCCESS_COLOR,
+            color=success_color,
             alpha=0.75,
             linewidths=0.0,
             label=f"{label} success",
-            zorder=7,
+            zorder=zorder,
         )
 
 
@@ -301,6 +436,19 @@ def plot_fle_grid(
         )
         fig.colorbar(surface, ax=ax, label="Predicted fidelity")
 
+    add_sigma_band(
+        ax,
+        ratio_grid=ratio_grid,
+        gates_grid=gates_grid,
+        latent_mean=latent_mean,
+        latent_std=latent_std,
+        latent_target=latent_target,
+        color=CURRENT_SIGMA_BAND_COLOR,
+        alpha=CURRENT_SIGMA_BAND_ALPHA,
+        label=CURRENT_SIGMA_BAND_LABEL,
+        zorder=3,
+    )
+
     ax.contour(
         ratio_grid,
         gates_grid,
@@ -310,27 +458,6 @@ def plot_fle_grid(
         linewidths=2.2,
         zorder=6,
     )
-    ax.contour(
-        ratio_grid,
-        gates_grid,
-        latent_mean + latent_std,
-        levels=[latent_target],
-        colors="black",
-        linestyles="--",
-        linewidths=1.6,
-        zorder=6,
-    )
-    ax.contour(
-        ratio_grid,
-        gates_grid,
-        latent_mean - latent_std,
-        levels=[latent_target],
-        colors="black",
-        linestyles="--",
-        linewidths=1.6,
-        zorder=6,
-    )
-
     if SHOW_Q56_REFERENCE_LINE:
         add_reference_contour(
             ax,
@@ -338,13 +465,57 @@ def plot_fle_grid(
             label=Q56_REFERENCE_LABEL,
             color=Q56_REFERENCE_COLOR,
             linestyle=Q56_REFERENCE_LINESTYLE,
+            show_sigma=SHOW_Q56_REFERENCE_SIGMA,
+            sigma_label=Q56_REFERENCE_SIGMA_LABEL,
+            sigma_linestyle=Q56_REFERENCE_SIGMA_LINESTYLE,
+            sigma_band_alpha=Q56_REFERENCE_SIGMA_BAND_ALPHA,
         )
+        if SHOW_REFERENCE_DATA_COUNTS:
+            add_measurement_count_legend(
+                ax,
+                json_path=Q56_REFERENCE_JSON_PATH,
+                prefix="accumulated FLE data",
+            )
 
     if SHOW_Q56_REFERENCE_POINTS:
         add_reference_points(
             ax,
             json_path=Q56_REFERENCE_JSON_PATH,
             label=Q56_REFERENCE_POINTS_LABEL,
+            success_color=Q56_REFERENCE_SUCCESS_COLOR,
+            failure_color=Q56_REFERENCE_FAILURE_COLOR,
+            marker="s",
+            zorder=7,
+        )
+
+    if SHOW_SEED42_REFERENCE_LINE:
+        add_reference_contour(
+            ax,
+            grid_path=SEED42_REFERENCE_GRID_PATH,
+            label=SEED42_REFERENCE_LABEL,
+            color=SEED42_REFERENCE_COLOR,
+            linestyle=SEED42_REFERENCE_LINESTYLE,
+            show_sigma=SHOW_SEED42_REFERENCE_SIGMA,
+            sigma_label=SEED42_REFERENCE_SIGMA_LABEL,
+            sigma_linestyle=SEED42_REFERENCE_SIGMA_LINESTYLE,
+            sigma_band_alpha=SEED42_REFERENCE_SIGMA_BAND_ALPHA,
+        )
+        if SHOW_REFERENCE_DATA_COUNTS:
+            add_measurement_count_legend(
+                ax,
+                json_path=SEED42_REFERENCE_JSON_PATH,
+                prefix="slice FLE data",
+            )
+
+    if SHOW_SEED42_REFERENCE_POINTS:
+        add_reference_points(
+            ax,
+            json_path=SEED42_REFERENCE_JSON_PATH,
+            label=SEED42_REFERENCE_POINTS_LABEL,
+            success_color=SEED42_REFERENCE_SUCCESS_COLOR,
+            failure_color=SEED42_REFERENCE_FAILURE_COLOR,
+            marker="^",
+            zorder=12,
         )
 
     if len(point_gates) > 0:
@@ -402,8 +573,16 @@ def plot_fle_grid(
     x_min = float(np.min(gates_grid[gates_grid > 0.0]))
     x_max = float(np.max(gates_grid))
 
+    ax.plot(
+        [],
+        [],
+        color="none",
+        label=measurement_count_legend_label(
+            json_path,
+            prefix=CURRENT_DATA_LABEL_PREFIX,
+        ),
+    )
     ax.plot([], [], color="black", linewidth=2.2, label=f"GP mean p={target:g}")
-    ax.plot([], [], color="black", linestyle="--", linewidth=1.6, label=r"$\mu \pm 1\sigma$")
     ax.set_yscale("log")
     if RATIO_AXIS_LIMITS is None:
         ax.set_xlim(float(np.min(ratio_grid)), float(np.max(ratio_grid)))

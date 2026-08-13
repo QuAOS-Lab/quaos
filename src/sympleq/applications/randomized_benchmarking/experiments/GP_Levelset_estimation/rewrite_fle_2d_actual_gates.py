@@ -20,9 +20,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 
-DEFAULT_TARGET_JSON = Path(
+DEFAULT_RUN_FOLDER = Path(
     r"Personal\FLE\H2_2\q56\seed_42\FLE_20260804_175518"
-    r"\measurement_013_globalsur_20260807_100304_324461.json"
 )
 
 DEFAULT_GATES_SET = [
@@ -62,6 +61,33 @@ def measurement_step(path: Path, payload: dict | None = None) -> int:
             return int(step)
     match = re.match(r"measurement_(\d+)_", path.name)
     return int(match.group(1)) if match else 0
+
+
+def is_source_measurement(path: Path) -> bool:
+    return (
+        path.name.startswith("measurement_")
+        and path.suffix == ".json"
+        and "_actual_gates" not in path.stem
+    )
+
+
+def latest_measurement_json(folder: Path) -> Path:
+    candidates = sorted(
+        (path for path in folder.glob("measurement_*.json") if is_source_measurement(path)),
+        key=lambda path: measurement_step(path),
+    )
+    if not candidates:
+        raise FileNotFoundError(f"No source measurement JSONs found in {folder}")
+    return candidates[-1]
+
+
+def resolve_target_json(target: Path | None) -> Path:
+    if target is None:
+        return latest_measurement_json(DEFAULT_RUN_FOLDER)
+    target = Path(target)
+    if target.is_dir():
+        return latest_measurement_json(target)
+    return target
 
 
 def nominal_key(record: dict) -> tuple[int, int, int, float, bool]:
@@ -154,6 +180,8 @@ def checkpoint_paths(target_json: Path) -> list[Path]:
     target_step = measurement_step(target_json, target_payload)
     paths = []
     for path in target_json.parent.glob("measurement_*.json"):
+        if not is_source_measurement(path):
+            continue
         payload = json.loads(path.read_text(encoding="utf-8"))
         step = measurement_step(path, payload)
         if 0 < step <= target_step:
@@ -369,8 +397,11 @@ def main() -> None:
         "target_json",
         nargs="?",
         type=Path,
-        default=DEFAULT_TARGET_JSON,
-        help="Target cumulative measurement JSON. Default is current H2-2 q56 measurement_013.",
+        default=None,
+        help=(
+            "Target cumulative measurement JSON, or a run folder. Default is the latest "
+            "source measurement JSON in the current H2-2 q56 run folder."
+        ),
     )
     parser.add_argument(
         "--output-json",
@@ -385,8 +416,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    target_json = resolve_target_json(args.target_json)
     output_json = rewrite_to_actual_gates(
-        args.target_json,
+        target_json,
         output_json=args.output_json,
     )
     if args.make_grid:
