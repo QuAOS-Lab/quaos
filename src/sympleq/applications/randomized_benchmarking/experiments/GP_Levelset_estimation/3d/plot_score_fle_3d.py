@@ -33,8 +33,8 @@ SHOW_MEASURED_POINTS = True
 SHOW_FAILURE_POINTS = True
 SHOW_SUCCESS_POINTS = True
 SHOW_FAKE_ANCHORS = False
-SHOW_ONE_SIGMA_SURFACES = False
-SHOW_TWO_SIGMA_SURFACES = True
+SHOW_ONE_SIGMA_SURFACES = True
+SHOW_TWO_SIGMA_SURFACES = False
 
 # Probability volume settings, only used if SHOW_VOLUME_BACKGROUND = True.
 VOLUME_OPACITY = 0.1
@@ -50,7 +50,7 @@ FAKE_ANCHOR_SLICES = 5
 GATE_AXIS_MIN_LOG10 = 1.5
 GATE_AXIS_MAX_LOG10 = 4.0
 RATIO_AXIS_MIN = 0.1
-RATIO_AXIS_MAX = 0.95
+RATIO_AXIS_MAX = 0.97
 
 # -------------------------------------------------------------------------
 # PATH HELPERS
@@ -78,6 +78,17 @@ def json_path_from_grid_path(grid_path: Path) -> Path | None:
             candidate = grid_path.parent / f"{name[:-len(suffix)]}.json"
             return candidate if candidate.exists() else None
     return None
+
+
+def source_json_path_from_grid_metadata(grid_path: Path) -> Path | None:
+    """Return the source JSON recorded inside a grid, if it is still available."""
+
+    with np.load(grid_path) as grid:
+        if "source_json" not in grid.files:
+            return None
+        raw = np.asarray(grid["source_json"]).item()
+    candidate = Path(str(raw))
+    return candidate if candidate.exists() else None
 
 
 def html_path_from_grid_path(grid_path: Path) -> Path:
@@ -363,6 +374,8 @@ def plot_fle_isosurface_3d(
     if input_path.suffix.lower() == ".npz":
         grid_path = input_path if grid_path is None else Path(grid_path)
         json_candidate = json_path_from_grid_path(grid_path)
+        if json_candidate is None:
+            json_candidate = source_json_path_from_grid_metadata(grid_path)
         if json_candidate is not None:
             measured_json_paths = [json_candidate]
         else:

@@ -414,9 +414,21 @@ def main() -> None:
         action="store_true",
         help="Also replay the actual-gates JSON into AEPsych and write *_gp_grid.npz.",
     )
+    parser.add_argument(
+        "--grid-only",
+        action="store_true",
+        help=(
+            "Only replay target_json into AEPsych and write *_gp_grid.npz. "
+            "Use this with an existing *_actual_gates.json."
+        ),
+    )
     args = parser.parse_args()
 
     target_json = resolve_target_json(args.target_json)
+    if args.grid_only:
+        make_gp_grid(target_json)
+        return
+
     output_json = rewrite_to_actual_gates(
         target_json,
         output_json=args.output_json,
