@@ -43,6 +43,7 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     batch_hqc_cost,
     candidate_axes,
     config_points,
+    measurement_rng,
     print_progress,
     spend_request_batch,
     default_backend_factory,
@@ -118,6 +119,54 @@ def point_from_config(config: RMBConfig, *, device: torch.device) -> torch.Tenso
         dtype=torch.double,
         device=device,
     )
+
+
+def actual_gate_coordinates_after_elimination(
+    config: RMBConfig,
+    *,
+    rng_seed: int | None,
+    shot_index: int | None,
+) -> tuple[float, float]:
+    """Return the realized post-elimination ``(total_gates, two_qubit_ratio)``."""
+
+    if rng_seed is None or shot_index is None:
+        return float(config.n_gates), float(config.ratio_2_qb_gates)
+
+    circuit = config.random_circuit(
+        rng=measurement_rng(int(rng_seed), config, int(shot_index))
+    )
+    n_1q = sum(
+        1
+        for gate in circuit.gates
+        if gate.n_qudits == 1 and gate.name != "Id"
+    )
+    n_2q = sum(
+        1
+        for gate in circuit.gates
+        if gate.n_qudits == 2 and gate.name != "Id"
+    )
+    n_gates = n_1q + n_2q
+    return (
+        float(n_gates),
+        float(n_2q / n_gates) if n_gates else 0.0,
+    )
+
+
+def actual_point_after_elimination(
+    config: RMBConfig,
+    *,
+    rng_seed: int | None,
+    shot_index: int | None,
+    device: torch.device,
+) -> torch.Tensor:
+    """Convert the realized post-elimination circuit to an AEPsych point."""
+
+    n_gates, ratio = actual_gate_coordinates_after_elimination(
+        config,
+        rng_seed=rng_seed,
+        shot_index=shot_index,
+    )
+    return raw_point(n_gates, ratio, device=device)
 
 
 def raw_point(
@@ -236,6 +285,24 @@ def one_shot_requests(configs: list[RMBConfig]) -> list[MeasurementRequest]:
     """
 
     return [MeasurementRequest(config, 1) for config in configs]
+
+
+def selected_shot_indices(data, configs: list[RMBConfig]) -> dict[RMBConfig, list[int]]:
+    """Return deterministic shot indices matching ``spend_request_batch`` offsets."""
+
+    offsets: dict[RMBConfig, int] = {}
+    shot_indices: dict[RMBConfig, list[int]] = {}
+    for config in configs:
+        estimator = data.get(config) if hasattr(data, "get") else None
+        previous_runs = (
+            int(estimator.num_runs())
+            if estimator is not None and hasattr(estimator, "num_runs")
+            else 0
+        )
+        offset = offsets.get(config, 0)
+        offsets[config] = offset + 1
+        shot_indices.setdefault(config, []).append(previous_runs + offset)
+    return shot_indices
 
 
 def select_affordable_prefix(
@@ -637,6 +704,8 @@ def measure_batch_and_update_real_strategy(
     if not selected:
         return
 
+    shot_indices = selected_shot_indices(data, selected)
+
     # RMB measurement.
     outcomes_by_config = spend_request_batch(
         rmb.backend,  # To be set later
@@ -648,9 +717,24 @@ def measure_batch_and_update_real_strategy(
 
     # Add real measured data to the real GP strategy.
     for config, outcomes in outcomes_by_config.items():
-        for outcome in outcomes:
+        config_shot_indices = shot_indices.get(config, [])
+        for outcome_index, outcome in enumerate(outcomes):
+            shot_index = (
+                config_shot_indices[outcome_index]
+                if outcome_index < len(config_shot_indices)
+                else None
+            )
+            actual_n_gates, actual_ratio = actual_gate_coordinates_after_elimination(
+                config,
+                rng_seed=settings.rng_seed,
+                shot_index=shot_index,
+            )
             obs = Observation(
-                x_cpu=point_from_config(config, device=torch.device("cpu")),
+                x_cpu=raw_point(
+                    actual_n_gates,
+                    actual_ratio,
+                    device=torch.device("cpu"),
+                ),
                 y=int(outcome),
                 source=phase,
             )
@@ -660,8 +744,8 @@ def measure_batch_and_update_real_strategy(
 
             results_for_plot.append(
                 (
-                    float(config.n_gates),
-                    float(config.ratio_2_qb_gates),
+                    actual_n_gates,
+                    actual_ratio,
                     int(outcome),
                 )
             )
