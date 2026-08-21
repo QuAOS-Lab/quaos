@@ -337,10 +337,14 @@ def gp_grid_scores(
 ) -> dict[str, float]:
     """Return S1 and S2 for a saved GP grid NPZ."""
     contour = gp_mean_contour_from_grid(grid_path)
+    print(grid_path)
     ratio = contour["ratio"]
     gp_log_gates = contour["gp_log_gates"]
     sigma = contour["sigma_contour"]
     if len(ratio) < 2:
+        print(contour["ratio"])
+        print(contour["gp_log_gates"])
+        print(contour["sigma_contour"])
         raise ValueError(f"Not enough GP contour points in {grid_path}")
 
     analytic_log_gates = true_log_gates(

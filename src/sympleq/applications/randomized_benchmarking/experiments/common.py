@@ -41,8 +41,8 @@ def default_backend_factory(settings: CrossingSettings, rng: RNGGenerator) -> RM
 def quantinuum_emulator_backend_factory(settings: CrossingSettings, rng: RNGGenerator) -> RMBBackend:
     """SympleQ emulation of Quantinuum hardware; nothing is submitted."""
     return QuantinuumBackend(
-        device_name="H2-Emulator",
-        project_name="level-benchmark",
+        device_name="H2-1E",
+        project_name="Emulator_H21E-benchmark",
         batch_size=1,
         max_cost_per_run=settings.max_cost_per_run
     )
@@ -59,8 +59,8 @@ def quantinuum_H2_backend_factory(settings: CrossingSettings, rng: RNGGenerator)
 def quantinuum_H2_backend_factory_Hwrap(settings: CrossingSettings, rng: RNGGenerator) -> RMBBackend:
     """SympleQ emulation of Quantinuum hardware; nothing is submitted."""
     return QuantinuumBackend(
-        device_name="H2-2",
-        project_name="FLE-benchmark-h2-2-Hwrap",
+        device_name="H2-1",
+        project_name="FLE-benchmark-h2-1-Hwrap",
         batch_size=1,
         max_cost_per_run=settings.max_cost_per_run
     )

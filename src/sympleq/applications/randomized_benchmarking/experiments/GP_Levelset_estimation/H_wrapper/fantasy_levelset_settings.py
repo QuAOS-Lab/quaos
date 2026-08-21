@@ -60,8 +60,8 @@ class FantasySettings(CrossingSettings):
     gate_budget: int = 7000
 
     # Recovery
-    recovery_mode: bool = False
-    recovery_folder: str | Path | None = None
+    recovery_mode: bool = True
+    recovery_folder: str | Path | None =  "Personal\FLE\H_wrapper\H2_1\q56\seed_42\FLE_H_wrapper_20260819_134349"
 
     # AEPsych / GP / acquisition
     optimization_steps: int = 10000
@@ -131,8 +131,8 @@ N_QUBITS = 56
 # -------------------------------------------------------------------------
 # Set to None to use the defaults inherited from CrossingSettings.
 
-N_GATES_BOUNDS = (400, 6000)
-RATIO_BOUNDS = (0.5, 0.9)
+N_GATES_BOUNDS = (400, 1500)
+RATIO_BOUNDS = (0.1, 0.9)
 
 # -------------------------------------------------------------------------
 # HQC BUDGET HANDLES
@@ -172,8 +172,10 @@ SAVE_REAL_CHECKPOINTS = True
 # RECOVERY HANDLES
 # -------------------------------------------------------------------------
 
-RECOVERY_MODE = False
-RECOVERY_FOLDER = None
+RECOVERY_MODE = True
+RECOVERY_FOLDER = Path(
+    r"Personal\FLE\H_wrapper\H2_1\q56\seed_42\FLE_H_wrapper_20260819_134349"
+)
 
 
 # -------------------------------------------------------------------------
