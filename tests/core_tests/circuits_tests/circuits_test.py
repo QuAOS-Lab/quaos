@@ -514,10 +514,10 @@ class TestCircuits():
             _ = Circuit.from_gates_and_qudits(dimensions, [GATES.CX, GATES.H, GATES.S], [(0, 1), (2,)])
 
     def test_from_random_gates_set_default(self):
-        """Default gate set is {H, S, CX, SWAP}; no ZZMax or CZ should appear."""
+        """Default gate set is {H, S, CX, CZ, SWAP}; no ZZMax should appear."""
         rng = np.random.default_rng(0)
         c = Circuit.from_depth(50, [2, 2, 2], rng=rng)
-        allowed = {GATES.H, GATES.S, GATES.CX, GATES.SWAP}
+        allowed = {GATES.H, GATES.S, GATES.CX, GATES.CZ, GATES.SWAP}
         for g in c.gates:
             assert g in allowed, f"Default gate set produced unexpected gate {g.name}"
 

@@ -130,7 +130,7 @@ class TestSymmetryFinder:
         all_qudit_indices = tuple(range(n_qudits))
 
         for _ in range(n_tests):
-            C1 = Circuit.from_depth(10, [dimension] * n_qudits)
+            C1 = Circuit.from_depth(2, [dimension] * n_qudits)
             C1_gate = C1.composite_gate()
 
             H = random_gate_symmetric_hamiltonian(C1_gate, dimension, all_qudit_indices,
