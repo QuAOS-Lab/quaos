@@ -128,7 +128,7 @@ class TestSymplecticSolverQudits:
             pl_sum = pl_sum[basis_indices]
 
             # scramble input Hamiltonian to get target
-            C = Circuit.from_random(10 * n**2, dimensions=dimensions)
+            C = Circuit.from_random(dimensions=dimensions)
             target_pl_sum = C.act(pl_sum)
 
             input_tab = pl_sum.tableau

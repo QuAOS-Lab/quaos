@@ -14,7 +14,7 @@ class TestUtils:
     def test_bases_to_int(self):
         for _ in range(N_tests):
             dimensions = choose_random_dimensions(2500)
-            bases = [rng.integers(0, d - 1) for d in dimensions]
+            bases = [int(rng.integers(0, d - 1)) for d in dimensions]
             digit = bases_to_int(bases, dimensions)
 
             assert np.all(int_to_bases(digit, dimensions) == bases), (
@@ -28,7 +28,7 @@ class TestUtils:
         for _ in range(N_tests):
             dimensions = choose_random_dimensions(2500)
             max_val = np.prod(dimensions)
-            digit = rng.integers(0, int(max_val - 1))
+            digit = int(rng.integers(0, int(max_val - 1)))
             bases = int_to_bases(digit, dimensions)
 
             assert np.all(bases_to_int(bases, dimensions) == digit), (
