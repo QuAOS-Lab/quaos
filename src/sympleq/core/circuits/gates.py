@@ -1,4 +1,9 @@
 from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sympleq.core.circuits.circuits import Circuit
+
 from abc import ABC
 import numpy as np
 from typing import Self, overload
@@ -479,6 +484,19 @@ class Gate(ABC):
             return symplectic_matrix
 
         return symplectic_matrix % dimension
+
+    def to_circuit(self, dimensions: DimensionsType) -> Circuit:
+        """
+        Convert this gate into a Circuit object.
+
+        Returns
+        -------
+        Circuit
+            A Circuit containing this gate.
+        """
+        # Imports here to avoid circularity - there may be a better way
+        from sympleq.core.circuits.gate_decomposition_to_circuit import gate_to_circuit
+        return gate_to_circuit(self, dimensions)
 
 
 class _GenericGate(Gate):

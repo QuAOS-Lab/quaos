@@ -8,8 +8,7 @@
 #       - This could be a nice master project.
 from __future__ import annotations
 import numpy as np
-from sympleq.core.circuits import Circuit
-from sympleq.core.circuits.circuits import GateSpec
+from sympleq.core.circuits.circuits import Circuit, GateSpec
 from sympleq.core.circuits.utils import symplectic_form, is_symplectic
 from sympleq.core.circuits.gates import GATES, Gate, PauliGate
 from sympleq.core.paulis import PauliString

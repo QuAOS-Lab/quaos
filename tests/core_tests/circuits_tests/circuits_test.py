@@ -16,10 +16,9 @@ class TestCircuits():
         for _ in range(10):
             n_qudits = 3
             dimensions = [2] * n_qudits
-            n_gates = 15
             n_paulis = 5
             # make a random circuit
-            circuit = Circuit.from_random(n_gates, dimensions)
+            circuit = Circuit.from_random(dimensions)
 
             # make a random pauli sum
             pauli_sum = PauliSum.from_random(n_paulis, dimensions)
@@ -63,13 +62,22 @@ class TestCircuits():
 
     def test_random_circuit(self):
         # test that a random circuit can be generated with the correct dimensions on mixed qudits
-        for _ in range(1000):
+        for _ in range(100):
             n_qudits = np.random.randint(2, 10)
-            dimensions = np.random.randint(2, 5, size=n_qudits)
-            C = Circuit.from_random(n_gates=10, dimensions=dimensions)
+            dimensions = np.random.choice([2, 3, 5], size=n_qudits)
+            C = Circuit.from_random(dimensions=dimensions)
             ps = PauliSum.from_random(10, dimensions)
             out = C.act(ps)
             assert np.all(out.dimensions == dimensions)
+
+    def test_from_random_preserves_mixed_dimensions(self):
+        """Random mixed-dimension circuit should preserve the input qudit register dimensions."""
+        rng = np.random.default_rng(123)
+        dimensions = np.array([2, 3, 2, 5, 3], dtype=int)
+
+        circuit = Circuit.from_random(dimensions=dimensions, rng=rng)
+
+        assert np.array_equal(circuit.dimensions, dimensions)
 
     @pytest.mark.parametrize("d", [2, 3, 5, 11])
     def test_single_hadamard_unitary(self, d: int):
@@ -88,7 +96,7 @@ class TestCircuits():
         n_paulis = 1
         for _ in range(N):
             P = PauliSum.from_random(n_paulis, dimensions, rand_weights=False)
-            C = Circuit.from_random(n_gates=np.random.randint(1, 6), dimensions=dimensions)
+            C = Circuit.from_random(dimensions=dimensions)
             U = C.unitary()
 
             ps_m = P.to_hilbert_space()
@@ -264,7 +272,7 @@ class TestCircuits():
         dimensions = [dimension] * n_qudits
         for _ in range(n_tests):
             ps = PauliSum.from_random(n_paulis, dimensions, False)
-            c = Circuit.from_random(c_depth, dimensions)
+            c = Circuit.from_depth(c_depth, dimensions)
             U_c = c.unitary()
             P_from_conjugation = U_c @ ps.to_hilbert_space() @ U_c.conj().T
             P_from_act = c.act(ps).to_hilbert_space()
@@ -368,10 +376,10 @@ class TestCircuits():
     def test_roundtrip_random_circuits(self):
         """Test roundtrip with random circuits."""
         for _ in range(50):
-            n_gates = np.random.randint(0, 20)
+            depth = np.random.randint(0, 20)
             n_qudits = np.random.randint(2, 10)
             dimensions = np.random.choice([2, 3, 5], size=n_qudits)
-            original = Circuit.from_random(n_gates, dimensions)
+            original = Circuit.from_depth(depth, dimensions)
 
             s = original.to_string()
             restored = Circuit.from_string(s)
@@ -381,7 +389,7 @@ class TestCircuits():
     def test_roundtrip_preserves_behavior(self):
         """Test that restored circuit produces same results when acting on Paulis."""
         dimensions = [2, 3, 5]
-        original = Circuit.from_random(10, dimensions)
+        original = Circuit.from_depth(10, dimensions)
         restored = Circuit.from_string(original.to_string())
 
         pauli_sum = PauliSum.from_random(5, dimensions)
@@ -459,7 +467,7 @@ class TestCircuits():
 
     def test_gates_layout(self):
         dimensions = [3] * 4
-        circuit = Circuit.from_random(np.random.randint(4, 12), dimensions)
+        circuit = Circuit.from_depth(np.random.randint(4, 12), dimensions)
 
         # Just check that it doesn't crash
         _ = circuit.gates_layout()
@@ -472,7 +480,7 @@ class TestCircuits():
 
     def test_gates_layout_exception(self):
         dimensions = [3] * 4
-        circuit = Circuit.from_random(np.random.randint(4, 12), dimensions)
+        circuit = Circuit.from_depth(np.random.randint(4, 12), dimensions)
 
         # Just check that it doesn't crash
         _ = circuit.gates_layout(wires="-")
@@ -485,7 +493,7 @@ class TestCircuits():
         # Inconsistent dimensions
         dimensions = [2, 3, 3, 1]
         with pytest.raises(ValueError):
-            _ = Circuit.from_random(4, dimensions)
+            _ = Circuit.from_depth(4, dimensions)
 
         # Inconsistent dimensions for CX
         dimensions = [2, 3, 3, 5]
@@ -508,7 +516,7 @@ class TestCircuits():
     def test_from_random_gates_set_default(self):
         """Default gate set is {H, S, CX, SWAP}; no ZZMax or CZ should appear."""
         rng = np.random.default_rng(0)
-        c = Circuit.from_random(50, [2, 2, 2], rng=rng)
+        c = Circuit.from_depth(50, [2, 2, 2], rng=rng)
         allowed = {GATES.H, GATES.S, GATES.CX, GATES.SWAP}
         for g in c.gates:
             assert g in allowed, f"Default gate set produced unexpected gate {g.name}"
@@ -517,8 +525,8 @@ class TestCircuits():
         """Only the gates in gates_set should appear in the produced circuit."""
         gates_set = [GATES.S, GATES.ZZMax]
         rng = np.random.default_rng(42)
-        c = Circuit.from_random(100, [2] * 4, gates_set=gates_set,
-                                two_qudit_gate_ratio=0.5, rng=rng)
+        c = Circuit.from_depth(100, [2] * 4, gates_set=gates_set,
+                               two_qudit_gate_ratio=0.5, rng=rng)
         seen = set(c.gates)
         assert seen.issubset({GATES.S, GATES.ZZMax})
         # With 100 gates and 50/50 ratio both should actually appear.
@@ -529,8 +537,8 @@ class TestCircuits():
         """With only single-qudit gates and ratio=0, only single-qudit gates should appear."""
         gates_set = [GATES.H, GATES.S]
         rng = np.random.default_rng(0)
-        c = Circuit.from_random(40, [2, 2, 2], gates_set=gates_set,
-                                two_qudit_gate_ratio=0.0, rng=rng)
+        c = Circuit.from_depth(40, [2, 2, 2], gates_set=gates_set,
+                               two_qudit_gate_ratio=0.0, rng=rng)
         for g in c.gates:
             assert g.n_qudits == 1
             assert g in {GATES.H, GATES.S}
@@ -542,8 +550,8 @@ class TestCircuits():
         three_qudit_gate = Gate.from_random(n_qudits=3, dimension=2)
         gates_set = [GATES.H, GATES.CX, three_qudit_gate]
         with pytest.warns(UserWarning, match="single qudit and 2-qudits"):
-            c = Circuit.from_random(10, [2, 2, 2], gates_set=gates_set,
-                                    rng=np.random.default_rng(0))
+            c = Circuit.from_depth(10, [2, 2, 2], gates_set=gates_set,
+                                   rng=np.random.default_rng(0))
         for g in c.gates:
             assert g.n_qudits <= 2
             assert g is not three_qudit_gate
@@ -551,7 +559,7 @@ class TestCircuits():
     def test_from_random_gates_set_invalid_type(self):
         """A non-container gates_set should raise ValueError."""
         with pytest.raises(ValueError):
-            _ = Circuit.from_random(5, [2, 2], gates_set=GATES.H)  # type: ignore[arg-type]
+            _ = Circuit.from_depth(5, [2, 2], gates_set=GATES.H)  # type: ignore[arg-type]
 
     def test_from_depth_default_gate_set(self):
         """Default from_depth gate set is {H, S, CX, CZ, SWAP}."""

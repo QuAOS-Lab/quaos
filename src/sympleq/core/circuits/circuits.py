@@ -100,24 +100,20 @@ class Circuit:
         return C
 
     @classmethod
-    def from_random(cls, n_gates: int,
+    def from_random(cls,
                     dimensions: DimensionsLike,
-                    gates_set: tuple[Gate, ...] | list[Gate] | set[Gate] | None = None,
-                    two_qudit_gate_ratio: float = 0.3,
                     rng: RNGGenerator | None = None) -> Circuit:
         """
-        Creates a random circuit with the given number of gates.
+        Creates a random circuit by generating a random symplectic, and decomposing it into gates.
+
+        If the circuit consists of a mixed register of qudits with different dimensions,
+        the random symplectic is generated for each dimension separately,
+        and then combined into a block-diagonal symplectic.
 
         Parameters
         ----------
-        n_gates : int
-            Number of gates in the circuit.
         dimensions : DimensionsLike
             The dimension of each qudit.
-        gates_set : tuple[Gate, ...] | list[Gate] | set[Gate]
-            The set of gates from which to draw.
-        two_qudit_gate_ratio : float
-            Probability of choosing a two-qudit gate vs single-qudit gate.
         rng : numpy.random.Generator or None, optional
             Random number generator. If ``None``, a default generator is used.
 
@@ -126,50 +122,45 @@ class Circuit:
         Circuit
             A new random Circuit.
         """
-        def index_lists(lst):
-            groups = defaultdict(list)
-            for i, val in enumerate(lst):
-                groups[val].append(i)
-            return list(groups.values())
+        # TODO: In future when have decomposition into an arbitrary Clifford gate set we can pass a gate set as well.
 
         if rng is None:
             rng = default_rng()
 
-        index_sets = index_lists(dimensions)  # list of lists of indexes for each dimension
-        n_dims = len(index_sets)  # number of different dimensions
-
         dimensions = np.asarray(dimensions, dtype=int)
-        index_sets = index_lists(dimensions)  # list of lists of indexes for each dimension
-        n_dims = len(index_sets)
-
-        if gates_set is None:
-            single_qudit_gates: list[Gate] = [GATES.H, GATES.S]
-            two_qudit_gates: list[Gate] = [GATES.CX, GATES.SWAP]
-        elif isinstance(gates_set, (tuple, list, set)):
-            single_qudit_gates = [gate for gate in gates_set if gate.n_qudits == 1]
-            two_qudit_gates = [gate for gate in gates_set if gate.n_qudits == 2]
-            if any([gate.n_qudits > 2 for gate in gates_set]):
-                warnings.warn("Only single qudit and 2-qudits gates are used to generate the circuit.")
+        n_qudits = len(dimensions)
+        if np.all(dimensions == dimensions[0]):
+            # All qudits have the same dimension, generate a random symplectic for the whole circuit.
+            random_gate = Gate.from_random(n_qudits, dimensions[0], rng=rng)
+            C = random_gate.to_circuit(dimensions)
         else:
-            raise ValueError("Invalid gates_set type.")
+            # Mixed dimensions, generate a random symplectic for each dimension separately.
+            # Then combine them into a block-diagonal symplectic.
+            unique_dims = np.unique(dimensions)
+            block_sizes = [np.sum(dimensions == d) for d in unique_dims]
+            random_gates = [Gate.from_random(n, d, rng=rng) for n, d in zip(block_sizes, unique_dims)]
+            # The tricky bit is now inserting these gates into the correct qudit indices in the final circuit.
+            # to do so we decompose each one to a circuit then add it to a bigger empty circuit
+            #  with the correct qudit indices.
+            random_circuits = [random_gate.to_circuit(np.full(n, d)) for random_gate, n, d in zip(random_gates,
+                                                                                                  block_sizes,
+                                                                                                  unique_dims)]
+            C = Circuit.empty(dimensions)
+            # Build a stable mapping from local per-dimension qudit indices to global qudit indices.
+            indices_by_dimension = {
+                int(d): [int(i) for i in np.flatnonzero(dimensions == d)]
+                for d in unique_dims
+            }
+            for random_circuit in random_circuits:
+                dim_key = int(random_circuit.dimensions[0])
+                global_indices = indices_by_dimension[dim_key]
+                for gate, qudit_indices in zip(random_circuit.gates, random_circuit.qudit_indices):
+                    # Map local indices from this dimension block to global circuit indices.
+                    mapped_indices: tuple[int, ...] = tuple(
+                        int(global_indices[int(q_idx)]) for q_idx in qudit_indices
+                    )
+                    C.add_gate(gate, *mapped_indices)
 
-        gates = []
-        qudit_indices = []
-
-        for _ in range(n_gates):
-            set_idx = rng.integers(0, n_dims)
-            if rng.random() < two_qudit_gate_ratio and len(index_sets[set_idx]) > 1:
-                indices = tuple(int(idx) for idx in rng.choice(index_sets[set_idx], 2, replace=False))
-                gate = two_qudit_gates[rng.integers(0, len(two_qudit_gates))]
-                gates.append(gate)
-                qudit_indices.append(indices)
-            else:
-                index = int(rng.choice(index_sets[set_idx]))
-                gate = single_qudit_gates[rng.integers(0, len(single_qudit_gates))]
-                gates.append(gate)
-                qudit_indices.append((index,))
-
-        C = cls(dimensions, gates, qudit_indices)
         C._sanity_check()
 
         return C
@@ -311,19 +302,20 @@ class Circuit:
             for q_idx in range(n_qudits):
                 gate = single_qudit_gates[rng.integers(0, len(single_qudit_gates))]
                 _gates.append(gate)
-                _qudit_indices.append((q_idx,))
+                _qudit_indices.append((int(q_idx),))
 
         extra_1qb_gates = n_1qd_gates - min_1qb_gate_per_qudit * n_qudits
         for _ in range(extra_1qb_gates):
             gate = single_qudit_gates[rng.integers(0, len(single_qudit_gates))]
-            q_idx = rng.integers(0, n_qudits)
+            q_idx: int = int(rng.integers(0, n_qudits))
             _gates.append(gate)
             _qudit_indices.append((q_idx,))
 
         # Assign all 2-qubit gates at random
         for _ in range(n_2qd_gates):
             gate = two_qudit_gates[rng.integers(0, len(two_qudit_gates))]
-            q_idxs = tuple(int(idx) for idx in rng.choice(range(n_qudits), 2, replace=False))
+            raw_q_idxs = rng.choice(range(n_qudits), 2, replace=False)
+            q_idxs: tuple[int, int] = (int(raw_q_idxs[0]), int(raw_q_idxs[1]))
             _gates.append(gate)
             _qudit_indices.append(q_idxs)
 
