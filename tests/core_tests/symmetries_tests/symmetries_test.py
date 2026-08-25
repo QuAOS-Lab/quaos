@@ -101,7 +101,7 @@ class TestSymmetryFinder:
         all_qudit_indices = tuple(range(n_qudits))
         n_tests = 100
         for _ in range(n_tests):
-            C1 = Circuit.from_random(10, [dimension] * n_qudits)
+            C1 = Circuit.from_depth(10, [dimension] * n_qudits)
             C1_gate = C1.composite_gate()
 
             H = random_gate_symmetric_hamiltonian(C1_gate, dimension, all_qudit_indices,
@@ -130,7 +130,7 @@ class TestSymmetryFinder:
         all_qudit_indices = tuple(range(n_qudits))
 
         for _ in range(n_tests):
-            C1 = Circuit.from_random(10, [dimension] * n_qudits)
+            C1 = Circuit.from_depth(10, [dimension] * n_qudits)
             C1_gate = C1.composite_gate()
 
             H = random_gate_symmetric_hamiltonian(C1_gate, dimension, all_qudit_indices,
@@ -168,12 +168,12 @@ class TestSymmetryFinder:
 
     def test_random_pauli_symmetry(self):
         n_tests = 10
-        n_qudits = rng.integers(5, 20)
-        n_paulis = rng.integers(5 * n_qudits, 10 * n_qudits ** 2)
+        n_qudits = int(rng.integers(5, 20))
+        n_paulis = int(rng.integers(5 * n_qudits, 10 * n_qudits ** 2))
 
         for _ in range(n_tests):
-            n_redundant = np.random.randint(0, n_qudits - 3)
-            n_conditional = np.random.randint(0, n_qudits - n_redundant - 1)
+            n_redundant = int(np.random.randint(0, n_qudits - 3))
+            n_conditional = int(np.random.randint(0, n_qudits - n_redundant - 1))
             ham = random_pauli_symmetry_hamiltonian(n_qudits, n_paulis, n_redundant=n_redundant,
                                                     n_conditional=n_conditional)
             h_reduced, conditioned_hams, reducing_circuit, eigenvalues = pauli_reduce(ham)

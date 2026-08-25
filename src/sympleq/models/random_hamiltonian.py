@@ -48,7 +48,7 @@ def random_pauli_hamiltonian(num_paulis, qudit_dims, mode='rand'):
         pauli_index = random.choice(available_paulis)
         available_paulis.remove(pauli_index)
 
-        exponents = int_to_bases(pauli_index, q2)
+        exponents = int_to_bases(int(pauli_index), q2)
         exponents_H = np.zeros_like(exponents)
         phase_factor = 1
         pauli_str = ' '
@@ -79,7 +79,7 @@ def random_pauli_hamiltonian(num_paulis, qudit_dims, mode='rand'):
             conjugate_index = bases_to_int(exponents_H, q2)
             coefficients.append(coeff)
             coefficients.append(np.conj(coeff) * phase_factor)
-            available_paulis.remove(conjugate_index)
+            available_paulis.remove(np.int_(conjugate_index))
             pauli_strings.append(PauliString.from_string(pauli_str_H.strip(), dimensions=qudit_dims))
         else:
             coefficients.append(coeff.real)
@@ -182,7 +182,7 @@ def random_pauli_symmetry_hamiltonian(n_qudits: int, n_paulis: int, n_redundant=
 
     if shuffle:
         g = Gate.from_random(n_qudits, 2)
-        P = g.act(P, tuple(np.arange(n_qudits)))
+        P = g.act(P, tuple(int(i) for i in range(n_qudits)))
 
     return P
 
