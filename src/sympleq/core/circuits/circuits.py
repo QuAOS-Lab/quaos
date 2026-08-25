@@ -692,6 +692,100 @@ class Circuit:
         self._qudit_indices.pop(index)
         self._noise_model_per_gate.pop(index)
 
+    def _compute_layers(self) -> list[list[int]]:
+        """Greedily group gate indices into layers: each qudit can appear at most once per layer."""
+        next_free_layer: dict[int, int] = {}
+        gate_layer: list[int] = []
+        for idxs in self._qudit_indices:
+            layer = max((next_free_layer.get(q, 0) for q in idxs), default=0)
+            gate_layer.append(layer)
+            for q in idxs:
+                next_free_layer[q] = layer + 1
+
+        layers: list[list[int]] = [[] for _ in range(max(gate_layer, default=-1) + 1)]
+        for gate_idx, layer in enumerate(gate_layer):
+            layers[layer].append(gate_idx)
+        return layers
+
+    def n_layers(self) -> int:
+        """Returns the number of layers in the circuit (see `layer`)."""
+        return len(self._compute_layers())
+
+    def layer(self, index: int | list[int] | tuple[int, ...]) -> Circuit:
+        """
+        Extract one or more layers as a new Circuit.
+
+        A layer is a maximal group of gates that can be executed in parallel, i.e. each qudit
+        is acted on by at most one gate per layer. Layers are derived on demand from the current
+        gate ordering, so they are not stored separately from `gates`/`qudit_indices`.
+
+        Parameters
+        ----------
+        index : int | list[int] | tuple[int, ...]
+            Layer index, or collection of layer indices, to extract (0-based).
+
+        Returns
+        -------
+        Circuit
+            A new Circuit containing only the gates of the requested layer(s), preserving
+            their original relative order.
+        """
+        layers = self._compute_layers()
+        requested = [index] if isinstance(index, int) else list(index)
+
+        gate_idxs: list[int] = []
+        for i in requested:
+            if i < 0 or i >= len(layers):
+                raise IndexError(f"Layer index {i} out of range for circuit with {len(layers)} layers.")
+            gate_idxs.extend(layers[i])
+        gate_idxs.sort()
+
+        gates = [self._gates[i] for i in gate_idxs]
+        qudit_indices = [self._qudit_indices[i] for i in gate_idxs]
+
+        C = Circuit(self.dimensions, gates, qudit_indices)
+        C._noise_model_per_gate = [self._noise_model_per_gate[i] for i in gate_idxs]
+
+        return C
+
+    def insert_layer(self, position: int, gates: list[Gate], qudit_indices: list[tuple[int, ...]],
+                     noise_models: list[NoiseModel | None] | None = None) -> None:
+        """
+        Insert a new layer of gates at the given layer position.
+
+        Existing gates whose layer is `>= position` end up after the newly inserted gates,
+        effectively shifting them to later layers.
+
+        Parameters
+        ----------
+        position : int
+            Layer index (0-based) at which to insert the new gates. Use `n_layers()` to
+            append a new layer at the end.
+        gates : list[Gate]
+            Gates to insert.
+        qudit_indices : list[tuple[int, ...]]
+            Qudit indices for each inserted gate, matching `gates` in length.
+        noise_models : list[NoiseModel | None] | None
+            Optional per-gate noise models for the inserted gates.
+        """
+        if len(gates) != len(qudit_indices):
+            raise ValueError("gates and qudit_indices must have the same length.")
+
+        layers = self._compute_layers()
+        if position < 0 or position > len(layers):
+            raise ValueError(f"position {position} out of range for circuit with {len(layers)} layers.")
+
+        insert_at = layers[position][0] if position < len(layers) else len(self._gates)
+
+        for offset, (gate, idxs) in enumerate(zip(gates, qudit_indices)):
+            gate_position = insert_at + offset
+            self._gates.insert(gate_position, gate)
+            self._qudit_indices.insert(gate_position, tuple(idxs))
+            noise_model = noise_models[offset] if noise_models is not None else None
+            self._noise_model_per_gate.insert(gate_position, noise_model)
+
+        self._sanity_check()
+
     def n_qudits(self) -> int:
         """Returns the number of qudits in the circuit."""
         return len(self.dimensions)

@@ -643,5 +643,114 @@ class TestCircuits():
         assert list(c1.qudit_indices) == list(c2.qudit_indices)
 
 
-if __name__ == '__main__':
-    TestCircuits().test_circuit_composition()
+class TestCircuitLayers():
+
+    @staticmethod
+    def _as_tuples(circuit: Circuit) -> list[tuple[str, tuple[int, ...]]]:
+        return [(g.name, idxs) for g, idxs in zip(circuit.gates, circuit.qudit_indices)]
+
+    def test_layer_basic_partition(self):
+        c = Circuit.from_tuples([2, 2, 2], [(GATES.H, 0), (GATES.H, 1), (GATES.CX, 0, 1), (GATES.H, 2)])
+
+        assert c.n_layers() == 2
+        assert self._as_tuples(c.layer(0)) == [("H", (0,)), ("H", (1,)), ("H", (2,))]
+        assert self._as_tuples(c.layer(1)) == [("CX", (0, 1))]
+
+    def test_layer_single_int_index_returns_circuit(self):
+        c = Circuit.from_tuples([2, 2], [(GATES.H, 0), (GATES.S, 1)])
+
+        L = c.layer(0)
+        assert isinstance(L, Circuit)
+        assert np.array_equal(L.dimensions, c.dimensions)
+        assert self._as_tuples(L) == [("H", (0,)), ("S", (1,))]
+
+    def test_layer_multiple_indices_preserve_original_order(self):
+        c = Circuit.from_tuples([2, 2, 2], [(GATES.H, 0), (GATES.H, 1), (GATES.CX, 0, 1), (GATES.H, 2)])
+
+        # Passing indices out of order should not change the resulting gate order (original array order).
+        combo = c.layer([1, 0])
+        assert self._as_tuples(combo) == [("H", (0,)), ("H", (1,)), ("CX", (0, 1)), ("H", (2,))]
+
+    def test_layer_out_of_range_raises(self):
+        c = Circuit.from_tuples([2, 2], [(GATES.H, 0), (GATES.CX, 0, 1)])
+
+        with pytest.raises(IndexError):
+            c.layer(-1)
+        with pytest.raises(IndexError):
+            c.layer(c.n_layers())
+
+    def test_layer_preserves_noise_models(self):
+        c = Circuit.from_tuples(
+            [2, 2], [(GATES.H, 0), (GATES.S, 1)]
+        ).with_noise([DepolarizingNoise(0.05), DephasingNoise(0.1)])
+
+        L = c.layer(0)
+        assert L.noise_model_per_gate == c.noise_model_per_gate[:L.n_gates()]
+
+    def test_layer_empty_circuit(self):
+        c = Circuit.empty([2, 2])
+
+        assert c.n_layers() == 0
+        with pytest.raises(IndexError):
+            c.layer(0)
+
+    def test_n_layers_matches_depth_for_single_qudit_only(self):
+        depth = 4
+        c = Circuit.from_depth(depth=depth, dimensions=[2, 2, 2], two_qudit_gate_ratio=0.0,
+                               rng=np.random.default_rng(0))
+
+        assert c.n_layers() == depth
+
+    def test_insert_layer_shifts_existing_layers(self):
+        # Both qudits are busy in layer 0, so a SWAP touching them cannot merge backwards
+        # and genuinely forces a new layer, pushing CX to layer 2.
+        c = Circuit.from_tuples([2, 2], [(GATES.H, 0), (GATES.H, 1), (GATES.CX, 0, 1)])
+        assert c.n_layers() == 2
+
+        c.insert_layer(1, [GATES.SWAP], [(0, 1)])
+
+        assert c.n_layers() == 3
+        assert self._as_tuples(c.layer(0)) == [("H", (0,)), ("H", (1,))]
+        assert self._as_tuples(c.layer(1)) == [("SWAP", (0, 1))]
+        assert self._as_tuples(c.layer(2)) == [("CX", (0, 1))]
+
+    def test_insert_layer_at_end_equals_append(self):
+        c = Circuit.from_tuples([2, 2], [(GATES.H, 0), (GATES.H, 1)])
+        n_before = c.n_layers()
+
+        c.insert_layer(n_before, [GATES.S, GATES.S], [(0,), (1,)])
+
+        assert c.n_layers() == n_before + 1
+        assert self._as_tuples(c.layer(n_before)) == [("S", (0,)), ("S", (1,))]
+
+    def test_insert_layer_mismatched_lengths_raises(self):
+        c = Circuit.from_tuples([2, 2], [(GATES.H, 0)])
+
+        with pytest.raises(ValueError):
+            c.insert_layer(0, [GATES.H, GATES.S], [(0,)])
+
+    def test_insert_layer_invalid_position_raises(self):
+        c = Circuit.from_tuples([2, 2], [(GATES.H, 0)])
+
+        with pytest.raises(ValueError):
+            c.insert_layer(-1, [GATES.S], [(1,)])
+        with pytest.raises(ValueError):
+            c.insert_layer(c.n_layers() + 1, [GATES.S], [(1,)])
+
+    def test_insert_layer_with_noise_models(self):
+        c = Circuit.from_tuples([2, 2], [(GATES.H, 0), (GATES.CX, 0, 1)])
+
+        c.insert_layer(1, [GATES.S], [(1,)], noise_models=[DepolarizingNoise(0.05)])
+
+        assert self._as_tuples(c.layer(0)) == [("H", (0,)), ("S", (1,))]
+        s_gate_index = c.gates.index(GATES.S)
+        assert isinstance(c.noise_model_per_gate[s_gate_index], DepolarizingNoise)
+
+    def test_layer_partition_reconstructs_full_circuit(self):
+        c = Circuit.from_depth(depth=6, dimensions=[2, 2, 2, 2], rng=np.random.default_rng(7))
+
+        reconstructed: list[tuple[str, tuple[int, ...]]] = []
+        for i in range(c.n_layers()):
+            reconstructed.extend(self._as_tuples(c.layer(i)))
+
+        assert reconstructed == self._as_tuples(c)
