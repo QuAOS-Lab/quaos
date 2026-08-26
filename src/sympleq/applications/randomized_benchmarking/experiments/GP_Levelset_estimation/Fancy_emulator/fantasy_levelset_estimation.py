@@ -49,7 +49,7 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     default_backend_factory,
     quantinuum_emulator_backend_factory,
 )
-from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.fantasy_levelset_settings import (
+from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.Fancy_emulator.fantasy_levelset_settings import (
     FantasySettings,
 )
 

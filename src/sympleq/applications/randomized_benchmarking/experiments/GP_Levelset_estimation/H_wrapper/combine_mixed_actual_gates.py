@@ -42,7 +42,7 @@ DEFAULT_BASE_ACTUAL_JSON = (
 # GP grid handles for combined actual-gates JSONs. These are intentionally
 # explicit because the run search box can exclude the actual success region.
 GRID_N_GATES_BOUNDS = (200.0, 1500.0)
-GRID_RATIO_BOUNDS = (0.1, 0.75)
+GRID_RATIO_BOUNDS = (0.1, 0.9)
 
 
 def debug(message: str) -> None:

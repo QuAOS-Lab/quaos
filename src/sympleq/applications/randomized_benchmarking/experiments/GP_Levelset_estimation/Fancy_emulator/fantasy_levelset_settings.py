@@ -12,6 +12,9 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     quantinuum_H2_backend_factory,
     dephasing_sympleq_backend_factory,
 )
+from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.Fancy_emulator.unstitched_quantinuum import (
+    fancy_unstitched_emulator_backend_factory,
+)
 
 
 @dataclass(frozen=True)
@@ -92,7 +95,7 @@ TARGET_THRESHOLD = 0.5
 # NuUMBER of Qubits
 # -------------------------------------------------------------------------
 
-N_QUBITS = 56
+N_QUBITS = 26
 # For a multi-slice run, use e.g.:
 # N_QUBITS = [5,20]
 
@@ -176,7 +179,8 @@ FORCE_DEFAULT_DEVICE_DURING_AEPSYCH = True
 # -------------------------------------------------------------------------
 
 # BACKEND_FACTORY = default_backend_factory
-BACKEND_FACTORY = quantinuum_emulator_backend_factory
+# BACKEND_FACTORY = quantinuum_emulator_backend_factory
+BACKEND_FACTORY = fancy_unstitched_emulator_backend_factory
 # BACKEND_FACTORY = quantinuum_H2_backend_factory
 # BACKEND_FACTORY = dephasing_sympleq_backend_factory
 

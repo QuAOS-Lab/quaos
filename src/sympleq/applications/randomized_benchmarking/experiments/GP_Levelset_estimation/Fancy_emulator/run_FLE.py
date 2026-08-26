@@ -52,7 +52,7 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     print_progress,
     start_run,
 )
-from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.fantasy_levelset_estimation import (
+from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.Fancy_emulator.fantasy_levelset_estimation import (
     Observation,
     add_observation_to_strategy,
     build_strategy,
@@ -72,7 +72,7 @@ from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estima
     sobol_initial_candidates,
     temporary_torch_default_device,
 )
-from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.fantasy_levelset_settings import (
+from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.Fancy_emulator.fantasy_levelset_settings import (
     FantasySettings,
     RNG_SEEDS,
     control_panel_settings_kwargs,
