@@ -33,6 +33,19 @@ from sympleq.integrations.quantinuum.utils import (
 )
 
 
+from sympleq.applications.randomized_benchmarking.backends.sympleq import SympleqBackend
+from sympleq.core.noise.noise_model import DephasingNoise
+
+ONE_Q_DEPHASING = 2.5e-5
+TWO_Q_DEPHASING = 7.9e-4
+
+def dephasing_sympleq_backend_factory(settings, rng):
+    return SympleqBackend(
+        noise_model=DephasingNoise(ONE_Q_DEPHASING, rng),
+        two_qubit_noise_model=DephasingNoise(TWO_Q_DEPHASING, rng),
+    )
+
+
 def default_backend_factory(settings: CrossingSettings, rng: RNGGenerator) -> RMBBackend:
     """SympleQ emulation of Quantinuum hardware; nothing is submitted."""
     return QuantinuumBackend.default_sympleq_backend(rng)
@@ -60,7 +73,7 @@ def quantinuum_H2_backend_factory_Hwrap(settings: CrossingSettings, rng: RNGGene
     """SympleQ emulation of Quantinuum hardware; nothing is submitted."""
     return QuantinuumBackend(
         device_name="H2-1",
-        project_name="FLE-benchmark-h2-1-Hwrap",
+        project_name="FLE-benchmark-h2-1-Vwrap",
         batch_size=1,
         max_cost_per_run=settings.max_cost_per_run
     )

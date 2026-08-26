@@ -9,18 +9,16 @@ from sympleq.core.circuits import Circuit
 from sympleq.core.circuits.gates import GATES
 
 
-H_WRAPPER_VARIANT = "native_h_wrapper_svs"
-H_WRAPPER_1Q_GATES_PER_QUBIT = 6
+H_WRAPPER_VARIANT = "native_v_wrapper"
+H_WRAPPER_1Q_GATES_PER_QUBIT = 2
 
 
-def native_h_layer(dimensions) -> Circuit:
-    """Native-H layer: H = S V S, applied to every qubit."""
+def native_v_layer(dimensions) -> Circuit:
+    """Native-V wrapper layer, applied to every qubit."""
 
     layer = Circuit.empty(dimensions)
     for q_idx in range(len(dimensions)):
-        layer.add_gate(GATES.S, q_idx)
         layer.add_gate(GATES.V, q_idx)
-        layer.add_gate(GATES.S, q_idx)
     return layer
 
 
@@ -55,7 +53,7 @@ class HWrappedRMBConfig(RMBConfig):
         return {
             "circuit_variant": H_WRAPPER_VARIANT,
             "protected_h_wrapper": True,
-            "native_h_decomposition": "S,V,S",
+            "native_h_decomposition": "V,V_inv",
             "h_wrapper_1q_gates": h_wrapper_1q_gates(self.n_qubits),
             "h_wrapper_1q_gates_per_qubit": H_WRAPPER_1Q_GATES_PER_QUBIT,
         }
@@ -90,19 +88,21 @@ class HWrappedRMBConfig(RMBConfig):
             rng=rng,
         )
 
-        h_layer = native_h_layer(self.dimensions)
+        left_wrapper = native_v_layer(self.dimensions)
+        right_wrapper = left_wrapper.inverse()
         if self.use_scrambler:
             core = single_1q_layer + body + body.inverse() + single_1q_layer.inverse()
         else:
             core = body + body.inverse()
 
-        circuit = h_layer + core + h_layer
+        circuit = left_wrapper + core + right_wrapper
 
-        left_h_len = len(h_layer.gates)
+        left_h_len = len(left_wrapper.gates)
         core_len = len(core.gates)
+        right_h_len = len(right_wrapper.gates)
         protected_indices = set(range(left_h_len))
         protected_indices.update(
-            range(left_h_len + core_len, left_h_len + core_len + left_h_len)
+            range(left_h_len + core_len, left_h_len + core_len + right_h_len)
         )
 
         if self.random_elimination > 0.0:

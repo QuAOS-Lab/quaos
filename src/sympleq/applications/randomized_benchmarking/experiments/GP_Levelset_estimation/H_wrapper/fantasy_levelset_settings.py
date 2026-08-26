@@ -10,6 +10,7 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     default_backend_factory,
     quantinuum_emulator_backend_factory,
     quantinuum_H2_backend_factory_Hwrap,
+    dephasing_sympleq_backend_factory,
 )
 from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.H_wrapper.h_wrapper_config import (
     H_WRAPPER_1Q_GATES_PER_QUBIT,
@@ -131,8 +132,8 @@ N_QUBITS = 56
 # -------------------------------------------------------------------------
 # Set to None to use the defaults inherited from CrossingSettings.
 
-N_GATES_BOUNDS = (400, 1500)
-RATIO_BOUNDS = (0.1, 0.9)
+N_GATES_BOUNDS = (200, 1500)
+RATIO_BOUNDS = (0.1, 0.7)
 
 # -------------------------------------------------------------------------
 # HQC BUDGET HANDLES
@@ -152,7 +153,7 @@ GATE_BUDGET = 7000
 # FAKE-ANCHOR HANDLES
 # -------------------------------------------------------------------------
 
-USE_FAKE_CORNERS = False
+USE_FAKE_CORNERS = True
 EASY_CORNER_OUTCOME = 1
 HARD_CORNER_OUTCOME = 0
 EXTRA_FAKE_ANCHORS = []
@@ -172,7 +173,7 @@ SAVE_REAL_CHECKPOINTS = True
 # RECOVERY HANDLES
 # -------------------------------------------------------------------------
 
-RECOVERY_MODE = True
+RECOVERY_MODE = False
 RECOVERY_FOLDER = Path(
     r"Personal\FLE\H_wrapper\H2_1\q56\seed_42\FLE_H_wrapper_20260819_134349"
 )
@@ -210,6 +211,7 @@ FORCE_DEFAULT_DEVICE_DURING_AEPSYCH = True
 # BACKEND_FACTORY = default_backend_factory
 # BACKEND_FACTORY = quantinuum_emulator_backend_factory
 BACKEND_FACTORY = quantinuum_H2_backend_factory_Hwrap
+# BACKEND_FACTORY = dephasing_sympleq_backend_factory
 
 # -------------------------------------------------------------------------
 # REPRODUCIBILITY / DEBUG HANDLES
