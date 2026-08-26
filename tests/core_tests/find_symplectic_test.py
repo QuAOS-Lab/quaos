@@ -221,7 +221,7 @@ class TestSymplecticSolver:
             pl_sum = pl_sum[basis_indices]
 
             # scramble input hamiltonian to get target
-            C = Circuit.from_random(dimensions=dimensions)
+            C = Circuit.from_random_symplectic(dimensions=dimensions)
             target_pl_sum = C.act(pl_sum)
             # target hamiltonian
             sym_sum = pl_sum.tableau

@@ -100,9 +100,9 @@ class Circuit:
         return C
 
     @classmethod
-    def from_random(cls,
-                    dimensions: DimensionsLike,
-                    rng: RNGGenerator | None = None) -> Circuit:
+    def from_random_symplectic(cls,
+                               dimensions: DimensionsLike,
+                               rng: RNGGenerator | None = None) -> Circuit:
         """
         Creates a random circuit by generating a random symplectic, and decomposing it into gates.
 
@@ -139,7 +139,7 @@ class Circuit:
             unique_dims = np.unique(dimensions)
             block_sizes = [np.sum(dimensions == d) for d in unique_dims]
             random_gates = [Gate.from_random(n, d, rng=rng) for n, d in zip(block_sizes, unique_dims)]
-            # The tricky bit is now inserting these gates into the correct qudit indices in the final circuit.
+            # Insert these gates into the correct qudit indices in the final circuit.
             # to do so we decompose each one to a circuit then add it to a bigger empty circuit
             #  with the correct qudit indices.
             random_circuits = [random_gate.to_circuit(np.full(n, d)) for random_gate, n, d in zip(random_gates,
@@ -160,8 +160,6 @@ class Circuit:
                         int(global_indices[int(q_idx)]) for q_idx in qudit_indices
                     )
                     C.add_gate(gate, *mapped_indices)
-
-        C._sanity_check()
 
         return C
 
@@ -302,12 +300,12 @@ class Circuit:
             for q_idx in range(n_qudits):
                 gate = single_qudit_gates[rng.integers(0, len(single_qudit_gates))]
                 _gates.append(gate)
-                _qudit_indices.append((int(q_idx),))
+                _qudit_indices.append((q_idx,))
 
         extra_1qb_gates = n_1qd_gates - min_1qb_gate_per_qudit * n_qudits
         for _ in range(extra_1qb_gates):
             gate = single_qudit_gates[rng.integers(0, len(single_qudit_gates))]
-            q_idx: int = int(rng.integers(0, n_qudits))
+            q_idx = int(rng.integers(0, n_qudits))
             _gates.append(gate)
             _qudit_indices.append((q_idx,))
 
@@ -783,8 +781,6 @@ class Circuit:
             self._qudit_indices.insert(gate_position, tuple(idxs))
             noise_model = noise_models[offset] if noise_models is not None else None
             self._noise_model_per_gate.insert(gate_position, noise_model)
-
-        self._sanity_check()
 
     def n_qudits(self) -> int:
         """Returns the number of qudits in the circuit."""

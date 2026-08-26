@@ -18,7 +18,7 @@ class TestCircuits():
             dimensions = [2] * n_qudits
             n_paulis = 5
             # make a random circuit
-            circuit = Circuit.from_random(dimensions)
+            circuit = Circuit.from_random_symplectic(dimensions)
 
             # make a random pauli sum
             pauli_sum = PauliSum.from_random(n_paulis, dimensions)
@@ -65,7 +65,7 @@ class TestCircuits():
         for _ in range(100):
             n_qudits = np.random.randint(2, 10)
             dimensions = np.random.choice([2, 3, 5], size=n_qudits)
-            C = Circuit.from_random(dimensions=dimensions)
+            C = Circuit.from_random_symplectic(dimensions=dimensions)
             ps = PauliSum.from_random(10, dimensions)
             out = C.act(ps)
             assert np.all(out.dimensions == dimensions)
@@ -75,7 +75,7 @@ class TestCircuits():
         rng = np.random.default_rng(123)
         dimensions = np.array([2, 3, 2, 5, 3], dtype=int)
 
-        circuit = Circuit.from_random(dimensions=dimensions, rng=rng)
+        circuit = Circuit.from_random_symplectic(dimensions=dimensions, rng=rng)
 
         assert np.array_equal(circuit.dimensions, dimensions)
 
@@ -96,7 +96,7 @@ class TestCircuits():
         n_paulis = 1
         for _ in range(N):
             P = PauliSum.from_random(n_paulis, dimensions, rand_weights=False)
-            C = Circuit.from_random(dimensions=dimensions)
+            C = Circuit.from_random_symplectic(dimensions=dimensions)
             U = C.unitary()
 
             ps_m = P.to_hilbert_space()

@@ -48,7 +48,7 @@ def random_pauli_hamiltonian(num_paulis, qudit_dims, mode='rand'):
         pauli_index = random.choice(available_paulis)
         available_paulis.remove(pauli_index)
 
-        exponents = int_to_bases(int(pauli_index), q2)
+        exponents = int_to_bases(pauli_index, q2)
         exponents_H = np.zeros_like(exponents)
         phase_factor = 1
         pauli_str = ' '
