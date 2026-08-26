@@ -21,8 +21,8 @@ from sympleq.integrations.quantinuum.utils import (
 def fancy_ideal_emulator_config(device_name: str) -> qnx.QuantinuumConfig:
     return qnx.QuantinuumConfig(
         device_name=device_name,
-        simulator="stabilizer",
-        noisy_simulation=False,
+        simulator="state-vector",
+        noisy_simulation=True,
         no_opt=True,
         allow_implicit_swaps=False,
         leakage_detection=False,
