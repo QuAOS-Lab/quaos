@@ -34,8 +34,8 @@ ONE_Q_NOISE_SCALE = 1.0
 TWO_Q_NOISE_SCALE = 1.0
 LAST_BACKEND_BATCH_SIZE: int | None = None
 
-GATES_AXIS_LIMITS: tuple[float, float] | None = (200.0, 1500.0)
-RATIO_AXIS_LIMITS: tuple[float, float] | None = (0.1, 0.9)
+GATES_AXIS_LIMITS: tuple[float, float] | None = (250.0, 1600.0)
+RATIO_AXIS_LIMITS: tuple[float, float] | None = (0.095, 0.9)
 
 SHOW_PREDICTED_FIDELITY_HUE = True
 SHOW_SOBOL_POINTS = False
@@ -48,8 +48,8 @@ CURRENT_SIGMA_BAND_ALPHA = 0.55
 CURRENT_DATA_LABEL_PREFIX = "measured data"
 SHOW_REFERENCE_DATA_COUNTS = True
 
-SHOW_Q56_REFERENCE_LINE = True
-SHOW_Q56_REFERENCE_SIGMA =True
+SHOW_Q56_REFERENCE_LINE = False
+SHOW_Q56_REFERENCE_SIGMA = False
 SHOW_Q56_REFERENCE_POINTS = False
 Q56_REFERENCE_JSON_PATH: Path | None = Path(
     r"Personal\Data\accumulated\H2-1"
@@ -71,9 +71,32 @@ Q56_REFERENCE_POINTS_LABEL = "H2-1 accumulated ActualGR q=56"
 Q56_REFERENCE_SUCCESS_COLOR = "darkblue"
 Q56_REFERENCE_FAILURE_COLOR = "darkblue"
 
-SHOW_SEED42_REFERENCE_LINE = True
-SHOW_SEED42_REFERENCE_SIGMA = True
-SHOW_SEED42_REFERENCE_POINTS = True
+SHOW_Q26_REFERENCE_LINE = True
+SHOW_Q26_REFERENCE_SIGMA = True
+SHOW_Q26_REFERENCE_POINTS = False
+Q26_REFERENCE_JSON_PATH: Path | None = Path(
+    r"Personal\Data\accumulated\H2-1"
+    r"\accumulated_actualgr_H2-1_fle_costaware_20260813_175523_q_slices"
+    r"\accumulated_actualgr_H2-1_fle_costaware_20260813_175523_q26.json"
+)
+Q26_REFERENCE_GRID_PATH: Path | None = Path(
+    r"Personal\Data\accumulated\H2-1"
+    r"\accumulated_actualgr_H2-1_fle_costaware_20260813_175523_q_slices"
+    r"\accumulated_actualgr_H2-1_fle_costaware_20260813_175523_q26_gp_grid.npz"
+)
+Q26_REFERENCE_LABEL = "H2-1 accumulated ActualGR q=26"
+Q26_REFERENCE_COLOR = "navy"
+Q26_REFERENCE_LINESTYLE = "-."
+Q26_REFERENCE_SIGMA_LABEL = r"H2-1 accumulated ActualGR q=26 $\mu \pm 1\sigma$"
+Q26_REFERENCE_SIGMA_LINESTYLE = ":"
+Q26_REFERENCE_SIGMA_BAND_ALPHA = 0.16
+Q26_REFERENCE_POINTS_LABEL = "H2-1 accumulated ActualGR q=26"
+Q26_REFERENCE_SUCCESS_COLOR = "navy"
+Q26_REFERENCE_FAILURE_COLOR = "navy"
+
+SHOW_SEED42_REFERENCE_LINE = False
+SHOW_SEED42_REFERENCE_SIGMA = False
+SHOW_SEED42_REFERENCE_POINTS = False
 SEED42_REFERENCE_JSON_PATH: Path | None = Path(
     r"Personal\FLE\H2_2\q56\seed_42\FLE_20260804_175518"
     r"\measurement_015_globalsur_20260807_143527_392341_actual_gates.json"
@@ -519,6 +542,40 @@ def plot_fle_grid(
             label=Q56_REFERENCE_POINTS_LABEL,
             success_color=Q56_REFERENCE_SUCCESS_COLOR,
             failure_color=Q56_REFERENCE_FAILURE_COLOR,
+            success_marker="o",
+            failure_marker="x",
+            zorder=14,
+        )
+
+    if SHOW_Q26_REFERENCE_LINE:
+        add_reference_contour(
+            ax,
+            grid_path=Q26_REFERENCE_GRID_PATH,
+            label=Q26_REFERENCE_LABEL,
+            color=Q26_REFERENCE_COLOR,
+            linestyle=Q26_REFERENCE_LINESTYLE,
+            target_override=target_override,
+            show_sigma=SHOW_Q26_REFERENCE_SIGMA,
+            sigma_label=Q26_REFERENCE_SIGMA_LABEL,
+            sigma_linestyle=Q26_REFERENCE_SIGMA_LINESTYLE,
+            sigma_band_alpha=Q26_REFERENCE_SIGMA_BAND_ALPHA,
+            linewidth=2.8,
+            zorder=13,
+        )
+        if SHOW_REFERENCE_DATA_COUNTS:
+            add_measurement_count_legend(
+                ax,
+                json_path=Q26_REFERENCE_JSON_PATH,
+                prefix="accumulated ActualGR q=26 data",
+            )
+
+    if SHOW_Q26_REFERENCE_POINTS:
+        add_reference_points(
+            ax,
+            json_path=Q26_REFERENCE_JSON_PATH,
+            label=Q26_REFERENCE_POINTS_LABEL,
+            success_color=Q26_REFERENCE_SUCCESS_COLOR,
+            failure_color=Q26_REFERENCE_FAILURE_COLOR,
             success_marker="o",
             failure_marker="x",
             zorder=14,

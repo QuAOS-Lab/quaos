@@ -61,8 +61,8 @@ class FantasySettings(CrossingSettings):
     gate_budget: int = 7000
 
     # Recovery
-    recovery_mode: bool = True
-    recovery_folder: str | Path | None =  "Personal\FLE\H_wrapper\H2_1\q56\seed_42\FLE_H_wrapper_20260819_134349"
+    recovery_mode: bool = False
+    recovery_folder: str | Path | None = "Personal\FLE\H_wrapper\H2_1\q56\seed_42\FLE_H_wrapper_20260819_134349"
 
     # AEPsych / GP / acquisition
     optimization_steps: int = 10000
@@ -123,7 +123,7 @@ TARGET_THRESHOLD = 0.5
 # NuUMBER of Qubits
 # -------------------------------------------------------------------------
 
-N_QUBITS = 56
+N_QUBITS = 26
 # For a multi-slice run, use e.g.:
 # N_QUBITS = [5,20]
 
