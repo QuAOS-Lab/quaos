@@ -1,89 +1,22 @@
-"""Settings handles for fantasy-batched GP level-set estimation."""
+"""Settings handles for noisy Fancy-emulator native-V wrapper FLE runs."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from pathlib import Path
 
-from sympleq.applications.randomized_benchmarking.experiments.common import (
-    CrossingSettings,
-    default_backend_factory,
-    quantinuum_emulator_backend_factory,
-    quantinuum_H2_backend_factory,
-    dephasing_sympleq_backend_factory,
+from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.Fancy_emulator.V_warp.unstitched_quantinuum import (
+    vwarp_fancy_h21e,
+    vwarp_fancy_h22e,
 )
-from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.Fancy_emulator.unstitched_quantinuum import (
-    fancy_unstitched_emulator_backend_factory,
+from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.H_wrapper.fantasy_levelset_settings import (
+    FantasySettings,
 )
-
-
-@dataclass(frozen=True)
-class FantasySettings(CrossingSettings):
-    """
-    User-facing handles for fantasy-batched GP level-set estimation.
-
-    Inherited CrossingSettings handles include:
-        n_gates_bounds
-        ratio_bounds
-        hqc_budget
-        max_cost_per_run
-        rng_seed
-        make_config(...)
-        backend_factory
-    """
-
-    # Output
-    save_path: str | Path | None = None
-
-    # Target contour
-    target_threshold: float = 0.5
-
-    # Fake anchors
-    use_fake_corners: bool = True
-    easy_corner_outcome: int = 1
-    hard_corner_outcome: int = 0
-    extra_fake_anchors: list[tuple] = field(default_factory=list)
-
-    # Explicit Sobol warm-up
-    initial_sobol_samples: int = 10
-    initial_sobol_max_cost_per_run: float | None = None
-    sobol_scramble: bool = False
-
-    #GP grid saving
-    save_gp_prediction_grid: bool = False
-    save_real_checkpoints: bool = True
-
-    # Gate budget per stitched submission (for emulator only)
-    gate_budget: int = 7000
-
-    # Recovery
-    recovery_mode: bool = False
-    recovery_folder: str | Path | None = None
-
-    # AEPsych / GP / acquisition
-    optimization_steps: int = 10000
-    inducing_size: int = 150
-    acquisition_function: str = "GlobalSUR"
-    acquisition_restarts: int = 8
-    acquisition_samples: int = 30000
-
-    # Batching
-    batching: bool = True
-    max_batch_size: int = 80
-    fantasy_batching: bool = True
-
-    # GPU
-    use_gpu: bool = True
-    force_default_device_during_aepsych: bool = True
-
-    # Debugging
-    verbose_fantasies: bool = True
 
 
 # =============================================================================
 # CONTROL PANEL
 # =============================================================================
-# Edit this section for ordinary FLE runs.
+# Edit this section for noisy Fancy-emulator native-V wrapper runs.
 
 # -------------------------------------------------------------------------
 # TARGET HANDLE
@@ -92,33 +25,29 @@ class FantasySettings(CrossingSettings):
 TARGET_THRESHOLD = 0.5
 
 # -------------------------------------------------------------------------
-# NuUMBER of Qubits
+# NUMBER OF QUBITS
 # -------------------------------------------------------------------------
 
 N_QUBITS = 26
-# For a multi-slice run, use e.g.:
-# N_QUBITS = [5,20]
 
 # -------------------------------------------------------------------------
 # SEARCH-BOX HANDLES
 # -------------------------------------------------------------------------
-# Set to None to use the defaults inherited from CrossingSettings.
 
-N_GATES_BOUNDS = (100, 5000)
-RATIO_BOUNDS = (0.1, 0.9)
+N_GATES_BOUNDS = (200, 1500)
+RATIO_BOUNDS = (0.1, 0.7)
 
 # -------------------------------------------------------------------------
 # HQC BUDGET HANDLES
 # -------------------------------------------------------------------------
-# Set to None to use the defaults inherited from CrossingSettings.
 
 HQC_BUDGET = 10000
 MAX_COST_PER_RUN = 100
 
 # -------------------------------------------------------------------------
-# Gate BUDGET HANDLES
+# GATE BUDGET HANDLES
 # -------------------------------------------------------------------------
-# Set to None to use the defaults inherited from CrossingSettings.
+
 GATE_BUDGET = 7000
 
 # -------------------------------------------------------------------------
@@ -135,7 +64,7 @@ EXTRA_FAKE_ANCHORS = []
 # -------------------------------------------------------------------------
 
 INITIAL_SOBOL_SAMPLES = 15
-INITIAL_SOBOL_MAX_COST_PER_RUN = 30
+INITIAL_SOBOL_MAX_COST_PER_RUN = 100
 SOBOL_SCRAMBLE = True
 
 SAVE_GP_PREDICTION_GRID = True
@@ -146,8 +75,9 @@ SAVE_REAL_CHECKPOINTS = True
 # -------------------------------------------------------------------------
 
 RECOVERY_MODE = True
-RECOVERY_FOLDER = Path(r"Personal\FLE\H2_2E\q26\seed_42\FLE_20260827_115747")
-
+RECOVERY_FOLDER = Path(
+    r"Personal\FLE\Fancy_emulator\V_warp\H2_1E\q26\seed_42\FLE_V_warp_20260827_121746"
+)
 
 # -------------------------------------------------------------------------
 # GP / AEPSYCH HANDLES
@@ -178,11 +108,8 @@ FORCE_DEFAULT_DEVICE_DURING_AEPSYCH = True
 # BACKEND HANDLE
 # -------------------------------------------------------------------------
 
-# BACKEND_FACTORY = default_backend_factory
-# BACKEND_FACTORY = quantinuum_emulator_backend_factory
-BACKEND_FACTORY = fancy_unstitched_emulator_backend_factory
-# BACKEND_FACTORY = quantinuum_H2_backend_factory
-# BACKEND_FACTORY = dephasing_sympleq_backend_factory
+BACKEND_FACTORY = vwarp_fancy_h21e
+# BACKEND_FACTORY = vwarp_fancy_h22e
 
 # -------------------------------------------------------------------------
 # REPRODUCIBILITY / DEBUG HANDLES

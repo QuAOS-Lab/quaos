@@ -18,7 +18,7 @@ from sympleq.integrations.quantinuum.utils import (
 )
 
 
-def fancy_ideal_emulator_config(device_name: str) -> qnx.QuantinuumConfig:
+def fancy_noisy_emulator_config(device_name: str) -> qnx.QuantinuumConfig:
     return qnx.QuantinuumConfig(
         device_name=device_name,
         simulator="state-vector",
@@ -31,8 +31,16 @@ def fancy_ideal_emulator_config(device_name: str) -> qnx.QuantinuumConfig:
     )
 
 
+fancy_ideal_emulator_config = fancy_noisy_emulator_config
+
+
 class FancyUnstitchedQuantinuumBackend(QuantinuumBackend):
     """Quantinuum emulator backend that submits each circuit as its own program."""
+
+    log_prefix = "[fancy-unstitched]"
+    program_name_prefix = "fancy-unstitched"
+    simulator = "state-vector"
+    noisy_simulation = True
 
     def to_dict(self) -> dict:
         payload = super().to_dict()
@@ -41,7 +49,8 @@ class FancyUnstitchedQuantinuumBackend(QuantinuumBackend):
                 "project_name": self.project_name,
                 "max_cost_per_run": self.max_cost_per_run,
                 "stitching": "unstitched",
-                "noisy_simulation": False,
+                "simulator": self.simulator,
+                "noisy_simulation": self.noisy_simulation,
                 "fancy_emulator": True,
             }
         )
@@ -73,7 +82,7 @@ class FancyUnstitchedQuantinuumBackend(QuantinuumBackend):
                 circuit = self.compatible_circuit(request.config, circuit_rng)
                 jobs.append((request.config, circuit))
                 print(
-                    "[fancy-unstitched] "
+                    f"{self.log_prefix} "
                     f"request={request_index:02d} "
                     f"shot_index={shot_index} "
                     f"qubits={circuit.n_qubits} "
@@ -103,7 +112,7 @@ class FancyUnstitchedQuantinuumBackend(QuantinuumBackend):
 
         outcomes: dict[RMBConfig, list[bool]] = {}
         total_cost = 0.0
-        backend_config = fancy_ideal_emulator_config(self.device_name)
+        backend_config = fancy_noisy_emulator_config(self.device_name)
         setup(self.project_name)
         for submission_index, submission in enumerate(submissions):
             circuits = [circuit for _, circuit in submission]
@@ -113,7 +122,7 @@ class FancyUnstitchedQuantinuumBackend(QuantinuumBackend):
             )
             total_cost += submission_cost
             print(
-                "[fancy-unstitched] "
+                f"{self.log_prefix} "
                 f"submitting batch={submission_index:02d} "
                 f"programs={len(circuits)} "
                 f"estimated_cost={submission_cost:.4f}",
@@ -121,15 +130,16 @@ class FancyUnstitchedQuantinuumBackend(QuantinuumBackend):
             )
 
             print(
-                "[fancy-unstitched] "
+                f"{self.log_prefix} "
                 f"backend_config device={self.device_name} "
-                "simulator=stabilizer noisy_simulation=False",
+                f"simulator={self.simulator} "
+                f"noisy_simulation={self.noisy_simulation}",
                 flush=True,
             )
             ref_circuits = build_and_compile_circuits(
                 circuits,
                 backend_config=backend_config,
-                name=f"fancy-unstitched-{submission_index:02d}",
+                name=f"{self.program_name_prefix}-{submission_index:02d}",
             )
             results = run_compiled_circuits(
                 ref_circuits,
@@ -152,7 +162,7 @@ class FancyUnstitchedQuantinuumBackend(QuantinuumBackend):
                 success = all(bit == 0 for bit in top_outcome)
                 outcomes.setdefault(config, []).append(success)
                 print(
-                    "[fancy-unstitched] "
+                    f"{self.log_prefix} "
                     f"result={result_index:02d} "
                     f"q={config.n_qubits} "
                     f"n_1q={config.n_1qb_gates} "
@@ -170,8 +180,8 @@ class FancyUnstitchedQuantinuumBackend(QuantinuumBackend):
 
 def fancy_unstitched_emulator_backend_factory(settings, rng):
     return FancyUnstitchedQuantinuumBackend(
-        device_name="H2-1E",
-        project_name="Fancy_Emulator_Unstitched",
+        device_name="H2-2E",
+        project_name="Fancy_Emulator_Unstitched_H22E",
         batch_size=1,
         max_cost_per_run=settings.max_cost_per_run,
     )
