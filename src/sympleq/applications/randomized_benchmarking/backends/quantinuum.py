@@ -23,7 +23,7 @@ from sympleq.integrations.quantinuum.utils import (
 )
 
 
-MAX_COST_PER_RUN: float = 35.0
+MAX_COST_PER_RUN: float = 135.0
 
 
 class QuantinuumBackend(RMBBackend):
