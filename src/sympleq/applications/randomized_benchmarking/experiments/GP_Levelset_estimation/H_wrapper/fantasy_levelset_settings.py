@@ -61,8 +61,8 @@ class FantasySettings(CrossingSettings):
     gate_budget: int = 7000
 
     # Recovery
-    recovery_mode: bool = False
-    recovery_folder: str | Path | None = "Personal\FLE\H_wrapper\H2_1\q56\seed_42\FLE_H_wrapper_20260819_134349"
+    recovery_mode: bool = True
+    recovery_folder: str | Path | None = r"Personal\FLE\H_wrapper\H2_1\q26\seed_42\FLE_H_wrapper_20260827_151619"
 
     # AEPsych / GP / acquisition
     optimization_steps: int = 10000
@@ -173,9 +173,9 @@ SAVE_REAL_CHECKPOINTS = True
 # RECOVERY HANDLES
 # -------------------------------------------------------------------------
 
-RECOVERY_MODE = False
+RECOVERY_MODE = True
 RECOVERY_FOLDER = Path(
-    r"Personal\FLE\H_wrapper\H2_1\q56\seed_42\FLE_H_wrapper_20260819_134349"
+    r"Personal\FLE\H_wrapper\H2_1\q26\seed_42\FLE_H_wrapper_20260827_151619"
 )
 
 
