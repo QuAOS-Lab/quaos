@@ -58,6 +58,16 @@ KNOWN_BACKENDS = {
         "project_name": "Fancy_Emulator_Unstitched_H21E",
         "wrapper": False,
     },
+    "fancy_unstitched_h21e": {
+        "device_name": "H2-1E",
+        "project_name": "Fancy_Emulator_Unstitched_H21E",
+        "wrapper": False,
+    },
+    "fancy_unstitched_h22e": {
+        "device_name": "H2-2E",
+        "project_name": "Fancy_Emulator_Unstitched_H22E",
+        "wrapper": False,
+    },
     "vwarp_fancy_h21e": {
         "device_name": "H2-1E",
         "project_name": "Vwarp_Fancy_H21E",

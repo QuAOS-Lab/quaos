@@ -36,6 +36,7 @@ import logging
 import json
 import re
 import warnings
+from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 
@@ -61,7 +62,7 @@ from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estima
     level_set_configs,
     measure_batch_and_update_real_strategy,
     move_strategy_models_to_device,
-    point_from_config,
+    raw_point,
     repair_stats,
     refreshed_strategy_for_prediction,
     reset_repair_stats,
@@ -465,6 +466,138 @@ def recovery_hqc_spent(json_path: Path) -> float | None:
     return None if spent_hqc is None else float(spent_hqc)
 
 
+def _outcome_to_int(value) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return int(bool(value))
+    text = str(value).strip().lower()
+    if text in {"true", "1"}:
+        return 1
+    if text in {"false", "0"}:
+        return 0
+    raise ValueError(f"Cannot parse outcome value: {value!r}")
+
+
+def _nominal_record_key(record: dict) -> tuple[int, int, int, float, bool]:
+    return (
+        int(record["n_1qb_gates"]),
+        int(record["n_2qb_gates"]),
+        int(record["n_qubits"]),
+        float(record.get("random_elimination", 0.0)),
+        bool(record.get("use_scrambler", True)),
+    )
+
+
+def _nominal_counts(payload: dict) -> dict[tuple, Counter]:
+    counts: dict[tuple, Counter] = defaultdict(Counter)
+    for record in payload.get("data", []):
+        key = _nominal_record_key(record)
+        for outcome, count in record.get("results", []):
+            counts[key][_outcome_to_int(outcome)] += int(count)
+    return counts
+
+
+def _source_measurement_paths(target_json: Path) -> list[Path]:
+    target_step = measurement_checkpoint_step(target_json)
+    by_step: dict[int, Path] = {}
+    for path in target_json.parent.glob("measurement_*.json"):
+        if "_actual_gates" in path.stem:
+            continue
+        step = measurement_checkpoint_step(path)
+        if not 0 < step <= target_step:
+            continue
+        if step == target_step and path != target_json:
+            continue
+        previous = by_step.get(step)
+        if previous is None or path.name > previous.name:
+            by_step[step] = path
+    by_step[target_step] = target_json
+    return [by_step[step] for step in sorted(by_step)]
+
+
+def _actual_observation_history(
+    target_json: Path,
+) -> tuple[list[Observation], int]:
+    """Recover cumulative real observations at their realized coordinates."""
+
+    previous_counts: dict[tuple, Counter] = defaultdict(Counter)
+    observations: list[Observation] = []
+    ambiguous_assignments = 0
+
+    for path in _source_measurement_paths(target_json):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        experiment = payload.get("experiment", {})
+        sent_configs = experiment.get("sent_configs") or []
+        actual_configs = experiment.get("actual_after_elimination") or []
+        if len(sent_configs) != len(actual_configs):
+            raise ValueError(
+                f"{path.name}: sent_configs ({len(sent_configs)}) and "
+                "actual_after_elimination "
+                f"({len(actual_configs)}) differ."
+            )
+
+        current_counts = _nominal_counts(payload)
+        deltas: dict[tuple, Counter] = defaultdict(Counter)
+        for key in set(current_counts) | set(previous_counts):
+            for outcome in (0, 1):
+                delta = int(current_counts[key][outcome]) - int(
+                    previous_counts[key][outcome]
+                )
+                if delta < 0:
+                    raise ValueError(
+                        f"{path.name}: negative count delta for "
+                        f"config={key}, outcome={outcome}: {delta}"
+                    )
+                deltas[key][outcome] = delta
+
+        duplicate_keys = {
+            key
+            for key, count in Counter(
+                _nominal_record_key(record) for record in sent_configs
+            ).items()
+            if count > 1
+        }
+        for key in duplicate_keys:
+            if deltas[key][0] and deltas[key][1]:
+                ambiguous_assignments += 1
+
+        for sent, actual in zip(sent_configs, actual_configs):
+            key = _nominal_record_key(sent)
+            outcome = next(
+                (value for value in (0, 1) if deltas[key][value] > 0),
+                None,
+            )
+            if outcome is None:
+                raise ValueError(
+                    f"{path.name}: no remaining outcome for config={key}"
+                )
+            deltas[key][outcome] -= 1
+
+            coordinates = actual if bool(actual.get("available", True)) else sent
+            observations.append(
+                Observation(
+                    x_cpu=raw_point(
+                        float(coordinates["n_gates"]),
+                        float(coordinates["ratio_2_qb_gates"]),
+                        device=torch.device("cpu"),
+                    ),
+                    y=int(outcome),
+                    source="recovery",
+                )
+            )
+
+        leftovers = sum(sum(counter.values()) for counter in deltas.values())
+        if leftovers:
+            raise ValueError(
+                f"{path.name}: {leftovers} outcome(s) were not matched to "
+                "the saved batch metadata."
+            )
+        previous_counts = current_counts
+
+    return observations, ambiguous_assignments
+
+
 def recover_observations_from_json(
     json_path: Path,
     *,
@@ -474,32 +607,34 @@ def recover_observations_from_json(
     results_for_plot: list[tuple[float, float, int]],
     device: torch.device,
 ) -> int:
-    """Load saved RMB data and replay its real observations into AEPsych."""
+    """Load RMB bookkeeping and replay realized coordinates into AEPsych."""
 
     recovered_rmb = RMB.load(json_path)
     rmb._data.update(recovered_rmb._data)
 
-    n_observations = 0
-    for config, estimator in recovered_rmb._data.items():
-        for outcome, count in estimator.counts().items():
-            for _ in range(int(count)):
-                obs = Observation(
-                    x_cpu=point_from_config(config, device=torch.device("cpu")),
-                    y=int(outcome),
-                    source="recovery",
-                )
-                add_observation_to_strategy(strategy, obs, device=device)
-                observations.append(obs)
-                results_for_plot.append(
-                    (
-                        float(config.n_gates),
-                        float(config.ratio_2_qb_gates),
-                        int(outcome),
-                    )
-                )
-                n_observations += 1
+    recovered, ambiguous_assignments = _actual_observation_history(json_path)
+    for obs in recovered:
+        add_observation_to_strategy(strategy, obs, device=device)
+        observations.append(obs)
+        point = obs.x_cpu.detach().cpu().reshape(-1)
+        results_for_plot.append(
+            (float(point[0].item()), float(point[1].item()), int(obs.y))
+        )
 
-    return n_observations
+    print("[recovery] replay coordinate system = actual_after_elimination")
+    print(
+        f"[recovery] replayed checkpoints = "
+        f"{len(_source_measurement_paths(json_path))}"
+    )
+    if ambiguous_assignments:
+        print(
+            "[recovery] warning: "
+            f"{ambiguous_assignments} batch/config group(s) had repeated "
+            "nominal configs with mixed outcomes; the old aggregate JSON "
+            "does not preserve their exact outcome-to-coordinate pairing."
+        )
+
+    return len(recovered)
 
 
 def save_real_checkpoint(

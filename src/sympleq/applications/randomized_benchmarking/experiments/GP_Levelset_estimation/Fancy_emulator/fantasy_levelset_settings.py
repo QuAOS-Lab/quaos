@@ -13,7 +13,8 @@ from sympleq.applications.randomized_benchmarking.experiments.common import (
     dephasing_sympleq_backend_factory,
 )
 from sympleq.applications.randomized_benchmarking.experiments.GP_Levelset_estimation.Fancy_emulator.unstitched_quantinuum import (
-    fancy_unstitched_emulator_backend_factory,
+    fancy_unstitched_h21e,
+    fancy_unstitched_h22e,
 )
 
 
@@ -146,7 +147,7 @@ SAVE_REAL_CHECKPOINTS = True
 # -------------------------------------------------------------------------
 
 RECOVERY_MODE = True
-RECOVERY_FOLDER = Path(r"Personal\FLE\H2_2E\q26\seed_42\FLE_20260827_115747")
+RECOVERY_FOLDER = Path(r"Personal\FLE\H2_1E\q26\seed_72\FLE_20260827_120009")
 
 
 # -------------------------------------------------------------------------
@@ -180,7 +181,8 @@ FORCE_DEFAULT_DEVICE_DURING_AEPSYCH = True
 
 # BACKEND_FACTORY = default_backend_factory
 # BACKEND_FACTORY = quantinuum_emulator_backend_factory
-BACKEND_FACTORY = fancy_unstitched_emulator_backend_factory
+BACKEND_FACTORY = fancy_unstitched_h21e
+# BACKEND_FACTORY = fancy_unstitched_h22e
 # BACKEND_FACTORY = quantinuum_H2_backend_factory
 # BACKEND_FACTORY = dephasing_sympleq_backend_factory
 

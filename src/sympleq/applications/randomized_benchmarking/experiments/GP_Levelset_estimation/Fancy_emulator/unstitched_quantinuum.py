@@ -178,10 +178,32 @@ class FancyUnstitchedQuantinuumBackend(QuantinuumBackend):
         )
 
 
-def fancy_unstitched_emulator_backend_factory(settings, rng):
+def _fancy_unstitched_backend(settings, device_name: str, project_name: str):
     return FancyUnstitchedQuantinuumBackend(
-        device_name="H2-2E",
-        project_name="Fancy_Emulator_Unstitched_H22E",
+        device_name=device_name,
+        project_name=project_name,
         batch_size=1,
         max_cost_per_run=settings.max_cost_per_run,
     )
+
+
+def fancy_unstitched_h21e(settings, rng):
+    return _fancy_unstitched_backend(
+        settings,
+        device_name="H2-1E",
+        project_name="Fancy_Emulator_Unstitched_H21E",
+    )
+
+
+def fancy_unstitched_h22e(settings, rng):
+    return _fancy_unstitched_backend(
+        settings,
+        device_name="H2-2E",
+        project_name="Fancy_Emulator_Unstitched_H22E",
+    )
+
+
+def fancy_unstitched_emulator_backend_factory(settings, rng):
+    """Backward-compatible H2-1E factory."""
+
+    return fancy_unstitched_h21e(settings, rng)
