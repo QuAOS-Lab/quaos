@@ -76,7 +76,7 @@ SAVE_REAL_CHECKPOINTS = True
 
 RECOVERY_MODE = True
 RECOVERY_FOLDER = Path(
-    r"Personal\FLE\Fancy_emulator\V_warp\H2_1E\q26\seed_42\FLE_V_warp_20260827_121746"
+    r"Personal\FLE\Fancy_emulator\V_warp\H2_2E\q26\seed_42\FLE_V_warp_20260827_122353"
 )
 
 # -------------------------------------------------------------------------
@@ -94,7 +94,7 @@ ACQUISITION_SAMPLES = 300
 # -------------------------------------------------------------------------
 
 BATCHING = True
-MAX_BATCH_SIZE = 80
+MAX_BATCH_SIZE = 400
 FANTASY_BATCHING = True
 
 # -------------------------------------------------------------------------
@@ -108,8 +108,8 @@ FORCE_DEFAULT_DEVICE_DURING_AEPSYCH = True
 # BACKEND HANDLE
 # -------------------------------------------------------------------------
 
-BACKEND_FACTORY = vwarp_fancy_h21e
-# BACKEND_FACTORY = vwarp_fancy_h22e
+# BACKEND_FACTORY = vwarp_fancy_h21e
+BACKEND_FACTORY = vwarp_fancy_h22e
 
 # -------------------------------------------------------------------------
 # REPRODUCIBILITY / DEBUG HANDLES
