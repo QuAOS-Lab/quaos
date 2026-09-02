@@ -35,7 +35,7 @@ TWO_Q_NOISE_SCALE = 1.0
 LAST_BACKEND_BATCH_SIZE: int | None = None
 
 GATES_AXIS_LIMITS: tuple[float, float] | None = (250.0, 1600.0)
-RATIO_AXIS_LIMITS: tuple[float, float] | None = (0.095, 0.9)
+RATIO_AXIS_LIMITS: tuple[float, float] | None = (0.095, 0.75)
 
 SHOW_PREDICTED_FIDELITY_HUE = True
 SHOW_SOBOL_POINTS = False
@@ -692,14 +692,13 @@ def plot_fle_grid(
     ax.set_title(
         f"FLE GP level set{qubit_title_part(json_path)}"
     )
-    ax.legend(loc="lower right", fontsize=8, frameon=True, framealpha=0.9)
+    ax.legend(loc="upper right", fontsize=8, frameon=True, framealpha=0.9)
     fig.tight_layout()
 
     png_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(png_path, dpi=200, bbox_inches="tight")
     # print(f"[score] S1={scores['S1']:.6g}")
     # print(f"[score] S2={scores['S2']:.6g}")
-    # print(f"[score] A_gp={scores['A_gp']:.6g}")
     print(f"[saved] plot: {png_path}")
     plt.show()
     # return scores
