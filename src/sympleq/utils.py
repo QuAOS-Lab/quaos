@@ -137,10 +137,19 @@ def complex_phase_value(phase: int, dimension: int) -> complex:
 
 
 def tensor(mm: list[ComplexSparseMatrix]) -> ComplexSparseMatrix:
-    # Inputs:
-    #     mm - (list{scipy.sparse.csr_matrix}) - matrices to tensor
-    # Outputs:
-    #     (scipy.sparse.csr_matrix) - tensor product of matrices
+    """
+    Computes the tensor product of a list of complex sparse matrices.
+
+    Parameters
+    ----------
+    mm : list[ComplexSparseMatrix]
+        List of matrices to tensor.
+
+    Returns
+    -------
+    ComplexSparseMatrix
+        Tensor product of the input matrices.
+    """
 
     if not mm:
         raise ValueError("At least one matrix must be provided.")
