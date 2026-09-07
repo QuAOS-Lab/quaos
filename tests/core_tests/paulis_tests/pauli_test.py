@@ -202,10 +202,10 @@ class TestPaulis:
                 _ = p_string1[-3]
 
             with pytest.raises(ValueError):
-                _ = p_string1['invalid']
+                _ = p_string1['invalid']  # type: ignore[arg-type]
 
             with pytest.raises(ValueError):
-                _ = p_string1[1.0]
+                _ = p_string1[1.0]  # type: ignore[arg-type]
 
     def test_pauli_string_set_item_errors(self):
         for dim in PRIME_LIST:
@@ -219,10 +219,10 @@ class TestPaulis:
                 p_string1[-3] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)
 
             with pytest.raises(ValueError):
-                p_string1['invalid'] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)
+                p_string1['invalid'] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)  # type: ignore[arg-type]
 
             with pytest.raises(ValueError):
-                p_string1[1.0] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)
+                p_string1[1.0] = PauliString.from_string(f"x{1}z{0}", dimensions=dim)  # type: ignore[arg-type]
 
             with pytest.raises(ValueError):
                 p_string1[1] = PauliString.from_string(f"x{1}z{0}", dimensions=dim + 1)
@@ -1244,7 +1244,7 @@ class TestPaulis:
         for i in range(50):
             n_qubits = np.random.randint(1, 10)
             dims = [np.random.choice(available_dimensions) for _ in range(n_qubits)]
-            n_paulis = np.random.randint(1, np.min([4**n_qubits - 1, 10]))
+            n_paulis = int(np.random.randint(1, np.min([4**n_qubits - 1, 10])))
             P = PauliSum.from_random(n_paulis=n_paulis,
                                      dimensions=dims,
                                      rand_weights=True)
@@ -1256,7 +1256,7 @@ class TestPaulis:
         for i in range(50):
             n_qubits = np.random.randint(1, 10)
             dims = [np.random.choice(available_dimensions) for _ in range(n_qubits)]
-            n_paulis = np.random.randint(1, np.min([4**n_qubits - 1, 10]))
+            n_paulis = int(np.random.randint(1, np.min([4**n_qubits - 1, 10])))
             P = PauliSum.from_random(n_paulis=n_paulis,
                                      dimensions=dims,
                                      rand_weights=True)
@@ -1269,12 +1269,12 @@ class TestPaulis:
             if i == 0:
                 k = None
             elif i == 1:
-                k = np.prod(dimensions) - 1
+                k = int(np.prod(dimensions)) - 1
             else:
-                k = rng.integers(1, np.prod(dimensions) - 2)
+                k = int(rng.integers(1, np.prod(dimensions) - 2))
             n_paulis = rng.integers(1, 10 * len(dimensions) ** 2)
 
-            p = PauliSum.from_random(n_paulis, dimensions, rand_weights=True).make_hermitian()
+            p = PauliSum.from_random(int(n_paulis), dimensions, rand_weights=True).make_hermitian()
             assert p.is_hermitian(), f"PauliSum {p} is not hermitian."
 
             m = p.to_hilbert_space()
@@ -1344,8 +1344,8 @@ class TestPaulis:
             stabilizer.set_phases(phases)
 
             # Random Clifford circuit
-            n_gates = 10 * n_paulis**2
-            C = Circuit.from_random(n_gates, dimensions)
+            depth = 2 * n_paulis
+            C = Circuit.from_depth(depth=depth, dimensions=dimensions)
 
             # Act with Clifford on stabilizer
             stabilizer_shuffled = C.act(stabilizer)

@@ -159,7 +159,7 @@ if __name__ == "__main__":
     n_qubits = 6
     dimensions = [DEFAULT_QUDIT_DIMENSION] * n_qubits
     rng = default_rng(10)
-    circuit = SympleqCircuit.from_random(n_gates, dimensions, two_qudit_gate_ratio=0.25, rng=rng)
+    circuit = SympleqCircuit.from_random_symplectic(n_gates, dimensions, two_qudit_gate_ratio=0.25, rng=rng)
     circuit = circuit + circuit.inverse()
     p_circuit = to_pytket_circuit(circuit)
 

@@ -241,8 +241,8 @@ class AquireConfig:
         """
 
         for _ in range(10):
-            test_circuit = Circuit.from_random(n_gates=np.random.randint(1, 6),
-                                               dimensions=self.Hamiltonian.dimensions)
+            test_circuit = Circuit.from_depth(np.random.randint(1, 6),
+                                              dimensions=self.Hamiltonian.dimensions)
 
             noise_prob = self.noise_probability_function(
                 test_circuit, *self.noise_probability_args, **self.noise_kwargs)

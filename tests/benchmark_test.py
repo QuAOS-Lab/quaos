@@ -100,10 +100,10 @@ def test_hadamard_paulisum_benchmark(benchmark):
 
 @pytest.mark.benchmark(group="Circuit")
 @pytest.mark.parametrize("n_qudits", [10, 100])
-@pytest.mark.parametrize("n_gates", [50, 200])
+@pytest.mark.parametrize("n_gates", [10, 50])
 def test_circuit_composite_gate(benchmark, n_qudits: int, n_gates: int):
     dimensions = [2] * n_qudits
-    circuit = Circuit.from_random(n_gates, dimensions)
+    circuit = Circuit.from_depth(n_gates, dimensions)
 
     def comp_gate():
         _ = circuit.composite_gate()

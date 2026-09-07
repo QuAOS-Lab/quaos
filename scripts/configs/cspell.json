@@ -159,6 +159,7 @@
         "qcore",
         "qubit",
         "qubits",
+        "qudit",
         "qudits",
         "quditwise",
         "ququint",

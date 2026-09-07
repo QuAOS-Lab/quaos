@@ -296,7 +296,7 @@ class TestRoundtrip:
         for _ in range(20):
             n_qudits = np.random.randint(2, 6)
             n_gates = np.random.randint(0, 15)
-            original = Circuit.from_random(n_gates, [2] * n_qudits)
+            original = Circuit.from_depth(n_gates, [2] * n_qudits)
 
             restored = from_pytket_circuit(to_pytket_circuit(original))
 

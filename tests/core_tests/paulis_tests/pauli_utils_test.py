@@ -16,10 +16,10 @@ class TestUtils:
         for _ in range(N_tests):
             dimensions = choose_random_dimensions(250)
             n_qudits = len(dimensions)
-            n_paulis = rng.integers(1, max(2, 2 * n_qudits ** 2))
+            n_paulis = int(rng.integers(1, max(2, 2 * n_qudits ** 2)))
 
             p1 = PauliSum.from_random(n_paulis=n_paulis, dimensions=dimensions)
-            c = Circuit.from_random(n_gates=10 * n_qudits ** 2, dimensions=dimensions)
+            c = Circuit.from_depth(depth=10 * n_qudits ** 2, dimensions=dimensions)
             p2 = c.act(p1)
 
             assert check_mappable_via_clifford(p1, p2), (
@@ -65,7 +65,7 @@ class TestUtils:
         for _ in range(N_tests):
 
             dimensions = choose_random_dimensions(25)
-            m_size = int(np.prod(dimensions))
+            m_size = int(np.prod(np.asarray(dimensions)))
 
             matrix = rng.random([m_size, m_size]) + 1j * rng.random([m_size, m_size]) + \
                 - (1 / 2) * (1 + 1j) * np.ones((m_size, m_size))
@@ -89,7 +89,7 @@ class TestUtils:
         for _ in range(N_tests):
 
             dimensions = choose_random_dimensions(16)
-            m_size = int(np.prod(dimensions))
+            m_size = int(np.prod(np.asarray(dimensions)))
 
             matrix = rng.random([m_size, m_size]) + 1j * rng.random([m_size, m_size]) + \
                 - (1 / 2) * (1 + 1j) * np.ones((m_size, m_size))
