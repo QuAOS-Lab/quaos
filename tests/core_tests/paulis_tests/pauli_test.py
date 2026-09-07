@@ -462,6 +462,25 @@ class TestPaulis:
             f"with dimensions {dimensions}"
         )
 
+    def test_acquired_phase_on_mixed_dimensions(self):
+        dims = [2, 3]
+        lcm = 6
+
+        z0 = PauliString.from_string('x0z1 x0z0', dimensions=dims)
+        x0 = PauliString.from_string('x1z0 x0z0', dimensions=dims)
+        z1 = PauliString.from_string('x0z0 x0z1', dimensions=dims)
+        x1 = PauliString.from_string('x0z0 x1z0', dimensions=dims)
+
+        assert z0.acquired_phase(x0) == 2 * (lcm // dims[0])
+        assert z1.acquired_phase(x1) == 2 * (lcm // dims[1])
+        assert x0.acquired_phase(z0) == 0
+        assert x1.acquired_phase(z1) == 0
+
+        for a, b in [(z0, x0), (z1, x1), (x0, z0), (x1, z1)]:
+            assert a.acquired_phase(b) == (a * b).phases[0] % (2 * lcm), (
+                f'acquired_phase disagrees with __mul__ for {a} and {b}'
+            )
+
     def test_phase_and_dot_product(self):
 
         for _ in range(N_tests):
