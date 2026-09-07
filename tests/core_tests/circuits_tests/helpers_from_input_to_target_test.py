@@ -3,11 +3,11 @@ import pytest
 
 from sympleq.core.paulis import PauliSum
 from sympleq.core.circuits import Circuit
-from sympleq.core.circuits.helpers_solve_from_target import (gf_rank,
-                                                             independent_solution,
-                                                             complete_basis,
-                                                             map_tableau_to_target_tableau,
-                                                             solve_mod_2p)
+from sympleq.core.circuits.helpers_from_input_to_target import (gf_rank,
+                                                                independent_solution,
+                                                                complete_basis,
+                                                                map_tableau_to_target_tableau,
+                                                                solve_mod_2p)
 from sympleq.core.circuits.utils import symplectic_form, symplectic_product_matrix
 from sympleq.models import random_hamiltonian
 
@@ -200,5 +200,3 @@ def test_solve_mod_2p_failure(p: int):
 
     with pytest.raises(ValueError):
         solve_mod_2p(A, delta, p)
-
-# solve_phase_mod_2p is tested in test_gate_from_target_hilbert_space in gates_test.py

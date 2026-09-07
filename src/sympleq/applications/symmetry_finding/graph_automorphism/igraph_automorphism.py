@@ -5,13 +5,13 @@ from typing import Any
 import numpy as np
 
 from sympleq.core.circuits import Gate
-from sympleq.core.circuits.helpers_solve_from_target import get_phase_vector
+from sympleq.core.circuits.helpers_from_input_to_target import get_phase_vector
 from sympleq.core.graphs.graph_coloring import _build_base_partition
 from sympleq.core.paulis import PauliSum
 from sympleq.core.phase_correction import solve_phase_vector_h_from_residual
 
 from sympleq.core.paulis._typing import TableauType
-from sympleq.core.circuits.helpers_solve_from_target import map_tableau_to_target_tableau
+from sympleq.core.circuits.helpers_from_input_to_target import map_tableau_to_target_tableau
 
 from .graph_builder import build_subdivision_graph_from_s_mod
 
@@ -74,7 +74,7 @@ def _column_invariants(pauli_sum: PauliSum, mode: str) -> np.ndarray | None:
 
 # This is a legacy function from find_symplectic.py,
 # kept for compatibility with the igraph automorphism code.
-# modified to use the helpers_solve_from_target.map_tableau_to_target_tableau
+# modified to use the helpers_from_input_to_target.map_tableau_to_target_tableau
 # function instead of the original map_paulisum_to_target_tableau.
 
 def symplectic_from_pauli_permutation(

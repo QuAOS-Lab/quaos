@@ -302,7 +302,7 @@ class TestGates():
     @pytest.mark.parametrize("n_qudits", [5, 6])
     @pytest.mark.parametrize("num_pauli", [30, 40])
     def test_gate_from_target(self, dim: int, n_qudits: int, num_pauli: int):
-        """Test Gate.solve_from_target finds
+        """Test Gate.from_input_to_target finds
         correct pauli sum"""
 
         dimensions = [dim] * n_qudits
@@ -312,7 +312,7 @@ class TestGates():
             C = Circuit.from_random(n_gates=10 * n_qudits**2, dimensions=dimensions)
             target_pl_sum = C.act(pl_sum)
 
-            final_gate = Gate.solve_from_target(pl_sum, target_pl_sum)
+            final_gate = Gate.from_input_to_target(pl_sum, target_pl_sum)
 
             found_pl_sum = final_gate.act(pl_sum, tuple(range(n_qudits)))
 
@@ -322,7 +322,7 @@ class TestGates():
     @pytest.mark.parametrize("n_qudits", [5])
     @pytest.mark.parametrize("num_pauli", [5])
     def test_gate_from_target_hilbert_space(self, dim: int, n_qudits: int, num_pauli: int):
-        """Test Gate.solve_from_target finds
+        """Test Gate.from_input_to_target finds
         correct pauli sum in hilbert space"""
 
         dimensions = [dim] * n_qudits
@@ -332,7 +332,7 @@ class TestGates():
             C = Circuit.from_random(n_gates=10 * n_qudits**2, dimensions=dimensions)
             target_pl_sum = C.act(pl_sum)
 
-            final_gate = Gate.solve_from_target(pl_sum, target_pl_sum)
+            final_gate = Gate.from_input_to_target(pl_sum, target_pl_sum)
 
             found_pl_sum = final_gate.act(pl_sum, tuple(range(n_qudits)))
 

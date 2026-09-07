@@ -13,7 +13,7 @@ from sympleq.core.circuits.random_symplectic import (
     symplectic_random_koenig_smolin_gf2,
     symplectic_random_transvection,
 )
-from sympleq.core.circuits.helpers_solve_from_target import (
+from sympleq.core.circuits.helpers_from_input_to_target import (
     check_mappable_via_clifford,
     get_phase_vector,
     map_tableau_to_target_tableau,
@@ -156,10 +156,10 @@ class Gate(ABC):
     # Note:
     # Still not does do mixed qudits..
     @classmethod
-    def solve_from_target(cls,
-                          input_pauli_sum: PauliSum,
-                          target_pauli_sum: PauliSum
-                          ) -> Gate:
+    def from_input_to_target(cls,
+                             input_pauli_sum: PauliSum,
+                             target_pauli_sum: PauliSum
+                             ) -> Gate:
         """
         Find a Clifford gate that maps an input PauliSum to the target PauliSum.
 
@@ -213,7 +213,7 @@ class Gate(ABC):
 
             phi_gate = solve_phase_for_gate(input_pauli_sum, target_pauli_sum, F_total, p)
 
-            final_gate = _GenericGate("solve_from_target", F_total.T, phi_gate)
+            final_gate = _GenericGate("from_input_to_target", F_total.T, phi_gate)
 
             return final_gate
 
