@@ -6,7 +6,14 @@ It also assumes p is prime dimension.
 
 Future extensions: input symplectic matrix -> output symplectic matrix.
 """
-
+# TODO: move all functions that are required for the class method
+#       `input_to_target` to a unique file, that works with mixed dimension.
+# TODO: The logic can be simplified quite a bit here.
+#       I would use S = input^-1 target (sorry if typos) plus some check before that ensure consistency.
+#       This should be applicable to qudits as well and should be quite efficient?
+#
+#       Then it is only a matter to fix the phase, which should be always
+#       (? please correct me if wrong) doable efficiently.
 import numpy as np
 import galois
 from itertools import islice
@@ -21,6 +28,8 @@ def modinv(a, p):
 
 def solve_gfp(A: np.ndarray, b: np.ndarray, p: int):
     """
+    TODO: Make this file use the solver in finite_field_solving.py
+
     Solve Ax = b over GF(p) using Gaussian elimination.
     Returns one valid solution vector x (length n), or None if no solution exists.
 
@@ -264,7 +273,7 @@ def find_transvection_map(input_ps, output_ps, p):
         ainv = modinv(a, p)
         h=(-input_ps + output_ps) % p
         F_h= transvection_matrix(h, p, multiplier=ainv)
-        if (input_ps @ F_h % p != output_ps).all():
+        if not np.array_equal((input_ps @ F_h) % p, output_ps):
             raise ValueError("Failed to construct valid transvection for nonzero symplectic product")
 
     elif a == 0:
@@ -273,16 +282,16 @@ def find_transvection_map(input_ps, output_ps, p):
         a_w_inv = modinv(a_w, p)
         h = (-input_ps + w) % p
         F_h_1 = transvection_matrix(h, p, multiplier=a_w_inv)
-        if (input_ps @ F_h_1 % p != w).all():
+        if not np.array_equal((input_ps @ F_h_1) % p, w):
             raise ValueError("Failed to construct valid transvection for u->w")
         b_w = symplectic_product_arrays(w, output_ps, p)
         b_w_inv = modinv(b_w, p)
         h = (-w + output_ps) % p
         F_h_2 = transvection_matrix(h, p, multiplier=b_w_inv)
-        if (w @ F_h_2 % p != output_ps).all():
+        if not np.array_equal((w @ F_h_2) % p, output_ps):
             raise ValueError("Failed to construct valid transvection for w->v")
         F_h = F_h_1 @ F_h_2 %p
-        if (input_ps @ F_h %p != output_ps).all():
+        if not np.array_equal((input_ps @ F_h) % p, output_ps):
             raise ValueError("Failed to construct valid transvection map: for u->v")
 
     return F_h
@@ -347,7 +356,7 @@ def find_transvection_map_solve(input_ps, output_ps, p):
         ainv = modinv(a, p)
         h=(-input_ps + output_ps) % p
         F_h= transvection_matrix(h, p, multiplier=ainv)
-        if (input_ps @ F_h % p != output_ps).all():
+        if not np.array_equal((input_ps @ F_h) % p, output_ps):
             raise ValueError("Failed to construct valid transvection for nonzero symplectic product")
 
     elif a == 0:
@@ -356,16 +365,16 @@ def find_transvection_map_solve(input_ps, output_ps, p):
         a_w_inv = modinv(a_w, p)
         h=(-input_ps + w) % p
         F_h_1= transvection_matrix(h, p, multiplier=a_w_inv)
-        if (input_ps @ F_h_1 % p != w).all():
+        if not np.array_equal((input_ps @ F_h_1) % p, w):
             raise ValueError("Failed to construct valid transvection for u->w")
         b_w= symplectic_product_arrays(w, output_ps, p)
         b_w_inv = modinv(b_w, p)
         h=(-w + output_ps) % p
         F_h_2= transvection_matrix(h, p, multiplier=b_w_inv)
-        if (w @ F_h_2 % p != output_ps).all():
+        if not np.array_equal((w @ F_h_2) % p, output_ps):
             raise ValueError("Failed to construct valid transvection for w->v")
         F_h= F_h_1 @ F_h_2 %p
-        if (input_ps @ F_h %p != output_ps).all():
+        if not np.array_equal((input_ps @ F_h) % p, output_ps):
             raise ValueError("Failed to construct valid transvection map: for u->v")
 
     return F_h
@@ -453,7 +462,7 @@ def find_transvection_map_solve_extended(input_ps, output_ps, constraints=[], sp
         ainv = modinv(a, p)
         h=(-input_ps + output_ps) % p
         F_h= transvection_matrix(h, p, multiplier=ainv)
-        if (input_ps @ F_h % p != output_ps).all():
+        if not np.array_equal((input_ps @ F_h) % p, output_ps):
             raise ValueError("Failed to construct valid transvection for nonzero symplectic product")
 
     elif a == 0:
@@ -466,16 +475,16 @@ def find_transvection_map_solve_extended(input_ps, output_ps, constraints=[], sp
             a_w_inv = modinv(a_w, p)
             h=(-input_ps + w) % p
             F_h_1= transvection_matrix(h, p, multiplier=a_w_inv)
-            if (input_ps @ F_h_1 % p != w).all():
+            if not np.array_equal((input_ps @ F_h_1) % p, w):
                 raise ValueError("Failed to construct valid transvection for u->w")
             b_w= symplectic_product_arrays(w, output_ps, p)
             b_w_inv = modinv(b_w, p)
             h=(-w + output_ps) % p
             F_h_2= transvection_matrix(h, p, multiplier=b_w_inv)
-            if (w @ F_h_2 % p != output_ps).all():
+            if not np.array_equal((w @ F_h_2) % p, output_ps):
                 raise ValueError("Failed to construct valid transvection for w->v")
             F_h= F_h_1 @ F_h_2 %p
-            if (input_ps @ F_h %p != output_ps).all():
+            if not np.array_equal((input_ps @ F_h) % p, output_ps):
                 raise ValueError("Failed to construct valid transvection map: for u->v")
 
     return F_h

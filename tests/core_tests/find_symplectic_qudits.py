@@ -4,6 +4,7 @@ from sympleq.core.circuits.utils import symplectic_product_arrays
 from sympleq.core.circuits.find_symplectic_qudits import build_symplectic_for_transvection, \
     check_mappable_via_clifford, intermediate_transvection_solve, find_transvection_map, find_transvection_map_solve, \
     map_paulisum_to_target_paulisum
+from sympleq.core.circuits.find_symplectic import map_paulisum_to_target_tableau
 from sympleq.core.finite_field_solvers import get_linear_dependencies
 from sympleq.models import random_hamiltonian
 from sympleq.core.circuits import Circuit
@@ -115,7 +116,8 @@ class TestSymplecticSolverQudits:
                                                     ' v={v}, w={p}: ")
 
     def test_map_paulisum_to_paulisum(self):
-        n = 10  # number of qudits
+        # random_pauli_hamiltonian enumerates the full p ** (2 * n) Pauli label space.
+        n = 3  # number of qudits
         p = 7   # prime dimension
         m = 10  # number of paulis
         dimensions = [p] * n
@@ -135,3 +137,6 @@ class TestSymplecticSolverQudits:
             if check_mappable_via_clifford(input_tab, output_tab, p):
                 F_total = map_paulisum_to_target_paulisum(input_tab, output_tab, p)
                 assert (input_tab @ F_total % p == output_tab).all(), f'could not map for {input_tab, output_tab}'
+
+                F_public = map_paulisum_to_target_tableau(input_tab, output_tab, p, method="transvection")
+                assert (input_tab @ F_public % p == output_tab).all(), f'could not map for {input_tab, output_tab}'

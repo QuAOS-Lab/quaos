@@ -1,8 +1,9 @@
 import numpy as np
-from numpy.random import default_rng
+import pytest
+from numpy.random import Generator as RNGGenerator, default_rng
 from sympleq import bases_to_int, int_to_bases
-from sympleq.utils import get_linearly_independent_rows
-from tests import choose_random_dimensions
+from sympleq.utils import complex_phase_value, get_linearly_independent_rows, multi_kron
+from tests import PRIME_LIST, choose_random_dimensions
 
 
 N_tests = 30
@@ -41,7 +42,7 @@ class TestUtils:
         n = 10
         d = 5
         for n in [10, 15, 20]:
-            for d in [2, 5, 11, 17]:
+            for d in PRIME_LIST:
                 id = np.eye(n, dtype=int)
 
                 assert get_linearly_independent_rows(id, d) == np.arange(n).tolist()
@@ -50,3 +51,69 @@ class TestUtils:
                     # add dependent rows to id, check the original independent rows are the only ones obtained
                     id = np.vstack([id, rng.integers(0, d, n)])
                     assert get_linearly_independent_rows(id, d) == np.arange(n).tolist()
+
+    def test_complex_phase_value_matches_reference_formula(self):
+        for dimension in PRIME_LIST:
+            for phase in range(2 * dimension):
+                expected = np.exp(2 * np.pi * 1j * phase / (2 * dimension))
+                assert np.isclose(complex_phase_value(phase, dimension), expected)
+
+    def test_complex_phase_value_periodicity(self):
+        for dimension in PRIME_LIST:
+            for phase in range(-2 * dimension, 2 * dimension):
+                assert np.isclose(
+                    complex_phase_value(phase, dimension),
+                    complex_phase_value(phase + 2 * dimension, dimension),
+                )
+
+    def test_complex_phase_value_exact_quadrant_roots(self):
+        # dimension=2 is the qubit case: (2 * phase) % dimension == 0 always holds,
+        # so every phase must land exactly (no floating-point roundoff) on a quadrant root.
+        exact_roots = {1 + 0j, 1j, -1 + 0j, -1j}
+        for phase in range(8):
+            value = complex_phase_value(phase, 2)
+            assert value in exact_roots
+
+        expected_by_phase = {0: 1 + 0j, 1: 1j, 2: -1 + 0j, 3: -1j}
+        for phase, expected in expected_by_phase.items():
+            assert complex_phase_value(phase, 2) == expected
+
+    def test_multi_kron_single_matrix_passthrough(self):
+        X = np.array([[0, 1], [1, 0]], dtype=complex)
+        assert np.array_equal(multi_kron([X]), X)
+
+    def test_multi_kron_matches_sequential_np_kron(self):
+        rng_local = default_rng(0)
+        matrices = [rng_local.normal(size=(2, 2)) + 1j * rng_local.normal(size=(2, 2)) for _ in range(4)]
+
+        expected = matrices[0]
+        for m in matrices[1:]:
+            expected = np.kron(expected, m)
+
+        assert np.allclose(multi_kron(matrices), expected)
+
+    def test_multi_kron_raises_on_empty_list(self):
+        with pytest.raises(ValueError, match="At least one matrix"):
+            multi_kron([])
+
+    def test_multi_kron_raises_on_non_square_matrix(self):
+        with pytest.raises(ValueError, match="square"):
+            multi_kron([np.zeros((2, 3), dtype=complex)])
+
+    def test_multi_kron_raises_on_non_2d_array(self):
+        with pytest.raises(ValueError, match="square"):
+            multi_kron([np.zeros(4, dtype=complex)])
+
+    def test_multi_kron_raises_on_non_ndarray_entry(self):
+        with pytest.raises(ValueError, match="square"):
+            multi_kron([[[1, 0], [0, 1]]])  # type: ignore[arg-type]
+
+    def test_multi_kron_raises_on_non_complex_dtype(self):
+        with pytest.raises(ValueError, match="complex dtype"):
+            multi_kron([np.eye(2, dtype=float)])
+
+    def test_multi_kron_raises_on_mixed_valid_and_invalid_matrices(self):
+        valid = np.eye(2, dtype=complex)
+        invalid = np.eye(2, dtype=float)
+        with pytest.raises(ValueError, match="complex dtype"):
+            multi_kron([valid, invalid])

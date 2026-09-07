@@ -518,10 +518,10 @@ class PauliString(PauliObject):
         a = self.tableau[0]
         b = other_pauli.tableau[0]
 
-        # U is zeros with identity in lower-left n x n block
-        # This is equivalent to sum over j of 2 * x'_j * z_j
-        # U @ b selects b[:n] (x part) and puts it in lower half
-        phase = 2 * np.dot(a[n:], b[:n])  # THIS ASSUMES [1 | 1] is XZ, NOT Y
+        # Each qudit contributes omega_{d_j}^(z_j x'_j); the l / d_j factor rewrites those
+        # as powers of the shared zeta_l. This assumes [1 | 1] is XZ, not Y.
+        factors = self.lcm // self.dimensions
+        phase = 2 * np.dot(factors * a[n:], b[:n])
 
         return int(phase % (2 * self.lcm))
 

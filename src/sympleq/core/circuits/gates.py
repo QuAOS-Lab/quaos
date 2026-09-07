@@ -13,7 +13,7 @@ from sympleq.core.circuits.random_symplectic import (
     symplectic_random_koenig_smolin_gf2,
     symplectic_random_transvection,
 )
-from sympleq.core.circuits.find_symplectic import map_pauli_sum_to_target_tableau
+from sympleq.core.circuits.find_symplectic import map_paulisum_to_target_tableau
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
 from sympleq.core.circuits.target import get_phase_vector
 from sympleq.core.paulis.pauli_string import PauliString
@@ -144,13 +144,18 @@ class Gate(ABC):
 
         return _GenericGate("random", symplectic, phase_vector)
 
+    # TODO: the following function should work for mixed qudits. the gate method should actually take two PauliSums
+    #       (inclusive of phases) and should return a gate that maps the first to the second. This is the mthod that
+    #       will use the functions in the new file that will contain a polished version of the functions in, e.g.,
+    #       find_symplectic.py
     @classmethod
-    def solve_from_target(cls, input_tableau: TableauLike, target_tableau: TableauLike) -> Gate:
+    def solve_from_target(cls, input_tableau: TableauLike, target_tableau: TableauLike,
+                          dimension: int = DEFAULT_QUDIT_DIMENSION) -> Gate:
         """
         Find a Clifford gate that maps the input Pauli tableau to the target tableau.
 
         Uses symplectic transvections to find a symplectic matrix F such that
-        input_tableau @ F = target_tableau (mod 2).
+        input_tableau @ F = target_tableau (mod p), with p=`dimension`.
 
         Parameters
         ----------
@@ -159,6 +164,8 @@ class Gate(ABC):
             and n is the number of qudits.
         target_tableau : TableauLike
             Target Pauli tableau of the same shape.
+        dimension : int
+            Local Hilbert space dimension (e.g., 2 for qubits).
 
         Returns
         -------
@@ -172,8 +179,9 @@ class Gate(ABC):
 
         Notes
         -----
-        Currently only works for GF(2) (qubits). The input and target must have
-        matching symplectic product matrices for a Clifford mapping to exist.
+        Supports GF(p) for prime `dimension` via the compatibility layer in
+        `find_symplectic.py`. The input and target must have matching symplectic
+        product matrices for a Clifford mapping to exist.
         """
 
         input_tableau = np.asarray(input_tableau, dtype=int)
@@ -190,7 +198,12 @@ class Gate(ABC):
 
         n_qudits = input_tableau.shape[1] // 2
 
-        symplectic = map_pauli_sum_to_target_tableau(input_tableau, target_tableau)
+        symplectic = map_paulisum_to_target_tableau(
+            input_tableau,
+            target_tableau,
+            p=int(dimension),
+            method="auto",
+        )
         phase_vector = np.zeros(2 * n_qudits, dtype=int)
 
         return _GenericGate("target", symplectic, phase_vector)
@@ -440,7 +453,8 @@ class Gate(ABC):
 
         return _GenericGate(new_name, self._symplectic @ T, self._phase_vector.copy())
 
-    def full_symplectic(self, qudits: tuple[int, ...] | int, n_qudits: int, p: int | None = None) -> TableauType:
+    def full_symplectic(self, qudits: tuple[int, ...] | int, n_qudits: int,
+                        dimension: int | None = None) -> TableauType:
         """
         Get the full 2n x 2n symplectic matrix for a gate acting on specific qudits.
 
@@ -450,21 +464,21 @@ class Gate(ABC):
             The qudit index(es) the gate acts on
         n_qudits : int
             Total number of qudits in the system
-        p : int
+        dimension : int
             The prime dimension for modular arithmetic
 
         Returns
         -------
         TableauLike
-            The full 2n x 2n symplectic matrix mod p
+            The full 2n x 2n symplectic matrix mod dimension
         """
         if isinstance(qudits, int):
             qudits = (qudits,)
-        F, _ = embed_symplectic(self.symplectic, self.phase_vector(p), qudits, n_qudits)
-        if p is None:
-            return F
+        symplectic_matrix, _ = embed_symplectic(self.symplectic, self.phase_vector(dimension), qudits, n_qudits)
+        if dimension is None:
+            return symplectic_matrix
 
-        return F % p
+        return symplectic_matrix % dimension
 
 
 class _GenericGate(Gate):
@@ -571,7 +585,19 @@ class _CX(Gate):
         super().__init__(name, symplectic)
 
     def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
-        """CX acts as |j,k⟩ -> |j, (j+k) mod d⟩ (or |j, (k-j) mod d⟩ for inverse)."""
+        """
+        CX acts as |j,k⟩ -> |j, (j+k) mod d⟩ (or |j, (k-j) mod d⟩ for inverse).
+
+        Parameters
+        ----------
+        dimension : int, optional
+            The local Hilbert space dimension. Defaults to `DEFAULT_QUDIT_DIMENSION`.
+
+        Returns
+        -------
+        HilbertOperator
+            The d^2 x d^2 unitary matrix for the CX gate.
+        """
 
         if dimension is None:
             dimension = DEFAULT_QUDIT_DIMENSION
@@ -604,7 +630,19 @@ class _SWAP(Gate):
         super().__init__("SWAP", symplectic)
 
     def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
-        """SWAP acts as |j,k⟩ -> |k,j⟩."""
+        """
+        SWAP acts as |j,k⟩ -> |k,j⟩.
+
+        Parameters
+        ----------
+        dimension : int, optional
+            The local Hilbert space dimension. Defaults to `DEFAULT_QUDIT_DIMENSION`.
+
+        Returns
+        -------
+        HilbertOperator
+            The d^2 x d^2 unitary matrix for the SWAP gate.
+        """
         if dimension is None:
             dimension = DEFAULT_QUDIT_DIMENSION
         d = dimension
@@ -636,7 +674,19 @@ class _CZ(Gate):
         super().__init__("CZ", symplectic)
 
     def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
-        """CZ adds phase ω^{jk} to |j,k⟩ where ω = exp(2πi/d)."""
+        """
+        CZ adds phase ω^{jk} to |j,k⟩ where ω = exp(2πi/d).
+
+        Parameters
+        ----------
+        dimension : int, optional
+            The local Hilbert space dimension. Defaults to `DEFAULT_QUDIT_DIMENSION`.
+
+        Returns
+        -------
+        HilbertOperator
+            The d^2 x d^2 unitary matrix for the CZ gate.
+        """
         if dimension is None:
             dimension = DEFAULT_QUDIT_DIMENSION
         d = dimension
@@ -684,8 +734,21 @@ class _ZZMax(Gate):
         super().__init__(name, symplectic, exceptional_phase_vectors=exceptional)
 
     def local_unitary(self, dimension: int | None = None) -> HilbertOperator:
-        """Applies phase exp(±iπ(j+k)²/d) to |j,k⟩ (sign flipped for the inverse).
-        For qubits this reproduces ZZPhase(±π/4) = exp(∓iπ/4 Z⊗Z) up to a global phase."""
+        """
+        Applies phase exp(±iπ(j+k)²/d) to |j,k⟩ (sign flipped for the inverse).
+
+        For qubits this reproduces ZZPhase(±π/4) = exp(∓iπ/4 Z⊗Z) up to a global phase.
+
+        Parameters
+        ----------
+        dimension : int, optional
+            The local Hilbert space dimension. Defaults to `DEFAULT_QUDIT_DIMENSION`.
+
+        Returns
+        -------
+        HilbertOperator
+            The d^2 x d^2 unitary matrix for the ZZMax gate.
+        """
         if dimension is None:
             dimension = DEFAULT_QUDIT_DIMENSION
         d = dimension
@@ -1096,6 +1159,16 @@ class PauliGate(Gate):
         Compute the unitary for this PauliGate.
 
         For PauliGate, dimension is optional since it's determined by the stored PauliString.
+
+        Parameters
+        ----------
+        dimension : int, optional
+            Unused; retained for interface compatibility with `Gate.local_unitary`.
+
+        Returns
+        -------
+        HilbertOperator
+            The unitary matrix for this PauliGate.
         """
         from sympleq.core.circuits.utils import pauli_unitary_from_tableau
         # Use the dimension from the PauliString
@@ -1122,6 +1195,19 @@ class PauliGate(Gate):
 
         For PauliGate, qudits defaults to all qudits in order (0, 1, 2, ..., n-1)
         since the gate was constructed for a specific number of qudits.
+
+        Parameters
+        ----------
+        pauli : Pauli | PauliString | PauliSum
+            The Pauli object to transform.
+        qudits : int | tuple[int, ...] | None
+            The qudit index(es) the gate acts on. If None, defaults to all
+            qudits in order.
+
+        Returns
+        -------
+        PauliObject
+            The transformed Pauli object of the same type as the input.
         """
         if qudits is None:
             qudits = tuple(range(self._n_qudits))
