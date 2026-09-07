@@ -195,20 +195,6 @@ def embed_unitary(U_local: HilbertOperator,
     return P.T @ U_kron @ P
 
 
-def tensor(mm: list[HilbertOperator]) -> HilbertOperator:
-    # Inputs:
-    #     mm - (list{scipy.sparse.csr_matrix}) - matrices to tensor
-    # Outputs:
-    #     (scipy.sparse.csr_matrix) - tensor product of matrices
-    if len(mm) == 0:
-        return sp.csr_matrix([])
-
-    if len(mm) == 1:
-        return mm[0]
-
-    return sp.csr_matrix(sp.kron(mm[0], tensor(mm[1:]), format="csr"))
-
-
 def H_mat(d: int) -> sp.csr_matrix:
     omega = np.exp(2 * np.pi * 1j / d)
     return sp.csr_matrix(1 / np.sqrt(d) * np.array([[omega ** (i0 * i1) for i0 in range(d)] for i1 in range(d)]))

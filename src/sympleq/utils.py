@@ -1,9 +1,9 @@
 from __future__ import annotations
-from typing import Sequence
 import numpy as np
+import scipy.sparse as sp
 import galois
 
-from sympleq._typing import ComplexNDArray, IntArrayLike, IntNDArray
+from sympleq._typing import IntArrayLike, IntNDArray, ComplexSparseMatrix
 
 
 def bases_to_int(base: IntArrayLike, dimensions: IntArrayLike) -> int:
@@ -136,39 +136,30 @@ def complex_phase_value(phase: int, dimension: int) -> complex:
         return np.exp(2 * np.pi * 1j * phase / (2 * dimension))
 
 
-def multi_kron(matrices: Sequence[ComplexNDArray]) -> ComplexNDArray:
+def tensor(mm: list[ComplexSparseMatrix]) -> ComplexSparseMatrix:
     """
-    Compute the Kronecker product of multiple matrices.
+    Computes the tensor product of a list of complex sparse matrices.
 
     Parameters
     ----------
-    matrices : Sequence[ComplexNDArray]
-        A sequence of complex square matrices to compute the Kronecker product of.
+    mm : list[ComplexSparseMatrix]
+        List of matrices to tensor.
 
     Returns
     -------
-    ComplexNDArray
-        The Kronecker product of the input matrices.
-
-    Raises
-    ------
-    ValueError
-        If `matrices` is empty, or if any matrix is not a 2-dimensional square
-        array with a complex dtype.
+    ComplexSparseMatrix
+        Tensor product of the input matrices.
     """
-    if not matrices:
+
+    if not mm:
         raise ValueError("At least one matrix must be provided.")
 
-    for m in matrices:
+    for m in mm:
         if not isinstance(m, np.ndarray) or m.ndim != 2 or m.shape[0] != m.shape[1]:
             shape = getattr(m, "shape", None)
             raise ValueError(f"Each matrix must be a square 2-dimensional array, got shape {shape}.")
-        if not np.issubdtype(m.dtype, np.complexfloating):
-            raise ValueError(f"Each matrix must have a complex dtype, got {m.dtype}.")
 
-    if len(matrices) == 1:
-        return matrices[0]
-    M = np.kron(matrices[0], matrices[1])
-    for i in range(2, len(matrices)):
-        M = np.kron(M, matrices[i])
-    return M
+    if len(mm) == 1:
+        return mm[0]
+
+    return sp.csr_matrix(sp.kron(mm[0], tensor(mm[1:]), format="csr"))
