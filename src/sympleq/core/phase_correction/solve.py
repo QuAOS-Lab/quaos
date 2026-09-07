@@ -63,7 +63,7 @@ def pauli_phase_correction(H: TableauType, delta_phi_2p: PhasesType, p: int, dim
     return PauliGate(pauli)
 
 
-# Can be cleaned up
+# TODO: Can be cleaned up
 def _gf_solve_one_solution(A_int: np.ndarray, b_int: np.ndarray, p: int) -> Optional[np.ndarray]:
     """
     Wrapper around solve_linear_system_over_gf returning one solution or None if inconsistent.
