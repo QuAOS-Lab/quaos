@@ -45,8 +45,11 @@ def circuit_stitching(
 
     n_qubits = max([c.n_qubits for c in input_circuits])
 
+    # Put circuits in descending order of number of qubits.
+    input_circuits = sorted(input_circuits, key=lambda c: c.n_qubits, reverse=True)
+
     sum_circuit = Circuit(n_qubits)
-    reset_box = reset_operations(n_qubits)
+    # reset_box = reset_operations(s_circuit.n_qubits)
 
     creg_index = 0
     for idx in range(len(input_circuits)):
@@ -63,7 +66,15 @@ def circuit_stitching(
         sum_circuit.add_circbox_regwise(CircBox(s_circuit), qreg, cregs)
         if idx == len(input_circuits) - 1:
             continue
-        sum_circuit.add_circbox(reset_box, s_circuit.qubits)
+        local_reset_box = reset_operations(s_circuit.n_qubits)
+        sum_circuit.add_circbox(local_reset_box, s_circuit.qubits)
+
+    # We can also reset the whole circuit after stitching, as the circuits are stitched in
+    # descending order of number of qubits. However, the local reset option is more general.
+    # To reset the whole circuit:
+    # uncomment line 52 (reset_box = reset_operations(s_circuit.n_qubits)),
+    # remove line 69 i.e., local_reset_box = reset_operations(s_circuit.n_qubits)), and
+    # replace line 70 with: sum_circuit.add_circbox(reset_box, sum_circuit.qubits)
 
     # Flatten the CircBoxes into native gates so the stitched circuit is a
     # single genuine circuit. This is what lets gate-count-based cost and
