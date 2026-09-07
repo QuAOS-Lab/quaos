@@ -204,9 +204,10 @@ def solve_mod_2p(A: TableauType, delta: PhasesType, p: int) -> PhasesType | None
     h_p, h_2 = np.asarray(h_p, int) % p, np.asarray(h_2, int) % 2
     return (h_p + p * ((h_2 - h_p) % 2)) % (2 * p)
 
+# TODO: This function is used in some places,
+# but should be removed and replaced with the one below (solve_phase_for_gate).
 
-# To be removed??
-# Could be useful for mixed??
+
 def get_phase_vector(gate_symplectic: TableauType, dimension: int) -> PhasesType:
     """
     Calculate the phase vector for a gate given its symplectic matrix.
@@ -232,7 +233,7 @@ def get_phase_vector(gate_symplectic: TableauType, dimension: int) -> PhasesType
 # Shreya: For the version implemented here, we do not. Ideally we should solve for this equation:
 # lhs + (dimension - 1) * np.diag(gate_symplectic.T @ U @ gate_symplectic) = 0 % 2,
 # which can have more than one solution, implying more than one starting point for the phase-solver.
-# Also, the implemented version returns a vector with all zero for qudits > 2, as (dimension -1) is even there.
+# Also, the implemented version returns a vector with all zero for qudits > 2, as (dimension -1) is even.
 # For qubits, it gives an initial parity vector, which matters. making it a qubit only function for now. However,
 # could be useful for mixed??
 
