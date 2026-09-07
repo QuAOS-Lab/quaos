@@ -204,8 +204,10 @@ def solve_mod_2p(A: TableauType, delta: PhasesType, p: int) -> PhasesType | None
     h_p, h_2 = np.asarray(h_p, int) % p, np.asarray(h_2, int) % 2
     return (h_p + p * ((h_2 - h_p) % 2)) % (2 * p)
 
-# TODO: This function is used in some places,
-# but should be removed and replaced with the one below (solve_phase_for_gate).
+# TODO: This function is used in multiple places, but is not really a helper for mapping to target.
+#  It is also not entirely covered the function 'solve_phase_for_gate' in this file.
+#  This do not require the target tableau, and provides a seed, which is important and non-trivial for qubits.
+#  I think it should be moved to a more general location.
 
 
 def get_phase_vector(gate_symplectic: TableauType, dimension: int) -> PhasesType:
