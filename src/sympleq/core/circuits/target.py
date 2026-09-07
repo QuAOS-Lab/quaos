@@ -5,9 +5,9 @@ from __future__ import annotations
 from sympleq.core.paulis import PauliSum
 from sympleq.core.paulis._typing import TableauType, PhasesType
 import numpy as np
-from sympleq.core.circuits.helpers_solve_from_target import get_phase_vector, map_tableau_to_target_tableau
+from sympleq.core.circuits.helpers_from_input_to_target import get_phase_vector, map_tableau_to_target_tableau
 
-# TODO: Remove this function across repo and replace with solve_from_target,
+# TODO: Remove this function across repo and replace with from input to target,
 #       Then remove this file.
 
 
