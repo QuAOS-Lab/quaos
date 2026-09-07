@@ -6,16 +6,20 @@ from typing import Self, overload
 from sympleq._typing import IntArrayLike
 from sympleq.core.paulis import PauliObject
 from sympleq.core.paulis._typing import (
-    TableauType, TableauLike, PhasesType, DimensionsType, HilbertOperator
+    TableauType, PhasesType, DimensionsType, HilbertOperator
 )
 from sympleq.core.circuits.utils import embed_symplectic, embed_unitary, transvection_matrix
 from sympleq.core.circuits.random_symplectic import (
     symplectic_random_koenig_smolin_gf2,
     symplectic_random_transvection,
 )
-from sympleq.core.circuits.find_symplectic import map_paulisum_to_target_tableau
+from sympleq.core.circuits.helpers_from_input_to_target import (
+    check_mappable_via_clifford,
+    get_phase_vector,
+    map_tableau_to_target_tableau,
+    solve_phase_for_gate,
+)
 from sympleq.core.paulis.constants import DEFAULT_QUDIT_DIMENSION
-from sympleq.core.circuits.target import get_phase_vector
 from sympleq.core.paulis.pauli_string import PauliString
 from sympleq.core.paulis.pauli_sum import PauliSum
 
@@ -145,24 +149,27 @@ class Gate(ABC):
         return _GenericGate("random", symplectic, phase_vector)
 
     # TODO: the following function should work for mixed qudits. the gate method should actually take two PauliSums
-    #       (inclusive of phases) and should return a gate that maps the first to the second. This is the mthod that
+    #       (inclusive of phases) and should return a gate that maps the first to the second. This is the method that
     #       will use the functions in the new file that will contain a polished version of the functions in, e.g.,
     #       find_symplectic.py
+
+    # Note:
+    # Still not does do mixed qudits..
     @classmethod
-    def solve_from_target(cls, input_tableau: TableauLike, target_tableau: TableauLike,
-                          dimension: int = DEFAULT_QUDIT_DIMENSION) -> Gate:
+    def from_input_to_target(cls,
+                             input_pauli_sum: PauliSum,
+                             target_pauli_sum: PauliSum
+                             ) -> Gate:
         """
-        Find a Clifford gate that maps the input Pauli tableau to the target tableau.
+        Find a Clifford gate that maps an input PauliSum to the target PauliSum.
 
         Uses symplectic transvections to find a symplectic matrix F such that
         input_tableau @ F = target_tableau (mod p), with p=`dimension`.
 
         Parameters
         ----------
-        input_tableau : TableauLike
-            Input Pauli tableau of shape (m, 2n) where m is the number of Paulis
-            and n is the number of qudits.
-        target_tableau : TableauLike
+        input_pauli_sum : PauliSum
+        target_pauli_sum : PauliSum
             Target Pauli tableau of the same shape.
         dimension : int
             Local Hilbert space dimension (e.g., 2 for qubits).
@@ -175,17 +182,16 @@ class Gate(ABC):
         Raises
         ------
         ValueError
-            If the tableaus have different shapes or are not mappable via Clifford.
+            If the tableaus have different shapes or are not mappable via Clifford,
 
         Notes
         -----
-        Supports GF(p) for prime `dimension` via the compatibility layer in
-        `find_symplectic.py`. The input and target must have matching symplectic
+        The input and target must have matching symplectic
         product matrices for a Clifford mapping to exist.
         """
 
-        input_tableau = np.asarray(input_tableau, dtype=int)
-        target_tableau = np.asarray(target_tableau, dtype=int)
+        input_tableau = input_pauli_sum.tableau
+        target_tableau = target_pauli_sum.tableau
 
         if input_tableau.shape != target_tableau.shape:
             raise ValueError(
@@ -196,17 +202,20 @@ class Gate(ABC):
             input_tableau = input_tableau.reshape(1, -1)
             target_tableau = target_tableau.reshape(1, -1)
 
-        n_qudits = input_tableau.shape[1] // 2
+        p = int(input_pauli_sum.lcm)
 
-        symplectic = map_paulisum_to_target_tableau(
-            input_tableau,
-            target_tableau,
-            p=int(dimension),
-            method="auto",
-        )
-        phase_vector = np.zeros(2 * n_qudits, dtype=int)
+        if check_mappable_via_clifford(input_tableau, target_tableau, p) is False:
+            raise ValueError(
+                f"Not mappable via Clifford: {input_tableau} ->  {target_tableau}."
+            )
+        else:
+            F_total = map_tableau_to_target_tableau(input_tableau, target_tableau, p)
 
-        return _GenericGate("target", symplectic, phase_vector)
+            phi_gate = solve_phase_for_gate(input_pauli_sum, target_pauli_sum, F_total, p)
+
+            final_gate = _GenericGate("from_input_to_target", F_total.T, phi_gate)
+
+            return final_gate
 
     @property
     def name(self) -> str:
@@ -295,9 +304,7 @@ class Gate(ABC):
         """
         if isinstance(qudits, int):
             qudits = (qudits,)
-
         affected_qudits = np.asarray(qudits, dtype=int)
-
         if len(affected_qudits) != self._n_qudits:
             raise ValueError(f"Gate acts on {self._n_qudits} qudits, but {len(affected_qudits)} indices provided.")
 

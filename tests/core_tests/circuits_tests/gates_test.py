@@ -5,9 +5,11 @@ from sympleq.core.circuits import GATES, PauliGate
 from sympleq.core.circuits.gates import Gate
 from sympleq.core.circuits.utils import is_symplectic
 from sympleq.core.paulis import PauliSum, PauliString
+from sympleq.core.circuits import Circuit
 from sympleq.core.circuits.random_symplectic import (symplectic_gf2, symplectic_group_size,
                                                      symplectic_random_koenig_smolin_gf2,
                                                      symplectic_random_transvection)
+from sympleq.models import random_hamiltonian
 
 
 class TestGates():
@@ -296,51 +298,48 @@ class TestGates():
         with pytest.raises(ValueError, match="n_qubits must be >= 1"):
             symplectic_random_koenig_smolin_gf2(0)
 
-    def test_gate_from_target(self):
-        """Test Gate.solve_from_target finds correct symplectic transformation."""
-        from sympleq.core.circuits import Gate
+    @pytest.mark.parametrize("dim", [2, 3, 5])
+    @pytest.mark.parametrize("n_qudits", [5, 6])
+    @pytest.mark.parametrize("num_pauli", [30, 40])
+    def test_gate_from_target(self, dim: int, n_qudits: int, num_pauli: int):
+        """Test Gate.from_input_to_target finds
+        correct pauli sum"""
 
-        # Test single Pauli string mapping
-        # Map X to Z on a single qubit: [1, 0] -> [0, 1]
-        input_tableau = np.array([[1, 0]])
-        target_tableau = np.array([[0, 1]])
-        dim = 2
-        gate = Gate.solve_from_target(input_tableau, target_tableau, dim)
-        result = (input_tableau @ gate.symplectic) % 2
-        assert np.array_equal(result, target_tableau), f"Single mapping failed: {result} != {target_tableau}"
+        dimensions = [dim] * n_qudits
+        for _ in range(100):
+            pl_sum = random_hamiltonian.random_pauli_hamiltonian(num_pauli, dimensions)
 
-        # Test multiple Pauli string mapping (2 qubits)
-        # This requires compatible symplectic product matrices
-        for _ in range(10):
-            n_qudits = np.random.randint(1, 7)
-            # Generate random input
-            input_tableau = np.random.randint(0, 2, size=(2, 2 * n_qudits))
-            # Apply a random symplectic to get a valid target
-            random_gate = Gate.from_random(n_qudits, 2)
-            target_tableau = (input_tableau @ random_gate.symplectic) % 2
+            C = Circuit.from_random(n_gates=10 * n_qudits**2, dimensions=dimensions)
+            target_pl_sum = C.act(pl_sum)
 
-            gate = Gate.solve_from_target(input_tableau, target_tableau, dim)
-            result = (input_tableau @ gate.symplectic) % 2
-            assert np.array_equal(result, target_tableau), "Multi-Pauli mapping failed"
+            final_gate = Gate.from_input_to_target(pl_sum, target_pl_sum)
 
-    @pytest.mark.parametrize("dim", [3, 5])
-    def test_gate_from_target_qudit_dimension(self, dim: int):
-        """Test Gate.solve_from_target works for qudit (non-qubit prime) dimensions."""
+            found_pl_sum = final_gate.act(pl_sum, tuple(range(n_qudits)))
 
-        for _ in range(10):
-            n_qudits = np.random.randint(1, 7)
-            input_tableau = np.random.randint(0, dim, size=(2, 2 * n_qudits))
-            # Regenerate any all-zero row: it represents the identity Pauli, which has
-            # no well-defined transvection image and is correctly rejected by the solver.
-            while not input_tableau.any(axis=1).all():
-                input_tableau = np.random.randint(0, dim, size=(2, 2 * n_qudits))
-            # Apply a random symplectic to get a valid, guaranteed-reachable target.
-            random_gate = Gate.from_random(n_qudits, dim)
-            target_tableau = (input_tableau @ random_gate.symplectic) % dim
+            assert (found_pl_sum == target_pl_sum)
 
-            gate = Gate.solve_from_target(input_tableau, target_tableau, dim)
-            result = (input_tableau @ gate.symplectic) % dim
-            assert np.array_equal(result, target_tableau), f"Qudit mapping failed for dimension={dim}"
+    @pytest.mark.parametrize("dim", [2, 3])
+    @pytest.mark.parametrize("n_qudits", [5])
+    @pytest.mark.parametrize("num_pauli", [5])
+    def test_gate_from_target_hilbert_space(self, dim: int, n_qudits: int, num_pauli: int):
+        """Test Gate.from_input_to_target finds
+        correct pauli sum in hilbert space"""
+
+        dimensions = [dim] * n_qudits
+        for _ in range(100):
+            pl_sum = random_hamiltonian.random_pauli_hamiltonian(num_pauli, dimensions)
+
+            C = Circuit.from_random(n_gates=10 * n_qudits**2, dimensions=dimensions)
+            target_pl_sum = C.act(pl_sum)
+
+            final_gate = Gate.from_input_to_target(pl_sum, target_pl_sum)
+
+            found_pl_sum = final_gate.act(pl_sum, tuple(range(n_qudits)))
+
+            assert np.allclose(
+                found_pl_sum.to_hilbert_space().toarray(),
+                target_pl_sum.to_hilbert_space().toarray(),
+            )
 
     def test_full_symplectic_embeds_and_reduces_mod_dimension(self):
         """Test Gate.full_symplectic embeds a local symplectic into a larger system and reduces mod dimension."""

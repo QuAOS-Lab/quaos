@@ -63,6 +63,7 @@ def pauli_phase_correction(H: TableauType, delta_phi_2p: PhasesType, p: int, dim
     return PauliGate(pauli)
 
 
+# TODO: Can be cleaned up
 def _gf_solve_one_solution(A_int: np.ndarray, b_int: np.ndarray, p: int) -> Optional[np.ndarray]:
     """
     Wrapper around solve_linear_system_over_gf returning one solution or None if inconsistent.
@@ -176,6 +177,7 @@ def solve_phase_vector_h_from_residual(
     return None
 
 
+# Shreya: This can be removed I think. We already have something similar in sympleq.core.finite_field_solvers
 def solve_linear_system_mod_prime(A: np.ndarray, b: np.ndarray, p: int) -> Optional[np.ndarray]:
     """
     Solve A x = b over Z_p where p is prime.

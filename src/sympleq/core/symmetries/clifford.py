@@ -89,7 +89,6 @@ def find_clifford_symmetries(
     p2_bitset: str = "auto",
     color_mode: str = "wl",
     max_wl_rounds: int = 10,
-    lift_method: str = "auto",
     circuit_augmented_graph: bool | str = False,
     max_nullity_for_circuits: int = 12,
     max_circuits: int = 5000,
@@ -109,7 +108,6 @@ def find_clifford_symmetries(
     symmetries, _checked = find_igraph_clifford_symmetries(
         pauli_sum,
         num_symmetries=num_symmetries,
-        lift_method=lift_method,
         extra_invs=extra_column_invariants,
         color_mode=color_mode,
         max_wl_rounds=max_wl_rounds,
