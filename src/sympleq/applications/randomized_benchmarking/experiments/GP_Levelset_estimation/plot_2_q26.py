@@ -13,7 +13,8 @@ from scipy.special import ndtri
 # PATH / SCORE HANDLES
 # -------------------------------------------------------------------------
 
-out_path = Path(r"Personal\Data\Paper_plots\plot_2\plot2.pdf")
+# out_path = Path(r"Personal\Data\Paper_plots\plot_2\plot2.pdf")
+out_path = Path(r"Personal\Data\Paper_plots\plot_2\plot2.png")
 
 # -------------------------------------------------------------------------
 # Panel-(a)-with_Fake_H
@@ -59,34 +60,18 @@ Q26_accumulated_ordinary_GP_GRID_PATH: Path | None = Path(
 )
 
 
-GATES_AXIS_LIMITS: tuple[float, float] | None = (250.0, 1600.0)
-RATIO_AXIS_LIMITS: tuple[float, float] | None = (0.095, 0.8)
+GATES_AXIS_LIMITS: tuple[float, float] | None = (200.0, 1700.0)
+RATIO_AXIS_LIMITS: tuple[float, float] | None = (0.1, 0.75)
 
 SHOW_PREDICTED_FIDELITY_HUE = False
-SHOW_CURRENT_MEASURED_POINTS = False
+SHOW_CURRENT_MEASURED_POINTS_h21 = False
+SHOW_CURRENT_MEASURED_POINTS_h21E = False
 SHOW_SOBOL_POINTS = False
 SOBOL_SUCCESS_COLOR = "tab:blue"
 SOBOL_FAILURE_COLOR = "tab:orange"
 
-CURRENT_SIGMA_BAND_LABEL = r"current $\mu \pm 1\sigma$"
-CURRENT_SIGMA_BAND_COLOR = "tab:blue"
 CURRENT_SIGMA_BAND_ALPHA = 0.55
 CURRENT_DATA_LABEL_PREFIX = "measured data"
-SHOW_REFERENCE_DATA_COUNTS = True
-
-SHOW_Q26_REFERENCE_LINE = True
-SHOW_Q26_REFERENCE_SIGMA = True
-SHOW_Q26_REFERENCE_POINTS = False
-
-Q26_REFERENCE_LABEL = "H2-1 accumulated ActualGR q=26"
-Q26_REFERENCE_COLOR = "navy"
-Q26_REFERENCE_LINESTYLE = "-."
-Q26_REFERENCE_SIGMA_LABEL = r"H2-1 accumulated ActualGR q=26 $\mu \pm 1\sigma$"
-Q26_REFERENCE_SIGMA_LINESTYLE = ":"
-Q26_REFERENCE_SIGMA_BAND_ALPHA = 0.16
-Q26_REFERENCE_POINTS_LABEL = "H2-1 accumulated ActualGR q=26"
-Q26_REFERENCE_SUCCESS_COLOR = "navy"
-Q26_REFERENCE_FAILURE_COLOR = "navy"
 
 
 def plot_target_from_grid(grid) -> float:
@@ -114,8 +99,6 @@ def sobol_config_keys(json_path: Path) -> set[tuple[int, int, int, float, bool]]
 
 def load_points(
     json_path: Path,
-    *,
-    last_backend_batch_size: int | None = LAST_BACKEND_BATCH_SIZE,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     sobol_keys = sobol_config_keys(json_path)
@@ -124,8 +107,6 @@ def load_points(
     outcomes: list[int] = []
     is_sobol: list[bool] = []
     records = payload.get("data", [])
-    if last_backend_batch_size is not None:
-        records = records[-last_backend_batch_size:]
 
     for record in records:
         n_1q = int(record["n_1qb_gates"])
@@ -223,10 +204,14 @@ def add_sigma_band(
 
 
 def plot_fle_grid(
-    json_path: str | Path = RMB_JSON_PATH,
-    grid_path: str | Path | None = GP_GRID_PATH,
-    out_path: str | Path | None = OUT_PATH,
+    json_paths: list[str | Path] = [Q26_fakeH_JSON_PATH, Q26_fakeH_H21E_JSON_PATH],
+    grid_paths: list[str | Path] = [Q26_fakeH_GP_GRID_PATH, Q26_fakeH_H21E_GP_GRID_PATH],
+    out_path: str | Path | None = out_path,
 ) -> dict[str, float]:
+
+    # Data on H2-1
+    grid_path = Path(grid_paths[0])
+    json_path = Path(json_paths[0])
 
     grid = np.load(grid_path)
     gates_grid = np.asarray(grid["gates_grid"], dtype=float)
@@ -235,7 +220,7 @@ def plot_fle_grid(
     latent_mean = np.asarray(grid["latent_mean"], dtype=float)
     latent_variance = np.maximum(np.asarray(grid["latent_variance"], dtype=float), 0.0)
     latent_std = np.sqrt(latent_variance)
-    target = plot_target_from_grid(grid, target_override)
+    target = plot_target_from_grid(grid)
     latent_target = float(ndtri(target))
     print(f"[plot] grid: {grid_path}")
     print(f"[plot] contour target: p={target:g}")
@@ -261,9 +246,9 @@ def plot_fle_grid(
         latent_mean=latent_mean,
         latent_std=latent_std,
         latent_target=latent_target,
-        color=CURRENT_SIGMA_BAND_COLOR,
+        color="navy",
         alpha=CURRENT_SIGMA_BAND_ALPHA,
-        label=CURRENT_SIGMA_BAND_LABEL,
+        label=r"H2-1 Uncertainty",
         zorder=3,
     )
 
@@ -273,11 +258,12 @@ def plot_fle_grid(
         latent_mean,
         levels=[latent_target],
         colors="black",
+        linestyles="-",
         linewidths=2.2,
         zorder=6,
     )
 
-    if SHOW_CURRENT_MEASURED_POINTS and len(point_gates) > 0:
+    if SHOW_CURRENT_MEASURED_POINTS_h21 and len(point_gates) > 0:
         regular_mask = ~point_is_sobol
         regular_failure = regular_mask & ~point_outcomes
         regular_success = regular_mask & point_outcomes
@@ -329,22 +315,140 @@ def plot_fle_grid(
                 zorder=11,
             )
 
-    ax.plot(
-        [],
-        [],
-        color="none",
-        label=measurement_count_legend_label(
-            json_path,
-            prefix=CURRENT_DATA_LABEL_PREFIX,
-        ),
+        ax.plot(
+            [],
+            [],
+            color="none",
+            label=measurement_count_legend_label(
+                json_path,
+                prefix=CURRENT_DATA_LABEL_PREFIX,
+            ),
+        )
+    ax.plot([], [], color="black", linestyle="-", linewidth=2.2, label=f"H2-1")
+
+    # Data on H2-1E
+    grid_path = Path(grid_paths[1])
+    json_path = Path(json_paths[1])
+
+    grid = np.load(grid_path)
+    gates_grid = np.asarray(grid["gates_grid"], dtype=float)
+    ratio_grid = np.asarray(grid["ratio_grid"], dtype=float)
+    probabilities = np.asarray(grid["probabilities"], dtype=float)
+    latent_mean = np.asarray(grid["latent_mean"], dtype=float)
+    latent_variance = np.maximum(np.asarray(grid["latent_variance"], dtype=float), 0.0)
+    latent_std = np.sqrt(latent_variance)
+    target = plot_target_from_grid(grid)
+    latent_target = float(ndtri(target))
+    print(f"[plot] grid: {grid_path}")
+    print(f"[plot] contour target: p={target:g}")
+
+    point_gates, point_ratios, point_outcomes, point_is_sobol = load_points(json_path)
+
+    if SHOW_PREDICTED_FIDELITY_HUE:
+        surface = ax.contourf(
+            ratio_grid,
+            gates_grid,
+            probabilities,
+            levels=np.linspace(0.0, 1.0, 21),
+            cmap="RdYlGn",
+            alpha=0.85,
+        )
+        fig.colorbar(surface, ax=ax, label="Predicted fidelity")
+
+    add_sigma_band(
+        ax,
+        ratio_grid=ratio_grid,
+        gates_grid=gates_grid,
+        latent_mean=latent_mean,
+        latent_std=latent_std,
+        latent_target=latent_target,
+        color="cornflowerblue",
+        alpha=CURRENT_SIGMA_BAND_ALPHA,
+        label=r"H2-1E Uncertainty",
+        zorder=3,
     )
-    ax.plot([], [], color="black", linewidth=2.2, label=f"GP mean p={target:g}")
+
+    ax.contour(
+        ratio_grid,
+        gates_grid,
+        latent_mean,
+        levels=[latent_target],
+        colors="black",
+        linestyles="--",
+        linewidths=2.2,
+        zorder=6,
+    )
+
+    if SHOW_CURRENT_MEASURED_POINTS_h21E and len(point_gates) > 0:
+        regular_mask = ~point_is_sobol
+        regular_failure = regular_mask & ~point_outcomes
+        regular_success = regular_mask & point_outcomes
+        sobol_failure = point_is_sobol & ~point_outcomes
+        sobol_success = point_is_sobol & point_outcomes
+
+        ax.scatter(
+            point_ratios[regular_failure],
+            point_gates[regular_failure],
+            marker="x",
+            s=36,
+            color="black",
+            linewidths=1.5,
+            label="Failure",
+            zorder=8,
+        )
+        ax.scatter(
+            point_ratios[regular_success],
+            point_gates[regular_success],
+            marker="o",
+            s=42,
+            facecolors="white",
+            edgecolors="black",
+            linewidths=1.2,
+            label="Success",
+            zorder=9,
+        )
+        if SHOW_SOBOL_POINTS and np.any(sobol_failure):
+            ax.scatter(
+                point_ratios[sobol_failure],
+                point_gates[sobol_failure],
+                marker="x",
+                s=42,
+                color=SOBOL_FAILURE_COLOR,
+                linewidths=1.7,
+                label="Sobol failure",
+                zorder=10,
+            )
+        if SHOW_SOBOL_POINTS and np.any(sobol_success):
+            ax.scatter(
+                point_ratios[sobol_success],
+                point_gates[sobol_success],
+                marker="o",
+                s=48,
+                facecolors=SOBOL_SUCCESS_COLOR,
+                edgecolors="black",
+                linewidths=1.0,
+                label="Sobol success",
+                zorder=11,
+            )
+
+        ax.plot(
+            [],
+            [],
+            color="none",
+            label=measurement_count_legend_label(
+                json_path,
+                prefix=CURRENT_DATA_LABEL_PREFIX,
+            ),
+        )
+    ax.plot([], [], color="black", linestyle="--", linewidth=2.2, label=f"H2-1E")
+
     ax.set_yscale("log")
     ax.set_xlim(float(RATIO_AXIS_LIMITS[0]), float(RATIO_AXIS_LIMITS[1]))
     ax.set_ylim(bottom=max(1.0, float(GATES_AXIS_LIMITS[0])), top=float(GATES_AXIS_LIMITS[1]))
     ax.set_xlabel("Two-qubit gate ratio")
     ax.set_ylabel("Total gates")
     ax.legend(loc="upper right", fontsize=8, frameon=True, framealpha=0.9)
+    ax.set_title("With Fake Hadamard; Add SympleQ", fontsize=10, fontweight="bold")
     fig.tight_layout()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -357,7 +461,7 @@ def plot_fle_grid(
 if __name__ == "__main__":
 
     plot_fle_grid(
-        json_path=json_path,
-        grid_path=grid_path,
-        out_path=out_path
+        # json_path=Q26_fakeH_JSON_PATH,
+        # grid_path=Q26_fakeH_GP_GRID_PATH,
+        # out_path=out_path
     )
